@@ -1,58 +1,128 @@
 <h1 align="center">One Roof</h1>
 
-<p align="center"><b>A native Mac command center for the coding agents you run.</b><br>
-Every Claude Code, Codex, Kimi, Gemini CLI and Antigravity session in one window: live status, plans, routing,
-review and a built-in course. Plus the kit that keeps every agent on one workspace, one memory and one rulebook.</p>
+<h3 align="center">The terminal was built for one session. You're running twenty.</h3>
+
+<p align="center">One Roof is a Mac app that sits between a consumer app and a terminal. Every Claude Code, Codex, Kimi,
+Gemini and Antigravity session you have running is in one place. Each session says in plain words what it's doing,
+and your routing rules plus each subscription's remaining usage decide which agent and account takes the next task.</p>
 
 <p align="center">
-  <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac</b></a> ·
+  <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac (.zip)</b></a> ·
+  <a href="https://gaurav8936.github.io/oneroof/">Website</a> ·
   <a href="docs/help/00_getting-started.md">Getting started</a> ·
-  <a href="docs/help/">Help</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/gaurav8936/oneroof/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/gaurav8936/oneroof?include_prereleases&label=release"></a>
+  <a href="https://github.com/gaurav8936/oneroof/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/gaurav8936/oneroof?label=release"></a>
   <a href="https://github.com/gaurav8936/oneroof/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/gaurav8936/oneroof/actions/workflows/test.yml/badge.svg"></a>
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-black?logo=apple">
   <img alt="Apple silicon" src="https://img.shields.io/badge/Apple%20silicon-arm64-lightgrey">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
 </p>
 
-<p align="center"><img src="docs/help/img/overview.png" alt="One Roof Overview: every session in one window, grouped by status, with the feed of what each agent did" width="900"></p>
+<p align="center"><sub>Open source · MIT · native macOS app · macOS 14 or later · one download, plus herdr and your agents</sub></p>
 
-## Why
+<p align="center"><img src="site/shots/overview-daylight.png" alt="One Roof Overview: every window and session at once, grouped, with a live feed of what each agent did" width="960"></p>
 
-You run more than one agent now: several Claude seats, Codex, Kimi, Gemini. In a plain terminal every tab looks the
-same, so you lose track of which one needs you, which is done, and which is about to hit its usage limit. One Roof puts
-them under one roof:
+<p align="center"><b>Side by side:</b> Claude Code · Codex · Kimi · Gemini · Antigravity<br>
+<sub>Up to two Claude accounts and one of each other agent, detected automatically. Claude and Codex show live usage,
+and new sessions go to the seat with room.</sub></p>
 
-- **See every session at once.** Live status (working · needs you · ready · done), repo, branch and changes, the
-  agent and account, grouped and colour-coded.
-- **Plan before you run.** Write an objective; a visible planner session turns it into steps with an agent per step;
-  you approve, then it runs.
-- **The right agent for each job.** Routing rules plus each seat's remaining capacity suggest who should do what, and
-  reviews never go to the author.
-- **Real terminals.** GPU-drawn (libghostty), with selection, copy and paste, find, links and split panes.
-- **Learn as you go.** A narrated 12-lesson course on agentic engineering and 17 practical skills, bundled.
+## Why we built it
 
-| Sessions | Code review | Learn |
-|---|---|---|
-| <img src="docs/help/img/sessions.png" alt="Sessions panel" width="300"> | <img src="docs/help/img/review.png" alt="Review panel" width="300"> | <img src="docs/help/img/learn.png" alt="Learn" width="300"> |
+**10× doesn't come from typing faster. It comes from running more at once.**
+
+Agents don't run your work for you. A few tasks will run on their own, but deep, detailed work still needs a person:
+setting direction, answering questions, checking the result. What's changed is how many things need you at once. You're
+running several, and you switch between them all day.
+
+The terminal comes from a world of one session, maybe two, and it gets hard to read the moment you have ten. **One Roof
+is built to make that switching easy:** glance at a session, see where it is, decide and move on. Labels, colours,
+plain-language summaries and one place for every decision, with a real terminal underneath.
+
+## A terminal was built for one person typing. You're running a fleet.
+
+| What goes wrong | What One Roof does |
+|---|---|
+| **You can't tell sessions apart.** Every tab has the same grey icon, so you type WIP: or NEXT: in front of the name. | Every session is labelled with its state, agent, account and a live one-line status. |
+| **Nobody reads the wall of text.** You give an instruction and get pages of output. | A summary of what you asked, what it's doing now and how many steps are done. The stream folds into chapters. |
+| **You approve without knowing why.** "Allow this command?" comes with no reason and no sense of the risk. | Every question in one place, with the agent's reason, what it touches, the risk and what happens if you say no. |
+| **Subscriptions run out mid-task.** You have to remember which one is good at what and which still has room. | Your routing rules and each seat's remaining usage pick the agent, account and model. Work hands off before a limit hits. |
+| **Agents drift apart.** Launch in the wrong folder and an agent works with a different memory and none of your rules. | One launch folder, one memory and one rulebook, checked every time the app starts. |
+| **Work lives in three places.** The tracker, Linear and your tabs never agree. | Board, Work and tickets inside the app. Every session knows its ticket. |
+
+## The tour
+
+### Read the summary, not the stream.
+What you asked, what it's doing right now, and steps 3 of 4. Finished steps fold into one-line chapters; the live
+step stays a real terminal. Subagents sit beside it with their own captions.
+
+<img src="site/shots/session-daylight.png" alt="A session: what you asked, steps, chapters and subagents" width="960">
+
+### Approve with the reason in front of you. <sub>Decisions · ⌘I</sub>
+Every agent waiting on you, oldest first: why it wants to do it, what it touches, the risk, what happens if you say
+no. Allow once, always allow, deny, or reply with instructions. Nothing is approved for you.
+
+<img src="site/shots/decisions-daylight.png" alt="Decisions: an agent's request with its reason, what it touches and the risk" width="960">
+
+### Plan your day by dragging cards. <sub>Board · ⌘B</sub>
+Planned, Next, Working, Needs you, Ready, Tonight: every session across every window on one board. Drag a card to
+Next, or drop it on Tonight to run at 2 AM, nightly or on demand.
+
+<img src="site/shots/board-daylight.png" alt="Board: every session as a card by status" width="960">
+
+### See the agents your agents start. <sub>Subagents · ⇧⌘A</sub>
+A timeline of every subagent: who asked it what, the model, tokens, how long it took and what it's doing now.
+
+<img src="site/shots/subagents-daylight.png" alt="Subagents timeline" width="960">
+
+### Say what should happen. It works out who does it. <sub>New session · ⌘N</sub>
+One Roof works out whether this is a session, a ticket, a defect or a workstream, finds similar tickets, and puts the
+router's suggestion on top with its reason. Launch now, queue it next, or schedule it for tonight. The routing is your
+rules plus each seat's remaining usage; an optional on-device model sorts the task into a kind in about 0.2 s.
+
+<img src="site/shots/newsession.png" alt="New work sheet with the suggested agent and account" width="960">
+
+### Still a real terminal, with each panel in its own theme. <sub>Workspace</sub>
+Sessions, files, terminal and plan side by side, built on Ghostty's renderer, with ⌘D and ⇧⌘D to split panes.
+Agents keep running when you quit the app. Each panel can be light, mid-grey or dark on its own.
+
+<img src="site/shots/workspace.png" alt="Workspace: sessions, files, terminal and plan" width="960">
+
+### Edit, run and review without leaving. <sub>Editor · Review changes</sub>
+Edit and run, with problems listed beside the code. Lines an agent changed carry its colour. Review the diff, comment
+on a line to send it back to the agent, then commit.
+
+| | |
+|---|---|
+| <img src="site/shots/editor.png" alt="Editor" width="470"> | <img src="site/shots/review.png" alt="Review changes" width="470"> |
+
+### Your roadmap and a coach, built in. <sub>Work · Learn</sub>
+Work shows your workstreams and tickets by phase, with the session working on each one. Learn is an
+agentic-engineering coach: a 12-lesson narrated course and 17 starter skills ([`agentic_engineering/`](agentic_engineering/)).
+Listen in the app, or send a skill straight to a session.
+
+| | |
+|---|---|
+| <img src="site/shots/work.png" alt="Work" width="470"> | <img src="site/shots/learn.png" alt="Learn" width="470"> |
+
+<sub>Screens show a busy, real-world workspace. Your own sessions, repos and tickets appear in their place.</sub>
 
 ## What's in this repo
 
 | Part | Folder | What it is |
 |---|---|---|
-| **One Roof app** | [`app/`](app/) | A macOS app with real (libghostty) terminals for every agent session — Claude Code, Codex, Kimi, Gemini CLI, Antigravity — with live status, grouping, planned sessions, objectives that plan and run themselves, seat capacity and routing, code review, and a built-in course |
-| **Agentic engineering starter set** | [`agentic_engineering/`](agentic_engineering/) | 17 short skills and a 12-lesson narrated course; bundled with the app and usable by any agent on its own |
-| **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | Shell layers that make every agent start in one workspace with one memory and one rulebook, plus `roof swarm` for parallel agents in git worktrees |
+| **One Roof app** | [`app/`](app/) | The macOS app (Swift, libghostty terminals, herdr sessions) |
+| **Agentic engineering starter set** | [`agentic_engineering/`](agentic_engineering/) | 17 short skills and a 12-lesson narrated course, bundled with the app |
+| **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | One launch folder, one memory, one rulebook for every agent, plus `roof swarm` for parallel agents in git worktrees. Works with or without the app |
+| **Website** | [`site/`](site/) | The launch page, published at [gaurav8936.github.io/oneroof](https://gaurav8936.github.io/oneroof/) |
 
-> **Early release (0.3.0).** One Roof has been used daily on one Mac and tested on Apple-silicon Macs only. Expect
-> rough edges, especially on first-run setup and agent detection on machines unlike ours. Please
+> **Early release (0.3.0).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
+> especially in first-run setup and agent detection on machines unlike ours. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with what you find; see [CONTRIBUTING.md](CONTRIBUTING.md).
-> Known limits: Apple silicon only; the app is not yet signed with an Apple Developer ID; the optional on-device model
-> is a manual install for now.
+> Known limits: Apple silicon only; the app is not yet signed with an Apple Developer ID (notarized build coming);
+> the optional on-device model is a manual install for now.
 
 ## Install the app
 
