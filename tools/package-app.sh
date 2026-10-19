@@ -43,6 +43,8 @@ bash tools/release-check.sh --app "$APP" || { echo "package-app: the built app l
 mkdir -p dist
 ZIP="dist/One-Roof-$VERSION.zip"
 rm -f "$ZIP" "$ZIP.sha256"
+# Developer ID signing + notarization when the identity and notary profile are set (tools/sign-and-notarize.sh).
+if [ -n "${ONEROOF_SIGN_IDENTITY:-}" ]; then bash "$ROOT/tools/sign-and-notarize.sh" "$APP"; else echo "package-app: not signed with a Developer ID (set ONEROOF_SIGN_IDENTITY + ONEROOF_NOTARY_PROFILE)"; fi
 ditto -c -k --norsrc --noextattr --noacl --keepParent "$APP" "$ZIP"
 bash tools/release-check.sh --zip "$ZIP" || { rm -f "$ZIP"; echo "package-app: zip failed the gate (removed)" >&2; exit 1; }
 (cd dist && shasum -a 256 "$(basename "$ZIP")") | tee "$ZIP.sha256"

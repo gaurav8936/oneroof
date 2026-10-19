@@ -239,3 +239,25 @@ path, an absolute `.swift` source path or the build machine's hostname, or the z
 One Roof's code: see the repo `LICENSE`. libghostty (Ghostty) is MIT; herdr is Apache-2.0 and runs as a separate
 process. `TerminalSurfaceView.swift` and `GhosttyRuntime.swift` adapt code from Ghostty's macOS app (MIT,
 © Mitchell Hashimoto and Ghostty contributors).
+
+## Signing and notarization (removes the "cannot verify" warning)
+
+One-time setup, by the maintainer:
+
+1. Join the Apple Developer Program (developer.apple.com/programs, individual or organization).
+2. Xcode › Settings › Accounts › Manage Certificates › **+** › **Developer ID Application**. Check it with
+   `security find-identity -v -p codesigning`.
+3. Store notary credentials (an app-specific password from appleid.apple.com, or an App Store Connect API key):
+   `xcrun notarytool store-credentials oneroof-notary --apple-id <apple id> --team-id <TEAM ID>`.
+
+Then every release is the usual command with two variables set:
+
+```bash
+ONEROOF_SIGN_IDENTITY="Developer ID Application: <Name> (<TEAM ID>)" ONEROOF_NOTARY_PROFILE=oneroof-notary \
+  tools/package-app.sh
+```
+
+`tools/sign-and-notarize.sh` signs every executable in the bundle inside-out with the hardened runtime
+(`app/Resources/OneRoof.entitlements`, no exceptions), submits to Apple, staples the ticket and checks it with
+`spctl`. `tools/sign-and-notarize.sh <app> --runtime-test` applies the hardened runtime with an ad-hoc signature, to
+check the app still works without an Apple account.

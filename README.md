@@ -1,6 +1,46 @@
-# One Roof
+<h1 align="center">One Roof</h1>
 
-**A native Mac command center for the coding agents you run, plus the kit that keeps them consistent.**
+<p align="center"><b>A native Mac command center for the coding agents you run.</b><br>
+Every Claude Code, Codex, Kimi, Gemini CLI and Antigravity session in one window: live status, plans, routing,
+review and a built-in course. Plus the kit that keeps every agent on one workspace, one memory and one rulebook.</p>
+
+<p align="center">
+  <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac</b></a> ·
+  <a href="docs/help/00_getting-started.md">Getting started</a> ·
+  <a href="docs/help/">Help</a> ·
+  <a href="CONTRIBUTING.md">Contribute</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/gaurav8936/oneroof/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/gaurav8936/oneroof?include_prereleases&label=release"></a>
+  <a href="https://github.com/gaurav8936/oneroof/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/gaurav8936/oneroof/actions/workflows/test.yml/badge.svg"></a>
+  <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-black?logo=apple">
+  <img alt="Apple silicon" src="https://img.shields.io/badge/Apple%20silicon-arm64-lightgrey">
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
+</p>
+
+<p align="center"><img src="docs/help/img/overview.png" alt="One Roof Overview: every session in one window, grouped by status, with the feed of what each agent did" width="900"></p>
+
+## Why
+
+You run more than one agent now: several Claude seats, Codex, Kimi, Gemini. In a plain terminal every tab looks the
+same, so you lose track of which one needs you, which is done, and which is about to hit its usage limit. One Roof puts
+them under one roof:
+
+- **See every session at once.** Live status (working · needs you · ready · done), repo, branch and changes, the
+  agent and account, grouped and colour-coded.
+- **Plan before you run.** Write an objective; a visible planner session turns it into steps with an agent per step;
+  you approve, then it runs.
+- **The right agent for each job.** Routing rules plus each seat's remaining capacity suggest who should do what, and
+  reviews never go to the author.
+- **Real terminals.** GPU-drawn (libghostty), with selection, copy and paste, find, links and split panes.
+- **Learn as you go.** A narrated 12-lesson course on agentic engineering and 17 practical skills, bundled.
+
+| Sessions | Code review | Learn |
+|---|---|---|
+| <img src="docs/help/img/sessions.png" alt="Sessions panel" width="300"> | <img src="docs/help/img/review.png" alt="Review panel" width="300"> | <img src="docs/help/img/learn.png" alt="Learn" width="300"> |
+
+## What's in this repo
 
 | Part | Folder | What it is |
 |---|---|---|
