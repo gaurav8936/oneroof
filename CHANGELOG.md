@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — signed and notarized
+
+- **The app is signed with an Apple Developer ID and notarized by Apple.** It opens on first launch like any other
+  app: no "cannot verify" warning, no Privacy & Security › Open Anyway step.
+
 ## 0.3.0 — first public release
 
 - **One Roof app (macOS 14+, Apple silicon).** libghostty terminals on herdr sessions for Claude Code, Codex, Kimi,

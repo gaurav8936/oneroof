@@ -9,7 +9,7 @@
 ## Install
 
 1. **Download** `One-Roof-<version>.zip` from the project's Releases page, unzip it, and move **One Roof.app** to Applications.
-2. **Allow it once on first launch.** The app is not signed with an Apple Developer ID yet, so macOS says it cannot verify it. On macOS 15 or later: open it, dismiss the warning, then go to System Settings › Privacy & Security, scroll down and click **Open Anyway** next to One Roof. On macOS 14: right-click (or Control-click) the app › **Open** › **Open**. On any version you can instead run `xattr -dr com.apple.quarantine "/Applications/One Roof.app"` in Terminal.
+2. **Open it.** The app is signed with an Apple Developer ID and notarized by Apple, so it opens like any other app (macOS asks once to confirm it came from the internet).
 3. **Or build from source:** see the [app README](../../app/README.md).
 
 You also need:

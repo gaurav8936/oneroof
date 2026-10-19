@@ -24,13 +24,13 @@ cd site && python3 -m http.server 3952
 At the top of `assets/site.js`:
 
 ```js
-const LAUNCH = { released: true, version: '0.3.0', releaseDate: 'Mon 19 Oct 2026',
-  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.3.0.zip',
+const LAUNCH = { released: true, version: '0.3.1', releaseDate: 'Mon 19 Oct 2026',
+  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.3.1.zip',
   repo: 'https://github.com/gaurav8936/oneroof', blogUrl: 'https://gabblegrid.ai/blog/one-workspace' };
 ```
 
 For a new release, change `version` and `downloadUrl` there and the matching text in `index.html` (search for
-`0.3.0`), so the page reads right with or without JavaScript. `released: false` switches the page to its
+`0.3.1`), so the page reads right with or without JavaScript. `released: false` switches the page to its
 "launching soon" state (Star on GitHub, release date).
 
 ## Removing the Gatekeeper note

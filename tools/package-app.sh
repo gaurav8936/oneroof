@@ -4,7 +4,7 @@
 #   tools/package-app.sh            → dist/One-Roof-<version>.zip + .sha256
 #
 # Needs the libghostty source (app/scripts/build-ghosttykit.sh once). Runs the release gate first; refuses to package a
-# tree that is not clean. The app is ad-hoc signed only: users allow it once on first launch (README, "First launch").
+# tree that is not clean. With ONEROOF_SIGN_IDENTITY + ONEROOF_NOTARY_PROFILE set, the app is Developer ID signed, notarized and stapled.
 #
 # The release is built away from this checkout so no build-machine path ends up in it: libghostty is rebuilt from a
 # copy of the Ghostty source in $ONEROOF_RELEASE_DIR/ghostty (zig caches there too), the app from `git archive HEAD`

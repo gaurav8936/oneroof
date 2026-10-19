@@ -152,11 +152,10 @@ Listen in the app, or send a skill straight to a session.
 | **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | One launch folder, one memory, one rulebook for every agent, plus `roof swarm` for parallel agents in git worktrees. Works with or without the app |
 | **Website** | [`site/`](site/) | The launch page, published at [gaurav8936.github.io/oneroof](https://gaurav8936.github.io/oneroof/) |
 
-> **Early release (0.3.0).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
+> **Early release (0.3.1).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
 > especially in first-run setup and agent detection on machines unlike ours. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with what you find; see [CONTRIBUTING.md](CONTRIBUTING.md).
-> Known limits: Apple silicon only; the app is not yet signed with an Apple Developer ID (notarized build coming);
-> the optional on-device model is a manual install for now.
+> Known limits: Apple silicon only; the optional on-device model is a manual install for now.
 
 ## Install the app
 
@@ -176,12 +175,8 @@ Xcode, zig and the libghostty build are only needed to build from source.
 
 1. Download `One-Roof-<version>.zip` from [Releases](https://github.com/gaurav8936/oneroof/releases), unzip it, and move
    **One Roof.app** to Applications.
-2. **First launch:** the app is not yet signed by an Apple Developer ID, so macOS says it cannot verify it. You do this
-   once:
-   - **macOS 15 or later:** open the app and dismiss the warning, then System Settings › Privacy & Security › scroll
-     down › **Open Anyway** next to One Roof, and confirm.
-   - **macOS 14:** right-click (or Control-click) the app › **Open** › **Open**.
-   - **Or, any version:** `xattr -dr com.apple.quarantine "/Applications/One Roof.app"` in Terminal.
+2. **Open it.** The app is signed with an Apple Developer ID and notarized by Apple, so it opens like any other app
+   (macOS asks once to confirm it came from the internet).
 3. **First-run setup** asks for your projects folder, an optional shared folder for rules and handoffs (it can create
    one), and which agentic-engineering folder to use (the bundled one, or your own skills repo). It shows which agents
    it found and whether each is signed in. Everything can be changed later in Settings (⌘,).
