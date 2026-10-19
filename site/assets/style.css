@@ -286,3 +286,15 @@ section[id] { scroll-margin-top: 72px; }
   .brand-text { display: none; }
 }
 #install .intro .prereq { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; color: var(--mute); max-width: none; }
+
+/* 2026-10-19 · page of record "2A": three-line hero, the 1× → 10× → 100× strip, links to the blog */
+.hero h1.h1-lines { font-size: clamp(36px, 6vw, 84px); max-width: none; }
+.num-xl { font-family: var(--mono); font-size: clamp(34px, 4vw, 48px); font-weight: 700; letter-spacing: -.03em; color: var(--accent); }
+.card.static.dark { background: var(--ink); color: var(--bg); }
+.card.static.dark .num-xl { color: var(--bg); }
+.card.static.dark p { color: inherit; opacity: .8; }
+.foot-strong { margin: 0; font-size: 18px; line-height: 1.5; font-weight: 600; max-width: 64ch; text-wrap: pretty; }
+.block-link { align-self: flex-start; height: 44px; box-shadow: none; }
+.btn-lg.btn-outline .note { color: var(--mute); }
+.close-p { margin: 0; max-width: 60ch; font-size: 18px; line-height: 1.55; color: var(--mute); text-wrap: pretty; }
+.card code, .kit p code, .card .answer code { font-family: var(--mono); font-size: .9em; }

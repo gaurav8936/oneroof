@@ -1,13 +1,12 @@
 <h1 align="center">One Roof</h1>
 
-<h3 align="center">The terminal was built for one session. You're running twenty.</h3>
+<h3 align="center">1× is you.<br>10× is your agent.<br>100× is all of them at once.</h3>
 
-<p align="center">One Roof is a Mac app that sits between a consumer app and a terminal. Every Claude Code, Codex, Kimi,
-Gemini and Antigravity session you have running is in one place. Each session says in plain words what it's doing,
-and your routing rules plus each subscription's remaining usage decide which agent and account takes the next task.</p>
+<p align="center">AI already took most engineers from 1× to 10×. The next 10× won't come from a smarter model, or from agents left on autopilot. It comes from running many agents at once with you still steering, deciding and checking. One Roof is the app built for that: every Claude Code, Codex, Kimi, Gemini and Antigravity session in one place, each saying in plain words what it's doing and what it needs from you.</p>
 
 <p align="center">
   <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac (.zip)</b></a> ·
+  <a href="https://gabblegrid.ai/blog/one-workspace"><b>Read the blog</b></a> (the inspiration behind it) ·
   <a href="https://gaurav8936.github.io/oneroof/">Website</a> ·
   <a href="docs/help/00_getting-started.md">Getting started</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
@@ -25,32 +24,67 @@ and your routing rules plus each subscription's remaining usage decide which age
 
 <p align="center"><img src="site/shots/overview-daylight.png" alt="One Roof Overview: every window and session at once, grouped, with a live feed of what each agent did" width="960"></p>
 
-<p align="center"><b>Side by side:</b> Claude Code · Codex · Kimi · Gemini · Antigravity<br>
-<sub>Up to two Claude accounts and one of each other agent, detected automatically. Claude and Codex show live usage,
-and new sessions go to the seat with room.</sub></p>
+<p align="center"><b>The players:</b> Claude Code · Codex · Kimi · Gemini · Antigravity<br>
+<sub>Up to two Claude accounts and one of each other agent, found automatically. Claude and Codex show live usage,
+and new work goes to the seat with room.</sub></p>
 
-## Why we built it
+## Each jump changes what your job is.
 
-**10× doesn't come from typing faster. It comes from running more at once.**
+Every 10× moved the bottleneck. At 100× it lands on the one thing that doesn't scale: your attention, and the judgment you spend it on.
 
-Agents don't run your work for you. A few tasks will run on their own, but deep, detailed work still needs a person:
-setting direction, answering questions, checking the result. What's changed is how many things need you at once. You're
-running several, and you switch between them all day.
-
-The terminal comes from a world of one session, maybe two, and it gets hard to read the moment you have ten. **One Roof
-is built to make that switching easy:** glance at a session, see where it is, decide and move on. Labels, colours,
-plain-language summaries and one place for every decision, with a real terminal underneath.
-
-## A terminal was built for one person typing. You're running a fleet.
-
-| What goes wrong | What One Roof does |
+| | |
 |---|---|
-| **You can't tell sessions apart.** Every tab has the same grey icon, so you type WIP: or NEXT: in front of the name. | Every session is labelled with its state, agent, account and a live one-line status. |
-| **Nobody reads the wall of text.** You give an instruction and get pages of output. | A summary of what you asked, what it's doing now and how many steps are done. The stream folds into chapters. |
-| **You approve without knowing why.** "Allow this command?" comes with no reason and no sense of the risk. | Every question in one place, with the agent's reason, what it touches, the risk and what happens if you say no. |
-| **Subscriptions run out mid-task.** You have to remember which one is good at what and which still has room. | Your routing rules and each seat's remaining usage pick the agent, account and model. Work hands off before a limit hits. |
-| **Agents drift apart.** Launch in the wrong folder and an agent works with a different memory and none of your rules. | One launch folder, one memory and one rulebook, checked every time the app starts. |
+| **1×** · You write the code | One editor, one terminal, one task. The bottleneck is how fast you type and think. |
+| **10×** · Your agent writes it | You describe, it builds, you review. One session in one terminal still fits in your head. This is where most engineers are today. |
+| **100×** · All of them, with you steering | Twenty sessions across agents, subscriptions and repos. The agents do the typing. You decide which task, which agent, whether it's right and whether it's done. This is what One Roof is for. |
+
+**Getting from 10 to 100 isn't about any single agent. It's about how cheaply you can move between all of them, and how well you can judge what they did.**
+
+## A hundred agents on autopilot is a story. Judgment is the job.
+
+There's a popular idea that the next step is hands-free: start a hundred agents, walk away, come back to finished work. For a few tasks, maybe. For most real work, it won't happen.
+
+Even when an agent can finish a task on its own, someone still has to decide it was the right task, notice when it took a wrong turn and judge whether the result is any good. That judgment is what experienced engineers bring, and it doesn't scale by adding agents.
+
+It scales by making it cheap to apply. The terminal was made for one person and one session. Run twenty and every tab looks the same. Which one needs you? Which one finished? Which subscription is about to run out? Did that agent even read your rules?
+
+**Context switching is the job now. One Roof makes it cheap: glance, decide, move on.**
+
+## Six things that cost you judgment time, and what One Roof does about each.
+
+Each one is fine at three sessions. Each one is what caps you at twenty.
+
+| What breaks | What One Roof does |
+|---|---|
+| **You can't tell sessions apart.** Every tab has the same grey icon, so you type WIP: or NEXT: in front of the name. | Every session labelled with its state, agent, account and a live one-line status. |
+| **Nobody reads the wall of text.** At 100×, reading every stream is the whole day. | A summary of what you asked, what it's doing now and how far along it is. |
+| **Approvals block everything.** Questions pile up in tabs you aren't looking at, and come with no reason. | One queue for every decision, with the reason, the risk and what happens if you say no. |
+| **Subscriptions run out mid-task.** More agents means more limits, and you find out when one stops. | Remaining usage on each seat steers new work; a step hands off before a limit hits. |
+| **Agents drift apart.** More sessions, more ways to start one in the wrong folder with the wrong memory. | One launch folder, one memory and one rulebook, checked every time the app starts. |
 | **Work lives in three places.** The tracker, Linear and your tabs never agree. | Board, Work and tickets inside the app. Every session knows its ticket. |
+
+## You already use more than one model. Your coding agents are next.
+
+In chat, few people are loyal to one model any more: one for writing, another for reasoning, a third because it's quick or cheap. Coding agents are still treated as monolithic. You pick Claude Code, or Codex, and you stay.
+
+That won't last. Agents differ in what they're good at, which model family they bring and how much room is left on each subscription. The next step is using the right one for each task: plan, build, review, research, chores, and the loops that run every night.
+
+Each vendor's own app is built to keep you inside that vendor's agent. One Roof isn't any vendor's. Claude Code, Codex, Kimi, Gemini and Antigravity run side by side, and your rules decide who takes what.
+
+**A neutral home for agentic engineering: agentic code today, agentic everything next.**
+
+## What running fifty agents taught us, built into the app.
+
+We ran five subscriptions across 27 repos for weeks and wrote down everything that broke. One Roof doesn't just document those lessons. The kit puts them in place, and the app checks them every time it starts and shows you anything that's missing. The full story is in the blog post that started it: **[One workspace: five coding agents, one set of rules](https://gabblegrid.ai/blog/one-workspace)**.
+
+| Lesson from the field notes | How One Roof enforces it |
+|---|---|
+| **The start folder is load-bearing.** It decides which rules an agent loads and where it writes its notes. 32 of 168 sessions started in the wrong one, and nothing errored. | Sessions launch in your workspace, and the launch-folder guard is checked every time the app starts. |
+| **Block, don't warn.** A "deprecated" marker file is advice, and agents don't read advice in files they never open. | Five layers that refuse rather than remind: shell default, agent wrappers, PATH stand-ins, a Claude hook, locked home notes. |
+| **A door at every level.** Every agent reads its rules under a different name from a different folder. Kimi found no rules at all in 21 of 27 repos. | CLAUDE.md, AGENTS.md and GEMINI.md doors all lead to one READ-FIRST, and one skills library is linked into every agent. |
+| **"Memory" is four things.** Context, transcripts, private notes and the shared record. Only the record in git is seen by every agent. A split notes folder hid 26 notes. | One pinned Claude memory, checked at startup, with a warning when its index grows too long to load. |
+| **Handoffs belong in git.** The next session may be a different agent, a different subscription or tomorrow morning. | last-call, next-session-handoff and where-are-we ship in the kit, writing handoffs any agent can pick up cold. |
+| **Bound the fan-out.** An unbounded swarm can take down the laptop it runs on. The machine is the limit, not the token budget. | A worktree per worker, one owner per shared file, and a runner with a ceiling, timeouts and capped retries. |
 
 ## The tour
 
@@ -60,7 +94,7 @@ step stays a real terminal. Subagents sit beside it with their own captions.
 
 <img src="site/shots/session-daylight.png" alt="A session: what you asked, steps, chapters and subagents" width="960">
 
-### Approve with the reason in front of you. <sub>Decisions · ⌘I</sub>
+### The calls that need you, with the reason in front of you. <sub>Decisions · ⌘I</sub>
 Every agent waiting on you, oldest first: why it wants to do it, what it touches, the risk, what happens if you say
 no. Allow once, always allow, deny, or reply with instructions. Nothing is approved for you.
 
