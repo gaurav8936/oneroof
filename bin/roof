@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2088  # messages show paths as ~/… on purpose
+# oneroof · `roof` — install, check and remove the one-launch-folder / one-memory / one-rulebook setup.
+#
+#   roof install   [--workspace DIR] [--shared DIR] [--agents "claude codex kimi gemini agy"] [--no-shell] [--no-home-notes] [--dry-run]
+#   roof doctor    check every layer, live (exit 1 if anything is wrong)
+#   roof uninstall remove what install added (never touches your docs or your memory)
+#   roof lock      print the commands that make the home notes immutable (macOS, needs sudo; we never run sudo)
+#   roof status    show the configuration
+#   roof doors [--check]            a door (AGENTS.md + READ-FIRST link) at every project + repo level; Gemini reads AGENTS.md
+#   roof sync-skills <skills-dir>   link one skills folder into every agent's skills home
+#   roof swarm run|merge|clean ...  parallel tasks in git worktrees with file claims (tools/fanout.py)
+set -euo pipefail
+ROOF_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../lib/common.sh
+. "$ROOF_HOME/lib/common.sh"
+
+RC_MARK="# oneroof"
+NOTE_MARK="oneroof home note"
+DRY=0
+run() { if [ "$DRY" = 1 ]; then roof_say "  (dry run) $*"; else "$@"; fi; }
+
+render() { # render <template> <dest>: fill {{WORKSPACE}} {{SHARED}} {{HOME}}; never overwrite an existing file
+  local src="$1" dst="$2"
+  if [ -e "$dst" ] || [ -L "$dst" ]; then roof_ok "kept existing $dst"; return 0; fi
+  [ "$DRY" = 1 ] && { roof_say "  (dry run) write $dst"; return 0; }
+  mkdir -p "$(dirname "$dst")"
+  sed -e "s|{{WORKSPACE}}|$ROOF_WORKSPACE|g" -e "s|{{SHARED}}|$ROOF_SHARED|g" -e "s|{{HOME}}|$HOME|g" "$src" > "$dst"
+  roof_ok "wrote $dst"
+}
+
+rc_files() {
+  local f out=""
+  for f in "$HOME/.zshrc" "$HOME/.bashrc"; do [ -f "$f" ] && out="$out $f"; done
+  [ -z "$out" ] && out="$HOME/.zshrc"
+  printf '%s' "$out"
+}
+
+real_binary() { # first $1 on PATH that is not our stand-in
+  local IFS=: d
+  for d in $PATH; do
+    [ "$d" = "$ROOF_CONFIG_DIR/bin" ] && continue
+    [ -x "$d/$1" ] && [ ! -d "$d/$1" ] && { printf '%s' "$d/$1"; return 0; }
+  done
+  return 1
+}
+
+cmd_install() {
+  local shell_layer=1 home_notes=1
+  roof_load_config
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --workspace) ROOF_WORKSPACE="$2"; shift ;;
+      --shared) ROOF_SHARED="$2"; shift ;;
+      --agents) ROOF_AGENTS="$2"; shift ;;
+      --no-shell) shell_layer=0 ;;
+      --no-home-notes) home_notes=0 ;;
+      --dry-run) DRY=1 ;;
+      *) echo "unknown option $1" >&2; exit 2 ;;
+    esac; shift
+  done
+  ROOF_WORKSPACE="${ROOF_WORKSPACE%/}"
+  case "$ROOF_SHARED" in /*) ;; *) ROOF_SHARED="$ROOF_WORKSPACE/$ROOF_SHARED" ;; esac
+  roof_say "oneroof install → workspace $ROOF_WORKSPACE · shared $ROOF_SHARED · agents: $ROOF_AGENTS"
+
+  roof_say "config"
+  run mkdir -p "$ROOF_CONFIG_DIR/bin" "$ROOF_WORKSPACE"
+  if [ "$DRY" = 0 ]; then
+    printf 'ROOF_WORKSPACE="%s"\nOW_SHARED="%s"\nOW_AGENTS="%s"\nOW_HOME="%s"\n' "$ROOF_WORKSPACE" "$ROOF_SHARED" "$ROOF_AGENTS" "$ROOF_HOME" > "$ROOF_CONFIG"
+    roof_ok "wrote $ROOF_CONFIG"
+  fi
+
+  roof_say "shared rulebook (L0) · existing files are never overwritten"
+  local t
+  for t in AGENTS.md docs/READ-FIRST.md docs/standards/launch-folder.md docs/standards/parallel-agents.md; do
+    render "$ROOF_HOME/templates/shared/$t" "$ROOF_SHARED/$t"
+  done
+  for t in decisions architecture runbooks references gotchas next-session-handoff; do run mkdir -p "$ROOF_SHARED/docs/$t"; done
+  if [ ! -e "$ROOF_SHARED/CLAUDE.md" ]; then run ln -s AGENTS.md "$ROOF_SHARED/CLAUDE.md" && roof_ok "linked $ROOF_SHARED/CLAUDE.md → AGENTS.md"; fi
+
+  roof_say "workspace entry files (L1)"
+  render "$ROOF_HOME/templates/workspace/CLAUDE.md" "$ROOF_WORKSPACE/CLAUDE.md"
+  render "$ROOF_HOME/templates/workspace/AGENTS.md" "$ROOF_WORKSPACE/AGENTS.md"
+
+  local a
+  for a in $ROOF_AGENTS; do
+    if [ "$a" = claude ]; then
+      roof_say "claude: memory pin (layer 5) + hook (layer 3)"
+      local mem; mem="$(roof_claude_memory_dir)"
+      run mkdir -p "$mem"
+      run python3 "$ROOF_HOME/lib/claude_settings.py" install "$HOME/.claude/settings.json" "$mem" "$ROOF_HOME/guard/claude-hook.sh"
+      roof_ok "autoMemoryDirectory → $mem"
+      roof_ok "SessionStart + UserPromptSubmit → guard/claude-hook.sh"
+      local slot
+      for slot in "$HOME"/.claude-*; do
+        [ -d "$slot" ] || continue
+        if [ -L "$slot/settings.json" ]; then roof_ok "slot $(basename "$slot") shares settings (symlink)"
+        else roof_warn "slot $(basename "$slot") has its own settings.json: link it to ~/.claude/settings.json so it gets the pin + hook"; fi
+      done
+    else
+      local real
+      if real="$(real_binary "$a")"; then
+        if [ "$DRY" = 0 ]; then
+          printf '#!/usr/bin/env bash\n# oneroof stand-in for %s (layer 2b)\nexec "%s" "%s" "$@"\n' "$a" "$ROOF_HOME/guard/guard-exec.sh" "$real" > "$ROOF_CONFIG_DIR/bin/$a"
+          chmod +x "$ROOF_CONFIG_DIR/bin/$a"
+        fi
+        roof_ok "$a: PATH stand-in → $real"
+      else
+        roof_warn "$a: not installed, no stand-in written (re-run install after installing it)"
+      fi
+    fi
+  done
+
+  if [ "$shell_layer" = 1 ]; then
+    roof_say "shell (layers 1 + 2)"
+    local rc line=". \"$ROOF_HOME/shell/oneroof.sh\"   $RC_MARK"
+    for rc in $(rc_files); do
+      if [ -f "$rc" ] && grep -qF "$RC_MARK" "$rc"; then roof_ok "$rc already sources oneroof"
+      elif [ "$DRY" = 1 ]; then roof_say "  (dry run) append to $rc"
+      else printf '\n%s\n' "$line" >> "$rc"; roof_ok "appended to $rc"; fi
+    done
+  fi
+
+  if [ "$home_notes" = 1 ]; then
+    roof_say "home notes (layer 4)"
+    local f
+    for f in CLAUDE.md AGENTS.md; do
+      if [ -e "$HOME/$f" ] && ! grep -q "$NOTE_MARK" "$HOME/$f" 2>/dev/null; then
+        roof_warn "~/$f exists and is not ours: left alone (merge the note from templates/home/NOTE.md by hand)"
+      else render "$ROOF_HOME/templates/home/NOTE.md" "$HOME/$f"; fi
+    done
+    if [ ! -e "$HOME/READ-FIRST.md" ]; then run ln -s "$ROOF_SHARED/docs/READ-FIRST.md" "$HOME/READ-FIRST.md" && roof_ok "linked ~/READ-FIRST.md"; fi
+  fi
+  roof_say "doors (every agent finds READ-FIRST from every level)"
+  [ "$DRY" = 1 ] || bash "$ROOF_HOME/tools/doors.sh" | sed 's/^/  /'
+  roof_say ""
+  roof_say "done. Open a new terminal, then run: roof doctor"
+  [ "$(uname -s)" = Darwin ] && roof_say "optional: roof lock   (prints the sudo commands that make the home notes immutable)"
+  return 0
+}
+
+cmd_doctor() {
+  roof_load_config
+  local bad=0 mem a
+  fail() { roof_bad "$*"; bad=$((bad + 1)); }
+  roof_say "oneroof doctor · workspace $ROOF_WORKSPACE"
+  [ -f "$ROOF_CONFIG" ] && roof_ok "config $ROOF_CONFIG" || fail "no config: run roof install"
+  [ -d "$ROOF_WORKSPACE" ] && roof_ok "workspace exists" || fail "workspace $ROOF_WORKSPACE missing"
+  [ -f "$ROOF_SHARED/AGENTS.md" ] && roof_ok "shared rulebook $ROOF_SHARED/AGENTS.md" || fail "shared rulebook missing"
+  [ -f "$ROOF_SHARED/docs/READ-FIRST.md" ] && roof_ok "READ-FIRST present" || fail "READ-FIRST missing"
+  [ -d "$ROOF_SHARED/docs/next-session-handoff" ] && roof_ok "handoff folder present" || fail "handoff folder missing"
+  for a in $ROOF_AGENTS; do
+    if [ "$a" = claude ]; then
+      mem="$(roof_claude_memory_dir)"
+      if python3 "$ROOF_HOME/lib/claude_settings.py" check "$HOME/.claude/settings.json" "$mem" "$ROOF_HOME/guard/claude-hook.sh"; then
+        roof_ok "claude: memory pinned + hooks wired"
+      else fail "claude: settings missing the memory pin or the hooks (roof install)"; fi
+      local out_in out_out
+      out_out="$(printf '{"cwd":"%s"}' "$HOME" | env -u ROOF_ALLOW_OUTSIDE -u CLAUDE_ALLOW_OUTSIDE "$ROOF_HOME/guard/claude-hook.sh" prompt)"
+      out_in="$(printf '{"cwd":"%s"}' "$ROOF_WORKSPACE" | env -u ROOF_ALLOW_OUTSIDE -u CLAUDE_ALLOW_OUTSIDE "$ROOF_HOME/guard/claude-hook.sh" prompt)"
+      case "$out_out" in *'"decision":"block"'*) roof_ok "claude hook blocks a session in ~ (live)" ;; *) fail "claude hook did NOT block a session in ~" ;; esac
+      [ -z "$out_in" ] && roof_ok "claude hook allows the workspace (live)" || fail "claude hook interferes inside the workspace"
+      if [ -f "$mem/MEMORY.md" ]; then
+        local n; n="$(wc -l < "$mem/MEMORY.md" | tr -d ' ')"
+        [ "$n" -le 150 ] && roof_ok "MEMORY.md $n lines (≤150 loads fully)" || roof_warn "MEMORY.md is $n lines: only the start loads; move detail into topic files"
+      fi
+    else
+      if [ -x "$ROOF_CONFIG_DIR/bin/$a" ]; then
+        local rc=0
+        (cd "$HOME" && env -u ROOF_ALLOW_OUTSIDE -u CLAUDE_ALLOW_OUTSIDE "$ROOF_CONFIG_DIR/bin/$a" --version >/dev/null 2>&1) || rc=$?
+        [ "$rc" = 64 ] && roof_ok "$a stand-in refuses to start in ~ (live, exit 64)" || fail "$a stand-in did not refuse in ~ (exit $rc)"
+      elif real_binary "$a" >/dev/null; then fail "$a is installed but has no stand-in (roof install)"
+      else roof_warn "$a not installed (skipped)"; fi
+    fi
+  done
+  case ":$PATH:" in *":$ROOF_CONFIG_DIR/bin:"*) roof_ok "stand-ins are on PATH" ;; *) roof_warn "stand-ins not on PATH in this shell (open a new terminal)" ;; esac
+  local rc_ok=0 rc
+  for rc in $(rc_files); do grep -qF "$RC_MARK" "$rc" 2>/dev/null && rc_ok=1; done
+  [ "$rc_ok" = 1 ] && roof_ok "shell layer sourced from your rc file" || roof_warn "shell layer not installed (layers 1-2 off)"
+  for a in CLAUDE.md AGENTS.md; do
+    if grep -q "$NOTE_MARK" "$HOME/$a" 2>/dev/null; then
+      if [ "$(uname -s)" = Darwin ] && stat -f %Sf "$HOME/$a" 2>/dev/null | grep -q uchg; then roof_ok "~/$a home note (locked)"; else roof_ok "~/$a home note (unlocked: roof lock)"; fi
+    else roof_warn "~/$a has no oneroof note"; fi
+  done
+  if bash "$ROOF_HOME/tools/doors.sh" --check >/dev/null 2>&1; then roof_ok "doors: every project + repo level has one"
+  else roof_warn "doors missing at some levels (roof doors --check, then roof doors)"; fi
+  roof_say ""
+  if [ "$bad" = 0 ]; then roof_say "all layers OK"; else roof_say "$bad problem(s)"; return 1; fi
+}
+
+cmd_uninstall() {
+  roof_load_config
+  roof_say "oneroof uninstall (your docs, memory and backups stay)"
+  python3 "$ROOF_HOME/lib/claude_settings.py" uninstall "$HOME/.claude/settings.json" "$ROOF_HOME/guard/claude-hook.sh" 2>/dev/null && roof_ok "removed pin + hooks from ~/.claude/settings.json" || true
+  local rc f
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    [ -f "$rc" ] && grep -qF "$RC_MARK" "$rc" && { grep -vF "$RC_MARK" "$rc" > "$rc.roof-tmp" && cat "$rc.roof-tmp" > "$rc" && rm -f "$rc.roof-tmp"; roof_ok "removed line from $rc"; }
+  done
+  for f in CLAUDE.md AGENTS.md; do
+    if grep -q "$NOTE_MARK" "$HOME/$f" 2>/dev/null; then
+      if rm -f "$HOME/$f" 2>/dev/null && [ ! -e "$HOME/$f" ]; then roof_ok "removed ~/$f"
+      else roof_warn "~/$f is locked: sudo chflags noschg,nouchg ~/$f, then re-run"; fi
+    fi
+  done
+  [ -L "$HOME/READ-FIRST.md" ] && [ "$(readlink "$HOME/READ-FIRST.md")" = "$ROOF_SHARED/docs/READ-FIRST.md" ] && rm -f "$HOME/READ-FIRST.md" && roof_ok "removed ~/READ-FIRST.md link"
+  rm -rf "$ROOF_CONFIG_DIR" && roof_ok "removed $ROOF_CONFIG_DIR (stand-ins + config)"
+}
+
+cmd_lock() {
+  roof_load_config
+  [ "$(uname -s)" = Darwin ] || { roof_say "roof lock uses macOS file flags; on Linux use: sudo chattr +i ~/CLAUDE.md ~/AGENTS.md"; return 0; }
+  cat <<EOF
+Run these yourself (agents should not hold sudo). schg needs the admin password to undo; uchg stops any process
+running as you from editing, renaming or deleting the notes.
+
+  sudo chflags schg,uchg "$HOME/CLAUDE.md" "$HOME/AGENTS.md"
+  sudo chflags -h schg,uchg "$HOME/READ-FIRST.md"
+
+Undo:  sudo chflags noschg,nouchg "$HOME/CLAUDE.md" "$HOME/AGENTS.md"; sudo chflags -h noschg,nouchg "$HOME/READ-FIRST.md"
+EOF
+}
+
+cmd_status() { roof_load_config; printf 'workspace  %s\nshared     %s\nagents     %s\nmemory     %s\nconfig     %s\n' "$ROOF_WORKSPACE" "$ROOF_SHARED" "$ROOF_AGENTS" "$(roof_claude_memory_dir)" "$ROOF_CONFIG"; }
+
+case "${1:-help}" in
+  install) shift; cmd_install "$@" ;;
+  doctor) cmd_doctor ;;
+  uninstall) cmd_uninstall ;;
+  lock) cmd_lock ;;
+  status) cmd_status ;;
+  doors) shift; exec bash "$ROOF_HOME/tools/doors.sh" "$@" ;;
+  sync-skills) shift; exec bash "$ROOF_HOME/tools/sync-skills.sh" "$@" ;;
+  swarm) shift; exec python3 "$ROOF_HOME/tools/fanout.py" "$@" ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

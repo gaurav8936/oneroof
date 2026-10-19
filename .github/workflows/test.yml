@@ -1,0 +1,29 @@
+name: test
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: git config --global user.email ci@example.com && git config --global user.name ci && git config --global init.defaultBranch main
+      - run: bash tests/run.sh
+      - name: shellcheck
+        if: matrix.os == 'ubuntu-latest'
+        run: shellcheck -S warning bin/roof guard/*.sh lib/common.sh shell/oneroof.sh tools/sync-skills.sh tests/*.sh
+  swift:
+    # OneRoofCore unit tests. The app target needs the libghostty build (gitignored), so CI skips it (Package.swift).
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - run: git config --global user.email ci@example.com && git config --global user.name ci && git config --global init.defaultBranch main
+      - run: swift --version
+      - run: swift test

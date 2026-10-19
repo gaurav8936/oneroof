@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+.fanout/
+# One Roof Mac app (app/): build output and the vendored libghostty build (lives outside the repo, ONEROOF_GHOSTTY_DIR, 135 MB)
+app/.build/
+app/build/
+app/Vendor/
+# UI mockups — local + Dropbox backup only, never GitHub (too heavy)
+ui_mockups/
+# parallel worktrees (wt-new.sh)
+.worktrees/
+
+# workspace phone books (generated locally by the docs/scripts/tests index hooks)
+_INDEX.md
+
+# release zips (tools/package-app.sh)
+dist/

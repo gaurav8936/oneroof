@@ -1,0 +1,71 @@
+# One Roof help: themes, layout, editor, viewer and find
+
+**Status:** LIVE · **Date:** 2026-10-19
+
+> **One line:** three themes chosen per panel (plus Blueprint for the terminal), panels you can open and close, a file browser, an editor for code and a viewer for Markdown, images and HTML, find in the terminal, clickable links, text size and pop-out windows.
+
+## Goal
+
+The window should look the way you like and hold only what you need right now: a light sessions panel next to a dark terminal, the terminal alone when you focus, a file or a plan open in the middle without leaving One Roof.
+
+## Themes, panel by panel
+
+| Daylight | Daylight panels, Blueprint terminal | Graphite | Midnight |
+|---|---|---|---|
+| ![Every panel in Daylight](img/theme-daylight.png) | ![Daylight panels with the Blueprint terminal](img/theme-blueprint.png) | ![Every panel in Graphite](img/theme-graphite.png) | ![Every panel in Midnight](img/theme-midnight.png) |
+
+- **Themes:** Daylight (light), Graphite (dim) and Midnight (dark) for every panel. The terminal can also use Blueprint.
+- **Panels, each with its own theme:** sessions, file browser, terminal, plan panel and the centre views.
+- **Where to change them:** Settings › Appearance (⌘,), the Appearance box at the bottom of the plan panel, View › Sessions Panel / File Browser / Terminal / Plan Panel / Centre Views Theme, or "Theme: all panels …" in the command palette.
+- **Follow macOS light and dark** (Settings › Appearance): in Dark Mode, Daylight panels turn Midnight; your choices stay as they are.
+- **Readable by design:** status colours and every sticker colour are tested for contrast on light and dark backgrounds.
+- **Also in Settings › Appearance:** text size, Fill rows with their colour, and the sticker style (Bold or Soft).
+
+![Settings › Appearance](img/settings-appearance.png)
+
+## Opening and closing panels
+
+- **Toolbar:** Workspace · Overview · Board · Decisions · Work · Learn, the workspace menu, search (⌘K), the panel buttons **Sessions · Files · Plan**, and **+ New session**.
+- **Shortcuts:** ⌥⌘S sessions, ⌥⌘B file browser, ⌥⌘C centre (View › Centre Panel), ⌥⌘P plan panel. ⌥⌘F hides both side panels for terminal-only focus; press it again to bring them back.
+- **Each side panel has an ×** to close it.
+- **The last open panel never closes.** Close the centre and the plan panel takes the width.
+- **Panel widths** are dragged at the dividers and remembered, as is the window size.
+- **Split the centre** into several terminals with ⌘D and ⇧⌘D: see [Review, split panes and session rows](10_review-split-panes-and-session-rows.md).
+
+## File browser, editor and viewer
+
+![The file browser and the viewer showing a Markdown file](img/viewer.png)
+
+- **File browser (⌥⌘B):** the selected session's repo as a tree (build folders, `node_modules` and `.git` are hidden), with its uncommitted changes. Click a file to open it. Right-click: Open, Open in Default App, Reveal in Finder, Copy Path, Type Path into Terminal, Attach to Agent Message, New Terminal Here.
+- **Editor:** text and code files open here, with tabs, line numbers, syntax colours and problems from linters you have installed (ruff, swiftlint, tsc). ⌘S saves; a save waits while another session's step is working on the same file. ⌘R runs and ⇧⌘R debugs the file in a terminal at the bottom. While the editor is open, the sessions panel folds to a narrow rail of agent badges.
+- **Viewer:** Markdown, images, HTML pages and folders (their listing, or their README) open in the centre viewer. Anything else offers "Open in its default app". The header has Back, Reveal in Finder, Open in default app and Close (back to the terminal).
+- **Other ways in:** File › Open File… (⌘O), ⌘-click a file path in a terminal, pick a file in the command palette (⌘K), Plan file in an objective, or Help › One Roof README.
+
+## Find in the terminal and in the workspace
+
+![Find in terminal with matches highlighted](img/find.png)
+
+- **⌘F** opens the find bar over the focused terminal. Matches are highlighted as you type, with "3 of 12".
+- **Return** or **⌘G**: next match. **⇧Return** or **⇧⌘G**: previous. **Esc** closes the bar and returns to the terminal.
+- **⇧⌘S** (Edit › Find in Workspace) searches across your repos and shows the results in the centre.
+
+
+## Select, copy and paste in a terminal
+
+- **Select:** drag across text. Double-click selects a word, triple-click a line, Shift-click extends the selection.
+- **Copy and paste:** ⌘C and ⌘V, or right-click › Copy / Paste / Select All / Clear.
+- **Drag a file in** to type its path (quoted if it has spaces).
+- **Send the mouse to the program instead:** hold Option while you drag or right-click. herdr and some full-screen
+  programs use the mouse themselves; by default One Roof keeps the mouse for selecting.
+- **Scrolled-off text:** the terminal holds what is on screen; scroll back with the wheel (herdr keeps the history),
+  then select.
+
+## Links, copy and text size
+
+- **⌘-click a link:** local files (`file://…`, absolute paths, `~/…`, with or without `:line:col`) open in One Roof; web links open in your browser.
+- **Copy and paste** work as usual (⌘C, ⌘V). Programs in the terminal may copy to your clipboard, but may never read it.
+- **Text size:** ⌘+ bigger, ⌘− smaller, ⌘0 actual size. ⌥⌘K clears the terminal; ⌘L puts the cursor back in it (from the Overview, Board, Work, Learn or an objective too).
+
+## A session in its own window
+
+Session › Open in New Window (⌥⌘O) moves a running session's terminal into its own window, for a second screen or side by side with another app. The centre then offers **Show window** and **Bring back here**.

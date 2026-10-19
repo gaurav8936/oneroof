@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "about": "Which agent to suggest for each kind of step. One Roof reads this file to route plan steps; edit the order to match the agents and subscriptions you have. Each list is tried top to bottom; seats above skip_above (percent of their usage window) are passed over.",
+  "skip_above": { "five_hour": 90, "seven_day": 95 },
+  "kinds": {
+    "research": [{ "agent": "kimi" }, { "agent": "gemini" }, { "agent": "claude", "model": "sonnet" }],
+    "design":   [{ "agent": "claude", "model": "opus" }, { "agent": "codex" }, { "agent": "claude", "model": "sonnet" }],
+    "code":     [{ "agent": "claude", "model": "opus" }, { "agent": "codex" }, { "agent": "claude", "model": "sonnet" }],
+    "review":   [{ "agent": "codex" }, { "agent": "claude", "model": "sonnet" }, { "agent": "kimi" }],
+    "test":     [{ "agent": "codex" }, { "agent": "claude", "model": "sonnet" }],
+    "docs":     [{ "agent": "kimi" }, { "agent": "claude", "model": "sonnet" }],
+    "chore":    [{ "agent": "claude", "model": "haiku" }, { "agent": "kimi" }, { "agent": "codex" }]
+  },
+  "kind_descriptions": {
+    "research": "Reading, investigating, comparing options, finding out how something works",
+    "design": "Choosing an approach, data model, interface or plan before building",
+    "code": "Writing or changing code: a feature or a bug fix",
+    "review": "Checking a change someone else made",
+    "test": "Writing or running tests, reproducing a failure",
+    "docs": "Writing documentation, guides, READMEs, release notes",
+    "chore": "Housekeeping: upgrades, renames, cleanup, dependency bumps"
+  }
+}
