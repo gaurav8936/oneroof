@@ -1,0 +1,39 @@
+name: pages
+# Publishes site/ (the One Roof launch page) to GitHub Pages: https://gaurav8936.github.io/oneroof/
+# Needs Settings › Pages › Source: GitHub Actions. If Pages is not enabled, the "Check Pages" step stops the run
+# with one clear error ("Get Pages site failed") and nothing else runs.
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check Pages
+        uses: actions/configure-pages@v5
+      - name: Check the site has no private paths
+        run: |
+          if grep -rnE '/Users/[A-Za-z]|@gmail\.com' site --include='*.html' --include='*.css' --include='*.js' --include='*.md'; then
+            echo "::error::site/ holds a private path or address"; exit 1
+          fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

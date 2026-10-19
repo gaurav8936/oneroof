@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en" data-theme="porcelain">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One Roof — every agent, under one roof</title>
+<meta name="description" content="One Roof is a free, open-source Mac app for the coding agents you run: every Claude Code, Codex, Kimi, Gemini CLI and Antigravity session in one window, with live status, decisions, routing, review and a built-in course.">
+<link rel="canonical" href="https://gaurav8936.github.io/oneroof/">
+<meta name="theme-color" content="#f6f6f3">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="One Roof">
+<meta property="og:title" content="One Roof — every agent, under one roof">
+<meta property="og:description" content="A native Mac app for the coding agents you run: every Claude Code, Codex, Kimi, Gemini CLI and Antigravity session in one window. Free and open source.">
+<meta property="og:url" content="https://gaurav8936.github.io/oneroof/">
+<meta property="og:image" content="https://gaurav8936.github.io/oneroof/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="One Roof: every agent, under one roof. The Overview screen with sessions from Claude Code, Codex, Kimi and Gemini CLI.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="One Roof — every agent, under one roof">
+<meta name="twitter:description" content="A native Mac app for the coding agents you run. Free and open source.">
+<meta name="twitter:image" content="https://gaurav8936.github.io/oneroof/og.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var q=new URLSearchParams(location.search).get('theme'),t=q||localStorage.getItem('oneroof-theme');if(t==='porcelain'||t==='graphite'||t==='blueprint')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<div class="page">
+
+  <header class="top">
+    <a class="brand" href="https://zibajoon.com">
+      <span class="mark" aria-hidden="true"><i></i><i class="a"></i><i class="a"></i><i></i></span>
+      <span class="brand-text"><b>zibajoon</b><span class="mono-label">ZIBAJOON.COM/ONEROOF</span></span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#problems">Why</a>
+      <a href="#tour">Tour</a>
+      <a href="#install">Install</a>
+      <a href="#kit">The kit</a>
+      <a href="#story">Story</a>
+    </nav>
+    <div class="themes" role="group" aria-label="Page theme">
+      <button type="button" data-theme-btn="porcelain" title="Porcelain" aria-label="Porcelain theme"><i></i></button>
+      <button type="button" data-theme-btn="graphite" title="Graphite" aria-label="Graphite theme"><i></i></button>
+      <button type="button" data-theme-btn="blueprint" title="Blueprint" aria-label="Blueprint theme"><i></i></button>
+    </div>
+    <a class="btn-sm btn-outline hide-narrow" href="https://github.com/gaurav8936/oneroof">GITHUB ↗</a>
+    <a class="btn-sm btn-ink" href="https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.3.0.zip" data-launch-href="primary" data-launch-text="headerCta">DOWNLOAD</a>
+  </header>
+
+  <main class="wrap">
+
+    <section id="top" class="hero">
+      <span class="status anim" style="--d:.05s"><i data-launch-dot></i><span data-launch-text="statusText">v0.3.0 is out · free and open source</span></span>
+      <h1 class="anim" style="--d:.12s">The terminal was built for one session. <span class="accent">You're running twenty.</span></h1>
+      <p class="lede anim" style="--d:.2s">One Roof is a Mac app that sits between a consumer app and a terminal. Every Claude Code, Codex, Kimi, Gemini and Antigravity session you have running, on every subscription, is in one place. Each session says in plain words what it's doing, and your rules plus each subscription's remaining usage decide which agent and account takes the next task.</p>
+      <div class="ctas anim" style="--d:.28s">
+        <a class="btn-lg btn-accent" href="https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.3.0.zip" data-launch-href="primary"><span data-launch-text="heroCta">Download for Mac</span><span class="note" data-launch-text="heroCtaNote">v0.3.0 · .zip</span></a>
+        <a class="btn-lg btn-outline" href="https://github.com/gaurav8936/oneroof" data-launch-href="secondary" data-launch-text="secondaryCta">View on GitHub</a>
+      </div>
+      <div class="facts anim" style="--d:.34s">
+        <span>Open source · MIT</span><span>Native macOS app</span><span>macOS 14 or later</span><span>One download, plus herdr and your agents</span>
+      </div>
+    </section>
+
+    <section class="hero-shot">
+      <div class="shot shot-hero">
+        <img data-shot="overview" src="shots/overview-daylight.png" width="1440" height="900" alt="One Roof Overview: six windows of sessions with a live feed">
+      </div>
+    </section>
+
+    <section class="agents">
+      <div class="chips">
+        <span class="mono-label">Side by side</span>
+        <span class="chip"><i style="background:#ff9f0a"></i>Claude Code</span>
+        <span class="chip"><i style="background:#30d158"></i>Codex</span>
+        <span class="chip"><i style="background:#bf5af2"></i>Kimi</span>
+        <span class="chip"><i style="background:#0a84ff"></i>Gemini</span>
+        <span class="chip"><i style="background:#ff375f"></i>Antigravity</span>
+      </div>
+      <p><b>Your subscriptions, detected.</b> Up to two Claude accounts and one of each other agent, detected automatically. Claude and Codex show live usage, and new sessions go to the seat with room.</p>
+    </section>
+
+    <section class="thesis">
+      <div class="stack">
+        <span class="eyebrow">Why we built it</span>
+        <h2 class="h2-xl">10× doesn't come from typing faster. It comes from running more at once.</h2>
+      </div>
+      <div class="stack prose">
+        <p>Agents don't run your work for you. A few tasks will run on their own, but deep, detailed work still needs a person: setting direction, answering questions, checking the result. What's changed is how many things need you at once. You're running several, and you switch between them all day.</p>
+        <p>The terminal comes from a world of one session, maybe two, and it gets hard to read the moment you have ten.</p>
+        <p>Warp made it a little easier, but it's still a terminal: the same tab bar and the same wall of text. People new to engineering find that wall hard to work in.</p>
+        <p class="strong">One Roof is built to make that switching easy. Glance at a session, see where it is, decide and move on. It brings the terminal to the consumer world with labels, colours, plain-language summaries and one place for every decision, and keeps a real terminal underneath.</p>
+      </div>
+    </section>
+
+    <section id="problems" class="block">
+      <div class="intro">
+        <span class="eyebrow">Why it exists</span>
+        <h2 class="h2">A terminal was built for one person typing. You're running a fleet.</h2>
+        <p>Six windows of ten or fifteen sessions each, spread across five agents and several accounts. Here's what goes wrong, and what One Roof does about each one.</p>
+      </div>
+      <div class="cards">
+        <a class="card" href="#top">
+          <span class="num">01</span>
+          <h3>You can't tell sessions apart</h3>
+          <p>Every tab has the same grey icon, so you type WIP: or NEXT: in front of the name to keep track.</p>
+          <span class="answer">→ Every session is labelled with its state, agent, account and a live one-line status.</span>
+        </a>
+        <a class="card" href="#session">
+          <span class="num">02</span>
+          <h3>Nobody reads the wall of text</h3>
+          <p>You give an instruction and get pages of output. You only look up when it stops.</p>
+          <span class="answer">→ A summary of what you asked, what it's doing now and how many steps are done. The stream folds into chapters.</span>
+        </a>
+        <a class="card" href="#decisions">
+          <span class="num">03</span>
+          <h3>You approve without knowing why</h3>
+          <p>"Allow this command?" comes with no reason, no sense of the risk, and no way to see what happens if you say no.</p>
+          <span class="answer">→ Every question in one place, with the agent's reason, what it touches, the risk and what happens if you say no.</span>
+        </a>
+        <a class="card" href="#route">
+          <span class="num">04</span>
+          <h3>Subscriptions run out mid-task</h3>
+          <p>Five agents and several accounts, but you have to remember which one is good at what and which still has room.</p>
+          <span class="answer">→ Your routing rules and each seat's remaining usage pick the agent, account and model. An optional on-device model sorts each task into a kind in about 0.2 s.</span>
+        </a>
+        <a class="card" href="#kit">
+          <span class="num">05</span>
+          <h3>Agents drift apart</h3>
+          <p>Launch in the wrong folder and an agent works with a different memory and none of your rules.</p>
+          <span class="answer">→ One launch folder, one memory and one rulebook, checked every time the app starts.</span>
+        </a>
+        <a class="card" href="#board">
+          <span class="num">06</span>
+          <h3>Work lives in three places</h3>
+          <p>The tracker, Linear and your tabs never agree, so you're always cross-checking them.</p>
+          <span class="answer">→ Board, Work and tickets inside the app. Every session knows its ticket.</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="tour" class="tour-head">
+      <span class="eyebrow">The tour</span>
+      <h2 class="h2 narrow">Nine screens, one terminal at the centre. You saw the Overview above; here's the rest.</h2>
+    </section>
+
+    <section id="session" class="feature">
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--warn)"></i>Session</span><h3>Read the summary, not the stream.</h3></div>
+        <p>At the top: what you asked, what it's doing right now, and steps 3 of 4. Finished steps fold into one-line chapters, and the live step stays a real terminal. Subagents sit beside it with their own captions. Press ⌘R for the raw stream.</p>
+      </div>
+      <div class="shot"><img data-shot="session" src="shots/session-daylight.png" width="1440" height="900" loading="lazy" alt="Session summary and chapters"></div>
+    </section>
+
+    <section id="decisions" class="feature">
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--c4)"></i>Decisions · ⌘I</span><h3>Approve with the reason in front of you.</h3></div>
+        <p>Every agent waiting on you, oldest first. Each request shows why the agent wants to do it, in its own words, plus what it touches, the risk, what happens if you say no, and where it sits in the plan. Allow once, always allow, deny, or reply with instructions. You stay in the loop; nothing is approved for you.</p>
+      </div>
+      <div class="shot"><img data-shot="decisions" src="shots/decisions-daylight.png" width="1440" height="900" loading="lazy" alt="Decisions"></div>
+    </section>
+
+    <section id="board" class="feature">
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--c1)"></i>Board · ⌘B</span><h3>Plan your day by dragging cards.</h3></div>
+        <p>Planned, Next, Working, Needs you, Ready, Tonight: every session across every window on one board. Drag a card to Next, or drop it on Tonight to run at 2 AM, nightly, or on demand.</p>
+      </div>
+      <div class="shot"><img data-shot="board" src="shots/board-daylight.png" width="1440" height="900" loading="lazy" alt="Board"></div>
+    </section>
+
+    <section id="subagents" class="feature">
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--c2)"></i>Subagents · ⇧⌘A</span><h3>See the agents your agents start.</h3></div>
+        <p>A timeline of every subagent: who asked it what, the model it runs on, tokens used, how long it took, and what it's doing right now. Parallel swarms show up with their own agent's colour.</p>
+      </div>
+      <div class="shot"><img data-shot="subagents" src="shots/subagents-daylight.png" width="1440" height="900" loading="lazy" alt="Subagents trace"></div>
+    </section>
+
+    <section id="route" class="feature">
+      <div class="band">
+        <div class="stack-sm">
+          <span class="tag tag-band"><i style="background:var(--c3)"></i>Routing · your rules, an optional on-device model</span>
+          <h3 class="h3-band">The app picks the agent, account and model.</h3>
+          <p>Your routing rules rank the agents for each kind of task, and One Roof checks each subscription's remaining usage, then suggests the agent, account and model. An optional small language model runs on your Mac, not in the cloud, and labels each task plan, build, review, research or chore in about 0.2 seconds. You approve it. When a seat nears its limit, the step hands off to the next one with a handoff note.</p>
+        </div>
+        <div class="steps">
+          <div><span>1</span><span><b>What kind?</b> <span class="dim">Your plan says, or the optional on-device model classifies it.</span></span></div>
+          <div><span>2</span><span><b>Who should?</b> <span class="dim">Your rules rank the agents for that kind.</span></span></div>
+          <div><span>3</span><span><b>Who can?</b> <span class="dim">Usage left on each of your subscriptions.</span></span></div>
+        </div>
+      </div>
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--c3)"></i>New session · ⌘N</span><h3>Say what should happen. It works out who does it.</h3></div>
+        <p>One Roof works out whether this is a session, a ticket, a defect or a workstream, finds similar tickets, and puts the router's suggestion on top with its reason. Launch now, queue it next, or schedule it for tonight.</p>
+      </div>
+      <div class="shot"><img src="shots/newsession.png" width="1440" height="900" loading="lazy" alt="New session sheet with the router's suggestion"></div>
+    </section>
+
+    <section id="workspace" class="feature">
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--ink)"></i>Workspace</span><h3>Still a real terminal, with each panel in its own theme.</h3></div>
+        <p>Sessions, files, terminal and plan side by side, built on Ghostty's renderer, with ⌘D and ⇧⌘D to split panes. Agents keep running when you quit the app. Each panel can be light, mid-grey or dark on its own.</p>
+      </div>
+      <div class="shot"><img src="shots/workspace.png" width="1440" height="900" loading="lazy" alt="Workspace with four panels"></div>
+    </section>
+
+    <section id="editor" class="feature">
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--ok)"></i>Editor · Review changes</span><h3>Edit, run and review without leaving.</h3></div>
+        <p>A light IDE: edit, ⌘R to run, ⇧⌘R to debug, with problems listed beside the code. Lines an agent changed carry its colour, and a file an agent is editing is marked as claimed. Review the diff, comment on a line to send it back to the agent, then commit.</p>
+      </div>
+      <div class="pair">
+        <div class="shot"><img src="shots/editor.png" width="1440" height="900" loading="lazy" alt="Editor with run dock"></div>
+        <div class="shot"><img src="shots/review.png" width="1440" height="900" loading="lazy" alt="Review changes"></div>
+      </div>
+    </section>
+
+    <section id="work-learn" class="feature feature-last">
+      <div class="feature-head">
+        <div class="stack-sm"><span class="tag"><i style="background:var(--c4)"></i>Work · Learn</span><h3>Your roadmap and a coach, built in.</h3></div>
+        <p>Work shows your workstreams and tickets by phase, with the session working on each one. Press ▶ on any ticket and the router suggests who should take it. Learn is an agentic-engineering coach: a 12-lesson narrated course and 17 starter skills. Listen in the app, or send a skill straight to a session.</p>
+      </div>
+      <div class="pair">
+        <div class="shot"><img src="shots/work.png" width="1440" height="900" loading="lazy" alt="Work: workstreams, tickets by phase, and the router's pick"></div>
+        <div class="shot"><img src="shots/learn.png" width="1440" height="900" loading="lazy" alt="Learn: the narrated agentic-engineering course"></div>
+      </div>
+    </section>
+
+    <section id="install" class="block">
+      <div class="intro">
+        <span class="eyebrow">Install</span>
+        <h2 class="h2">One download. About two minutes.</h2>
+        <p class="prereq">Apple silicon · macOS 14+ · herdr · git · at least one agent CLI signed in</p>
+      </div>
+      <div class="install">
+        <div class="card static">
+          <span class="num-lg">01</span>
+          <h3>Download the app</h3>
+          <p>Unzip and drag One Roof to Applications.</p>
+          <p class="gk" data-gatekeeper-note><b>First launch:</b> macOS 15+ System Settings › Privacy &amp; Security › Open Anyway; macOS 14 right-click › Open.</p>
+          <a class="btn-sm btn-ink push" href="https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.3.0.zip" data-launch-href="primary" data-launch-text="stepCta">DOWNLOAD .ZIP</a>
+        </div>
+        <div class="card static">
+          <span class="num-lg">02</span>
+          <h3>Add your subscriptions</h3>
+          <p>First launch finds the agents and signed-in accounts you already use and checks your setup.</p>
+          <code class="push">brew install herdr</code>
+        </div>
+        <div class="card static">
+          <span class="num-lg">03</span>
+          <h3>Start your first session</h3>
+          <p>Press ⌘N and say what should happen. One Roof suggests the agent and account; you launch it.</p>
+          <code class="push">⌘N  new session · ⌘↩  launch</code>
+        </div>
+      </div>
+      <details class="source">
+        <summary>Build from source</summary>
+        <p>Swift 6, Xcode 26. The README walks through the build. <a href="https://github.com/gaurav8936/oneroof">github.com/gaurav8936/oneroof</a></p>
+      </details>
+    </section>
+
+    <section id="kit" class="kit">
+      <div class="stack">
+        <span class="eyebrow">Underneath · the oneroof kit</span>
+        <h2 class="h2-kit">One launch folder, one memory, one rulebook.</h2>
+        <p>Agents only agree when they read the same rules and notes. Claude Code keys its memory on the folder you launch from: start in the wrong one and it quietly opens a second memory. We lost 26 notes that way in five weeks. The kit works from the command line, with or without the app.</p>
+        <pre>git clone https://github.com/gaurav8936/oneroof ~/oneroof
+~/oneroof/bin/roof install
+roof doctor        # checks every layer, live</pre>
+      </div>
+      <div class="layers">
+        <div><span>1</span><span><b>Shell default</b><span>A new terminal that opens in ~ moves to your workspace.</span></span></div>
+        <div><span>2</span><span><b>Agent wrappers</b><span>Typing claude, codex or kimi anywhere else moves you there first.</span></span></div>
+        <div><span>2b</span><span><b>PATH stand-ins</b><span>Agents without hooks refuse to start outside the workspace.</span></span></div>
+        <div><span>3</span><span><b>Claude hook</b><span>Blocks every prompt while a Claude session is outside the workspace.</span></span></div>
+        <div><span>4</span><span><b>Home notes</b><span>~/CLAUDE.md and ~/AGENTS.md say "wrong folder, stop".</span></span></div>
+        <div><span>5</span><span><b>Memory pin</b><span>One Claude memory, whichever folder you launch from.</span></span></div>
+      </div>
+    </section>
+
+    <section id="story" class="story-wrap">
+      <a class="story" href="https://gabblegrid.ai/blog/one-workspace" data-launch-href="blog">
+        <div class="stack">
+          <span class="tag tag-band"><i style="background:var(--c1)"></i>The story · GabbleGrid blog</span>
+          <h2 class="h2-story">One workspace: the boring rules that made our agents agree</h2>
+        </div>
+        <div class="stack">
+          <p>How one launch folder, one memory and one rulebook stopped five agents from drifting apart, and why the terminal around them had to change next.</p>
+          <span class="btn-sm btn-bg">READ THE POST ↗</span>
+        </div>
+      </a>
+    </section>
+
+    <section class="close">
+      <h2 class="h2-close">Open source. Built for people who run a fleet.</h2>
+      <div class="ctas">
+        <a class="btn-lg btn-accent" href="https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.3.0.zip" data-launch-href="primary" data-launch-text="closeCta">Download for Mac (.zip)</a>
+        <a class="btn-lg btn-outline" href="https://github.com/gaurav8936/oneroof">View the code</a>
+        <a class="btn-lg btn-plain" href="https://github.com/gaurav8936/oneroof/issues">Report an issue ↗</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span class="foot-brand"><span class="mark mark-sm" aria-hidden="true"><i></i><i class="a"></i><i class="a"></i><i></i></span>One Roof · a Zibajoon project</span>
+    <span class="grow"></span>
+    <a href="https://github.com/gaurav8936/oneroof/blob/main/LICENSE">MIT licence</a>
+    <a href="https://github.com/gaurav8936/oneroof">GitHub</a>
+    <a href="https://gabblegrid.ai/blog/one-workspace" data-launch-href="blog">Blog</a>
+    <a href="https://zibajoon.com">zibajoon.com</a>
+  </footer>
+</div>
+</body>
+</html>
