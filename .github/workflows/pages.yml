@@ -1,11 +1,11 @@
+# FALLBACK ONLY (CMN-ACTIONS-OFF W3, 2026-10-20): Woodpecker publishes the site (.woodpecker/pages.yaml) to the
+# gh-pages branch, and Pages now deploys from that branch. To use this fallback, first switch Settings › Pages ›
+# Source back to "GitHub Actions". Deleted after the soak.
 name: pages
 # Publishes site/ (the One Roof launch page) to GitHub Pages: https://gaurav8936.github.io/oneroof/
 # Needs Settings › Pages › Source: GitHub Actions. If Pages is not enabled, the "Check Pages" step stops the run
 # with one clear error ("Get Pages site failed") and nothing else runs.
 on:
-  push:
-    branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
