@@ -27,3 +27,17 @@ jobs:
       - run: git config --global user.email ci@example.com && git config --global user.name ci && git config --global init.defaultBranch main
       - run: swift --version
       - run: swift test
+  roofd:
+    # roofd (LAB-ROOFD): RoofVT is built from Ghostty v1.3.1's ghostty-vt module with zig 0.15, then the whole suite
+    # runs: OneRoofCore + RoofdTests (a real daemon in a temp folder) + RoofVT's Zig tests. No libghostty app build.
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - run: brew install zig@0.15
+      - run: git clone --depth 1 --branch v1.3.1 https://github.com/ghostty-org/ghostty.git "$RUNNER_TEMP/ghostty"
+      - run: ONEROOF_GHOSTTY_DIR="$RUNNER_TEMP/ghostty" bash roofd/build-roofvt.sh
+      - run: (cd roofd/RoofVT && /opt/homebrew/opt/zig@0.15/bin/zig build test --summary all)
+      - run: swift test
