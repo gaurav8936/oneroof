@@ -26,6 +26,13 @@ APP="build/One Roof.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/OneRoof"
+# roofd, One Roof's session manager (LAB-ROOFD): needs Vendor/RoofVT.xcframework (roofd/build-roofvt.sh).
+if [ -e Vendor/RoofVT.xcframework ]; then
+  swift build -c "$CONF" --product roofd ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}
+  cp "$(dirname "$BIN")/roofd" "$APP/Contents/MacOS/roofd"
+else
+  echo "⚠ Vendor/RoofVT.xcframework missing — roofd not bundled (run roofd/build-roofvt.sh)"
+fi
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 

@@ -177,3 +177,11 @@ extension SessionRuntime {
         return "\(kind.displayName) \(snap.version ?? "") · \(n) agent\(n == 1 ? "" : "s")"
     }
 }
+
+/// The runtime this run of One Roof uses. herdr until the P3 cut-over; `ONEROOF_RUNTIME=roofd` switches a
+/// development run to roofd (a developer switch, not a setting: owner Q11, no herdr fallback after the cut-over).
+public enum Runtimes {
+    public static func make() -> SessionRuntime {
+        ProcessInfo.processInfo.environment["ONEROOF_RUNTIME"] == "roofd" ? RoofdRuntime() : HerdrRuntime()
+    }
+}

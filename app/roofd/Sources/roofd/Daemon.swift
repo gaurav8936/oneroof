@@ -56,7 +56,8 @@ enum Daemon {
             }
             throw RoofdError("session \(id) did not start")
         case "list":
-            return ["sessions": sessionIds().compactMap { try? Sock.holderRequest(Paths.session($0), ["op": "info"], timeout: 1) }]
+            return ["proto": proto, "version": version,
+                    "sessions": sessionIds().compactMap { try? Sock.holderRequest(Paths.session($0), ["op": "info"], timeout: 1) }]
         case "info", "read", "input", "signal", "close":
             guard let id = p["id"] as? String, Paths.validId(id) else { throw RoofdError("bad id") }
             var r = p

@@ -44,7 +44,7 @@ final class AppModel: ObservableObject {
         let t = chosenThemes.forAppearance(systemDark: dark, follow: settings.followSystemAppearance)
         if t != themes { themes = t }
     }
-    @Published private(set) var runtimeState: String = "Connecting to herdr…"
+    @Published private(set) var runtimeState: String = "Connecting…"
     @Published private(set) var runtimeOK = false
     @Published var lastError: String?
     @Published var busy: Set<String> = []
@@ -97,7 +97,7 @@ final class AppModel: ObservableObject {
     }
 
     /// What runs every session (herdr today; roofd from P3 of LAB-ROOFD).
-    let runtime: SessionRuntime = HerdrRuntime()
+    let runtime: SessionRuntime = Runtimes.make()
     let store: SessionStore?
     private var stored: [Session] = []
     private var lastSnapshot = RuntimeSnapshot()

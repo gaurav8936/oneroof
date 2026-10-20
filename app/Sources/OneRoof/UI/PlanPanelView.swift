@@ -215,7 +215,9 @@ struct PlanDetail: View {
                 Text((it.session.launchDirectory as NSString).abbreviatingWithTildeInPath).ui(12.5).foregroundStyle(t.text.color).lineLimit(1)
                 if !it.session.startInRepo { Text("✓ one memory").ui(12.5).foregroundStyle(t.statusDone.color).lineLimit(1).fixedSize() }
             }
-            if let a = it.liveAgent { fact("herdr", a + (it.paneId.map { " · " + $0 } ?? ""), mono: true) }
+            if let a = it.liveAgent {
+                fact(model.runtime.kind.displayName, a + (it.paneId.flatMap { $0 == a ? nil : " · " + $0 } ?? ""), mono: true)
+            }
             if let title = it.title, !title.isEmpty { fact("Title", title) }
             if let at = it.session.launchedAt { fact("Launched", at.formatted(date: .omitted, time: .shortened) + " · " + ageText(at)) }
             if it.adopted { fact("Source", "Started outside One Roof") }
