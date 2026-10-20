@@ -10,7 +10,8 @@
 
 1. **Download** `One-Roof-<version>.zip` from the project's Releases page, unzip it, and move **One Roof.app** to Applications.
 2. **Open it.** The app is signed with an Apple Developer ID and notarized by Apple, so it opens like any other app (macOS asks once to confirm it came from the internet).
-3. **Or build from source:** see the [app README](../../app/README.md).
+3. **First launch:** macOS shows "One Roof added a background item". That is roofd, which keeps your sessions running when One Roof is closed; leave it on in System Settings › General › Login Items.
+4. **Or build from source:** see the [app README](../../app/README.md).
 
 You also need:
 

@@ -25,6 +25,22 @@ You should be able to look at the left panel and know, without clicking, which a
 
 Grouped by status, the panel lists them in that order (needs you first). Pinned sessions always sit in a Pinned group on top.
 
+## Where sessions live (roofd)
+
+Every session runs in **roofd**, One Roof's own session manager, which ships inside the app and runs in the background (macOS lists it under Login Items). One Roof draws the terminals; roofd keeps the programs.
+
+| When | Your sessions |
+|---|---|
+| You quit, update or reopen One Roof | keep running; each terminal comes back with its screen and history |
+| One session's process crashes | only that session ends (Exited, with Relaunch) |
+| The Mac sleeps | keep running |
+| You log out or restart the Mac | end; their rows stay, with Relaunch (Claude and Codex can resume the conversation) |
+
+- **History:** each session keeps 8 MB of scrollback in memory. It is never written to disk, because agents print keys and file contents.
+- **Status:** roofd reads each agent's screen (permission prompts, menus, spinners) and, for Claude, its hooks, so Working, Needs you and Done stay right even with One Roof closed.
+- **Tonight and Nightly** run with One Roof closed when Settings › Allow scheduled runs is on; roofd sends the opening message once the agent is ready.
+- **Copy attach** gives `roofd attach <id>`: paste it into any terminal to see the same session there.
+
 ## Workspace windows
 
 Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy attach opens a One Roof session from any terminal). Rows started outside One Roof.
