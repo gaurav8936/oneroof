@@ -70,6 +70,8 @@ final class Holder {
     var screenSeq = -1
     var screen = ""
     var contentKey = ""
+    /// Process group leader of the agent last seen in the foreground (kept while it lives).
+    var agentLeader: pid_t = 0
     var contentChangedAt: Date?
     /// Opening message delivery: pending → sent (verifying) → done / failed.
     var openingState = "none"
@@ -364,7 +366,15 @@ final class Holder {
                 var name = [CChar](repeating: 0, count: 256)
                 let pname = proc_name(pg, &name, UInt32(name.count)) > 0 ? String(cString: name) : nil
                 fg = StatusEngine.agentKind(processName: pname, argv: ProcessProbe.args(pid: pg)?.argv ?? [])
+                if fg != nil {
+                    agentLeader = pg
+                } else if let a = agent, agentLeader > 0, kill(agentLeader, 0) == 0 {
+                    // A helper the agent started holds the foreground for a moment (an MCP server, a tool run): the
+                    // agent is still alive and the shell is not back, so it is still that agent's session.
+                    fg = a
+                }
             }
+            if fg == nil { agentLeader = 0 }
         }
         if fg != agent {
             // A new agent in the foreground: it may have drawn everything before it was seen, so read the screen now
