@@ -69,6 +69,8 @@ final class Holder {
     var lastEval = Date.distantPast
     var screenSeq = -1
     var screen = ""
+    var contentKey = ""
+    var contentChangedAt: Date?
     /// Opening message delivery: pending → sent (verifying) → done / failed.
     var openingState = "none"
     var idleSince: Date?
@@ -351,8 +353,7 @@ final class Holder {
             }
         }
         agent = fg
-        let quiet = lastOutput.map { now.timeIntervalSince($0) } ?? .infinity
-        if fg != nil, quiet >= 0.3, seq != screenSeq {
+        if fg != nil, seq != screenSeq {
             screenSeq = seq
             let t = vt
             screen = vtQ.sync {
@@ -361,8 +362,12 @@ final class Holder {
                 defer { if let p { rvt_bytes_free(p, len) } }
                 return p.map { String(decoding: UnsafeBufferPointer(start: $0, count: len), as: UTF8.self) } ?? ""
             }
+            // Activity = the screen's content changed, not just bytes: an idle CLI repaints its status bar (usage,
+            // clock, update notice) at the bottom, which must not read as working.
+            let key = StatusEngine.contentKey(screen)
+            if key != contentKey { contentKey = key; contentChangedAt = now }
         }
-        engine.evaluate(.init(now: now, agent: fg, lastOutput: lastOutput, screen: screen))
+        engine.evaluate(.init(now: now, agent: fg, lastOutput: fg == nil ? lastOutput : contentChangedAt, screen: screen))
         deliverOpening(now: now)
     }
 

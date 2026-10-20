@@ -84,20 +84,23 @@ public struct StatusEngine: Sendable {
         let outputSinceReady = readyAt.map { (o.lastOutput ?? .distantPast) > $0 } ?? true
         let busy = quietFor < Self.busyWindow && outputSinceReady
         let bottom = StatusEngine.bottomLines(o.screen, 40)
-        let prompt = quietFor >= 0.3 ? DecisionMatcher.match(bottom, agent: kind).flatMap { StatusEngine.isLive($0, in: bottom) ? $0 : nil } : nil
-        let spinner = StatusEngine.workingLine(bottom)
+        let menu = StatusEngine.selectionMenu(bottom)
+        let permission = quietFor >= 0.3 ? DecisionMatcher.match(bottom, agent: kind).flatMap { StatusEngine.isLive($0, in: bottom) ? $0 : nil } : nil
+        // A permission prompt, or any choice menu the CLI is waiting on (folder trust, login, update): needs the owner.
+        let prompt: Bool = permission != nil || (quietFor >= 0.3 && menu)
+        let spinner = !menu && StatusEngine.workingLine(bottom)
 
         // Ready: the CLI has drawn its screen and gone quiet (its input box is waiting), or a hook said so. Output
         // before that is the CLI starting up, not a turn.
         if !ready, let since = agentSince, o.now.timeIntervalSince(since) >= 1, o.lastOutput != nil, quietFor >= 1,
-           prompt == nil, !spinner {
+           !prompt, !spinner {
             ready = true
             readyAt = o.now
             status = .idle
             return status
         }
         var next: RuntimeStatus
-        if prompt != nil {
+        if prompt {
             next = .blocked                                    // a permission or question prompt is on screen
         } else if let h = hookStatus {
             // Hooks lead. Fresh output after the last hook (a new turn, or a prompt answered in the terminal)
@@ -132,6 +135,25 @@ public struct StatusEngine: Sendable {
         guard let q = lines.lastIndex(of: m.question) else { return true }
         let after = lines[(q + 1)...].filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !TerminalText.isChrome($0) }
         return after.count <= m.options.count + 1
+    }
+
+    /// A choice menu waiting at the bottom of the screen: a selection marker plus the CLI's confirm / cancel hint.
+    public static func selectionMenu(_ screen: String) -> Bool {
+        let tail = bottomLines(screen.trimmingCharacters(in: .whitespacesAndNewlines), 14).lowercased()
+        let marker = tail.contains("❯") || tail.contains("›") || tail.contains("> 1.")
+        let hint = ["enter to confirm", "enter to select", "space to select", "esc to reject", "to navigate", "↑/↓",
+                    "use arrow keys", "press enter"].contains { tail.contains($0) }
+        return marker && hint
+    }
+
+    /// The screen without its bottom status area (the last 5 non-empty lines: input box, status bar, hints), so a
+    /// repaint of the status bar alone is not activity.
+    public static func contentKey(_ screen: String) -> String {
+        var lines = screen.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        var dropped = 0
+        while dropped < 5, !lines.isEmpty { if !(lines.removeLast().isEmpty) { dropped += 1 } }
+        return lines.joined(separator: "\n")
     }
 
     /// The "I am busy" line each CLI draws while a turn runs.

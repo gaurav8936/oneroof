@@ -83,6 +83,38 @@ final class StatusEngineTests: XCTestCase {
         XCTAssertEqual(e.evaluate(obs(12, out: 11, screen: Fixture.claudeBashPrompt)), .blocked)
     }
 
+    /// Found by the side-by-side run: Claude's first-run folder-trust screen needs the owner; its
+    /// "Esc to cancel" hint is not a spinner.
+    func testFolderTrustMenuNeedsYou() {
+        let trust = """
+         Accessing workspace:
+
+         /Users/x/Projects/scratch
+
+         Quick safety check: Is this a project you created or one you trust?
+
+         ❯ No, exit
+           Yes, I trust this folder
+
+         Enter to confirm · Esc to cancel
+        """
+        var e = StatusEngine()
+        e.evaluate(obs(0, out: 0, screen: trust))
+        XCTAssertEqual(e.evaluate(obs(3, out: 0.2, screen: trust)), .blocked)
+        XCTAssertFalse(e.ready)
+        XCTAssertTrue(StatusEngine.selectionMenu(trust))
+        XCTAssertFalse(StatusEngine.selectionMenu("✻ Thinking… (esc to interrupt)\n> "))
+        let mcp = "  2 new MCP servers found in this project\n  ❯ [ ] linear\n    [✔] energy-lab\n       Enable selected\n Space to select · Esc to reject all"
+        XCTAssertTrue(StatusEngine.selectionMenu(mcp))
+    }
+
+    func testStatusBarRepaintIsNotContent() {
+        let a = "answer text\n\n❯ \n────\n[Claude1] 5h 20% · 7d 29%\n⏵⏵ auto mode on\nUpdate available!"
+        let b = "answer text\n\n❯ \n────\n[Claude1] 5h 21% · 7d 29%\n⏵⏵ auto mode on\nUpdate available!"
+        XCTAssertEqual(StatusEngine.contentKey(a), StatusEngine.contentKey(b))
+        XCTAssertNotEqual(StatusEngine.contentKey(a), StatusEngine.contentKey("more answer\n" + a))
+    }
+
     func testClaudeHooksLead() {
         var e = StatusEngine()
         e.evaluate(obs(0, out: 0))
