@@ -22,9 +22,11 @@ fi
 swift build -c "$CONF" --product OneRoof ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}
 BIN="$(swift build -c "$CONF" --show-bin-path ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"})/OneRoof"
 
-APP="build/One Roof.app"
+# ONEROOF_BUNDLE_OUT: build somewhere else (tests), so the app the owner runs from build/ is never replaced underneath.
+APP="${ONEROOF_BUNDLE_OUT:-build}/One Roof.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+[ -n "${ONEROOF_BUNDLE_OUT:-}" ] && mkdir -p "$ONEROOF_BUNDLE_OUT"
 cp "$BIN" "$APP/Contents/MacOS/OneRoof"
 # roofd, One Roof's session manager (LAB-ROOFD): needs Vendor/RoofVT.xcframework (roofd/build-roofvt.sh).
 if [ -e Vendor/RoofVT.xcframework ]; then
@@ -57,4 +59,4 @@ else
 fi
 
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "⚠ ad-hoc codesign failed (app still runs locally)"
-echo "built: $(pwd)/$APP"
+case "$APP" in /*) echo "built: $APP";; *) echo "built: $(pwd)/$APP";; esac

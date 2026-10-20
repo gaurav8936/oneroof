@@ -21,7 +21,8 @@ final class RoofProtocolTests: XCTestCase {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: roofd)
         p.arguments = ["daemon"]
-        p.environment = ProcessInfo.processInfo.environment.merging(["ROOFD_DIR": dir]) { $1 }
+        // Short linger: finished test sessions must not outlive the test run by ten minutes.
+        p.environment = ProcessInfo.processInfo.environment.merging(["ROOFD_DIR": dir, "ROOFD_LINGER": "1"]) { $1 }
         try p.run()
         daemon = p
         for _ in 0..<50 where (try? Sock.request(Paths.control, ["method": "hello"], timeout: 1)) == nil { usleep(50_000) }

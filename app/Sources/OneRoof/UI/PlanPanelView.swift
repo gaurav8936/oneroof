@@ -161,7 +161,11 @@ struct PlanDetail: View {
         let it = live
         HStack(spacing: 6) {
             StatusDot(status: it.status)
-            Text(StatusPalette.label(it.status)).ui(13, .semibold).foregroundStyle(t.pill(it.status).text.color)
+            // The pill's text colour is made for the pill's own fill: draw the fill too, or it can vanish on the panel.
+            let pill = t.pill(it.status)
+            Text(StatusPalette.label(it.status)).ui(13, .semibold).foregroundStyle(pill.text.color)
+                .padding(.horizontal, pill.fill == nil ? 0 : 8).padding(.vertical, pill.fill == nil ? 0 : 2)
+                .background(Capsule().fill(pill.fill?.color ?? .clear))
             Spacer()
             actionButton(it)
             Button { showMore = true } label: { Text("•••").ui(13, .semibold).foregroundStyle(t.text2.color) }

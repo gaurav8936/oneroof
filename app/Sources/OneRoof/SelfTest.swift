@@ -18,6 +18,7 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_DIFF=<path>                open the code review panel for the repo containing <path>
 ///   ONEROOF_SELFTEST_HOWDOI=<question>         ask Learn "how do I…" (opens the best page)
 ///   ONEROOF_SELFTEST_PLAY=<page title>[@terminals]  play that Learn page's narration (then show the terminals)
+///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
 ///   ONEROOF_SELFTEST_ROOF=<n>                   start n plain terminals in One Roof's source checkout (or
 ///                                               ONEROOF_SELFTEST_ROOF_REPO), then open its roof window
 enum SelfTest {
@@ -140,7 +141,7 @@ enum SelfTest {
         }
         if env["ONEROOF_SELFTEST_POPOUT"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
-                if let i = app.model.items.first(where: { $0.liveAgent?.hasPrefix("term:") == true && !$0.adopted }) {
+                if let i = app.model.items.first(where: { $0.session.agent == .shell && $0.liveAgent != nil && !$0.adopted }) {
                     app.model.selectedId = i.id
                     PopOutWindowController.popOut(i, model: app.model)
                 }
@@ -228,8 +229,12 @@ enum SelfTest {
                     app.main.terminalArea.focusTerminal()
                     type(text + "\r", into: app.main.window)
                 }
+                // ONEROOF_SELFTEST_CENTRE_AFTER=<view>: switch the centre view after typing (e.g. decisions, once a
+                // typed agent is waiting on a prompt).
+                let after = env["ONEROOF_SELFTEST_CENTRE_AFTER"].flatMap(CentreView.init(rawValue:))
+                if let after { DispatchQueue.main.asyncAfter(deadline: .now() + 6) { app.model.show(after) } }
                 // Snapshot after the terminal has had time to draw.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + (after == nil ? 2.5 : 9)) {
                     guard let out else { return }
                     if env["ONEROOF_SELFTEST_COPYTEST"] == "1" { copyTest(app: app, to: out) }
                     snapshot(app: app, to: out)
