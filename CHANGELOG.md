@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — roofd, One Roof's own session manager (unreleased)
+
+- **herdr is gone: nothing to install but your agents.** Sessions run in roofd, a small session manager inside the
+  app. One terminal emulator end to end: real scrollback, native selection and copy, prompt marks, and keystroke echo
+  about a hundred times faster than before.
+- **Sessions outlive the app, and a crash costs only what it must.** Quit, update or reopen One Roof and every session
+  comes back with its history; one session's crash never ends another.
+- **Status from the agents themselves:** Claude's hooks, screen prompts and screen activity give Working, Needs you
+  and Done for all five agents, including first-run menus.
+- **Tonight and Nightly run with the app closed** when scheduled runs are allowed; roofd sends the opening message once
+  the agent is ready.
+- Agents typed into a One Roof terminal still show as that agent. Agents started in other terminal apps are no longer
+  listed; Copy attach opens any One Roof session from another terminal.
+
 ## 0.3.1 — signed and notarized
 
 - **The app is signed with an Apple Developer ID and notarized by Apple.** It opens on first launch like any other

@@ -20,7 +20,7 @@
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
 </p>
 
-<p align="center"><sub>Open source · MIT · native macOS app · macOS 14 or later · one download, plus herdr and your agents</sub></p>
+<p align="center"><sub>Open source · MIT · native macOS app · macOS 14 or later · one download, plus your agents</sub></p>
 
 <p align="center"><img src="site/shots/overview-daylight.png" alt="One Roof Overview: every window and session at once, grouped, with a live feed of what each agent did" width="960"></p>
 
@@ -147,7 +147,7 @@ Listen in the app, or send a skill straight to a session.
 
 | Part | Folder | What it is |
 |---|---|---|
-| **One Roof app** | [`app/`](app/) | The macOS app (Swift, libghostty terminals, herdr sessions) |
+| **One Roof app** | [`app/`](app/) | The macOS app (Swift, libghostty terminals, roofd sessions) |
 | **Agentic engineering starter set** | [`agentic_engineering/`](agentic_engineering/) | 17 short skills and a 12-lesson narrated course, bundled with the app |
 | **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | One launch folder, one memory, one rulebook for every agent, plus `roof swarm` for parallel agents in git worktrees. Works with or without the app |
 | **Website** | [`site/`](site/) | The launch page, published at [gaurav8936.github.io/oneroof](https://gaurav8936.github.io/oneroof/) |
@@ -164,7 +164,6 @@ Listen in the app, or send a skill straight to a session.
 | | What | How |
 |---|---|---|
 | Required | A Mac with Apple silicon, macOS 14 or later | |
-| Required | [herdr](https://herdr.dev), which runs the agent sessions | `brew install herdr` (a ready-made package exists for macOS 15+ on Apple silicon; on macOS 14 Homebrew builds it from source, which takes a few minutes) |
 | Required | git | `xcode-select --install` (Xcode Command Line Tools) |
 | Required | At least one agent CLI, installed and signed in: `claude`, `codex`, `kimi`, `gemini` or `agy` | each agent's own installer |
 | Optional | On-device task classifier and captions | `brew install llama.cpp` + the model file (see [app/README.md](app/README.md)) |

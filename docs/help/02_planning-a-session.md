@@ -54,7 +54,7 @@ Defaults for account, model and arguments come from Settings › Agents (⌘,), 
 
 | When | The button says | What happens |
 |---|---|---|
-| Now | Launch ⌘↩ | Starts the agent in herdr right away and selects it. |
+| Now | Launch ⌘↩ | Starts the agent right away and selects it. |
 | Next | Save as next ⌘↩ | Saves it as Next, ready for one click. |
 | Tonight 2:00 AM (▾ Nightly) | Save for tonight ⌘↩ | Schedules it. Scheduled sessions start while One Roof is open; missed runs are reported. |
 | On demand | Save on demand ⌘↩ | Saves it as Planned. |
@@ -64,7 +64,7 @@ Defaults for account, model and arguments come from Settings › Agents (⌘,), 
 ## What happens at launch
 
 1. One Roof checks the startup check is not red (or you chose Launch anyway).
-2. herdr starts the CLI with your agent, account and model, in your projects folder or the repo.
+2. roofd starts the CLI through your login shell with your agent, account and model, in your projects folder or the repo; the opening message follows once the agent is ready, even with One Roof closed.
 3. The terminal appears in the centre (or in the focused pane, if the centre is split).
 4. When the agent is ready and idle, the opening message is typed in and sent. One Roof never types into a busy or blocked agent.
 5. If the session has a Linear ticket, the ticket moves to In Progress.
@@ -73,4 +73,4 @@ Defaults for account, model and arguments come from Settings › Agents (⌘,), 
 
 - **Only inside your projects folder:** agents start in the projects folder or one of its repos, never anywhere else. The kit (`roof install`) can enforce the launch folder for agents you start outside One Roof too.
 - **Accounts are read from the running process,** so Claude1 and Claude2 are labelled right however the agent was started. Claude1 uses your default Claude config (`~/.claude`) and never sets `CLAUDE_CONFIG_DIR`.
-- **A herdr server started from a Claude2 shell** would leak that account into new agents. One Roof restarts it cleanly when no agents run, or refuses to launch and says why.
+- **Accounts never leak between sessions:** each session starts with only the account variables its own launch sets.
