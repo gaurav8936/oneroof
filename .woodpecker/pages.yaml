@@ -1,0 +1,33 @@
+# CMN-ACTIONS-OFF (W3) · publish site/ to GitHub Pages through Woodpecker (owner decision O2; replaces
+# .github/workflows/pages.yml, now a workflow_dispatch FALLBACK ONLY). Copied from _common/templates/ci/woodpecker-gh-pages.yaml.
+# Pages source = "Deploy from a branch: gh-pages / (root)". The branch holds the finished files plus .nojekyll, which
+# Pages serves directly with no Actions build, so this keeps working with GitHub Actions disabled.
+# The only change to the files: index.html gets one HTML comment with the commit it was published from.
+# Repo secret pages_deploy_key = private half of the write deploy key "woodpecker-pages" (access_admin/20261020_oneroof_pages_deploy_key).
+when:
+  - event: [push, manual]
+    branch: main
+    path: { include: ["site/**", ".woodpecker/pages.yaml"] }
+
+steps:
+  - name: privacy-check
+    image: alpine:3.20
+    commands:
+      - if grep -rnE '/Users/[A-Za-z]|@gmail\.com' site --include='*.html' --include='*.css' --include='*.js' --include='*.md'; then echo "site/ holds a private path or address"; exit 1; fi
+
+  - name: publish
+    image: alpine/git:2.47.2
+    depends_on: [privacy-check]
+    environment:
+      DEPLOY_KEY: { from_secret: pages_deploy_key }
+      SITE: site
+    commands:
+      - mkdir -p ~/.ssh && printf '%s\n' "$${DEPLOY_KEY}" > ~/.ssh/id && chmod 600 ~/.ssh/id
+      - ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+      - export GIT_SSH_COMMAND="ssh -i ~/.ssh/id -o IdentitiesOnly=yes"
+      - rm -rf /tmp/pub && cp -r "$${SITE}" /tmp/pub && touch /tmp/pub/.nojekyll
+      - printf '<!-- published %s via Woodpecker -->\n' "$${CI_COMMIT_SHA:0:12}" >> /tmp/pub/index.html
+      - cd /tmp/pub && git init -q -b gh-pages && git add -A
+      - git -c user.name=woodpecker -c user.email=ci@zibajoon.com commit -qm "publish $${CI_COMMIT_SHA:0:12} via Woodpecker"
+      - git push -qf "git@github.com:$${CI_REPO}.git" gh-pages
+      - echo "published $${CI_COMMIT_SHA:0:12} to gh-pages"

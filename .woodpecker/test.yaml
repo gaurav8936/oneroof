@@ -1,0 +1,18 @@
+# CMN-ACTIONS-OFF (W3) · oneroof tests on Linux (the ubuntu-latest half of .github/workflows/test.yml, now a
+# workflow_dispatch FALLBACK ONLY): the shell test suite + shellcheck. The macOS half is .woodpecker/test-mac.yaml.
+when:
+  - event: [push, pull_request, manual]
+
+steps:
+  - name: test
+    image: debian:bookworm-slim
+    commands:
+      - apt-get update -qq && apt-get install -y -qq --no-install-recommends bash git python3 ca-certificates >/dev/null
+      - git config --global user.email ci@example.com && git config --global user.name ci && git config --global init.defaultBranch main
+      - bash tests/run.sh
+
+  - name: shellcheck
+    image: koalaman/shellcheck-alpine:v0.10.0
+    depends_on: []
+    commands:
+      - shellcheck -S warning bin/roof guard/*.sh lib/common.sh shell/oneroof.sh tools/sync-skills.sh tests/*.sh
