@@ -71,5 +71,12 @@ var roofdTargets: [Target] {
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.linkedLibrary("c++")]
         ),
+        // Framing, idempotent create, redraw-before-output ordering, against a real daemon in a temp folder.
+        .testTarget(
+            name: "RoofdTests",
+            dependencies: ["roofd"],
+            path: "roofd/Tests/RoofdTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 }
