@@ -288,7 +288,7 @@ public struct HerdrAgent: Decodable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, agent, agent_status, cwd, foreground_cwd, pane_id, terminal_id, workspace_id, terminal_title_stripped, interactive_ready
+        case name, agent, agent_status, cwd, foreground_cwd, pane_id, terminal_id, workspace_id, terminal_title_stripped, interactive_ready, revision
     }
 
     /// herdr also reports agents it detected but that were never named (started by typing `claude` in a herdr
@@ -307,6 +307,7 @@ public struct HerdrAgent: Decodable, Sendable {
         workspace_id = try c.decodeIfPresent(String.self, forKey: .workspace_id)
         terminal_title_stripped = try c.decodeIfPresent(String.self, forKey: .terminal_title_stripped)
         interactive_ready = try c.decodeIfPresent(Bool.self, forKey: .interactive_ready)
+        revision = try c.decodeIfPresent(Int.self, forKey: .revision)
     }
 }
 

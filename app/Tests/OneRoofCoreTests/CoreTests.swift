@@ -411,6 +411,13 @@ final class SnapshotDecodingTests: XCTestCase {
         XCTAssertEqual(s.agents.map(\.name), ["roof-1", "term:term_9"])
         XCTAssertEqual(s.workspaces.count, 1)
     }
+
+    /// LAB-22: the caption engine's "new output" signal comes from `revision`.
+    func testAgentRevisionIsDecoded() throws {
+        let json = #"{"agents":[{"name":"roof-1","agent":"claude","pane_id":"w1:p1","revision":41}]}"#
+        let s = try JSONDecoder().decode(HerdrSnapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(s.agents.first?.revision, 41)
+    }
 }
 
 final class RouterTests: XCTestCase {
