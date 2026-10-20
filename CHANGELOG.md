@@ -18,7 +18,7 @@
   sheet has Team and Project pickers, tickets get Linear's Type label (Deliverable, Bug, Task, Spike, Decision), and
   a new project is created in Linear with its milestones before a Claude session sets up its docs and first tickets.
 - **The New session sheet starts sessions on existing work.** ⌘N has **Team ▾ · Project ▾ · Issue ▾** pickers
-  instead of kind tabs: pick an open issue and the session works on it; **New issue…** and **New project…** are the
+  instead of kind tabs: pick an open issue and the session works on it; the **New issue** types and **New project…** are the
   last menu items, for work not in Linear yet. Status names are the same in the filter chips and the group headings
   (Needs you · Working · Ready · Idle · Exited, with meanings on hover), and the session shown in the terminal stands
   out in the sidebar with an accent outline and a left bar.

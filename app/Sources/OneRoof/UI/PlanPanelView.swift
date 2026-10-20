@@ -192,7 +192,7 @@ struct PlanDetail: View {
                     Menu {
                         Button("No project") { workstream = ""; commit() }
                         ForEach(model.workstreams.filter { !["completed", "canceled"].contains($0.state) }) { w in
-                            Button("\(w.wsId ?? "") · \(w.title)") { workstream = w.wsId ?? ""; commit() }
+                            Button(NewSessionSheet.short("\(w.wsId ?? "") · \(w.title)")) { workstream = w.wsId ?? ""; commit() }
                         }
                     } label: { Text("Linear ▾").ui(11.5, .medium).foregroundStyle(t.text2.color) }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
@@ -289,9 +289,9 @@ struct PlanDetail: View {
                 .textFieldStyle(.plain).ui(11.5).frame(width: 90)
             } else {
                 Button { addingSticker = true } label: {
-                    Text("+ New").ui(11.5, .semibold).foregroundStyle(t.text3.color)
+                    Text("+ New").ui(11.5, .semibold).foregroundStyle(t.text2.color)
                         .padding(.vertical, 1).padding(.horizontal, 6)
-                        .overlay(Capsule().strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                        .overlay(Capsule().strokeBorder(t.text2.color.opacity(0.6), lineWidth: 1))
                 }.buttonStyle(.plain)
             }
         }

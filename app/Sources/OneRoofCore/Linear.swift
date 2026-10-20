@@ -189,12 +189,14 @@ public final class LinearClient: @unchecked Sendable {
 
     public func team(key: String) throws -> LinearTeam {
         let d = try gql("""
-        query($k: String!) { teams(filter: { key: { eq: $k } }) { nodes { id key states { nodes { id name type } } labels(first: 100) { nodes { id name } } } } }
+        query($k: String!) { teams(filter: { key: { eq: $k } }) { nodes { id key states { nodes { id name type position } } labels(first: 100) { nodes { id name } } } } }
         """, ["k": key])
         guard let n = ((d["teams"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first else { throw Failure.api("team \(key) not found") }
-        let states = ((n["states"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []).map {
-            (id: $0["id"] as? String ?? "", name: $0["name"] as? String ?? "", type: $0["type"] as? String ?? "")
-        }
+        // Board order: the API lists In Review (started, position 1002) before In Progress (started, 2), so an
+        // unsorted `first(where: type == "started")` moved new tickets straight to In Review (LAB-247).
+        let states = ((n["states"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? [])
+            .sorted { ($0["position"] as? Double ?? 0) < ($1["position"] as? Double ?? 0) }
+            .map { (id: $0["id"] as? String ?? "", name: $0["name"] as? String ?? "", type: $0["type"] as? String ?? "") }
         var labels: [String: String] = [:]
         for l in (n["labels"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? [] {
             if let name = l["name"] as? String, let id = l["id"] as? String { labels[name] = id }

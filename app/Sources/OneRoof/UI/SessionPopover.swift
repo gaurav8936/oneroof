@@ -49,16 +49,11 @@ struct SessionPopover: View {
 
             section("COLOUR")
             HStack(spacing: 7) {
-                Button { model.setColor(it, nil) } label: {
-                    Circle().strokeBorder(.secondary, lineWidth: 1.5).frame(width: 18, height: 18)
-                        .overlay(Image(systemName: "slash.circle").font(.system(size: 10)).foregroundStyle(.secondary))
-                }.buttonStyle(.plain).help("No colour")
+                Button { model.setColor(it, nil) } label: { ColourSwatch(pastel: nil, selected: Pastel.named(it.session.color) == nil, size: 20) }
+                    .buttonStyle(.plain).help("No colour")
                 ForEach(Sticker.rowColors, id: \.name) { p in
-                    Button { model.setColor(it, p.name) } label: {
-                        Circle().fill(p.fillColor(scheme)).frame(width: 20, height: 20)
-                            .overlay(Circle().strokeBorder(p.inkColor(scheme).opacity(Pastel.named(it.session.color) == p ? 0.9 : 0.15),
-                                                           lineWidth: Pastel.named(it.session.color) == p ? 2.5 : 1))
-                    }.buttonStyle(.plain).help(p.name.capitalized)
+                    Button { model.setColor(it, p.name) } label: { ColourSwatch(pastel: p, selected: Pastel.named(it.session.color) == p, size: 20) }
+                        .buttonStyle(.plain).help(p.name.capitalized)
                 }
             }
 
