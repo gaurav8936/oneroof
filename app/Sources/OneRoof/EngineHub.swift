@@ -67,7 +67,7 @@ final class EngineHub {
         publishAll()
     }
 
-    // MARK: Tick (called after every herdr poll)
+    // MARK: Tick (called after every runtime poll)
 
     func tick(_ live: [Live]) {
         q.async { [weak self] in self?.step(live, now: Date()) }

@@ -142,7 +142,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
 
     func windowWillClose(_ notification: Notification) {
         Self.all.removeAll { $0 === self }
-        // Closing a workspace window keeps its sessions (they wait in the store, herdr keeps the agents);
+        // Closing a workspace window keeps its sessions (they wait in the store, roofd keeps the agents);
         // reopen it from Window ▸.
         if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == win.id }), !SelfTest.isActive, Self.all.count > 0 {
             r.open = false

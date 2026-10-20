@@ -99,7 +99,7 @@ final class BoardTests: XCTestCase {
     }
 
     func testHerdrNameIsStable() {
-        XCTAssertEqual(Session.herdrName(for: "1A2B3C4D-0000-1111"), "roof-1a2b3c4d")
+        XCTAssertEqual(Session.runtimeName(for: "1A2B3C4D-0000-1111"), "roof-1a2b3c4d")
     }
 
     func testLaunchArgsPutModelFirst() {

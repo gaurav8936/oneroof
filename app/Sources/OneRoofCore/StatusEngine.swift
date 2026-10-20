@@ -183,7 +183,7 @@ public struct StatusEngine: Sendable {
         for candidate in [processName] + argv.prefix(3).map { ($0 as NSString).lastPathComponent } + argv.prefix(3).map { $0 } {
             guard let c = candidate?.lowercased(), !c.isEmpty else { continue }
             if c.hasSuffix("zsh") || c.hasSuffix("bash") || c == "-zsh" || c == "login" { continue }
-            if let k = AgentKind(herdrName: c), k.isAgent { return k }
+            if let k = AgentKind(detectedName: c), k.isAgent { return k }
             if c.contains("antigravity") { return .agy }
         }
         return nil

@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(model: model)
         launched = true
         if !pendingLinks.isEmpty {
-            // A link that launched the app: give herdr and the store a moment to fill the sidebar first.
+            // A link that launched the app: give roofd and the store a moment to fill the sidebar first.
             let links = pendingLinks; pendingLinks = []
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.application(NSApp, open: links) }
         }
@@ -225,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func scheduleOff(_ sender: Any?) { if let i = model.selected { model.unschedule(i) } }
     @objc func interruptSelected(_ sender: Any?) { if let i = model.selected { model.interrupt(i) } }
     @objc func sendHandoff(_ sender: Any?) { if let i = model.selected { model.askForHandoff(i) } }
-    @objc func copyHerdrId(_ sender: Any?) {
+    @objc func copySessionId(_ sender: Any?) {
         guard let a = model.selected?.liveAgent else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(a, forType: .string)
@@ -591,7 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sess.addItem(.separator())
         sess.addItem(item("Open in New Window", #selector(popOut(_:)), ""))
         sess.addItem(item("Open Repo in Finder", #selector(openRepo(_:)), ""))
-        sess.addItem(item("Copy herdr id", #selector(copyHerdrId(_:)), ""))
+        sess.addItem(item("Copy session id", #selector(copySessionId(_:)), ""))
         sess.addItem(item("Copy Working Directory", #selector(copyCwd(_:)), ""))
         sess.addItem(item("Copy Attach Command", #selector(copyAttach(_:)), ""))
         sess.addItem(item("Copy Link to Session", #selector(copyLink(_:)), ""))
@@ -671,7 +671,7 @@ extension AppDelegate: NSMenuItemValidation {
             return model.selected != nil
         case #selector(renameSelected(_:)), #selector(scheduleTonight(_:)), #selector(scheduleNightly(_:)), #selector(scheduleOff(_:)):
             return model.selected != nil
-        case #selector(interruptSelected(_:)), #selector(sendHandoff(_:)), #selector(copyHerdrId(_:)):
+        case #selector(interruptSelected(_:)), #selector(sendHandoff(_:)), #selector(copySessionId(_:)):
             return model.selected?.liveAgent != nil
         case #selector(reviewChanges(_:)):
             return GitDiff.repoRoot(for: model.selected?.session.repoPath ?? Workspace.projectsRoot) != nil

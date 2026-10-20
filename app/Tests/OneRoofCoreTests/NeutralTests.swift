@@ -161,13 +161,13 @@ final class FolderResolutionTests: XCTestCase {
 }
 
 final class RequiredToolsTests: XCTestCase {
-    func testMissingHerdrAndGitAreRedWithInstallHints() {
+    /// LAB-20: herdr is gone; git is the only tool One Roof needs (roofd ships inside the app).
+    func testMissingGitIsRedWithAnInstallHint() {
         let r = Foundations.requiredTools(installed: { _ in false }, run: { _, _ in 1 })
-        XCTAssertEqual(r.map(\.level), [.fail, .fail])
-        XCTAssertTrue(r[0].detail.contains("brew install herdr"))
-        XCTAssertTrue(r[1].detail.contains("xcode-select --install"))
-        let ok = Foundations.requiredTools(installed: { $0 == "herdr" }, run: { _, _ in 0 })
-        XCTAssertEqual(ok.map(\.level), [.ok, .ok])
+        XCTAssertEqual(r.map(\.id), ["tool-git"])
+        XCTAssertEqual(r.first?.level, .fail)
+        XCTAssertTrue(r.first?.detail.contains("xcode-select --install") ?? false)
+        XCTAssertEqual(Foundations.requiredTools(installed: { _ in false }, run: { _, _ in 0 }).map(\.level), [.ok])
     }
 }
 

@@ -3,7 +3,7 @@ import OneRoofCore
 
 /// New work (⌘N): what it is (intake), what should happen, duplicate check, agent and account with the router's
 /// suggestion, model · repo · start folder, done when + opening message, Advanced (args, resume, role), and when.
-/// The launch path is v0.1's: herdr workspace in the start folder with the account's environment → agent.start →
+/// The launch path: a roofd session in the start folder with the account's environment, the agent started through the login shell →
 /// opening message once the agent is ready and idle.
 struct NewSessionSheet: View {
     @Environment(\.theme) private var t

@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 /// Planned and launched sessions, kept in one SQLite file:
-/// ~/Library/Application Support/One Roof/sessions.sqlite. herdr stays the source of truth for what is running.
+/// ~/Library/Application Support/One Roof/sessions.sqlite. roofd is the source of truth for what is running.
 public final class SessionStore: @unchecked Sendable {
     // Internal (not private) so the v2 tables in SessionStoreV2.swift can share the connection and lock.
     var db: OpaquePointer?

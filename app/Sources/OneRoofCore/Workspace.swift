@@ -146,14 +146,14 @@ public enum AccountResolver {
 
     /// Environment to launch `agent` on the account `label` (the inverse of `label`).
     /// Claude1 sets nothing: an EMPTY CLAUDE_CONFIG_DIR is not "unset" — Claude then uses the current folder as its
-    /// config folder (gotcha 20261017). The herdr server must therefore not carry account variables itself;
-    /// One Roof checks that before launching (`HerdrClient.serverLeaks`).
+    /// config folder (gotcha 20261017). Sessions must therefore not inherit account variables from One Roof;
+    /// roofd and RoofdRuntime strip them before starting a session.
     public static func launchEnv(agent: AgentKind, account: String?, home: String = NSHomeDirectory()) -> [String: String] {
         guard agent == .claude, account == "Claude2" else { return [:] }
         return ["CLAUDE_CONFIG_DIR": home + "/.claude-2"]
     }
 
-    /// Account variables removed from herdr's environment when One Roof starts the server.
+    /// Account variables removed from a session's environment unless the launch sets them.
     public static let accountVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "KIMI_HOME", "GEMINI_HOME"]
 
     /// The Claude accounts on this Mac: "Claude1" (~/.claude) always, "Claude2" only when ~/.claude-2 exists.

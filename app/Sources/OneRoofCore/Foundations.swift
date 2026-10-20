@@ -95,12 +95,12 @@ public enum Foundations {
         }
     }
 
-    /// The session runtime row. Its id stays "herdr" so saved check state and the Setup page keep matching.
+    /// The session runtime row (roofd).
     public static func runtimeCheck(_ r: SessionRuntime?) -> CheckResult {
-        let title = r?.kind.displayName ?? "herdr"
-        guard let r else { return CheckResult(id: "herdr", title: title, level: .warn, detail: "not checked") }
+        let title = r?.kind.displayName ?? "roofd"
+        guard let r else { return CheckResult(id: "roofd", title: title, level: .warn, detail: "not checked") }
         let h = r.health()
-        return CheckResult(id: "herdr", title: title, level: h.level, detail: h.detail, fix: h.fix)
+        return CheckResult(id: "roofd", title: title, level: h.level, detail: h.detail, fix: h.fix)
     }
 
     /// Memory pin, launch-folder hook and the hooks' scripts, from ~/.claude/settings.json (shared by both Claude homes).
@@ -246,17 +246,13 @@ public enum Foundations {
         return out
     }
 
-    /// Tools One Roof itself needs: herdr (runs every session) and git (diffs, branches, review). `run` is injectable
+    /// Tools One Roof itself needs: git (diffs, branches, review); roofd ships inside the app. `run` is injectable
     /// for tests. Missing tools are reported, never blocking.
     public static func requiredTools(home: String = NSHomeDirectory(),
                                      installed: (String) -> Bool = { AccountResolver.installed($0) },
                                      run: (String, [String]) -> Int32 = { Foundations.run($0, $1, timeout: 10).0 }) -> [CheckResult] {
-        let herdr = installed("herdr")
         let git = run("/usr/bin/git", ["--version"]) == 0
         return [
-            CheckResult(id: "tool-herdr", title: "herdr", level: herdr ? .ok : .fail,
-                        detail: herdr ? "found" : "not found: sessions need herdr. Install with `brew install herdr`",
-                        fix: herdr ? nil : "brew install herdr"),
             CheckResult(id: "tool-git", title: "git", level: git ? .ok : .fail,
                         detail: git ? "found" : "not working: install the Xcode Command Line Tools: `xcode-select --install`",
                         fix: git ? nil : "xcode-select --install"),

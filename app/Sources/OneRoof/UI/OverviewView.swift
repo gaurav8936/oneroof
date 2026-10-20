@@ -3,7 +3,7 @@ import SwiftUI
 import OneRoofCore
 
 /// Overview (⇧⌘L / ⌃↑, replaces Launchpad): every workspace window as a card with its sessions, and a rail with
-/// the FYI feed, objectives, workstreams in play and the foundations. Covers all windows (one store, one herdr).
+/// the FYI feed, objectives, workstreams in play and the foundations. Covers all windows (one store, one roofd).
 struct OverviewView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

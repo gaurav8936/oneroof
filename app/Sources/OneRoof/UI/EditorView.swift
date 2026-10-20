@@ -577,7 +577,7 @@ private struct RunDock: View {
     static func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 }
 
-/// A libghostty terminal running a command (no herdr: runs are the owner's own, not agent sessions).
+/// A libghostty terminal running a command (not roofd: runs are the owner's own, not agent sessions).
 private struct DockTerminal: NSViewRepresentable {
     let command: String
     let cwd: String

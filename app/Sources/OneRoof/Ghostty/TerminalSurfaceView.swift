@@ -2,7 +2,7 @@ import AppKit
 import GhosttyKit
 import OneRoofCore
 
-/// One libghostty terminal in an NSView. Runs a command (for One Roof: `herdr agent attach <name>`).
+/// One libghostty terminal in an NSView. Runs a command (for One Roof: `roofd attach <id>`).
 ///
 /// Keyboard, IME and mouse handling are ported from Ghostty's macOS app
 /// (macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift and NSEvent+Extension.swift, MIT,
@@ -157,11 +157,11 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    // Selection wins over mouse reporting. herdr (and many TUIs) turn on mouse tracking, which would send every drag to
+    // Selection wins over mouse reporting. Many TUIs turn on mouse tracking, which would send every drag to
     // the program and leave nothing to copy. So a plain left drag selects text, the way it does in Terminal.app and
     // other Mac terminals: One Roof marks left-button events as shift-held, which Ghostty treats as "select, don't report"
     // (`mouse-shift-capture = never` stops the program from overriding that). Holding Option sends the mouse to the
-    // program instead. The wheel is never changed, so scrolling still reaches herdr.
+    // program instead. The wheel is never changed, so scrolling still reaches the program.
     private var leftButtonSelects = false
 
     /// Mods for a left-button event: shift added while a selecting drag is in progress.
@@ -238,7 +238,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     @objc func clearScreen(_ sender: Any?) { bindingAction("clear_screen") }
 
-    /// The program in the terminal has turned on mouse reporting (herdr does).
+    /// The program in the terminal has turned on mouse reporting (many TUIs do).
     var mouseCaptured: Bool { surface.map { ghostty_surface_mouse_captured($0) } ?? false }
     var hasSelection: Bool { surface.map { ghostty_surface_has_selection($0) } ?? false }
 

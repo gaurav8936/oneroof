@@ -171,7 +171,7 @@ struct SessionsPanel: View {
         private var empty: some View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("No sessions in \(win.name)").ui(13, .semibold).foregroundStyle(t.text.color)
-                Text("Press ⌘N for a new session. Agents you start in herdr from anywhere show up in the first window.")
+                Text("Press ⌘N for a new session. Agents you start in a One Roof terminal show up here too.")
                     .ui(12).foregroundStyle(t.text2.color)
             }
             .padding(12)

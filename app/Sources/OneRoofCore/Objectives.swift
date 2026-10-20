@@ -112,7 +112,7 @@ public struct PlanStep: Codable, Equatable, Identifiable, Sendable {
     public var repo: String?
     public var prompt: String
 
-    public var agentKind: AgentKind { AgentKind(rawValue: agent.lowercased()) ?? AgentKind(herdrName: agent) ?? .claude }
+    public var agentKind: AgentKind { AgentKind(rawValue: agent.lowercased()) ?? AgentKind(detectedName: agent) ?? .claude }
     public var deps: [String] { depends ?? [] }
 }
 

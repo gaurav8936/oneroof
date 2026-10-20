@@ -110,7 +110,7 @@ public enum Board {
             let display = a.id.hasPrefix(Session.terminalPrefix) || a.id.hasPrefix("pane:")
                 ? ((title?.isEmpty == false ? title! : kind.displayName) + " (unnamed)") : a.id
             let s = Session(
-                id: "herdr:" + a.id, name: display, agent: kind, repoPath: cwd,
+                id: Session.adoptedPrefix + a.id, name: display, agent: kind, repoPath: cwd,
                 workstream: Workspace.workstream(in: [a.id, title ?? ""].joined(separator: " ")),
                 lifecycle: .idle, runtimeId: a.id)
             items.append(BoardItem(

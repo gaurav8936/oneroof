@@ -35,7 +35,7 @@ struct PlanPanelView: View {
                 Text(win.name).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
                 Text("\(c.needsYou) need you · \(c.running) working · \(c.done) ready · \(c.queued) next")
                     .ui(12.5).foregroundStyle(t.text2.color)
-                Text("Select a session to see its plan, ticket, notes and artifacts. ⌘N starts a new one: Launch runs it in herdr on the agent and account you picked and sends the opening message once the agent is ready.")
+                Text("Select a session to see its plan, ticket, notes and artifacts. ⌘N starts a new one: Launch runs it on the agent and account you picked and sends the opening message once the agent is ready.")
                     .ui(12.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 if let err = model.lastError { Text(err).ui(12).foregroundStyle(t.needsText.color) }
             }

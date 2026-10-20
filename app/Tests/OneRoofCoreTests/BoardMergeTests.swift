@@ -106,17 +106,6 @@ final class BoardMergeTests: XCTestCase {
         XCTAssertEqual(items.first?.id, s.id)
     }
 
-    /// The herdr path end to end: a herdr snapshot, converted, merges exactly as before the interface existed.
-    func testHerdrSnapshotThroughConvertMergesAsBefore() {
-        let s = Session(name: "Terminal 6", agent: .shell, repoPath: "/p", lifecycle: .idle, runtimeId: "term:term_6")
-        let pane = HerdrPane(pane_id: "w1:p1", terminal_id: "term_6", workspace_id: "w1", cwd: "/p", foreground_cwd: nil, agent_status: "working")
-        let a = HerdrAgent(name: "term:term_6", agent: "claude", agent_status: "working", cwd: "/p", pane_id: "w1:p1", workspace_id: "w1")
-        let items = Board.merge(stored: [s], snapshot: HerdrRuntime.convert(HerdrSnapshot(panes: [pane], agents: [a])))
-        XCTAssertEqual(items.count, 1)
-        XCTAssertTrue(items.first?.agentInTerminal ?? false)
-        XCTAssertEqual(items.first?.workspaceId, "w1")
-    }
-
     /// LAB-15: rows saved before the rename (JSON keys herdrAgent / herdrWorkspace) load into runtimeId / runtimeGroup,
     /// and save under the same keys.
     func testRenamedFieldsKeepTheirStoredKeys() throws {

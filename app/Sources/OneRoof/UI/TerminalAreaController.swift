@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 import OneRoofCore
 
-/// Centre panel: live terminals (`herdr agent attach <name>` in libghostty) in split panes, or a
+/// Centre panel: live terminals (`roofd attach <id>` in libghostty) in split panes, or a
 /// placeholder for planned / exited sessions. Each pane shows one session; the focused pane follows the sidebar
 /// selection, and clicking a pane selects its session. Surfaces are cached per agent so switching is instant.
 final class TerminalAreaController: NSViewController {

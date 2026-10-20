@@ -6,7 +6,7 @@ import AppKit
 /// Terminal mouse and drop rules that do not need a live surface (tested in OneRoofCoreTests).
 public enum TerminalMouse {
     #if canImport(AppKit)
-    /// A left drag selects text unless Option is held (Option sends the mouse to the program, e.g. herdr).
+    /// A left drag selects text unless Option is held (Option sends the mouse to the program).
     public static func selects(flags: NSEvent.ModifierFlags) -> Bool { !flags.contains(.option) }
     #endif
 

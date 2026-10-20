@@ -30,7 +30,7 @@ enum CentreView: String, CaseIterable, Codable {
 }
 
 /// One main window = one workspace (WINDOW_SHELL §1): its own sessions, selection, centre view and text size. All
-/// windows share one AppModel (one store, one herdr), so fleet views always show every window.
+/// windows share one AppModel (one store, one roofd), so fleet views always show every window.
 final class WindowState: ObservableObject, Identifiable {
     /// The workspace id (store `workspaces.id`).
     let id: String

@@ -13,7 +13,7 @@ final class RoofWindowController: NSWindowController, NSWindowDelegate {
     private var tree: PaneNode?
     private var paneViews: [String: PaneView] = [:]      // by session id
     private var dividerViews: [PaneDividerView] = []
-    private var surfaces: [String: TerminalSurfaceView] = [:]   // by herdr agent
+    private var surfaces: [String: TerminalSurfaceView] = [:]   // by session id
     /// Agents this window holds (added to `model.poppedOut` so the main window releases them).
     private(set) var claimed: Set<String> = []
     /// Agents handed back with "Bring back here": they stay in the main window until this window closes.
@@ -55,7 +55,7 @@ final class RoofWindowController: NSWindowController, NSWindowDelegate {
         c.update()
     }
 
-    /// The roof window holding a herdr agent, if any.
+    /// The roof window holding a session, if any.
     static func owner(of agent: String) -> RoofWindowController? { open.values.first { $0.claimed.contains(agent) } }
 
     /// "Bring back here" from the main window: this window lets the session go (until it is reopened).

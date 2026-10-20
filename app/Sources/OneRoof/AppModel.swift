@@ -97,7 +97,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// What runs every session (herdr today; roofd from P3 of LAB-ROOFD).
+    /// What runs every session: roofd (LAB-ROOFD).
     let runtime: SessionRuntime = Runtimes.make()
     let store: SessionStore?
     private var stored: [Session] = []
@@ -110,10 +110,6 @@ final class AppModel: ObservableObject {
     /// Runtime ids the rows were reloaded for already (sessions started outside the app).
     private var reloadedFor = Set<RuntimeID>()
     private var probing = Set<String>()
-    private var sending = Set<String>()
-    private var openingGate = OpeningGate()
-    private var attempts: [String: Int] = [:]
-    private var retryAfter: [String: Date] = [:]
     private var timer: Timer?
     /// Commands to type into a terminal session once it starts (session id → command).
     private var pendingCommands: [String: String] = [:]
@@ -273,7 +269,6 @@ final class AppModel: ObservableObject {
             items = new
             updateDockBadge()
         }
-        deliverOpenings()
         feedEngines()
         if let sel = selectedId, !items.contains(where: { $0.id == sel }) {
             // An adopted row that was just saved changes id; keep the selection on its agent.
@@ -571,7 +566,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Start the session's agent in the runtime (in ~/Projects or the repo, with the account's env). The opening
-    /// message is sent later by `deliverOpenings`, once the runtime reports the agent idle.
+    /// message travels in the launch spec: roofd sends it once the agent is ready (it arrives with the app closed too).
     func launch(_ item: BoardItem) {
         let s = item.session
         // Red foundations block starting an agent (owner D5), with a way through for this run.
@@ -590,7 +585,7 @@ final class AppModel: ObservableObject {
             }
         }
         let spec: LaunchSpec
-        switch LaunchPlan.spec(s, stored: stored, command: pendingCommands[s.id], deliverOpening: runtime.kind == .roofd) {
+        switch LaunchPlan.spec(s, stored: stored, command: pendingCommands[s.id], deliverOpening: true) {
         case .failure(let refusal): lastError = refusal.description; return
         case .success(let sp): spec = sp
         }
@@ -614,7 +609,7 @@ final class AppModel: ObservableObject {
             }
             let name = ref.id, workspaceId = ref.groupId, adopted = ref.adopted
             // Fold the auto-saved "started outside One Roof" row for this agent into the session.
-            if let i = self.stored.firstIndex(where: { $0.id == "herdr:" + name }) {
+            if let i = self.stored.firstIndex(where: { $0.id == Session.adoptedPrefix + name }) {
                 let extra = self.stored[i]
                 if s.notes.isEmpty { s.notes = extra.notes }
                 s.tags = Array(Set(s.tags + extra.tags)).sorted()
@@ -625,8 +620,8 @@ final class AppModel: ObservableObject {
             s.runtimeGroup = workspaceId
             if !adopted {
                 s.launchedAt = Date()
-                // roofd delivers the opening message itself (it is in the launch spec); herdr needs deliverOpenings.
-                s.openingSent = self.runtime.kind == .roofd
+                // roofd delivers the opening message itself (it is in the launch spec).
+                s.openingSent = true
             } else if s.launchedAt == nil {
                 s.launchedAt = Date()
             }
@@ -635,67 +630,6 @@ final class AppModel: ObservableObject {
             self.selectedId = s.id
             if !adopted, let id = s.ticketId, let team = s.ticketTeam { self.ticketStarted(id: id, team: team) }
             self.queue.async { self.poll() }
-        }
-    }
-
-    /// Send pending opening messages once an agent has been ready and idle for 2 s — never into a busy,
-    /// blocked or still-starting agent. "Not ready" is retried (max 20 tries); other errors stop after one try.
-    private func fresh(_ m: AppModel, _ id: String) -> String { m.item(id)?.session.name ?? "A session" }
-
-    private func deliverOpenings() {
-        let now = Date()
-        openingGate.observe(items, now: now)
-        for item in openingGate.due(items, now: now, sending: sending, retryAfter: retryAfter) {
-            guard let agent = item.liveAgent else { continue }
-            sending.insert(item.id)
-            let text = item.session.openingMessage
-            let id = item.id
-            queue.async { [weak self] in
-                guard let self else { return }
-                do {
-                    try self.runtime.submit(agent, text: text)
-                    // Mark it sent at once (so a restart never sends it twice), then check it landed off the runtime
-                    // queue: the agent should start within 45 s; if it is still idle, un-mark it and send once more.
-                    DispatchQueue.main.async {
-                        if let fresh = self.item(id) { self.update(fresh) { $0.openingSent = true } }
-                    }
-                    DispatchQueue.global(qos: .utility).async {
-                        var started = false
-                        for _ in 0..<45 {
-                            sleep(1)
-                            if let a = try? self.runtime.snapshot().session(agent), a.status.started { started = true; break }
-                        }
-                        DispatchQueue.main.async {
-                            self.sending.remove(id)
-                            if !started, (self.attempts[id] ?? 0) == 0, let fresh = self.item(id) {
-                                self.attempts[id] = 1
-                                self.openingGate.restart(agent, at: Date())
-                                self.update(fresh) { $0.openingSent = false }
-                                return
-                            }
-                            self.attempts[id] = nil
-                            if !started { self.lastError = "\(self.fresh(self, id)) may not have received its opening message." }
-                        }
-                    }
-                } catch RuntimeError.notReady {
-                    DispatchQueue.main.async {
-                        let n = (self.attempts[id] ?? 0) + 1
-                        self.attempts[id] = n
-                        self.retryAfter[id] = Date().addingTimeInterval(3)
-                        self.sending.remove(id)
-                        if n >= 20, let fresh = self.item(id) {
-                            self.update(fresh) { $0.openingSent = true }
-                            self.lastError = "Opening message not delivered: the agent never became ready."
-                        }
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        if let fresh = self.item(id) { self.update(fresh) { $0.openingSent = true } }
-                        self.sending.remove(id)
-                        self.lastError = "Opening message may not have been delivered: \(error)"
-                    }
-                }
-            }
         }
     }
 

@@ -79,7 +79,7 @@ struct SubagentTraceView: View {
         VStack(spacing: 8) {
             Spacer()
             Text("No subagents running").ui(20, .semibold).foregroundStyle(t.text.color)
-            Text("When a Claude session starts subagents (the Task tool), their trace shows here. Codex, Kimi and Gemini children are inferred from herdr panes.")
+            Text("When a Claude session starts subagents (the Task tool), their trace shows here. Codex, Kimi and Gemini children are inferred from new panes.")
                 .ui(13).foregroundStyle(t.text2.color).multilineTextAlignment(.center).frame(maxWidth: 460)
             Spacer()
         }

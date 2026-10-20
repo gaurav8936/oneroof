@@ -19,11 +19,11 @@ public enum LaunchPlan {
         let dir = s.launchDirectory
         guard Workspace.isInsideProjects(dir) else { return .failure(.outsideProjects(dir)) }
         var spec = LaunchSpec(
-            id: Session.herdrName(for: s.id), label: s.name, cwd: dir,
+            id: Session.runtimeName(for: s.id), label: s.name, cwd: dir,
             env: AccountResolver.launchEnv(agent: s.agent, account: s.account),
             agent: s.agent, args: s.launchArgs, command: s.agent.isAgent ? nil : command,
             previousGroup: s.runtimeGroup, adoptOrphan: s.agent.isAgent && s.runtimeId == nil,
-            claimed: Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix("herdr:") ? nil : $0.runtimeId }))
+            claimed: Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix(Session.adoptedPrefix) ? nil : $0.runtimeId }))
         if deliverOpening, s.agent.isAgent, s.openingPending { spec.opening = s.openingMessage }
         return .success(spec)
     }

@@ -1,13 +1,12 @@
 import Foundation
 
-// What runs sessions: herdr today, roofd next (T14 §4). The app talks only to `SessionRuntime`; everything
-// herdr-specific (socket protocol, workspaces, lossy decoding, env-leak restarts) stays inside `HerdrRuntime`.
+// What runs sessions (T14 §4): roofd in the app, FakeRuntime in tests. The app talks only to `SessionRuntime`.
 
-/// A session's address in its runtime: herdr agent name ("roof-1a2b3c4d", "term:<id>"), roofd session id.
+/// A session's address in its runtime: roofd session id ("roof-1a2b3c4d"); old rows may hold herdr's "term:<id>".
 public typealias RuntimeID = String
 
 public enum RuntimeKind: String, Codable, Sendable {
-    case herdr, roofd, fake
+    case roofd, fake
     public var displayName: String { rawValue }
 }
 
@@ -38,14 +37,14 @@ public struct RuntimeSessionState: Sendable, Equatable {
     /// The runtime detected an agent here. `agentName` is what it calls it; `agent` is nil when that name is unknown.
     public var isAgent: Bool
     public var agentName: String?
-    public var agent: AgentKind? { AgentKind(herdrName: agentName) }
+    public var agent: AgentKind? { AgentKind(detectedName: agentName) }
     public var status: RuntimeStatus
     public var ready: Bool
     public var title: String?
     public var cwd: String?
-    /// Where pane-level I/O goes (`type`, `keys`, `read`, `processes`): herdr pane id; roofd the session id.
+    /// Where pane-level I/O goes (`type`, `keys`, `read`, `processes`): roofd the session id.
     public var pane: String
-    /// herdr workspace id (what `close` ends); roofd nil.
+    /// Runtime group (herdr-era workspace); roofd nil.
     public var groupId: String?
     /// Bumps when the session's output changes (the caption engine's "new output" signal).
     public var seq: Int?
@@ -175,7 +174,7 @@ extension SessionRuntime {
 }
 
 extension SessionRuntime {
-    /// One line for the status bar: "herdr 0.9.5 · 3 agents", or a protocol mismatch.
+    /// One line for the status bar: "roofd 0.1.0 · 3 agents", or a protocol mismatch.
     public func statusLine(_ snap: RuntimeSnapshot) -> String {
         let proto = snap.protocolVersion ?? 0
         if let want = expectedProtocol, proto != 0, proto != want {
@@ -186,10 +185,7 @@ extension SessionRuntime {
     }
 }
 
-/// The runtime this run of One Roof uses. herdr until the P3 cut-over; `ONEROOF_RUNTIME=roofd` switches a
-/// development run to roofd (a developer switch, not a setting: owner Q11, no herdr fallback after the cut-over).
+/// The runtime One Roof uses: roofd, its own session manager (LAB-ROOFD; herdr removed in LAB-20).
 public enum Runtimes {
-    public static func make() -> SessionRuntime {
-        ProcessInfo.processInfo.environment["ONEROOF_RUNTIME"] == "roofd" ? RoofdRuntime() : HerdrRuntime()
-    }
+    public static func make() -> SessionRuntime { RoofdRuntime() }
 }

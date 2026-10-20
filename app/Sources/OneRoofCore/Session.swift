@@ -1,9 +1,9 @@
 import Foundation
 
-/// The CLI agents One Roof can start. `herdrKind` is the value herdr's `agent start --kind` expects.
+/// The CLI agents One Roof can start. `cliName` is the command that starts it.
 public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case claude, codex, gemini, agy, kimi
-    /// A plain shell, no agent: One Roof as an ordinary terminal (kept by herdr like any session).
+    /// A plain shell, no agent: One Roof as an ordinary terminal (kept by roofd like any session).
     case shell
 
     public var id: String { rawValue }
@@ -33,7 +33,7 @@ public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    public var herdrKind: String { rawValue }
+    public var cliName: String { rawValue }
 
     public var displayName: String {
         switch self {
@@ -58,9 +58,9 @@ public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Map herdr's detected agent name (e.g. "claude") to a kind.
-    public init?(herdrName: String?) {
-        guard let n = herdrName?.lowercased() else { return nil }
+    /// Map a detected agent or process name (e.g. "claude", "kimi-code") to a kind.
+    public init?(detectedName: String?) {
+        guard let n = detectedName?.lowercased() else { return nil }
         if let k = AgentKind(rawValue: n) { self = k; return }
         if n.contains("claude") { self = .claude; return }
         if n.contains("codex") { self = .codex; return }
@@ -71,15 +71,15 @@ public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
 }
 
 /// Where a session is in its life. One Roof owns planned / next / do-not-use;
-/// herdr's live agent state drives running / needs-you / done / idle / exited.
+/// The runtime's live agent state drives running / needs-you / done / idle / exited.
 public enum SessionStatus: String, Codable, CaseIterable, Sendable {
     case planned        // written ahead of time, not started
     case next           // planned and up next
-    case running        // herdr: working
-    case needsYou       // herdr: blocked (permission prompt, question)
-    case done           // herdr: finished a turn you have not looked at yet
-    case idle           // herdr: at its prompt, nothing new
-    case exited         // was launched; herdr no longer has it
+    case running        // runtime: working
+    case needsYou       // runtime: blocked (permission prompt, question)
+    case done           // runtime: finished a turn you have not looked at yet
+    case idle           // runtime: at its prompt, nothing new
+    case exited         // was launched; the runtime no longer has it
     case doNotUse       // parked by the owner (the old "(DNU)" prefix)
 
     public var label: String {
@@ -111,8 +111,8 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
 
     public var isLive: Bool { [.running, .needsYou, .done, .idle].contains(self) }
 
-    /// Map herdr's `agent_status` (idle · working · blocked · done · unknown).
-    public static func fromHerdr(_ s: String?) -> SessionStatus {
+    /// Map an `agent_status` string (idle · working · blocked · done · unknown).
+    public static func fromAgentStatus(_ s: String?) -> SessionStatus {
         switch s {
         case "working": return .running
         case "blocked": return .needsYou
@@ -122,7 +122,7 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
     }
 }
 
-/// A session: planned work and/or a live agent in herdr.
+/// A session: planned work and/or a live agent in roofd.
 public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var id: String
     public var name: String
@@ -136,11 +136,11 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var openingMessage: String
     public var tags: [String]
     public var notes: String
-    /// Owner-set lifecycle (planned / next / doNotUse). Live status comes from herdr.
+    /// Owner-set lifecycle (planned / next / doNotUse). Live status comes from roofd.
     public var lifecycle: SessionStatus
-    /// herdr agent name once launched (unique, e.g. "roof-1a2b3c").
+    /// Runtime id once launched (unique, e.g. "roof-1a2b3c").
     public var runtimeId: String?
-    /// herdr workspace the agent was started in (closed on relaunch so no empty shells pile up).
+    /// Runtime group the session was started in (herdr-era workspaces; roofd nil).
     public var runtimeGroup: String?
     public var createdAt: Date
     public var launchedAt: Date?
@@ -170,8 +170,10 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         return (m.isEmpty ? [] : ["--model", m]) + agentArgs
     }
 
-    /// A plain terminal's herdr link is stored as "term:<terminal_id>" in `runtimeId`.
+    /// A plain terminal's runtime id; herdr-era rows hold "term:<terminal_id>".
     public static let terminalPrefix = "term:"
+    /// Id prefix of rows adopted from live sessions the store did not know. The herdr-era spelling is kept: saved rows use it.
+    public static let adoptedPrefix = "herdr:"
 
     public init(
         id: String = UUID().uuidString,
@@ -288,8 +290,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         !openingSent && !openingMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// The herdr agent name One Roof uses for a session it launches.
-    public static func herdrName(for id: String) -> String {
+    /// The runtime id One Roof uses for a session it launches.
+    public static func runtimeName(for id: String) -> String {
         "roof-" + id.replacingOccurrences(of: "-", with: "").prefix(8).lowercased()
     }
 }

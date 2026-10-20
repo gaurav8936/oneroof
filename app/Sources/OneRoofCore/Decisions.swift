@@ -1,8 +1,8 @@
 import Foundation
 
-// The decision builder (v2, ENGINES §3): when herdr reports an agent blocked, read the permission prompt off its
+// The decision builder (v2, ENGINES §3): when roofd reports an agent blocked, read the permission prompt off its
 // terminal and turn it into one card with the command, the agent's own why, what it touches, the risk, what happens
-// if you say no and how often you said yes before. Answers are data (keys to send); the app sends them via herdr.
+// if you say no and how often you said yes before. Answers are data (keys to send); the app sends them via roofd.
 // Nothing here answers on its own: humans stay in the loop.
 
 public enum DecisionKind: String, Codable, CaseIterable, Sendable {
@@ -747,7 +747,7 @@ public enum DecisionBuilder {
 
 // MARK: - Answering
 
-/// What to send to the agent's pane for an answer (the app sends each string in order with `herdr pane send-text`).
+/// What to send to the agent's pane for an answer (the app sends each string in order through the runtime).
 public struct AnswerKeys: Equatable, Sendable {
     public var sends: [String]
     /// False when the agent has no "always" option: the app sends allow-once and keeps the rule on its side.

@@ -3,7 +3,7 @@ import SwiftUI
 import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
-///   ONEROOF_SELFTEST_SELECT=<herdr agent name>  select that agent's row after launch
+///   ONEROOF_SELFTEST_SELECT=<session id>      select that agent's row after launch
 ///   ONEROOF_SELFTEST_TYPE=<text>                type text (+ Return) into the focused terminal via synthetic NSEvents
 ///   ONEROOF_SELFTEST_THEMES=sidebar,terminal,plan   e.g. "light,dark,dim"
 ///   ONEROOF_SELFTEST_TERMINAL=1                 open a plain terminal (File › New Terminal)
@@ -299,7 +299,7 @@ enum SelfTest {
              "account": i.account ?? "", "repo": i.repoLabel, "workstream": i.session.workstream ?? "",
              "live": i.liveAgent ?? "", "adopted": i.adopted ? "yes" : "no"]
         }
-        let meta: [String: Any] = ["rows": rows, "herdr": app.model.runtimeState, "selected": app.model.selectedId ?? "",
+        let meta: [String: Any] = ["rows": rows, "runtime": app.model.runtimeState, "selected": app.model.selectedId ?? "",
                                    "themes": [app.model.themes.sidebar.rawValue, app.model.themes.terminal.rawValue, app.model.themes.plan.rawValue],
                                    "grouping": app.model.grouping.rawValue, "error": app.model.lastError ?? "",
                                    "conversations": { () -> String in

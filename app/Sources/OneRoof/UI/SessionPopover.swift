@@ -126,13 +126,13 @@ struct SessionPopover: View {
 }
 
 extension AppModel {
-    /// Ask before ending an agent or terminal process in herdr.
+    /// Ask before ending an agent or terminal process.
     func confirmClose(_ item: BoardItem) {
         let a = NSAlert()
         a.messageText = "Close \(item.session.name)?"
         a.informativeText = item.session.agent.isAgent
-            ? "This ends the agent process in herdr. Its conversation stays on disk and can be resumed later."
-            : "This ends the shell in herdr."
+            ? "This ends the agent process. Its conversation stays on disk and can be resumed later."
+            : "This ends the shell."
         a.addButton(withTitle: "Close")
         a.addButton(withTitle: "Cancel")
         var review: NSButton?

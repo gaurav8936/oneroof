@@ -1,7 +1,7 @@
 import Foundation
 
 /// An in-memory session runtime for tests: sessions start idle and ready, and every call is recorded.
-/// Names follow herdr's rules (`<id>`, then `<id>-2`, `-3` …), so stored rows behave as they do on a real runtime.
+/// Names follow roofd's rules (`<id>`, then `<id>-2`, `-3` …), so stored rows behave as they do on a real runtime.
 public final class FakeRuntime: SessionRuntime, @unchecked Sendable {
     public let kind = RuntimeKind.fake
     public let expectedProtocol: Int? = nil

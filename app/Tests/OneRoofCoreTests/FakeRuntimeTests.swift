@@ -6,7 +6,7 @@ final class FakeRuntimeTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_000_000)
 
     func launch(_ s: inout Session, on r: FakeRuntime) throws {
-        let ref = try r.start(LaunchSpec(id: Session.herdrName(for: s.id), label: s.name, cwd: s.launchDirectory, agent: s.agent,
+        let ref = try r.start(LaunchSpec(id: Session.runtimeName(for: s.id), label: s.name, cwd: s.launchDirectory, agent: s.agent,
                                          args: s.launchArgs, previousGroup: s.runtimeGroup,
                                          adoptOrphan: s.agent.isAgent && s.runtimeId == nil))
         s.runtimeId = ref.id
@@ -21,7 +21,7 @@ final class FakeRuntimeTests: XCTestCase {
         let items = Board.merge(stored: [s], snapshot: try r.snapshot())
         XCTAssertEqual(items.count, 1)
         XCTAssertEqual(items.first?.status, .idle)
-        XCTAssertEqual(items.first?.liveAgent, Session.herdrName(for: s.id))
+        XCTAssertEqual(items.first?.liveAgent, Session.runtimeName(for: s.id))
         XCTAssertEqual(items.first?.ready, true)
         XCTAssertFalse(items.first?.adopted ?? true)
     }
