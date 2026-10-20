@@ -259,6 +259,16 @@ enum SelfTest {
             try? "no focused terminal".write(toFile: out + ".copytest.txt", atomically: true, encoding: .utf8); return
         }
         let captured = view.mouseCaptured
+        // The owner's clipboard comes back afterwards.
+        let saved = (NSPasteboard.general.pasteboardItems ?? []).map { item in
+            item.types.compactMap { t in item.data(forType: t).map { (t, $0) } }
+        }
+        defer {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects(saved.map { pairs in
+                let it = NSPasteboardItem(); for (t, d) in pairs { it.setData(d, forType: t) }; return it
+            })
+        }
         NSPasteboard.general.clearContents()
         let r = view.convert(view.bounds, to: nil)
         func ev(_ t: NSEvent.EventType, _ p: NSPoint, clicks: Int = 1) -> NSEvent {
@@ -281,7 +291,17 @@ enum SelfTest {
         view.paste(nil)
         RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         let pasted = (app.main.terminalArea.visibleText() ?? "").contains("ONEROOF-PASTE-OK")
-        let report = "mouse captured by the program: \(captured)\nselection after drag: \(selected)\npaste reached the terminal: \(pasted)\nclipboard after copy (\(clip.count) chars):\n\(clip)"
+        // Image paste (owner 10-20): a screenshot on the clipboard types the saved PNG's path.
+        NSPasteboard.general.clearContents()
+        if let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4, pixelsHigh: 4, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                      isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+           let png = rep.representation(using: .png, properties: [:]) {
+            NSPasteboard.general.setData(png, forType: .png)
+        }
+        view.paste(nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        let imagePasted = (app.main.terminalArea.visibleText() ?? "").contains("OneRoof/pastes/paste-")
+        let report = "mouse captured by the program: \(captured)\nselection after drag: \(selected)\npaste reached the terminal: \(pasted)\nimage paste typed its path: \(imagePasted)\nclipboard after copy (\(clip.count) chars):\n\(clip)"
         try? report.write(toFile: out + ".copytest.txt", atomically: true, encoding: .utf8)
     }
 

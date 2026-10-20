@@ -12,6 +12,7 @@ import OneRoofCore
 ///   launch · close · delete · reopen · interrupt · popout · quit · newsession (⌘N sheet) · keys <text> (into the sheet)
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
 ///   answer allowOnce|always|deny   snap <name>   dump <name>   screen <name>   (selected session's text)
+///   copytest <name>                (drag-select, copy, paste text, paste an image → <name>.copytest.txt)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
     static func run(_ path: String, app: AppDelegate) {
@@ -89,6 +90,7 @@ enum SelfTestScript {
             delay = 1
         case "probe": log(out, "  " + app.main.terminalArea.debugState())
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
+        case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":
             let rows = m.items.map { i -> [String: Any] in
                 ["name": i.session.name, "status": i.status.rawValue, "agent": i.session.agent.rawValue,

@@ -11,6 +11,8 @@
   and Done for all five agents, including first-run menus.
 - **Tonight and Nightly run with the app closed** when scheduled runs are allowed; roofd sends the opening message once
   the agent is ready.
+- **Paste images into a terminal.** ⌘V with a screenshot or copied image saves it and types its path, so the agent
+  attaches it; files copied in Finder paste as full paths; images dragged in from a browser work too.
 - Agents typed into a One Roof terminal still show as that agent. Agents started in other terminal apps are no longer
   listed; Copy attach opens any One Roof session from another terminal.
 

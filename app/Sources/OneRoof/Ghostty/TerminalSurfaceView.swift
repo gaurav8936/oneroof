@@ -31,7 +31,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         self.theme = theme
         super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         wantsLayer = true
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes([.fileURL, .png, .tiff])
 
         guard let app = GhosttyRuntime.shared.app else { return }
         var cfg = ghostty_surface_config_new()
@@ -227,7 +227,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         m.autoenablesItems = false
         m.addItem(copy)
         let paste = NSMenuItem(title: "Paste", action: #selector(paste(_:)), keyEquivalent: "v")
-        paste.isEnabled = NSPasteboard.general.string(forType: .string) != nil
+        paste.isEnabled = TerminalMouse.canPaste(.general)
         m.addItem(paste)
         m.addItem(NSMenuItem(title: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "a"))
         m.addItem(.separator())
@@ -436,17 +436,15 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     @objc func copy(_ sender: Any?) { bindingAction("copy_to_clipboard") }
 
-    // MARK: Drag a file in → its path is typed, shell-quoted (as in Terminal.app)
+    // MARK: Drag a file in → its path is typed, shell-quoted (as in Terminal.app); a dragged image (e.g. from a
+    // browser) is saved and its path typed, as ⌘V does.
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : []
+        TerminalMouse.droppedText(from: sender.draggingPasteboard, save: false) != nil ? .copy : []
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let surface,
-              let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-              !urls.isEmpty else { return false }
-        let text = TerminalMouse.droppedPaths(urls.map(\.path))
+        guard let surface, let text = TerminalMouse.droppedText(from: sender.draggingPasteboard) else { return false }
         text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
         window?.makeFirstResponder(self)
         return true

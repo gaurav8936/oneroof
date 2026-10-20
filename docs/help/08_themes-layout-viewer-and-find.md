@@ -54,7 +54,9 @@ The window should look the way you like and hold only what you need right now: a
 
 - **Select:** drag across text. Double-click selects a word, triple-click a line, Shift-click extends the selection.
 - **Copy and paste:** ⌘C and ⌘V, or right-click › Copy / Paste / Select All / Clear.
-- **Drag a file in** to type its path (quoted if it has spaces).
+- **Paste an image** (a screenshot, or an image copied from a browser or Preview) with ⌘V: One Roof saves it as a PNG in `~/Library/Caches/OneRoof/pastes/` and types its path, so Claude Code, Codex and the other agents attach it. Saved images are cleared after 7 days.
+- **Paste files copied in Finder** to type their full paths, not just their names.
+- **Drag a file in** to type its path (quoted if it has spaces). Dragging an image from a browser saves it and types its path, as pasting does.
 - **Send the mouse to the program instead:** hold Option while you drag or right-click. Some full-screen
   programs use the mouse themselves; by default One Roof keeps the mouse for selecting.
 - **Scrolled-off text:** the terminal holds what is on screen; scroll back with the wheel or trackpad (each session keeps 8 MB of history in memory, never on disk),
