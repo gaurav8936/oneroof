@@ -151,4 +151,39 @@ final class RoofProtocolTests: XCTestCase {
         XCTAssertEqual(frames.first?.0, .error)
         XCTAssertEqual(Wire.json(frames.first?.1 ?? [])["code"] as? String, "not_primary")
     }
+
+    /// Found by the side-by-side run (Codex): a new session must see its size before anything attaches; macOS left
+    /// 0x0 when it was set on the master only, and full-screen CLIs drew nothing.
+    func testNewSessionSeesItsSizeBeforeAnyAttach() throws {
+        _ = try call("create", ["id": "size", "cwd": "/tmp", "cols": 120, "rows": 40, "env": ["PATH": "/usr/bin:/bin"],
+                                "argv": ["/bin/sh", "-c", "echo SIZE $(stty size); sleep 20"]])
+        usleep(800_000)
+        let text = try call("read", ["id": "size", "lines": 3])["text"] as? String ?? ""
+        XCTAssertTrue(text.contains("SIZE 40 120"), text)
+    }
+
+    /// Nobody attached: the holder answers a CLI's query batch in the order it was sent.
+    func testDetachedQueriesAreAnsweredInOrder() throws {
+        let script = "/tmp/roofd-q-\(UUID().uuidString.prefix(6)).py"
+        try """
+        import os, sys, termios, tty, time, select
+        fd = sys.stdin.fileno(); old = termios.tcgetattr(fd); tty.setraw(fd)
+        os.write(1, b"\\x1b[6n\\x1b]10;?\\x1b\\\\\\x1b]11;?\\x1b\\\\\\x1b[?u\\x1b[c")
+        got = b""; t0 = time.time()
+        while time.time() - t0 < 3 and not got.endswith(b"c"):
+            r, _, _ = select.select([fd], [], [], 0.2)
+            if r: got += os.read(fd, 1024)
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        print("ORDER", "".join(k for k, m in [("C", b"R"), ("F", b"]10;"), ("B", b"]11;"), ("K", b"?0u"), ("D", b"?62")] if m in got), [got.find(m) for m in [b"R", b"]10;", b"]11;", b"?0u", b"?62"]] == sorted([got.find(m) for m in [b"R", b"]10;", b"]11;", b"?0u", b"?62"]]))
+        time.sleep(20)
+        """.write(toFile: script, atomically: true, encoding: .utf8)
+        defer { unlink(script) }
+        _ = try call("create", ["id": "q", "cwd": "/tmp", "env": ["PATH": "/usr/bin:/bin"], "argv": ["/usr/bin/python3", script]])
+        var text = ""
+        for _ in 0..<30 where !text.contains("ORDER") {
+            usleep(100_000)
+            text = try call("read", ["id": "q", "lines": 3])["text"] as? String ?? ""
+        }
+        XCTAssertTrue(text.contains("ORDER CFBKD True"), text)
+    }
 }

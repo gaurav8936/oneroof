@@ -103,10 +103,9 @@ public struct StatusEngine: Sendable {
         if prompt {
             next = .blocked                                    // a permission or question prompt is on screen
         } else if let h = hookStatus {
-            // Hooks lead. Fresh output after the last hook (a new turn, or a prompt answered in the terminal)
-            // means working until the next hook says otherwise.
-            let outputSinceHook = (o.lastOutput ?? .distantPast) > (hookAt ?? .distantPast).addingTimeInterval(0.5)
-            next = h != .working && busy && outputSinceHook ? .working : h
+            // Hooks decide (UserPromptSubmit / PreToolUse → working, Stop → done): screen repaints after a Stop are
+            // not a new turn; a new turn sends its own hook. Only a prompt on screen overrides them (above).
+            next = h
         } else if busy || spinner {
             next = .working
         } else if workedSinceInput && quietFor >= Self.doneAfter {
@@ -146,11 +145,16 @@ public struct StatusEngine: Sendable {
         return marker && hint
     }
 
-    /// The screen without its bottom status area (the last 5 non-empty lines: input box, status bar, hints), so a
-    /// repaint of the status bar alone is not activity.
+    /// The screen without its bottom status area, so a repaint of the status bar alone is not activity: everything
+    /// from the CLI's input-box border down (a ─── / ╭──╮ line among the last 12), else the last 5 non-empty lines.
     public static func contentKey(_ screen: String) -> String {
         var lines = screen.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         while lines.last?.isEmpty == true { lines.removeLast() }
+        let window = max(0, lines.count - 12)
+        let border = lines[window...].firstIndex { l in
+            l.count >= 10 && (l.hasPrefix("╭") || l.hasPrefix("╰") || l.allSatisfy { "─━═-▔▁".contains($0) })
+        }
+        if let b = border { return lines[..<b].joined(separator: "\n") }
         var dropped = 0
         while dropped < 5, !lines.isEmpty { if !(lines.removeLast().isEmpty) { dropped += 1 } }
         return lines.joined(separator: "\n")

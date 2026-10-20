@@ -26,6 +26,9 @@ pid_t roof_spawn(const char *const argv[], const char *const envp[], const char 
         int s = open(slave, O_RDWR);
         if (s < 0) _exit(126);
         ioctl(s, TIOCSCTTY, 0);
+        // The size must be set on the slave side: set on the master before the slave was opened, macOS leaves 0x0
+        // (full-screen programs then draw nothing until the first resize).
+        ioctl(s, TIOCSWINSZ, &ws);
         dup2(s, 0); dup2(s, 1); dup2(s, 2);
         if (s > 2) close(s);
         close(m);

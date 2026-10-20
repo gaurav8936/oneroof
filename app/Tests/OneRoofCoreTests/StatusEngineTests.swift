@@ -113,6 +113,9 @@ final class StatusEngineTests: XCTestCase {
         let b = "answer text\n\n❯ \n────\n[Claude1] 5h 21% · 7d 29%\n⏵⏵ auto mode on\nUpdate available!"
         XCTAssertEqual(StatusEngine.contentKey(a), StatusEngine.contentKey(b))
         XCTAssertNotEqual(StatusEngine.contentKey(a), StatusEngine.contentKey("more answer\n" + a))
+        let c = "answer text\n\n────────────────\n❯ \n────────────────\n[Claude1] 5h 20%\n⏵⏵ auto mode on"
+        XCTAssertEqual(StatusEngine.contentKey(c), StatusEngine.contentKey(c + "\nUpdate available! Run: brew upgrade"),
+                       "a status line appearing below the input box is not content")
     }
 
     func testClaudeHooksLead() {
@@ -129,8 +132,10 @@ final class StatusEngineTests: XCTestCase {
         XCTAssertEqual(e.evaluate(obs(31, out: 30)), .working)
         e.hook("Stop", at: at(40))
         XCTAssertEqual(e.evaluate(obs(41, out: 40)), .done)
-        // New output well after the Stop: a turn the hooks have not reported yet.
-        XCTAssertEqual(e.evaluate(obs(45, out: 44.9)), .working)
+        // Repaints after the Stop are not a new turn; the next turn sends its own hook.
+        XCTAssertEqual(e.evaluate(obs(45, out: 44.9)), .done)
+        e.hook("UserPromptSubmit", at: at(50))
+        XCTAssertEqual(e.evaluate(obs(51, out: 50.5)), .working)
     }
 
     func testIdleNotificationDoesNotBlock() {

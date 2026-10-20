@@ -182,8 +182,9 @@ final class Holder {
                 let t = vt
                 vtQ.async { [weak self] in
                     bytes.withUnsafeBufferPointer { rvt_feed(t, $0.baseAddress, $0.count) }
-                    let q = rvt_take_queries(t)
-                    if q != 0 { self?.queriesSeen(q) }
+                    var codes = [UInt8](repeating: 0, count: 32)
+                    let n = rvt_take_query_list(t, &codes, codes.count)
+                    if n > 0 { self?.queriesSeen(Array(codes.prefix(n))) }
                 }
             }
         }
@@ -195,27 +196,40 @@ final class Holder {
         }
     }
 
-    /// On vtQ. Nobody attached: the holder answers DA1 / DSR, so a detached program never hangs (T14 §3c).
-    /// With a terminal attached, libghostty answers.
-    private func queriesSeen(_ q: UInt32) {
+    /// On vtQ. Nobody attached: the holder answers the program's terminal queries itself, in the order they were
+    /// sent, so a detached program never hangs (T14 §3c). Full-screen CLIs (Codex) send a batch ending in DA1 and
+    /// draw nothing until every answer arrives. With a terminal attached, libghostty answers.
+    private func queriesSeen(_ codes: [UInt8]) {
         mailLock.lock()
         let attached = anyAttached
         mailLock.unlock()
         guard !attached else { return }
         var reply = ""
-        if q & 1 != 0 { reply += "\u{1b}[?62;22c" }
-        if q & 4 != 0 { reply += "\u{1b}[0n" }
-        if q & 2 != 0 {
-            var x: UInt16 = 0, y: UInt16 = 0
-            _ = rvt_cursor(vt, &x, &y)
-            reply += "\u{1b}[\(Int(y) + 1);\(Int(x) + 1)R"
+        for c in codes {
+            switch c {
+            case 1: reply += "\u{1b}[?62;22c"                                   // DA1: VT220 + ANSI colour
+            case 2:
+                var x: UInt16 = 0, y: UInt16 = 0
+                _ = rvt_cursor(vt, &x, &y)
+                reply += "\u{1b}[\(Int(y) + 1);\(Int(x) + 1)R"                // cursor position
+            case 3: reply += "\u{1b}[0n"                                        // operating status: OK
+            case 4: reply += "\u{1b}]10;rgb:\(Holder.foreground)\u{1b}\\"     // foreground colour
+            case 5: reply += "\u{1b}]11;rgb:\(Holder.background)\u{1b}\\"     // background colour
+            case 6: reply += "\u{1b}[?0u"                                       // kitty keyboard: no flags
+            default: break
+            }
         }
+        guard !reply.isEmpty else { return }
         mailLock.lock()
         mailReplies += Array(reply.utf8)
         mailLock.unlock()
         var one: UInt8 = 1
         _ = write(wakeW, &one, 1)
     }
+
+    /// The theme colours a detached session reports (Midnight); the attached terminal answers with its own.
+    static let foreground = "e6e6/e9e9/efef"
+    static let background = "1c1c/2020/2828"
 
     private func takeMail(_ buf: inout [UInt8]) {
         _ = read(wakeR, &buf, buf.count)
@@ -352,8 +366,15 @@ final class Holder {
                 fg = StatusEngine.agentKind(processName: pname, argv: ProcessProbe.args(pid: pg)?.argv ?? [])
             }
         }
+        if fg != agent {
+            // A new agent in the foreground: it may have drawn everything before it was seen, so read the screen now
+            // and count that as its last change (otherwise a CLI that then goes quiet never becomes ready).
+            screenSeq = -1
+            contentKey = ""
+            contentChangedAt = nil
+        }
         agent = fg
-        if fg != nil, seq != screenSeq {
+        if fg != nil, seq != screenSeq || contentChangedAt == nil {
             screenSeq = seq
             let t = vt
             screen = vtQ.sync {
@@ -365,7 +386,7 @@ final class Holder {
             // Activity = the screen's content changed, not just bytes: an idle CLI repaints its status bar (usage,
             // clock, update notice) at the bottom, which must not read as working.
             let key = StatusEngine.contentKey(screen)
-            if key != contentKey { contentKey = key; contentChangedAt = now }
+            if key != contentKey || contentChangedAt == nil { contentKey = key; contentChangedAt = contentChangedAt == nil ? (lastOutput ?? now) : now }
         }
         engine.evaluate(.init(now: now, agent: fg, lastOutput: fg == nil ? lastOutput : contentChangedAt, screen: screen))
         deliverOpening(now: now)

@@ -288,6 +288,7 @@ def m3():
     held2 = rdj("info", "m3")
     held2_text = control("read", id="m3", lines=30)["text"]
     if not replay2["alt"] or 1049 not in replay2["modes"]: problems.append("less: not on the alternate screen after reattach")
+    if not replay2["text"].strip() or not held2_text.strip(): problems.append("less: empty screen text (alternate screen not read)")
     if replay2["text"].rstrip().splitlines()[-29:] != held2_text.rstrip().splitlines()[-29:]: problems.append("less: screen differs")
     c.send(b"q"); time.sleep(0.3); c.kill()
     rd("close", "m3")

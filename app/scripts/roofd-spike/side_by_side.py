@@ -184,7 +184,14 @@ def run(rt_cls, agent, task, out):
         if "esc to reject" in rt.screen().lower():   # a menu the runtime read as idle (herdr): clear it first
             rt.esc(); res["notes"].append("MCP menu cleared before the task"); time.sleep(2)
         # 2. The task.
-        sent = time.time(); rt.submit(TASKS[task])
+        for attempt in range(3):
+            try:
+                rt.submit(TASKS[task]); break
+            except RuntimeError as e:
+                if "agent_blocked" not in str(e): raise
+                res["notes"].append("runtime refused the task: blocked (a start-up menu); cleared with Esc")
+                rt.esc(); time.sleep(3)
+        sent = time.time()
         saw_work = saw_block = declined = False
         quiet_since = None
         while time.time() - sent < 150:

@@ -12,6 +12,17 @@ const Handler = struct {
     inner: gvt.ReadonlyHandler,
     title: std.ArrayListUnmanaged(u8) = .{},
     queries: u32 = 0,
+    /// Queries in the order the program sent them (it often ends a batch with DA1 and reads replies in order):
+    /// 1 DA1 · 2 DSR 6 (cursor) · 3 DSR 5 · 4 OSC 10 (foreground) · 5 OSC 11 (background) · 6 kitty keyboard flags.
+    order: [32]u8 = undefined,
+    order_len: usize = 0,
+
+    fn note(self: *Handler, code: u8) void {
+        if (self.order_len < self.order.len) {
+            self.order[self.order_len] = code;
+            self.order_len += 1;
+        }
+    }
 
     pub fn deinit(self: *Handler) void {
         self.inner.deinit();
@@ -26,11 +37,34 @@ const Handler = struct {
             },
             .device_attributes => if (value == .primary) {
                 self.queries |= 1;
+                self.note(1);
             },
             .device_status => switch (value.request) {
-                .cursor_position => self.queries |= 2,
-                .operating_status => self.queries |= 4,
+                .cursor_position => {
+                    self.queries |= 2;
+                    self.note(2);
+                },
+                .operating_status => {
+                    self.queries |= 4;
+                    self.note(3);
+                },
                 else => {},
+            },
+            .kitty_keyboard_query => self.note(6),
+            .color_operation => {
+                var it = value.requests.constIterator(0);
+                while (it.next()) |req| switch (req.*) {
+                    .query => |target| switch (target) {
+                        .dynamic => |d| switch (d) {
+                            .foreground => self.note(4),
+                            .background => self.note(5),
+                            else => {},
+                        },
+                        else => {},
+                    },
+                    else => {},
+                };
+                try self.inner.vt(action, value);
             },
             else => try self.inner.vt(action, value),
         }
@@ -207,6 +241,16 @@ export fn rvt_take_queries(r: *Rvt) u32 {
     return q;
 }
 
+/// The queries since the last call, in order (codes above); returns how many were written to `out`.
+export fn rvt_take_query_list(r: *Rvt, out: [*c]u8, cap: usize) usize {
+    const h = &r.stream.handler;
+    const n = @min(h.order_len, cap);
+    for (0..n) |i| out[i] = h.order[i];
+    h.order_len = 0;
+    h.queries = 0;
+    return n;
+}
+
 export fn rvt_bytes_free(bytes: [*c]u8, len: usize) void {
     if (bytes == null or len == 0) return;
     alloc.free(bytes[0..len]);
@@ -250,6 +294,16 @@ test "queries are recorded, not answered" {
     feedStr(r, "\x1b[c\x1b[6n");
     try std.testing.expectEqual(@as(u32, 3), rvt_take_queries(r));
     try std.testing.expectEqual(@as(u32, 0), rvt_take_queries(r));
+}
+
+test "queries keep their order (Codex: DSR 6, OSC 10, OSC 11, kitty, DA1)" {
+    const r = rvt_new(40, 5, 1 << 20).?;
+    defer rvt_free(r);
+    feedStr(r, "\x1b[6n\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b[?u\x1b[c");
+    var out: [8]u8 = undefined;
+    const n = rvt_take_query_list(r, &out, out.len);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 2, 4, 5, 6, 1 }, out[0..n]);
+    try std.testing.expectEqual(@as(usize, 0), rvt_take_query_list(r, &out, out.len));
 }
 
 test "redraw rebuilds the same screen in a fresh terminal, both screens" {

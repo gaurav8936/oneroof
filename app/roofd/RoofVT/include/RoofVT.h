@@ -27,6 +27,8 @@ size_t   rvt_pwd(rvt_t *t, uint8_t **out);
 bool     rvt_cursor(rvt_t *t, uint16_t *x, uint16_t *y);
 /// Device-attribute / cursor-position queries seen since the last call (bit 0: DA1, bit 1: DSR 6, bit 2: DSR 5).
 uint32_t rvt_take_queries(rvt_t *t);
+/// Queries since the last call, in the order sent: 1 DA1 · 2 DSR 6 · 3 DSR 5 · 4 OSC 10 · 5 OSC 11 · 6 kitty keyboard.
+size_t   rvt_take_query_list(rvt_t *t, uint8_t *out, size_t cap);
 void     rvt_bytes_free(uint8_t *bytes, size_t len);
 
 #endif
