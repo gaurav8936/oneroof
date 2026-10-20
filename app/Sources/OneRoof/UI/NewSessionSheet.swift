@@ -612,12 +612,11 @@ struct NewSessionSheet: View {
     private func refreshOpening() {
         guard !openingTouched else { return }
         let title = useTicket?.shortTitle ?? text.trimmingCharacters(in: .whitespaces)
-        if let tk = useTicket, let w = currentWorkstream {
-            opening = "Work on \(tk.identifier) (\(w.wsId ?? w.name)): \(tk.shortTitle). Read the ticket and the project docs first; commit as `\(tk.identifier) · [\((w.wsId ?? "").lowercased())] …`."
-        } else if (kind == .ticket || kind == .defect), let w = currentWorkstream {
-            opening = "Work on the new ticket (\(w.wsId ?? w.name)): \(title). Read the ticket and the project docs first; commit as `<KEY> · [\((w.wsId ?? "").lowercased())] …`."
-        } else if kind == .ticket || kind == .defect, !teamKey.isEmpty {
-            opening = "Work on the new ticket (team \(teamKey)): \(title). Read the ticket first; commit as `<KEY> · …`."
+        if let tk = useTicket {
+            opening = Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url, project: currentWorkstream?.wsId)
+        } else if kind == .ticket || kind == .defect {
+            // The key is filled in once Linear creates the issue.
+            opening = Intake.ticketOpening(key: Intake.newIssueKey, title: title, project: currentWorkstream?.wsId)
         } else {
             opening = title
         }
@@ -666,7 +665,14 @@ struct NewSessionSheet: View {
         }
         func makeSession(ticket: LinearIssue?, w: LinearWorkstream?) {
             let a = agent(mark)
-            var s = Session(name: title, agent: a,
+            // LAB-248: a new issue's real key replaces the placeholder (the template is rebuilt unless edited).
+            if let tk = ticket {
+                if !openingTouched || opening.contains(Intake.newIssueKey) {
+                    opening = openingTouched ? opening.replacingOccurrences(of: Intake.newIssueKey, with: tk.identifier)
+                        : Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url.isEmpty ? nil : tk.url, project: w?.wsId)
+                }
+            }
+            var s = Session(name: ticket.map { Intake.sessionName(key: $0.identifier, title: title) } ?? title, agent: a,
                             account: a == .claude ? name(mark) : (AccountResolver.choices(for: a).first),
                             repoPath: repo,
                             workstream: w?.wsId ?? (wsText.trimmingCharacters(in: .whitespaces).isEmpty ? Workspace.workstream(in: title) : wsText.trimmingCharacters(in: .whitespaces).uppercased()),
