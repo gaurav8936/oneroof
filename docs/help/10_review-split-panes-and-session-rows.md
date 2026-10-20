@@ -44,7 +44,7 @@ Close the panel with **Back to terminal** (⌘L).
 - **One session per pane, one pane per session.** Selecting a session that is already showing in another pane moves the focus there instead of showing it twice.
 - **Click a pane** to focus it; the sidebar selection follows. The focused pane has a coloured border.
 - **Each pane has a title strip** when the centre is split: status dot, session name, agent, and buttons to maximize or close that pane.
-- **Closing a pane never closes the session.** Its agent keeps running in herdr; pick it again any time. The last pane cannot be closed.
+- **Closing a pane never closes the session.** Its agent keeps running in roofd; pick it again any time. The last pane cannot be closed.
 - **Panes live in the terminals view.** Splitting from the Board, Work or the viewer switches back to the terminals first.
 - **Remembered:** the pane layout and the focused pane come back when you reopen One Roof, and the focused pane's session is selected. Maximize is not remembered.
 

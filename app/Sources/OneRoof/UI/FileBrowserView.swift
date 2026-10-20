@@ -167,9 +167,9 @@ struct FileNodeView: View {
     }
 
     private func send(_ pane: String, _ text: String) {
-        let herdrPath = model.herdr.herdrPath
+        let r = model.runtime
         let quoted = text.contains(" ") ? "'\(text)'" : text
-        DispatchQueue.global().async { _ = Foundations.run(herdrPath, ["pane", "send-text", pane, quoted + " "], timeout: 5) }
+        DispatchQueue.global().async { try? r.type(pane: pane, text: quoted + " ") }
     }
 
     private func badgeColor(_ b: GitBadge) -> RGB {

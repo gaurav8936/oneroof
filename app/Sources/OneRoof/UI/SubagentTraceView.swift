@@ -79,7 +79,7 @@ struct SubagentTraceView: View {
         VStack(spacing: 8) {
             Spacer()
             Text("No subagents running").ui(20, .semibold).foregroundStyle(t.text.color)
-            Text("When a Claude session starts subagents (the Task tool), their trace shows here. Codex, Kimi and Gemini children are inferred from herdr panes.")
+            Text("When a Claude session starts subagents (the Task tool), their trace shows here. Codex, Kimi and Gemini children are inferred from new panes.")
                 .ui(13).foregroundStyle(t.text2.color).multilineTextAlignment(.center).frame(maxWidth: 460)
             Spacer()
         }
@@ -225,7 +225,7 @@ extension AppModel {
     func askToStop(_ sub: Subagent, in parent: BoardItem) {
         guard let agent = parent.liveAgent else { return }
         interrupt(parent)
-        let h = herdr
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? h.prompt(agent: agent, text: "Stop subagent \(sub.name) and tell me where it got to.") }
+        let r = runtime
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? r.submit(agent, text: "Stop subagent \(sub.name) and tell me where it got to.") }
     }
 }

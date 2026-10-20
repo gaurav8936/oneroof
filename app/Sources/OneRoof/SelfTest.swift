@@ -3,7 +3,7 @@ import SwiftUI
 import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
-///   ONEROOF_SELFTEST_SELECT=<herdr agent name>  select that agent's row after launch
+///   ONEROOF_SELFTEST_SELECT=<session id>      select that agent's row after launch
 ///   ONEROOF_SELFTEST_TYPE=<text>                type text (+ Return) into the focused terminal via synthetic NSEvents
 ///   ONEROOF_SELFTEST_THEMES=sidebar,terminal,plan   e.g. "light,dark,dim"
 ///   ONEROOF_SELFTEST_TERMINAL=1                 open a plain terminal (File › New Terminal)
@@ -18,6 +18,7 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_DIFF=<path>                open the code review panel for the repo containing <path>
 ///   ONEROOF_SELFTEST_HOWDOI=<question>         ask Learn "how do I…" (opens the best page)
 ///   ONEROOF_SELFTEST_PLAY=<page title>[@terminals]  play that Learn page's narration (then show the terminals)
+///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
 ///   ONEROOF_SELFTEST_ROOF=<n>                   start n plain terminals in One Roof's source checkout (or
 ///                                               ONEROOF_SELFTEST_ROOF_REPO), then open its roof window
 enum SelfTest {
@@ -25,6 +26,7 @@ enum SelfTest {
 
     static func runIfRequested(app: AppDelegate) {
         let env = ProcessInfo.processInfo.environment
+        if let script = env["ONEROOF_SELFTEST_SCRIPT"] { SelfTestScript.run(script, app: app); return }
         if env["ONEROOF_SELFTEST_STICKERS"] == "soft" { app.model.settings.stickerStyle = "soft" }
         // v2: ONEROOF_SELFTEST_CENTRE=<overview|board|decisions|subagents|work|learn|editor|review>, TEXTSIZE=<0.85…1.3>.
         if let c = env["ONEROOF_SELFTEST_CENTRE"], let v = CentreView(rawValue: c) {
@@ -140,7 +142,7 @@ enum SelfTest {
         }
         if env["ONEROOF_SELFTEST_POPOUT"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
-                if let i = app.model.items.first(where: { $0.liveAgent?.hasPrefix("term:") == true && !$0.adopted }) {
+                if let i = app.model.items.first(where: { $0.session.agent == .shell && $0.liveAgent != nil && !$0.adopted }) {
                     app.model.selectedId = i.id
                     PopOutWindowController.popOut(i, model: app.model)
                 }
@@ -228,8 +230,12 @@ enum SelfTest {
                     app.main.terminalArea.focusTerminal()
                     type(text + "\r", into: app.main.window)
                 }
+                // ONEROOF_SELFTEST_CENTRE_AFTER=<view>: switch the centre view after typing (e.g. decisions, once a
+                // typed agent is waiting on a prompt).
+                let after = env["ONEROOF_SELFTEST_CENTRE_AFTER"].flatMap(CentreView.init(rawValue:))
+                if let after { DispatchQueue.main.asyncAfter(deadline: .now() + 6) { app.model.show(after) } }
                 // Snapshot after the terminal has had time to draw.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + (after == nil ? 2.5 : 9)) {
                     guard let out else { return }
                     if env["ONEROOF_SELFTEST_COPYTEST"] == "1" { copyTest(app: app, to: out) }
                     snapshot(app: app, to: out)
@@ -253,6 +259,16 @@ enum SelfTest {
             try? "no focused terminal".write(toFile: out + ".copytest.txt", atomically: true, encoding: .utf8); return
         }
         let captured = view.mouseCaptured
+        // The owner's clipboard comes back afterwards.
+        let saved = (NSPasteboard.general.pasteboardItems ?? []).map { item in
+            item.types.compactMap { t in item.data(forType: t).map { (t, $0) } }
+        }
+        defer {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects(saved.map { pairs in
+                let it = NSPasteboardItem(); for (t, d) in pairs { it.setData(d, forType: t) }; return it
+            })
+        }
         NSPasteboard.general.clearContents()
         let r = view.convert(view.bounds, to: nil)
         func ev(_ t: NSEvent.EventType, _ p: NSPoint, clicks: Int = 1) -> NSEvent {
@@ -275,7 +291,17 @@ enum SelfTest {
         view.paste(nil)
         RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         let pasted = (app.main.terminalArea.visibleText() ?? "").contains("ONEROOF-PASTE-OK")
-        let report = "mouse captured by the program: \(captured)\nselection after drag: \(selected)\npaste reached the terminal: \(pasted)\nclipboard after copy (\(clip.count) chars):\n\(clip)"
+        // Image paste (owner 10-20): a screenshot on the clipboard types the saved PNG's path.
+        NSPasteboard.general.clearContents()
+        if let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4, pixelsHigh: 4, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                      isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+           let png = rep.representation(using: .png, properties: [:]) {
+            NSPasteboard.general.setData(png, forType: .png)
+        }
+        view.paste(nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        let imagePasted = (app.main.terminalArea.visibleText() ?? "").contains("OneRoof/pastes/paste-")
+        let report = "mouse captured by the program: \(captured)\nselection after drag: \(selected)\npaste reached the terminal: \(pasted)\nimage paste typed its path: \(imagePasted)\nclipboard after copy (\(clip.count) chars):\n\(clip)"
         try? report.write(toFile: out + ".copytest.txt", atomically: true, encoding: .utf8)
     }
 
@@ -299,7 +325,7 @@ enum SelfTest {
              "account": i.account ?? "", "repo": i.repoLabel, "workstream": i.session.workstream ?? "",
              "live": i.liveAgent ?? "", "adopted": i.adopted ? "yes" : "no"]
         }
-        let meta: [String: Any] = ["rows": rows, "herdr": app.model.herdrState, "selected": app.model.selectedId ?? "",
+        let meta: [String: Any] = ["rows": rows, "runtime": app.model.runtimeState, "selected": app.model.selectedId ?? "",
                                    "themes": [app.model.themes.sidebar.rawValue, app.model.themes.terminal.rawValue, app.model.themes.plan.rawValue],
                                    "grouping": app.model.grouping.rawValue, "error": app.model.lastError ?? "",
                                    "conversations": { () -> String in

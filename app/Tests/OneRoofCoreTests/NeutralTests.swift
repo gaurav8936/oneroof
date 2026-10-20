@@ -161,13 +161,13 @@ final class FolderResolutionTests: XCTestCase {
 }
 
 final class RequiredToolsTests: XCTestCase {
-    func testMissingHerdrAndGitAreRedWithInstallHints() {
+    /// LAB-20: herdr is gone; git is the only tool One Roof needs (roofd ships inside the app).
+    func testMissingGitIsRedWithAnInstallHint() {
         let r = Foundations.requiredTools(installed: { _ in false }, run: { _, _ in 1 })
-        XCTAssertEqual(r.map(\.level), [.fail, .fail])
-        XCTAssertTrue(r[0].detail.contains("brew install herdr"))
-        XCTAssertTrue(r[1].detail.contains("xcode-select --install"))
-        let ok = Foundations.requiredTools(installed: { $0 == "herdr" }, run: { _, _ in 0 })
-        XCTAssertEqual(ok.map(\.level), [.ok, .ok])
+        XCTAssertEqual(r.map(\.id), ["tool-git"])
+        XCTAssertEqual(r.first?.level, .fail)
+        XCTAssertTrue(r.first?.detail.contains("xcode-select --install") ?? false)
+        XCTAssertEqual(Foundations.requiredTools(installed: { _ in false }, run: { _, _ in 0 }).map(\.level), [.ok])
     }
 }
 
@@ -207,7 +207,11 @@ final class SettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(LocalModel.resolve(setting: "/m.gguf", environment: [:]), "/m.gguf")
         XCTAssertEqual(LocalModel.resolve(setting: "/m.gguf", environment: ["ONEROOF_MODEL": "/e.gguf"]), "/e.gguf")
         XCTAssertFalse(LocalModel.shared.installed(modelPath: "/nonexistent.gguf"))
-        XCTAssertNil(LocalModel.shared.classify("fix the login bug", kinds: ["code": "write code"], modelPath: "/nonexistent.gguf"))
+        // A llama-server already up on the port (the owner's, or the CI Mac's) answers whatever the path; the
+        // "no model, no answer" case is only checkable when nothing is listening.
+        if !LocalModel.shared.healthy() {
+            XCTAssertNil(LocalModel.shared.classify("fix the login bug", kinds: ["code": "write code"], modelPath: "/nonexistent.gguf"))
+        }
     }
 }
 
@@ -325,5 +329,67 @@ final class TerminalMouseTests: XCTestCase {
     func testDroppedPathsAreShellQuoted() {
         XCTAssertEqual(TerminalMouse.droppedPaths(["/tmp/a.txt"]), "/tmp/a.txt ")
         XCTAssertEqual(TerminalMouse.droppedPaths(["/tmp/my file.png", "/x/it's"]), "'/tmp/my file.png' '/x/it'\\''s' ")
+    }
+
+    private func pasteboard() -> NSPasteboard {
+        let pb = NSPasteboard(name: NSPasteboard.Name("oneroof-test-\(UUID().uuidString)"))
+        pb.clearContents()
+        return pb
+    }
+
+    private func tinyPNG() -> Data {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2, bitsPerSample: 8, samplesPerPixel: 4,
+                                   hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        return rep.representation(using: .png, properties: [:])!
+    }
+
+    func testPastingAScreenshotSavesItAndTypesItsPath() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("oneroof-paste-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let pb = pasteboard()
+        pb.setData(tinyPNG(), forType: .png)
+        XCTAssertTrue(TerminalMouse.canPaste(pb))
+        let typed = try XCTUnwrap(TerminalMouse.pasteText(from: pb, imagesDir: dir))
+        let path = typed.trimmingCharacters(in: .whitespaces)
+        XCTAssertTrue(path.hasPrefix(dir.path) && path.hasSuffix(".png"), typed)
+        XCTAssertNotNil(NSImage(contentsOfFile: path))
+    }
+
+    func testDroppingABrowserImageTakesTheImageNotItsURL() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("oneroof-paste-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let pb = pasteboard()
+        pb.declareTypes([.png, .string], owner: nil)
+        pb.setData(tinyPNG(), forType: .png)
+        pb.setString("https://example.com/cat.png", forType: .string)
+        XCTAssertEqual(TerminalMouse.droppedText(from: pb, save: false), "")
+        let typed = try XCTUnwrap(TerminalMouse.droppedText(from: pb, imagesDir: dir))
+        XCTAssertTrue(typed.hasPrefix(dir.path), typed)
+        pb.clearContents()
+        pb.setString("just text", forType: .string)
+        XCTAssertNil(TerminalMouse.droppedText(from: pb, save: false))
+    }
+
+    func testPastingATiffImageIsSavedAsPNG() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("oneroof-paste-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let pb = pasteboard()
+        pb.setData(NSBitmapImageRep(data: tinyPNG())!.tiffRepresentation!, forType: .tiff)
+        let path = try XCTUnwrap(TerminalMouse.pasteText(from: pb, imagesDir: dir)).trimmingCharacters(in: .whitespaces)
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: path)).prefix(4), Data([0x89, 0x50, 0x4E, 0x47]))
+    }
+
+    func testPastingTextAndFinderFiles() {
+        let pb = pasteboard()
+        pb.setString("hello", forType: .string)
+        XCTAssertEqual(TerminalMouse.pasteText(from: pb), "hello")
+        // Finder copy: a file URL plus the bare name as text → the full path wins.
+        pb.clearContents()
+        pb.writeObjects([URL(fileURLWithPath: "/tmp/my shot.png") as NSURL])
+        XCTAssertEqual(TerminalMouse.pasteText(from: pb), "'/tmp/my shot.png' ")
+        XCTAssertEqual(TerminalMouse.droppedText(from: pb), "'/tmp/my shot.png' ")
+        pb.clearContents()
+        XCTAssertNil(TerminalMouse.pasteText(from: pb))
+        XCTAssertFalse(TerminalMouse.canPaste(pb))
     }
 }

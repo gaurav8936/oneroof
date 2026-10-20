@@ -1,7 +1,7 @@
 import Foundation
 
 // "Tonight" runs (v2, ENGINES §6): a launchd user agent `com.oneroof.scheduler` calls `OneRoof --run-scheduled`, which
-// asks herdr to launch the planned session exactly as Launch does. No run while the Mac sleeps: launchd catches up on
+// asks roofd to launch the planned session exactly as Launch does. No run while the Mac sleeps: launchd catches up on
 // wake, and a run found late is reported as "missed · run now?" instead. Schedules only start runs; nothing is merged.
 
 public enum Schedule: Codable, Equatable, Hashable, Sendable {

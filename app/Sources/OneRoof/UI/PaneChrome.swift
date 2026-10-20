@@ -344,6 +344,11 @@ struct PanePlaceholder: View {
                         RoofButton("Run now", .primary) { model.unschedule(item); model.launch(item) }
                         RoofButton("Change schedule") { model.unschedule(item) }
                     }
+                } else if item.starting || model.busy.contains(item.id) {
+                    ProgressView().controlSize(.small)
+                    Text(item.session.agent.isAgent ? "Starting \(item.session.agent.displayName)…" : "Starting the terminal…")
+                        .ui(18, .semibold).foregroundStyle(t.text.color)
+                    Text(item.session.name).ui(13).foregroundStyle(t.text2.color)
                 } else if item.status == .exited {
                     Text("This agent has exited").ui(18, .semibold).foregroundStyle(t.text.color)
                     Text(item.session.name).ui(13).foregroundStyle(t.text2.color)

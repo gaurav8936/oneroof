@@ -73,6 +73,46 @@ public enum Workspace {
 
     /// "domain/repo" for a path under the projects folder, "domain" for a domain folder, the folder itself (with ~)
     /// for the root, or the last path component for anything else.
+    public static func isProjectsRoot(_ path: String, root: String = projectsRoot) -> Bool {
+        (path as NSString).standardizingPath == (root as NSString).standardizingPath
+    }
+
+    /// How the workspace root is named where a repo would be: it is not a repo.
+    public static let rootLabel = "workspace root"
+
+    /// The git repo a file or folder belongs to: the nearest folder with a `.git` (a worktree's `.git` file counts),
+    /// inside the workspace and below its root. Nil at the root itself or outside a repo. Cached.
+    public static func repoRoot(for path: String, root: String = projectsRoot) -> String? {
+        let r = (root as NSString).standardizingPath
+        var p = (path as NSString).standardizingPath
+        guard isInsideProjects(p, root: r), p != r else { return nil }
+        repoCacheLock.lock()
+        if let hit = repoCache[p] { repoCacheLock.unlock(); return hit.isEmpty ? nil : hit }
+        repoCacheLock.unlock()
+        let start = p
+        var found: String?
+        while p.count > r.count {
+            // Worktrees under <repo>/.worktrees/<unit> count as their repo.
+            if (p as NSString).deletingLastPathComponent.hasSuffix("/.worktrees") {
+                found = ((p as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+                break
+            }
+            if FileManager.default.fileExists(atPath: p + "/.git") { found = p; break }
+            p = (p as NSString).deletingLastPathComponent
+        }
+        repoCacheLock.lock(); repoCache[start] = found ?? ""; repoCacheLock.unlock()
+        return found
+    }
+    nonisolated(unsafe) private static var repoCache: [String: String] = [:]
+    private static let repoCacheLock = NSLock()
+
+    /// The top-level folder under the workspace a path sits in ("product-a", "labs", "shared").
+    public static func domainLabel(_ path: String) -> String {
+        let p = (path as NSString).standardizingPath, r = (projectsRoot as NSString).standardizingPath
+        guard isInsideProjects(p, root: r), p != r else { return (p as NSString).lastPathComponent }
+        return String(p.dropFirst(r.count + 1).split(separator: "/").first ?? "")
+    }
+
     public static func repoLabel(for path: String, root: String = projectsRoot) -> String {
         let p = (path as NSString).standardizingPath
         let r = (root as NSString).standardizingPath
@@ -146,14 +186,14 @@ public enum AccountResolver {
 
     /// Environment to launch `agent` on the account `label` (the inverse of `label`).
     /// Claude1 sets nothing: an EMPTY CLAUDE_CONFIG_DIR is not "unset" — Claude then uses the current folder as its
-    /// config folder (gotcha 20261017). The herdr server must therefore not carry account variables itself;
-    /// One Roof checks that before launching (`HerdrClient.serverLeaks`).
+    /// config folder (gotcha 20261017). Sessions must therefore not inherit account variables from One Roof;
+    /// roofd and RoofdRuntime strip them before starting a session.
     public static func launchEnv(agent: AgentKind, account: String?, home: String = NSHomeDirectory()) -> [String: String] {
         guard agent == .claude, account == "Claude2" else { return [:] }
         return ["CLAUDE_CONFIG_DIR": home + "/.claude-2"]
     }
 
-    /// Account variables removed from herdr's environment when One Roof starts the server.
+    /// Account variables removed from a session's environment unless the launch sets them.
     public static let accountVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "KIMI_HOME", "GEMINI_HOME"]
 
     /// The Claude accounts on this Mac: "Claude1" (~/.claude) always, "Claude2" only when ~/.claude-2 exists.

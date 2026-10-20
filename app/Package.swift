@@ -6,12 +6,15 @@ import Foundation
 
 // CI has no libghostty build (Vendor/ is gitignored, 135 MB): there only OneRoofCore and its tests build.
 let hasGhostty = FileManager.default.fileExists(atPath: Context.packageDirectory + "/Vendor/GhosttyKit.xcframework")
+// roofd (LAB-ROOFD) needs RoofVT, built by roofd/build-roofvt.sh from the same Ghostty source.
+let hasRoofVT = FileManager.default.fileExists(atPath: Context.packageDirectory + "/Vendor/RoofVT.xcframework")
 
 let package = Package(
     name: "OneRoof",
     platforms: [.macOS(.v14)],
-    products: hasGhostty ? [.executable(name: "OneRoof", targets: ["OneRoof"])] : [],
-    targets: (hasGhostty ? appTargets : []) + [
+    products: (hasGhostty ? [.executable(name: "OneRoof", targets: ["OneRoof"])] : [])
+        + (hasRoofVT ? [.executable(name: "roofd", targets: ["roofd"])] : []),
+    targets: (hasGhostty ? appTargets : []) + (hasRoofVT ? roofdTargets : []) + [
         // Pure Swift: sessions, herdr client, account probe, store, grouping, themes. Unit-tested.
         .target(
             name: "OneRoofCore",
@@ -47,9 +50,34 @@ var appTargets: [Target] {
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalKit"),
                 .linkedFramework("QuartzCore"),
+                .linkedFramework("ServiceManagement"),
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedLibrary("c++"),
             ]
+        ),
+    ]
+}
+
+var roofdTargets: [Target] {
+    [
+        // Ghostty's VT core as a headless terminal per session (Zig shim, MIT).
+        .binaryTarget(name: "RoofVT", path: "Vendor/RoofVT.xcframework"),
+        // fork/setsid/TIOCSCTTY/execve: the part Swift must not do itself.
+        .target(name: "CRoofSpawn", path: "roofd/Sources/CRoofSpawn"),
+        // The session manager: daemon, per-session holders, attach client.
+        .executableTarget(
+            name: "roofd",
+            dependencies: ["RoofVT", "CRoofSpawn", "OneRoofCore"],
+            path: "roofd/Sources/roofd",
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [.linkedLibrary("c++")]
+        ),
+        // Framing, idempotent create, redraw-before-output ordering, against a real daemon in a temp folder.
+        .testTarget(
+            name: "RoofdTests",
+            dependencies: ["roofd"],
+            path: "roofd/Tests/RoofdTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
 }

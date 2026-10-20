@@ -85,12 +85,12 @@ struct SessionPopover: View {
                 }
                 if it.liveAgent != nil {
                     link("New window", "macwindow.on.rectangle") { PopOutWindowController.popOut(it, model: model); close() }
-                    link("Roof window for \(it.repoLabel)", "house") { RoofWindowController.show(.repo(it.session.repoPath), model: model); close() }
+                    link("Roof window for \(Workspace.repoLabel(for: it.session.repoPath))", "house") { RoofWindowController.show(.repo(it.session.repoPath), model: model); close() }
                 }
                 if let a = it.liveAgent {
                     link("Copy attach", "doc.on.doc") {
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(model.herdr.attachCommand(agent: a), forType: .string)
+                        NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
                     }
                 }
             }
@@ -126,13 +126,13 @@ struct SessionPopover: View {
 }
 
 extension AppModel {
-    /// Ask before ending an agent or terminal process in herdr.
+    /// Ask before ending an agent or terminal process.
     func confirmClose(_ item: BoardItem) {
         let a = NSAlert()
         a.messageText = "Close \(item.session.name)?"
         a.informativeText = item.session.agent.isAgent
-            ? "This ends the agent process in herdr. Its conversation stays on disk and can be resumed later."
-            : "This ends the shell in herdr."
+            ? "This ends the agent process. Its conversation stays on disk and can be resumed later."
+            : "This ends the shell."
         a.addButton(withTitle: "Close")
         a.addButton(withTitle: "Cancel")
         var review: NSButton?

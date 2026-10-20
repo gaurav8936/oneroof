@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# oneroof · check terminal basics in the real app before a release (needs herdr running and a built app).
+# oneroof · check terminal basics in the real app before a release (needs a built app; uses its own throwaway roofd).
 #
 #   tools/terminal-basics.sh [path/to/One Roof.app]      default: app/build/One Roof.app
 #
-# Opens a herdr-attached terminal in a throwaway profile, types a marker, selects it with a mouse drag (herdr turns
+# Opens a roofd terminal in a throwaway profile, types a marker, selects it with a mouse drag (a program that turns
 # on mouse reporting, so this is the case that broke before), copies, pastes, and fails unless all of it worked.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 APP="${1:-$ROOT/app/build/One Roof.app}"
 OUT="$(mktemp -d)/basics"
-command -v herdr >/dev/null || { echo "terminal-basics: herdr not installed" >&2; exit 2; }
-env ONEROOF_FRESH_PROFILE=1 ONEROOF_STORE="$OUT.sqlite" ONEROOF_SELFTEST_QUIT=1 ONEROOF_SELFTEST_OUT="$OUT" \
+RD="$(mktemp -d /tmp/oneroof-basics.XXXX)"   # its own roofd folder: never touches your sessions
+env ROOFD_DIR="$RD" ONEROOF_FRESH_PROFILE=1 ONEROOF_STORE="$OUT.sqlite" ONEROOF_SELFTEST_QUIT=1 ONEROOF_SELFTEST_OUT="$OUT" \
     ONEROOF_SELFTEST_TERMINAL=1 ONEROOF_SELFTEST_WAIT=7 ONEROOF_SELFTEST_TYPE="echo ONEROOF-COPY-MARKER-42" \
     ONEROOF_SELFTEST_COPYTEST=1 "$APP/Contents/MacOS/OneRoof" >/dev/null 2>&1 &
 pid=$!
 for _ in $(seq 1 60); do kill -0 $pid 2>/dev/null || break; sleep 1; done
 kill $pid 2>/dev/null || true
+# Close the throwaway sessions and stop its roofd (the daemon holds the folder's lock file).
+for id in $(ROOFD_DIR="$RD" "$APP/Contents/MacOS/roofd" list 2>/dev/null | sed -n 's/.*"id" : "\(.*\)".*/\1/p'); do
+  ROOFD_DIR="$RD" "$APP/Contents/MacOS/roofd" close "$id" >/dev/null 2>&1
+done
+kill $(lsof -t "$RD/roofd.lock" 2>/dev/null) 2>/dev/null || true
 R="$OUT.copytest.txt"
 [ -f "$R" ] || { echo "terminal-basics: no result (did a terminal open?)" >&2; exit 1; }
 bad=0

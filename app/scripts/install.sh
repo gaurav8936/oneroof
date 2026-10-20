@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build One Roof (release) and copy it to /Applications. Agents in herdr keep running across reinstalls.
+# Build One Roof (release) and copy it to /Applications. Sessions in roofd keep running across reinstalls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 scripts/bundle.sh release

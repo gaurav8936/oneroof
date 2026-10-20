@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- roofd, One Roof's session manager (LAB-ROOFD, T14 §3a, Q13). Registered by the app with SMAppService.
+     KeepAlive: launchd restarts the daemon (sessions live in their own holder processes and never stop with it).
+     AbandonProcessGroup: launchd must not kill the holders when the daemon exits.
+     ProcessType Interactive: not Background, which throttles CPU and I/O and would show up as typing latency. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.github.gaurav8936.oneroof.roofd</string>
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/roofd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>roofd</string>
+        <string>daemon</string>
+    </array>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>AbandonProcessGroup</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>1</integer>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>io.github.gaurav8936.oneroof</string>
+    </array>
+</dict>
+</plist>

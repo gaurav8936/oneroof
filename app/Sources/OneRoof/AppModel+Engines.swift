@@ -3,7 +3,7 @@ import OneRoofCore
 
 /// The model's side of the v2 engines (EngineHub): what it feeds them each second and what it shows from them.
 extension AppModel {
-    /// After each herdr poll: every live session, its status and pane revision.
+    /// After each runtime poll: every live session, its status and output seq.
     func feedEngines() {
         let live: [EngineHub.Live] = items.compactMap { i in
             guard i.liveAgent != nil || i.status == .exited else { return nil }
@@ -44,9 +44,9 @@ extension AppModel {
         updateDockBadge()
     }
 
-    /// The pane revision herdr reports for a session's agent.
+    /// The output seq the runtime reports for a session.
     private func revision(of i: BoardItem) -> Int? {
-        lastSnapshotAgents[i.liveAgent ?? ""]?.revision
+        lastSnapshotSessions[i.liveAgent ?? ""]?.seq
     }
 
     // MARK: Decisions
@@ -140,21 +140,18 @@ extension AppModel {
     /// Interrupt the agent (⌘.): Esc for Claude, Ctrl-C for the others.
     func interrupt(_ item: BoardItem) {
         guard let pane = item.paneId else { return }
-        let h = herdr.herdrPath
-        let isEsc = AnswerKeys.interrupt(item.session.agent) == AnswerKeys.escape
-        DispatchQueue.global().async {
-            if isEsc { _ = Foundations.run(h, ["pane", "send-keys", pane, "esc"], timeout: 5) }
-            else { _ = Foundations.run(h, ["pane", "send-keys", pane, "ctrl-c"], timeout: 5) }
-        }
+        let r = runtime
+        let key: RuntimeKey = AnswerKeys.interrupt(item.session.agent) == AnswerKeys.escape ? .escape : .ctrlC
+        DispatchQueue.global().async { try? r.keys(pane: pane, [key]) }
     }
 
     /// Session › Send Handoff: ask the agent to write its handoff now (between turns only).
     func askForHandoff(_ item: BoardItem) {
         guard let agent = item.liveAgent else { return }
         guard item.status != .running else { lastError = "\(item.session.name) is working; send the handoff request when it is idle."; return }
-        let h = herdr
+        let r = runtime
         DispatchQueue.global().async {
-            try? h.prompt(agent: agent, text: "Write a next-session handoff for this work now (the workspace handoff skill), then stop.")
+            try? r.submit(agent, text: "Write a next-session handoff for this work now (the workspace handoff skill), then stop.")
         }
     }
 }
@@ -171,8 +168,8 @@ extension AppModel {
     func sendSkill(_ skill: String, to item: BoardItem) {
         guard let agent = item.liveAgent else { return }
         guard item.status != .running else { lastError = "\(item.session.name) is working; use the skill when it is idle."; return }
-        let h = herdr
-        DispatchQueue.global().async { try? h.prompt(agent: agent, text: "/" + skill) }
+        let r = runtime
+        DispatchQueue.global().async { try? r.submit(agent, text: "/" + skill) }
         reveal(item)
     }
 }
@@ -181,7 +178,7 @@ extension AppModel {
     /// Fire due schedules while One Roof is open (every 30 s): launch the session exactly as Launch does, record the
     /// run, and put "missed · run now?" in the feed when the Mac slept through it. Nothing is merged or committed.
     func tickSchedules(now: Date = Date()) {
-        guard !SelfTest.isActive else { return }
+        guard !SelfTest.isActive, !roofdRunsSchedules else { return }   // roofd fires them (Q7)
         for (id, r) in scheduleRecords {
             guard let item = item(id) else { continue }
             switch ScheduleClock.action(r, now: now) {

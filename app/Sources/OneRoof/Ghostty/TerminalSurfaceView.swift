@@ -2,7 +2,7 @@ import AppKit
 import GhosttyKit
 import OneRoofCore
 
-/// One libghostty terminal in an NSView. Runs a command (for One Roof: `herdr agent attach <name>`).
+/// One libghostty terminal in an NSView. Runs a command (for One Roof: `roofd attach <id>`).
 ///
 /// Keyboard, IME and mouse handling are ported from Ghostty's macOS app
 /// (macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift and NSEvent+Extension.swift, MIT,
@@ -31,7 +31,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         self.theme = theme
         super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         wantsLayer = true
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes([.fileURL, .png, .tiff])
 
         guard let app = GhosttyRuntime.shared.app else { return }
         var cfg = ghostty_surface_config_new()
@@ -157,11 +157,11 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    // Selection wins over mouse reporting. herdr (and many TUIs) turn on mouse tracking, which would send every drag to
+    // Selection wins over mouse reporting. Many TUIs turn on mouse tracking, which would send every drag to
     // the program and leave nothing to copy. So a plain left drag selects text, the way it does in Terminal.app and
     // other Mac terminals: One Roof marks left-button events as shift-held, which Ghostty treats as "select, don't report"
     // (`mouse-shift-capture = never` stops the program from overriding that). Holding Option sends the mouse to the
-    // program instead. The wheel is never changed, so scrolling still reaches herdr.
+    // program instead. The wheel is never changed, so scrolling still reaches the program.
     private var leftButtonSelects = false
 
     /// Mods for a left-button event: shift added while a selecting drag is in progress.
@@ -227,7 +227,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         m.autoenablesItems = false
         m.addItem(copy)
         let paste = NSMenuItem(title: "Paste", action: #selector(paste(_:)), keyEquivalent: "v")
-        paste.isEnabled = NSPasteboard.general.string(forType: .string) != nil
+        paste.isEnabled = TerminalMouse.canPaste(.general)
         m.addItem(paste)
         m.addItem(NSMenuItem(title: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "a"))
         m.addItem(.separator())
@@ -238,7 +238,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     @objc func clearScreen(_ sender: Any?) { bindingAction("clear_screen") }
 
-    /// The program in the terminal has turned on mouse reporting (herdr does).
+    /// The program in the terminal has turned on mouse reporting (many TUIs do).
     var mouseCaptured: Bool { surface.map { ghostty_surface_mouse_captured($0) } ?? false }
     var hasSelection: Bool { surface.map { ghostty_surface_has_selection($0) } ?? false }
 
@@ -436,17 +436,15 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     @objc func copy(_ sender: Any?) { bindingAction("copy_to_clipboard") }
 
-    // MARK: Drag a file in → its path is typed, shell-quoted (as in Terminal.app)
+    // MARK: Drag a file in → its path is typed, shell-quoted (as in Terminal.app); a dragged image (e.g. from a
+    // browser) is saved and its path typed, as ⌘V does.
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : []
+        TerminalMouse.droppedText(from: sender.draggingPasteboard, save: false) != nil ? .copy : []
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let surface,
-              let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-              !urls.isEmpty else { return false }
-        let text = TerminalMouse.droppedPaths(urls.map(\.path))
+        guard let surface, let text = TerminalMouse.droppedText(from: sender.draggingPasteboard) else { return false }
         text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
         window?.makeFirstResponder(self)
         return true

@@ -10,11 +10,11 @@
 
 1. **Download** `One-Roof-<version>.zip` from the project's Releases page, unzip it, and move **One Roof.app** to Applications.
 2. **Open it.** The app is signed with an Apple Developer ID and notarized by Apple, so it opens like any other app (macOS asks once to confirm it came from the internet).
-3. **Or build from source:** see the [app README](../../app/README.md).
+3. **First launch:** macOS shows "One Roof added a background item". That is roofd, which keeps your sessions running when One Roof is closed; leave it on in System Settings › General › Login Items.
+4. **Or build from source:** see the [app README](../../app/README.md).
 
 You also need:
 
-- **herdr**, the small server that keeps your agents' terminals alive: `brew install herdr`. On macOS 15 or later this installs a ready-made package; on macOS 14 Homebrew builds it from source first, which takes a few minutes. One Roof starts the herdr server itself if it is not running.
 - **At least one agent CLI, installed and signed in:** `claude` (Claude Code), `codex`, `kimi`, `gemini` (Gemini CLI) or `agy` (Antigravity). Sign in once from any terminal before you start.
 - **Optional:** `brew install llama.cpp` for the small on-device routing model ([Seats and routing](07_seats-router-and-on-device-model.md)).
 
@@ -34,7 +34,7 @@ On a fresh install One Roof opens a setup window. You can open it again any time
 
 ## What One Roof is
 
-One Roof is a Mac app that holds all your coding agents in one window. Each session is a real command-line agent (Claude, Codex, Kimi, Gemini CLI, Antigravity) or a plain shell. The agents run inside herdr; One Roof draws their terminals and shows each session's status, agent, account, repo and workstream. Quit One Roof and the agents keep running. Open it again and they are all still there.
+One Roof is a Mac app that holds all your coding agents in one window. Each session is a real command-line agent (Claude, Codex, Kimi, Gemini CLI, Antigravity) or a plain shell. The agents run inside roofd, One Roof's own session manager; One Roof draws their terminals and shows each session's status, agent, account, repo and workstream. Quit One Roof and the agents keep running. Open it again and they are all still there.
 
 - **Sessions panel (left):** every session in this window, live, grouped for you.
 - **Centre:** the selected session's terminal, split into panes if you like, or one of the full views: Overview, Board, Decisions, Work, Learn, an objective, a file, or the review panel.
@@ -44,7 +44,7 @@ One Roof is a Mac app that holds all your coding agents in one window. Each sess
 
 ## The startup check
 
-Every time One Roof starts it checks that your agents are ready: herdr, logins, skills, the launch folder and more. The pill at the bottom of the sessions panel shows the result. Click it for details and Fix buttons ([Foundations](06_foundations.md)).
+Every time One Roof starts it checks that your agents are ready: roofd, logins, skills, the launch folder and more. The pill at the bottom of the sessions panel shows the result. Click it for details and Fix buttons ([Foundations](06_foundations.md)).
 
 If something is red, launching an agent asks you to choose: **Open Foundations**, **Launch anyway** (lasts until you quit) or **Cancel**.
 

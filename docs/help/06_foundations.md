@@ -26,7 +26,8 @@ Launching an agent while a check is red shows a choice: **Open Foundations**, **
 
 | Check | Why it matters | Red or amber when | How to fix |
 |---|---|---|---|
-| herdr | Every session runs in the herdr server. | Red: the server does not answer at `~/.config/herdr/herdr.sock`. Amber: an unexpected protocol version. | Fix runs `herdr server`. Install it with `brew install herdr`. |
+| roofd | Every session runs in roofd, One Roof's session manager, which ships inside the app. | Red: roofd does not answer and cannot be started. Amber: an unexpected protocol version. | One Roof starts it on its own; Fix starts it again. |
+| roofd background item | macOS starts roofd at login and restarts it if it stops (System Settings › General › Login Items › One Roof). | Amber: waiting for your approval in Login Items, or not registered; One Roof then starts roofd itself while it runs. | Fix opens Login Items. |
 | Memory pin | Claude keys its memory on the launch folder. The pin makes every Claude session share one memory, the one for your projects folder. | Red: `autoMemoryDirectory` is missing from `~/.claude/settings.json`, or points elsewhere. Amber: `MEMORY.md` is missing, or over 200 lines (only the first 200 load). | Run `roof install` from the kit, or set `autoMemoryDirectory` yourself. Trim the index. |
 | Launch-folder guard | A Claude hook stops prompts while a session is outside your projects folder. | Red: no `UserPromptSubmit` hook in `~/.claude/settings.json`. | Run `roof install` from the kit, or add your own hook. |
 | Hooks | Each Claude hook points at a script. | Amber: a hook's script file is missing. | Restore the script (its name is in the detail line). |

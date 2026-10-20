@@ -29,10 +29,10 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Show sessions that need you on the Dock icon", isOn: $model.settings.dockBadge)
             Toggle("Check the foundations every time One Roof starts", isOn: $model.settings.startupCheck)
-            Text("Checks herdr, agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
+            Text("Checks roofd (the session manager), agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
                 .font(.caption).foregroundStyle(.secondary)
-            LabeledContent("herdr") {
-                Text(model.herdrState).foregroundStyle(model.herdrOK ? .green : .red)
+            LabeledContent("Sessions") {
+                Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .green : .red)
             }
         }
         .formStyle(.grouped)

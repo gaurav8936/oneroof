@@ -8,32 +8,50 @@
 
 ## Goal
 
-You should be able to look at the left panel and know, without clicking, which agent needs you, which finished, which is still working and what each one is for. You never need to type prefixes like `WIP:` into a name: states come from herdr, and labels are stickers.
+You should be able to look at the left panel and know, without clicking, which agent needs you, which finished, which is still working and what each one is for. You never need to type prefixes like `WIP:` into a name: states come from the agents themselves (roofd), and labels are stickers.
 
 ## The states
 
 | State | Where it comes from | What it means for you |
 |---|---|---|
-| Needs you | herdr (the agent is blocked) | It is waiting on a question or a permission prompt. Answer in its terminal, or in Decisions (⌘I). Counted on the Dock badge. |
-| Ready | herdr | It finished a turn you have not looked at yet. |
-| Working | herdr | It is working right now. |
-| Idle | herdr | At its prompt, nothing new. |
+| Needs you | roofd (a prompt is waiting) | It is waiting on a question or a permission prompt. Answer in its terminal, or in Decisions (⌘I). Counted on the Dock badge. |
+| Ready | roofd | It finished a turn you have not looked at yet. |
+| Working | roofd | It is working right now. |
+| Idle | roofd | At its prompt, nothing new. |
 | Next | One Roof | Planned and up next (When › Next, Mark as Next, or the Next sticker). |
 | Planned | One Roof | Written ahead of time, not started. |
-| Exited | One Roof | It was launched, and herdr no longer has it. Relaunch brings it back. |
+| Exited | One Roof | It was launched, and roofd no longer has it. Relaunch brings it back. |
 | Parked (Do not use) | One Roof | Put aside by you. The name is struck through. |
 
 Grouped by status, the panel lists them in that order (needs you first). Pinned sessions always sit in a Pinned group on top.
 
+## Where sessions live (roofd)
+
+Every session runs in **roofd**, One Roof's own session manager, which ships inside the app and runs in the background (macOS lists it under Login Items). One Roof draws the terminals; roofd keeps the programs.
+
+| When | Your sessions |
+|---|---|
+| You quit, update or reopen One Roof | keep running; each terminal comes back with its screen and history |
+| One session's process crashes | only that session ends (Exited, with Relaunch) |
+| The Mac sleeps | keep running |
+| You log out or restart the Mac | end; their rows stay, with Relaunch (Claude and Codex can resume the conversation) |
+
+- **History:** each session keeps 8 MB of scrollback in memory. It is never written to disk, because agents print keys and file contents.
+- **Status:** roofd reads each agent's screen (permission prompts, menus, spinners) and, for Claude, its hooks, so Working, Needs you and Done stay right even with One Roof closed.
+- **Tonight and Nightly** run with One Roof closed when Settings › Allow scheduled runs is on; roofd sends the opening message once the agent is ready.
+- **Copy attach** gives `roofd attach <id>`: paste it into any terminal to see the same session there.
+
 ## Workspace windows
 
-Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Overview, Board and Decisions show every window. Agents you start with `herdr` from any terminal show up in the first window, marked as started outside One Roof.
+Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy attach opens a One Roof session from any terminal). Rows started outside One Roof.
 
 ## The top of the panel
 
 - **Seat bars:** how much of each seat's usage window is used (Claude1, Claude2, Codex). They stay empty when there is no usage data. See [Seats and routing](07_seats-router-and-on-device-model.md).
-- **Count chips:** need you, working, ready, next. A chip with something in it is coloured; click it to filter the list to that state.
-- **Group ▾:** Status, Repo, Workstream, Agent or Account (also View › Group by, ⌘1 to ⌘5).
+- **Count chips:** all, need you, working, ready (finished, not yet looked at), idle, exited (agent sessions whose agent has ended; terminals are not counted). Click one to show only that state; click **all** (or the same chip again) to get the full list back. Under **exited**, *Remove all exited sessions* clears them. Next and planned sessions are under all.
+- **Group ▾:** Status, Repo, Workstream, Agent, Account or Folder (also View › Group by, ⌘1 to ⌘6).
+  - **Repo** is the git repo a session works in. Sessions start at the workspace root, which is not a repo, so One Roof learns the repo as the agent works: from the files Claude's tools touch and the folders its commands `cd` into, or from a terminal's current folder. It keeps the last one after the session ends. Until then the session is under **Workspace root · no repo yet** (last). Codex, Kimi, Gemini and Antigravity have no hooks, so they show their repo only when started in one.
+  - **Folder** is the top-level folder under the workspace (one per product or area), for a coarser view.
 - **Filter:** type to narrow the list; ✕ clears it.
 
 ## A session row
@@ -54,16 +72,16 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 
 **••• on hover** opens the larger menu:
 
-- **Action tiles:** Launch or Relaunch (not running) or Focus (running), Next / Not next, Pin / Unpin, Rename, Do not use / Use again, and Close (running: ends the agent in herdr, after asking) or Delete (not running).
+- **Action tiles:** Launch or Relaunch (not running) or Focus (running), Next / Not next, Pin / Unpin, Rename, Do not use / Use again, and Close (running: ends the agent, after asking) or Delete (not running).
 - **Stickers:** Next, WIP, Important, Blocked, Review, Idea, Bug, Research, Shipped, Do not use, or a word of your own (it keeps the same colour every time).
 - **Colour** and **emoji** pickers.
-- **Links:** Open repo (Finder), Terminal here (a plain shell in the repo), Copy folder, New window, Roof window for the repo, and Copy attach (the `herdr agent attach …` command, to open the same agent from any terminal).
+- **Links:** Open repo (Finder), Terminal here (a plain shell in the repo), Copy folder, New window, Roof window for the repo, and Copy attach (the `roofd attach …` command, to open the same agent from any terminal).
 
 Settings › Appearance switches stickers between Bold and Soft.
 
 ## The Session menu in the menu bar
 
-Launch, Mark as Next, Mark as Planned, Do Not Use, Pin, Rename…, Move to Window, Schedule (Tonight 2:00 AM, Nightly at 2:00 AM, On Demand), Run Now, Interrupt (⌘.), Send Handoff, Open in New Window, Open Repo in Finder, Copy herdr id, Copy Working Directory, Copy Attach Command, Copy Link to Session, Close Agent…, Delete Session, Remove Exited Sessions…, Next Session (⌘]) and Previous Session (⌘[). Items that do not apply to the selected row are greyed out.
+Launch, Mark as Next, Mark as Planned, Do Not Use, Pin, Rename…, Move to Window, Schedule (Tonight 2:00 AM, Nightly at 2:00 AM, On Demand), Run Now, Interrupt (⌘.), Send Handoff, Open in New Window, Open Repo in Finder, Copy session id, Copy Working Directory, Copy Attach Command, Copy Link to Session, Close Agent…, Delete Session, Remove Exited Sessions…, Next Session (⌘]) and Previous Session (⌘[). Items that do not apply to the selected row are greyed out.
 
 - **Close Agent** asks first. If the session has a ticket, a box (on by default) also comments a summary on the ticket and moves it to In Review. The conversation stays on disk and can be resumed later.
 - **Delete Session** removes the row (and its notes and stickers). Sessions started outside One Roof cannot be deleted; they disappear when their agent ends.
@@ -87,4 +105,4 @@ Session › Open in New Window (⌥⌘O), or New window in the session menu, mov
 
 ## The footer
 
-The bottom of the panel shows the startup check: a count of foundations issues, or "Checking…". Click it to open Foundations. If One Roof cannot reach the herdr server, see [Foundations](06_foundations.md).
+The bottom of the panel shows the startup check: a count of foundations issues, or "Checking…". Click it to open Foundations. If One Roof cannot reach roofd, see [Foundations](06_foundations.md).

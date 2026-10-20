@@ -3,7 +3,7 @@ import OneRoofCore
 
 /// New work (⌘N): what it is (intake), what should happen, duplicate check, agent and account with the router's
 /// suggestion, model · repo · start folder, done when + opening message, Advanced (args, resume, role), and when.
-/// The launch path is v0.1's: herdr workspace in the start folder with the account's environment → agent.start →
+/// The launch path: a roofd session in the start folder with the account's environment, the agent started through the login shell →
 /// opening message once the agent is ready and idle.
 struct NewSessionSheet: View {
     @Environment(\.theme) private var t
@@ -461,15 +461,15 @@ struct NewSessionSheet: View {
         }
     }
 
-    /// Debounced 500 ms: kind suggestion (intake), router suggestion (on-device model + seats), duplicate check.
+    /// Debounced 500 ms: ticket-type suggestion (intake), router suggestion (on-device model + seats), duplicate check.
     private func textChanged(_ v: String) {
         useTicket = nil
+        // The kind stays what the owner picked (owner 10-20: "it starts as just a session and should remain just a
+        // session"). The text only pre-picks the ticket type, for when the owner switches to Ticket.
         if !kindTouched {
             switch Intake.suggest(v) {
-            case .session: kind = .session
-            case .defect: kind = .defect
-            case .workstream: kind = .workstream
-            case let k: kind = .ticket; ticketType = k
+            case .session, .defect, .workstream: break
+            case let k: ticketType = k
             }
         }
         refreshOpening()
