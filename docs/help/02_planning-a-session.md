@@ -17,7 +17,7 @@ A session is described before it starts, so you can line up work ahead of time a
 
 ## What kind of work
 
-At the top, pick what this is. One Roof guesses from what you type; your choice wins.
+At the top, pick what this is. It starts as **Just a session** and stays on what you pick; what you type only pre-picks the ticket type (Deliverable, Spike, Decision, Chore) for when you choose Ticket.
 
 | Kind | What happens |
 |---|---|
