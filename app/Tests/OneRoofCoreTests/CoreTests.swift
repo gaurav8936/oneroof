@@ -35,6 +35,21 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertNil(Workspace.projectCode(name: "Roadmap"))
     }
 
+    func testHandoffIsOnlyTheSessionsOwn() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("handoffs-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        for f in ["2026-10-19_0900_eng-roofd-p0_NEXT.txt", "2026-10-20_1000_eng-roofd-fixes_NEXT.txt",
+                  "2026-10-20_1500_other-thing_NEXT.txt", "2026-10-20_1600_eng-roofd2-x.txt", "2026-10-20_1700_eng-247-fix.txt"] {
+            FileManager.default.createFile(atPath: dir + "/" + f, contents: Data())
+        }
+        XCTAssertEqual(Workspace.handoff(in: dir, project: "ENG-ROOFD", ticket: nil), dir + "/2026-10-20_1000_eng-roofd-fixes_NEXT.txt")
+        XCTAssertEqual(Workspace.handoff(in: dir, project: nil, ticket: "ENG-247"), dir + "/2026-10-20_1700_eng-247-fix.txt")
+        XCTAssertNil(Workspace.handoff(in: dir, project: "ENG-DOCLAB-01", ticket: nil), "no other project's handoff")
+        XCTAssertNil(Workspace.handoff(in: dir, project: nil, ticket: "ENG-24"), "ENG-24 is not ENG-247")
+        XCTAssertNil(Workspace.handoff(in: dir, project: nil, ticket: nil))
+    }
+
     func testTicketOpeningNamesTheIssueNotTheProject() {
         let o = Intake.ticketOpening(key: "ENG-247", title: "test03", url: "https://x/ENG-247", project: "ENG-ROOFD")
         XCTAssertTrue(o.hasPrefix("Work on ENG-247 in project ENG-ROOFD: test03."), o)
