@@ -1,4 +1,5 @@
 import Darwin
+import OneRoofCore
 import XCTest
 @testable import roofd
 
@@ -185,5 +186,24 @@ final class RoofProtocolTests: XCTestCase {
             text = try call("read", ["id": "q", "lines": 3])["text"] as? String ?? ""
         }
         XCTAssertTrue(text.contains("ORDER CFBKD True"), text)
+    }
+
+    /// LAB-18 / Q8: after an app update the bundled roofd is newer than the running daemon: the app asks it to upgrade,
+    /// the new binary takes over the folder, and sessions keep running in their holders.
+    func testUpgradeReplacesTheDaemonAndKeepsSessions() throws {
+        _ = try call("create", ["id": "keep", "cwd": "/tmp", "env": ["PATH": "/usr/bin:/bin"], "argv": ["/bin/sh", "-c", "sleep 60"]])
+        let oldPid = try call("hello")["pid"] as? Int
+        // "The new app's roofd": a copy of the binary with a newer build stamp.
+        let newer = dir + "/roofd-new"
+        try FileManager.default.copyItem(atPath: roofd, toPath: newer)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(3600)], ofItemAtPath: newer)
+        let rt = RoofdRuntime(roofdPath: newer, dir: dir, resources: nil)
+        try rt.ensureRunning()
+        let hello = try call("hello")
+        XCTAssertNotEqual(hello["pid"] as? Int, oldPid, "a new daemon answers")
+        XCTAssertEqual(hello["build"] as? Double, rt.bundledBuild)
+        let ids = (try call("list")["sessions"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+        XCTAssertEqual(ids, ["keep"], "the session survived the upgrade")
+        if let p = hello["pid"] as? Int { kill(pid_t(p), SIGTERM) }
     }
 }

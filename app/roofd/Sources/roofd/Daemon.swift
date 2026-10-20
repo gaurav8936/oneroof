@@ -6,7 +6,12 @@ import Foundation
 /// daemon crash or upgrade never ends a session (Q1), and a restarted daemon finds the holders by their sockets.
 enum Daemon {
     static let proto = 1
-    static let version = "0.1.0-spike"
+    static let version = "0.4.0"
+    /// This binary's build: its modification time at start. The app compares it with the roofd in its bundle.
+    static let build: Double = {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: selfPath())
+        return ((attrs?[.modificationDate] as? Date) ?? Date(timeIntervalSince1970: 0)).timeIntervalSince1970.rounded()
+    }()
 
     static func run() throws {
         var noCore = rlimit(rlim_cur: 0, rlim_max: 0)
@@ -15,9 +20,11 @@ enum Daemon {
         signal(SIGCHLD, SIG_IGN)   // holders are reparented away; never leave zombies
         try FileManager.default.createDirectory(atPath: Paths.dir, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
-        // One daemon per folder: two starts at once (the app's start and a launch) must not take each other's socket.
+        // One daemon per folder. A second start waits for the lock instead of exiting: under launchd (KeepAlive) an
+        // exit would be restarted in a loop; waiting means it takes over the moment the running one stops (upgrade).
         let lockFd = open(Paths.dir + "/roofd.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
-        guard lockFd >= 0, flock(lockFd, LOCK_EX | LOCK_NB) == 0 else { return }   // held for the daemon's life
+        guard lockFd >= 0 else { throw RoofdError("cannot open the lock file") }
+        while flock(lockFd, LOCK_EX) != 0 { if errno != EINTR { throw RoofdError("lock failed") } }   // held for life
         let fd = try Sock.listen(Paths.control)
         Scheduler.start()
         var flags = fcntl(fd, F_GETFL); flags &= ~O_NONBLOCK; _ = fcntl(fd, F_SETFL, flags)
@@ -51,7 +58,12 @@ enum Daemon {
     static func handle(_ method: String, _ p: [String: Any]) throws -> [String: Any] {
         switch method {
         case "hello":
-            return ["proto": proto, "version": version, "sessions": sessionIds().count]
+            return ["proto": proto, "version": version, "build": build, "pid": Int(getpid()), "sessions": sessionIds().count]
+        case "upgrade":
+            // The app found a newer roofd: reply, then exit; launchd (or the app) starts the new binary, which takes the
+            // lock. Holders are separate processes and keep every session running (Q8).
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { exit(0) }
+            return ["exiting": true]
         case "create":
             guard let id = p["id"] as? String, Paths.validId(id) else { throw RoofdError("bad id") }
             if let existing = try? Sock.holderRequest(Paths.session(id), ["op": "info"]) { return existing }   // idempotent

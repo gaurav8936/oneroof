@@ -171,6 +171,8 @@ final class AppModel: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             do {
+                // roofd as a background item (launchd keeps it running, at login too); the app starts it otherwise.
+                if let roofd = self.runtime as? RoofdRuntime { roofd.managedByLaunchd = RoofdService.register() }
                 try self.runtime.ensureRunning()
                 DispatchQueue.main.async { self.configureRoofdScheduler() }
             } catch {
@@ -407,7 +409,8 @@ final class AppModel: ObservableObject {
         let paths = FoundationPaths(common: settings.sharedFolder, agenticEngineering: settings.agenticEngineering.path)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            let r = Foundations.runAll(paths, runtime: self.runtime)
+            var r = Foundations.runAll(paths, runtime: self.runtime)
+            r.insert(RoofdService.check(), at: min(1, r.count))
             DispatchQueue.main.async {
                 self.foundations = r
                 self.checkingFoundations = false

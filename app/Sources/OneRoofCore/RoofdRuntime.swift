@@ -98,9 +98,42 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         return RuntimeHealth(level: proto == 1 ? .ok : .warn, detail: v)
     }
 
-    /// Start the daemon if it is not answering. (P4 registers it with launchd through SMAppService.)
+    /// launchd runs the daemon (SMAppService registered and enabled): the app never starts it, launchd restarts it.
+    public var managedByLaunchd = false
+
+    /// The build of the roofd binary this app ships (its modification time), to spot an older running daemon.
+    public var bundledBuild: Double? {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: roofdPath)
+        return (attrs?[.modificationDate] as? Date).map { $0.timeIntervalSince1970.rounded() }
+    }
+
+    /// Make sure the right roofd answers: start it if nothing does, and replace an older daemon after an app update
+    /// (it exits; launchd or the app starts the new binary). Sessions live in their holders and keep running (Q8).
     public func ensureRunning() throws {
-        if (try? call("hello", timeout: 2)) != nil { return }
+        if let hello = try? call("hello", timeout: 2) {
+            guard let want = bundledBuild, let have = hello["build"] as? Double, have < want else { return }
+            _ = try? call("upgrade", timeout: 2)
+            usleep(400_000)
+            if !managedByLaunchd { try startDaemon() }
+            for _ in 0..<60 {
+                if let h = try? call("hello", timeout: 1), (h["build"] as? Double ?? 0) >= want { return }
+                usleep(100_000)
+            }
+            throw RuntimeError.failed("roofd did not come back after the upgrade")
+        }
+        if managedByLaunchd {
+            for _ in 0..<40 {
+                if (try? call("hello", timeout: 1)) != nil { return }
+                usleep(100_000)
+            }
+            // launchd did not bring it up (the background item may be off in Login Items): start it ourselves.
+        }
+        try startDaemon()
+    }
+
+    /// Start `roofd daemon` detached (own session, account variables stripped) and wait until it answers.
+    func startDaemon() throws {
+        if (try? call("hello", timeout: 1)) != nil { return }
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         var attr: posix_spawnattr_t?
         posix_spawnattr_init(&attr)

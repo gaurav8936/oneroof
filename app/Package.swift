@@ -50,6 +50,7 @@ var appTargets: [Target] {
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalKit"),
                 .linkedFramework("QuartzCore"),
+                .linkedFramework("ServiceManagement"),
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedLibrary("c++"),
             ]

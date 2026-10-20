@@ -31,10 +31,12 @@ git archive HEAD | tar -x -C "$STAGE/src"
 [ -d "$STAGE/swift-build-keep" ] && mv "$STAGE/swift-build-keep" "$STAGE/src/app/.build"
 mkdir -p "$STAGE/src/app/Vendor"
 ln -sfn "$STAGE/ghostty/macos/GhosttyKit.xcframework" "$STAGE/src/app/Vendor/GhosttyKit.xcframework"
+# roofd's terminal core (RoofVT, Zig) from the same Ghostty source, then the bundle (which builds and adds roofd).
+(cd "$STAGE/src/app" && ONEROOF_GHOSTTY_DIR="$STAGE/ghostty" bash roofd/build-roofvt.sh)
 (cd "$STAGE/src/app" && ONEROOF_GHOSTTY_DIR="$STAGE/ghostty" scripts/bundle.sh release)
 
 APP="$STAGE/src/app/build/One Roof.app"
-for need in agentic_engineering MacOS/OneRoof; do
+for need in agentic_engineering MacOS/OneRoof MacOS/roofd Library/LaunchAgents/io.github.gaurav8936.oneroof.roofd.plist; do
   [ -e "$APP/Contents/Resources/$need" ] || [ -e "$APP/Contents/$need" ] || { echo "package-app: $need missing from the bundle" >&2; exit 1; }
 done
 bash tools/release-check.sh --app "$APP" || { echo "package-app: the built app leaks build-machine paths" >&2; exit 1; }

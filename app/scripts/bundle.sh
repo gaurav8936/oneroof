@@ -30,6 +30,9 @@ cp "$BIN" "$APP/Contents/MacOS/OneRoof"
 if [ -e Vendor/RoofVT.xcframework ]; then
   swift build -c "$CONF" --product roofd ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}
   cp "$(dirname "$BIN")/roofd" "$APP/Contents/MacOS/roofd"
+  # Its launchd agent, registered by the app with SMAppService (Q13).
+  mkdir -p "$APP/Contents/Library/LaunchAgents"
+  cp Resources/io.github.gaurav8936.oneroof.roofd.plist "$APP/Contents/Library/LaunchAgents/"
 else
   echo "⚠ Vendor/RoofVT.xcframework missing — roofd not bundled (run roofd/build-roofvt.sh)"
 fi
