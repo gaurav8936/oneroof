@@ -184,9 +184,23 @@ struct PlanDetail: View {
         facts(it)
         if it.session.ticket != nil { TicketBox(item: it, model: model) }
         field("Project") {
-            TextField("CODE-…", text: $workstream).textFieldStyle(.plain).ui(12.5, mono: true)
-                .padding(8).background(RoundedRectangle(cornerRadius: Radius.field).fill(t.card.color))
-                .onSubmit(commit)
+            HStack(spacing: 6) {
+                TextField("CODE-…", text: $workstream).textFieldStyle(.plain).ui(12.5, mono: true)
+                    .onSubmit(commit)
+                // Pick from Linear (LAB-236) when it is connected; typing a code still works.
+                if model.linear.hasKey {
+                    Menu {
+                        Button("No project") { workstream = ""; commit() }
+                        ForEach(model.workstreams.filter { !["completed", "canceled"].contains($0.state) }) { w in
+                            Button("\(w.wsId ?? "") · \(w.title)") { workstream = w.wsId ?? ""; commit() }
+                        }
+                    } label: { Text("Linear ▾").ui(11.5, .medium).foregroundStyle(t.text2.color) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .onAppear { model.loadWorkstreams() }
+                        .accessibilityLabel("Pick the project from Linear")
+                }
+            }
+            .padding(8).background(RoundedRectangle(cornerRadius: Radius.field).fill(t.card.color))
         }
         field("Objective · done when") { editor($objective, minHeight: 54) }
         let steps = planSteps(it)

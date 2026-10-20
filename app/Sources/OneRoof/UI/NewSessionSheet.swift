@@ -22,6 +22,7 @@ struct NewSessionSheet: View {
     @State private var teamKey = ""
     @State private var projectCode = ""
     @State private var milestonesText = ""
+    @State private var textForIssue = ""
     @State private var useTicket: LinearIssue?
     @State private var mark: AgentMark = .claude1
     @State private var modelName = ""
@@ -53,21 +54,23 @@ struct NewSessionSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             section {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("New work").ui(20, .semibold).foregroundStyle(t.text.color)
+                    Text("New session").ui(20, .semibold).foregroundStyle(t.text.color)
                     Text("in \(win.name)").ui(13).foregroundStyle(t.text3.color)
                     Spacer()
                 }
-                HStack(spacing: 10) {
-                    kindPicker
-                    Spacer()
-                    if linked {
+                // A session first (owner 10-20, LAB-242): optionally in a team, project and issue picked from what
+                // exists; a new issue or project is the last item of its menu, not a mode of the sheet.
+                if linked {
+                    HStack(spacing: 14) {
                         teamPicker
-                        if kind != .workstream { workstreamPicker }
-                    } else if kind == .ticket || kind == .defect { workstreamPicker }
+                        workstreamPicker
+                        issuePicker
+                        Spacer(minLength: 0)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("What should happen").ui(12, .semibold).foregroundStyle(t.text.color)
-                    TextField("", text: $text, prompt: Text("e.g. Help search returns results as you type"))
+                    TextField("", text: $text, prompt: Text(textForIssue.isEmpty ? "e.g. Help search returns results as you type" : textForIssue))
                         .textFieldStyle(.plain).ui(15).focused($textFocused)
                         .padding(.horizontal, 12).frame(height: 40)
                         .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.surface.color))
@@ -120,15 +123,17 @@ struct NewSessionSheet: View {
             }
             Hairline()
             HStack(spacing: 10) {
-                Text("When").ui(12, .semibold).foregroundStyle(t.text.color)
+                Text("When").ui(12, .semibold).foregroundStyle(t.text.color).fixedSize()
                 whenPicker
-                if let error { Text(error).ui(12).foregroundStyle(t.needsText.color).lineLimit(2) }
-                else if let why = blockedReason { Text(why).ui(12).foregroundStyle(t.needsText.color).lineLimit(2) }
+                // Messages wrap inside their own space, so the bottom row never widens the sheet (LAB-243).
+                if let error { Text(error).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
+                else if let why = blockedReason { Text(why).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
                 Spacer()
                 if busy { ProgressView().controlSize(.small) }
-                RoofButton("Cancel") { close() }.keyboardShortcut(.cancelAction)
-                RoofButton("Save as planned") { go(launch: false, forcePlanned: true) }.disabled(!valid)
+                RoofButton("Cancel") { close() }.fixedSize().keyboardShortcut(.cancelAction)
+                RoofButton("Save as planned") { go(launch: false, forcePlanned: true) }.fixedSize().disabled(!valid)
                 RoofButton(primaryLabel, .primary) { go(launch: when == .now) }
+                    .fixedSize()
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(!valid || busy)
             }
@@ -154,40 +159,10 @@ struct NewSessionSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var kindPicker: some View {
-        HStack(spacing: 2) {
-            kindButton(.session, "Just a session")
-            Button { kind = .ticket; kindTouched = true; refreshOpening() } label: {
-                segment("Ticket · \(ticketType.rawValue)", on: kind == .ticket)
-            }
-            .buttonStyle(.plain)
-            .contextMenu { ticketTypes }
-            if kind == .ticket {
-                Menu { ticketTypes } label: { Text("▾").ui(11).foregroundStyle(t.text2.color) }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .accessibilityLabel("Ticket type")
-            }
-            kindButton(.defect, "Defect")
-            kindButton(.workstream, "Project")
-        }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.control.color))
-    }
-
-    @ViewBuilder private var ticketTypes: some View {
-        ForEach([WorkKind.deliverable, .spike, .decision, .chore], id: \.self) { k in
-            Button(k.rawValue.capitalized) { ticketType = k; kind = .ticket; kindTouched = true; refreshOpening() }
-        }
-    }
-
-    private func kindButton(_ k: Kind, _ label: String) -> some View {
-        Button { kind = k; kindTouched = true; refreshOpening() } label: { segment(label, on: kind == k) }.buttonStyle(.plain)
-    }
-
-    private func segment(_ label: String, on: Bool) -> some View {
+    private func segment(_ label: String, on: Bool, inset: CGFloat = 14) -> some View {
         Text(label).ui(13, on ? .semibold : .medium).foregroundStyle(on ? t.text.color : t.text2.color)
             .lineLimit(1).fixedSize()
-            .padding(.vertical, 6).padding(.horizontal, 14)
+            .padding(.vertical, 6).padding(.horizontal, inset)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(on ? t.surface.color : .clear)
                 .shadow(color: on ? .black.opacity(0.1) : .clear, radius: 1, y: 1))
             .contentShape(Rectangle())
@@ -208,7 +183,7 @@ struct NewSessionSheet: View {
     private func pickerLabel(_ title: String, _ value: String, warn: Bool) -> some View {
         (Text(title + "  ").foregroundColor(t.text2.color) + Text(value).foregroundColor(warn ? t.needsText.color : t.text.color)
          + Text("  ▾").foregroundColor(t.text2.color))
-            .ui(12.5, .medium).lineLimit(1)
+            .ui(12.5, .medium).lineLimit(1).truncationMode(.middle)
         .padding(.horizontal, 8).padding(.vertical, 4)
         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(warn ? t.needsText.color : .clear, lineWidth: 1))
     }
@@ -225,27 +200,80 @@ struct NewSessionSheet: View {
                         ?? (model.linearLoading ? "Loading teams…" : kind == .session ? "No team" : "Pick a team"),
                         warn: needsTeam && teamKey.isEmpty)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 170, alignment: .leading)
         .accessibilityLabel("Team")
     }
 
     private var workstreamPicker: some View {
         Menu {
-            if linked { Button("No project") { wsId = ""; refreshOpening() } }
+            if linked { Button("No project") { wsId = ""; useTicket = nil; if kind == .workstream { kind = .session }; refreshOpening() } }
             ForEach(openWorkstreams) { w in Button("\(w.wsId ?? "") · \(w.title)") { pickWorkstream(w) } }
+            if linked {
+                Divider()
+                Button("New project…") { wsId = ""; useTicket = nil; kind = .workstream; kindTouched = true; refreshOpening() }
+            }
         } label: {
-            pickerLabel("Project", currentWorkstream.map { "\($0.wsId ?? "") · \($0.title)" }
+            pickerLabel("Project", kind == .workstream ? "New project" : currentWorkstream.map { "\($0.wsId ?? "") · \($0.title)" }
                         ?? (model.linearLoading ? "Loading projects…" : linked ? "No project" : "Pick a project"),
                         warn: !linked && currentWorkstream == nil)
-                .frame(maxWidth: 300)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 290, alignment: .leading)
         .accessibilityLabel("Project")
+    }
+
+    /// The project's open issues, newest first.
+    private var openIssues: [LinearIssue] {
+        guard let w = currentWorkstream else { return [] }
+        return (model.issues[w.id] ?? []).filter { !["completed", "canceled"].contains($0.stateType) }.reversed()
+    }
+
+    private var issueLabel: String {
+        if let tk = useTicket { return "\(tk.identifier) · \(tk.shortTitle)" }
+        if kind == .defect { return "New bug" }
+        if kind == .ticket { return "New " + (ticketType.labelNames.first ?? "issue").lowercased() }
+        return "No issue"
+    }
+
+    /// Issue: none, an existing one (the session works on it), or a new one as the last item (LAB-242).
+    private var issuePicker: some View {
+        Menu {
+            Button("No issue") { useTicket = nil; kind = .session; refreshOpening() }
+            if !openIssues.isEmpty {
+                Divider()
+                ForEach(openIssues.prefix(40)) { i in Button("\(i.identifier) · \(i.shortTitle)") { pickIssue(i) } }
+            }
+            Divider()
+            Menu("New issue…") {
+                ForEach([WorkKind.deliverable, .defect, .chore, .spike, .decision], id: \.self) { k in
+                    Button(k.labelNames.first ?? k.rawValue) { newIssue(k) }
+                }
+            }
+        } label: {
+            pickerLabel("Issue", issueLabel, warn: false)
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 300, alignment: .leading)
+        .disabled(kind == .workstream)
+        .accessibilityLabel("Issue")
+    }
+
+    private func pickIssue(_ i: LinearIssue) {
+        useTicket = i; kind = .session; kindTouched = true
+        if text.trimmingCharacters(in: .whitespaces).isEmpty { textForIssue = i.shortTitle }
+        refreshOpening()
+    }
+
+    private func newIssue(_ k: WorkKind) {
+        useTicket = nil; kindTouched = true
+        if k == .defect { kind = .defect } else { kind = .ticket; ticketType = k }
+        if kind == .workstream { wsId = "" }
+        refreshOpening()
     }
 
     private var currentWorkstream: LinearWorkstream? { model.workstreams.first { $0.id == wsId } }
 
     private func pickWorkstream(_ w: LinearWorkstream) {
+        if wsId != w.id { useTicket = nil }
+        if kind == .workstream { kind = .session }
         wsId = w.id; model.loadIssues(w)
         if !w.team.isEmpty { teamKey = w.team }
         refreshOpening()
@@ -267,6 +295,9 @@ struct NewSessionSheet: View {
     private func defaultWorkstream() {
         if wsId.isEmpty {
             let open = model.workstreams.filter { !["completed", "canceled"].contains($0.state) }
+            if let code = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PROJECT"], let w = open.first(where: { $0.wsId == code }) {
+                pickWorkstream(w); return
+            }
             if let sel = model.selected?.session.workstream, let w = open.first(where: { $0.wsId == sel }) { wsId = w.id; model.loadIssues(w) }
             else if let last = Prefs.defaults.string(forKey: "newWork.lastWorkstream"), let w = open.first(where: { $0.id == last }) { wsId = w.id; model.loadIssues(w) }
         }
@@ -487,7 +518,7 @@ struct NewSessionSheet: View {
         HStack(spacing: 2) {
             whenButton(.now, "Now")
             whenButton(.next, "Next")
-            Button { when = .tonight } label: { segment(nightly ? "Nightly 2:00 AM" : "Tonight 2:00 AM", on: when == .tonight) }
+            Button { when = .tonight } label: { segment(nightly ? "Nightly 2 AM" : "Tonight 2 AM", on: when == .tonight, inset: 9) }
                 .buttonStyle(.plain)
             if when == .tonight {
                 Menu {
@@ -503,14 +534,14 @@ struct NewSessionSheet: View {
     }
 
     private func whenButton(_ w: When, _ label: String) -> some View {
-        Button { when = w } label: { segment(label, on: when == w) }.buttonStyle(.plain)
+        Button { when = w } label: { segment(label, on: when == w, inset: 9) }.buttonStyle(.plain)
     }
 
     private var primaryLabel: String {
         let ticket = (kind == .ticket || kind == .defect) && useTicket == nil
         switch when {
-        case .now: return ticket ? "Create ticket and launch ⌘↩" : kind == .workstream ? (linked ? "Create project and launch ⌘↩" : "Plan the project session ⌘↩") : "Launch ⌘↩"
-        case .next: return ticket ? "Create ticket, up next ⌘↩" : kind == .workstream && linked ? "Create project, up next ⌘↩" : "Save as next ⌘↩"
+        case .now: return ticket ? "Create issue, launch ⌘↩" : kind == .workstream ? (linked ? "Create project, launch ⌘↩" : "Plan the project ⌘↩") : "Launch ⌘↩"
+        case .next: return ticket ? "Create issue, next ⌘↩" : kind == .workstream && linked ? "Create project, next ⌘↩" : "Save as next ⌘↩"
         case .tonight: return nightly ? "Save for every night ⌘↩" : "Save for tonight ⌘↩"
         case .onDemand: return "Save on demand ⌘↩"
         }
@@ -547,7 +578,7 @@ struct NewSessionSheet: View {
 
     /// Debounced 500 ms: ticket-type suggestion (intake), router suggestion (on-device model + seats), duplicate check.
     private func textChanged(_ v: String) {
-        useTicket = nil
+        // A picked issue stays picked while you type (LAB-242: it is chosen on purpose in the Issue menu).
         // The kind stays what the owner picked (owner 10-20: "it starts as just a session and should remain just a
         // session"). The text only pre-picks the ticket type, for when the owner switches to Ticket.
         if !kindTouched {
@@ -603,7 +634,8 @@ struct NewSessionSheet: View {
     }
 
     private func go(launch: Bool, forcePlanned: Bool = false) {
-        let title = useTicket?.shortTitle ?? text.trimmingCharacters(in: .whitespaces)
+        let typed = text.trimmingCharacters(in: .whitespaces)
+        let title = typed.isEmpty ? (useTicket?.shortTitle ?? "") : typed
         if kind == .workstream && useTicket == nil, linked, let team = currentTeam {
             busy = true
             let ms = milestonesText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
