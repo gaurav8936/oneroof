@@ -48,7 +48,7 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 ## The top of the panel
 
 - **Seat bars:** how much of each seat's usage window is used (Claude1, Claude2, Codex). They stay empty when there is no usage data. See [Seats and routing](07_seats-router-and-on-device-model.md).
-- **Count chips:** need you, working, ready, next. A chip with something in it is coloured; click it to filter the list to that state.
+- **Count chips:** all, need you, working, ready (finished, not yet looked at), idle. Click one to show only that state; click **all** (or the same chip again) to get the full list back. Next, planned and exited sessions are under all.
 - **Group ▾:** Status, Repo, Workstream, Agent or Account (also View › Group by, ⌘1 to ⌘5).
 - **Filter:** type to narrow the list; ✕ clears it.
 

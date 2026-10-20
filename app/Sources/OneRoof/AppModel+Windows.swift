@@ -123,7 +123,7 @@ extension AppModel {
     /// Rows matching a window's filter and count chip (name, caption, repo, workstream, ticket, stickers, agent, account).
     func visibleItems(in w: WindowState) -> [BoardItem] {
         var list = items(in: w)
-        if let chip = w.statusFilter { list = list.filter { chip.statuses.contains($0.status) } }
+        if let chip = w.statusFilter { list = list.filter { chip.matches($0.status) } }
         let q = w.filter.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return list }
         return list.filter { i in

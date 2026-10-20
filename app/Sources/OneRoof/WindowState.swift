@@ -75,25 +75,31 @@ final class WindowState: ObservableObject, Identifiable {
     }
 }
 
-/// The Sessions panel's count chips (S06 §1.2).
+/// The Sessions panel's count chips (S06 §1.2). Owner 10-20: they cover where sessions actually sit (most are idle or
+/// finished, "next" was rarely used), and "All" is always there to get the full list back.
 enum StatusChip: String, CaseIterable {
-    case needs, working, ready, next
+    case all, needs, working, ready, idle
 
-    var statuses: Set<SessionStatus> {
+    /// nil: every session.
+    var statuses: Set<SessionStatus>? {
         switch self {
+        case .all: return nil
         case .needs: return [.needsYou]
         case .working: return [.running]
         case .ready: return [.done]
-        case .next: return [.next]
+        case .idle: return [.idle]
         }
     }
 
+    func matches(_ s: SessionStatus) -> Bool { statuses?.contains(s) ?? true }
+
     func label(_ n: Int) -> String {
         switch self {
-        case .needs: return "\(n) need you"
-        case .working: return "\(n) working"
-        case .ready: return "\(n) ready"
-        case .next: return "\(n) next"
+        case .all: return "\(n)\nall"
+        case .needs: return "\(n)\nneed you"
+        case .working: return "\(n)\nworking"
+        case .ready: return "\(n)\nready"
+        case .idle: return "\(n)\nidle"
         }
     }
 }

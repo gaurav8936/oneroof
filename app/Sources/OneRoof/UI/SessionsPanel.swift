@@ -113,24 +113,24 @@ struct SessionsPanel: View {
 
         private var chips: some View {
             let list = model.items(in: win)
-            return HStack(spacing: 6) {
+            return HStack(spacing: 5) {
                 ForEach(StatusChip.allCases, id: \.self) { c in
-                    let n = list.filter { c.statuses.contains($0.status) }.count
-                    let on = win.statusFilter == c
-                    Button { win.statusFilter = on ? nil : c } label: {
+                    let n = list.filter { c.matches($0.status) }.count
+                    let on = (win.statusFilter ?? .all) == c
+                    Button { win.statusFilter = (on || c == .all) ? nil : c } label: {
                         Text(c.label(n)).ui(11.5, .semibold)
                             .foregroundStyle(c == .needs && n > 0 ? t.pill(.needsYou).text.color : t.text.color)
-                            .lineLimit(2).multilineTextAlignment(.leading).minimumScaleFactor(0.85)
+                            .lineLimit(2).multilineTextAlignment(.leading).minimumScaleFactor(0.75)
                             .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-                            .padding(.horizontal, 7)
+                            .frame(maxWidth: c == .all ? 30 : .infinity, minHeight: 34, alignment: .leading)
+                            .padding(.horizontal, 6)
                             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(c == .needs && n > 0 ? (t.pill(.needsYou).fill ?? t.surface).color : t.surface.color))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .strokeBorder(on ? t.accent.color : t.separator.color, lineWidth: on ? 1.5 : 1))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(c.label(n) + (on ? ", filtering" : ""))
+                    .accessibilityLabel(c.label(n).replacingOccurrences(of: "\n", with: " ") + (on ? ", showing" : ""))
                 }
             }
         }
@@ -170,9 +170,16 @@ struct SessionsPanel: View {
 
         private var empty: some View {
             VStack(alignment: .leading, spacing: 6) {
-                Text("No sessions in \(win.name)").ui(13, .semibold).foregroundStyle(t.text.color)
-                Text("Press ⌘N for a new session. Agents you start in a One Roof terminal show up here too.")
-                    .ui(12).foregroundStyle(t.text2.color)
+                if win.statusFilter != nil || !win.filter.isEmpty {
+                    // The list is filtered, not empty: say so and offer the way back.
+                    Text("Nothing matches the filter").ui(13, .semibold).foregroundStyle(t.text.color)
+                    Button("Show all \(model.items(in: win).count) sessions") { win.statusFilter = nil; win.filter = "" }
+                        .buttonStyle(.link).ui(12)
+                } else {
+                    Text("No sessions in \(win.name)").ui(13, .semibold).foregroundStyle(t.text.color)
+                    Text("Press ⌘N for a new session. Agents you start in a One Roof terminal show up here too.")
+                        .ui(12).foregroundStyle(t.text2.color)
+                }
             }
             .padding(12)
         }
