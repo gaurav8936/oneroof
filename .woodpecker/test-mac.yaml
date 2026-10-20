@@ -5,6 +5,13 @@
 labels:
   platform: darwin
 
+# The repo has no Git LFS files and the Mac has no git-lfs: skip the LFS fetch (the default clone runs `git lfs fetch`).
+clone:
+  - name: clone
+    image: woodpeckerci/plugin-git:2.10.1
+    settings:
+      lfs: false
+
 when:
   - event: [push, pull_request, manual]
 
