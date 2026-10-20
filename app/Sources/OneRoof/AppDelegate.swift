@@ -278,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             add(d.headline, "Decision · " + (m.item(d.sessionId)?.session.name ?? ""), "hand.raised", "Decision") { m.centre = .decisions }
         }
         add("Board", "Kanban of every session", "rectangle.split.3x1", "View") { m.boardMode = true }
-        add("Work", "Workstreams, roadmap, tickets", "list.bullet.rectangle", "View") { m.workMode = true }
+        add("Work", "Projects, roadmap, tickets", "list.bullet.rectangle", "View") { m.workMode = true }
         add("Learn", "Course, skills, Help, your Learn folders", "graduationcap", "View") { m.learnMode = true }
         add("Foundations", "Startup check, skills, hooks, memory", "checkmark.shield", "View") { [weak self] in self?.showFoundations(nil) }
         add("Settings", "Themes, agents, accounts, foundations", "gearshape", "View") { [weak self] in self?.showSettings(nil) }
@@ -322,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             add(o.title, "Objective · \(o.status.rawValue)", "target", "Objective") { m.objectiveId = o.id }
         }
         for w in m.workstreams where !["completed", "canceled"].contains(w.state) {
-            add(w.name, "Workstream · \(w.stateLabel)", "list.bullet.rectangle", "Workstream") { m.workMode = true }
+            add(w.name, "Project · \(w.stateLabel)", "list.bullet.rectangle", "Project") { m.workMode = true }
         }
         // Files tracked in the selected session's repo (git ls-files), capped.
         let repo = m.selected?.session.repoPath ?? Workspace.projectsRoot
@@ -539,7 +539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(item("Decisions", #selector(showDecisions(_:)), "i"))
         view.addItem(item("Subagents", #selector(showSubagents(_:)), "a", [.command, .shift]))
         view.addItem(item("Learn", #selector(toggleLearn(_:)), "e", [.command, .shift]))
-        view.addItem(item("Work: Workstreams and Roadmap", #selector(toggleWork(_:)), "w", [.command, .shift]))
+        view.addItem(item("Work: Projects and Roadmap", #selector(toggleWork(_:)), "w", [.command, .shift]))
         view.addItem(.separator())
         view.addItem(item("Bigger Text", #selector(textBigger(_:)), "+"))
         view.addItem(item("Smaller Text", #selector(textSmaller(_:)), "-"))

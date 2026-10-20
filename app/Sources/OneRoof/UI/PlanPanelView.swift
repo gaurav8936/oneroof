@@ -183,8 +183,8 @@ struct PlanDetail: View {
             .onSubmit(commit)
         facts(it)
         if it.session.ticket != nil { TicketBox(item: it, model: model) }
-        field("Workstream") {
-            TextField("WS-…", text: $workstream).textFieldStyle(.plain).ui(12.5, mono: true)
+        field("Project") {
+            TextField("CODE-…", text: $workstream).textFieldStyle(.plain).ui(12.5, mono: true)
                 .padding(8).background(RoundedRectangle(cornerRadius: Radius.field).fill(t.card.color))
                 .onSubmit(commit)
         }

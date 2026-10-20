@@ -27,7 +27,7 @@ struct BoardView: View {
 
     var body: some View {
         FleetPage(title: "Board", subtitle: "All windows · group by \(grouping) · ⌘B") {
-            Segmented(options: [("status", "All windows"), ("agent", "By agent"), ("workstream", "By workstream")], selection: $grouping)
+            Segmented(options: [("status", "All windows"), ("agent", "By agent"), ("workstream", "By project")], selection: $grouping)
         } content: {
             GeometryReader { g in
                 let cols = columns
@@ -71,7 +71,7 @@ struct BoardView: View {
                 return Column(id: ws, title: ws, dot: nil, items: sorted(list), progress: list.isEmpty ? nil : Double(done) / Double(list.count))
             }
             let none = all.filter { $0.session.workstream == nil }
-            if !none.isEmpty { cols.append(Column(id: "none", title: "No workstream", dot: nil, items: sorted(none))) }
+            if !none.isEmpty { cols.append(Column(id: "none", title: "No project", dot: nil, items: sorted(none))) }
             return cols
         default:
             let tonight = all.filter { model.schedules[$0.id] != nil }

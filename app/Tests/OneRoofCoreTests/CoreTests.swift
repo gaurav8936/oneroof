@@ -26,6 +26,26 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(Workspace.workstream(in: "[WS-API-21] planner"), "WS-API-21")
         XCTAssertEqual(Workspace.workstream(in: "fix ENG-233 · [ws-docs-know-01] x"), "WS-DOCS-KNOW-01")
         XCTAssertNil(Workspace.workstream(in: "no id here"))
+        // Linear project codes (LAB-236): bare upper-case codes and commit tags; issue keys are not projects.
+        XCTAssertEqual(Workspace.workstream(in: "TEAM-ROOFD · roofd"), "TEAM-ROOFD")
+        XCTAssertEqual(Workspace.workstream(in: "ENG-12 · [eng-know-03] subject"), "ENG-KNOW-03")
+        XCTAssertNil(Workspace.workstream(in: "fix ENG-235 today"))
+        XCTAssertEqual(Workspace.projectCode(name: "ENG-KNOW-03 · Knowledge v3"), "ENG-KNOW-03")
+        XCTAssertEqual(Workspace.projectCode(name: "WS-WEB-12 · New checkout"), "WS-WEB-12")
+        XCTAssertNil(Workspace.projectCode(name: "Roadmap"))
+    }
+
+    func testWorkKindsMapToLinearTypeLabels() {
+        XCTAssertEqual(WorkKind.defect.labelNames.first, "Bug")
+        XCTAssertEqual(WorkKind.chore.labelNames.first, "Task")
+        XCTAssertEqual(WorkKind.fromLabel("Bug"), .defect)
+        XCTAssertEqual(WorkKind.fromLabel("type:deliverable"), .deliverable)
+        XCTAssertNil(WorkKind.fromLabel("canary"))
+        let old = LinearIssue(id: "1", identifier: "ENG-1", title: "[ws-web-12] Fix it", description: "", state: "", stateType: "",
+                              type: nil, milestoneId: nil, milestone: nil, url: "")
+        XCTAssertEqual(old.shortTitle, "Fix it")
+        var new = old; new.title = "[eng-know-03] Fix it"
+        XCTAssertEqual(new.shortTitle, "Fix it")
     }
 }
 
@@ -80,7 +100,7 @@ final class BoardTests: XCTestCase {
         let b = Session(name: "b", repoPath: "/p", lifecycle: .planned)
         var c = Session(name: "c", repoPath: "/p", lifecycle: .planned); c.workstream = "WS-A-01"
         let groups = Board.group(Board.merge(stored: [a, b, c], snapshot: RuntimeSnapshot()), by: .workstream)
-        XCTAssertEqual(groups.map(\.title), ["WS-A-01", "WS-B-01", "No workstream"])
+        XCTAssertEqual(groups.map(\.title), ["WS-A-01", "WS-B-01", "No project"])
     }
 
     func testParseArgs() {

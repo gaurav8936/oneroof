@@ -71,6 +71,8 @@ final class AppModel: ObservableObject {
     /// Re-created when a key is saved (Setup…), so Linear connects without a restart.
     var linear = LinearClient()
     var teams: [String: LinearTeam] = [:]
+    /// Linear teams for the pickers (LAB-237).
+    @Published var linearTeams: [LinearTeamRef] = []
     @Published var settings: AppSettings {
         didSet {
             if !SelfTest.isActive, let d = try? JSONEncoder().encode(settings) { Prefs.defaults.set(d, forKey: "settings") }
