@@ -7,6 +7,9 @@ import Foundation
 enum Daemon {
     static let proto = 1
     static let version = "0.4.0"
+    /// Each holder's last info answer, for a list taken while it is briefly busy.
+    nonisolated(unsafe) static var lastInfo: [String: [String: Any]] = [:]
+    static let cacheLock = NSLock()
     /// Started by launchd as One Roof's background item (launchd sets XPC_SERVICE_NAME to the job's label).
     static let underLaunchd = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == "io.github.gaurav8936.oneroof.roofd"
     /// This binary's build: its modification time at start. The app compares it with the roofd in its bundle.
@@ -77,8 +80,21 @@ enum Daemon {
             }
             throw RoofdError("session \(id) did not start")
         case "list":
-            return ["proto": proto, "version": version,
-                    "sessions": sessionIds().compactMap { try? Sock.holderRequest(Paths.session($0), ["op": "info"], timeout: 1) }]
+            // A holder that is busy for a moment (a heavy repaint) must not vanish from the list: the app would show
+            // its session as Exited. Use its last answer while its socket still accepts connections.
+            let sessions: [[String: Any]] = sessionIds().compactMap { id in
+                if let info = try? Sock.holderRequest(Paths.session(id), ["op": "info"], timeout: 2) {
+                    cacheLock.lock(); lastInfo[id] = info; cacheLock.unlock()
+                    return info
+                }
+                cacheLock.lock(); defer { cacheLock.unlock() }
+                return lastInfo[id]
+            }
+            cacheLock.lock()
+            let live = Set(sessions.compactMap { $0["id"] as? String })
+            for k in lastInfo.keys where !live.contains(k) { lastInfo[k] = nil }
+            cacheLock.unlock()
+            return ["proto": proto, "version": version, "sessions": sessions]
         case "scheduler":
             // From the app: Settings › Allow scheduled runs, and where its session store is.
             if let enabled = p["enabled"] as? Bool, let store = p["store"] as? String {

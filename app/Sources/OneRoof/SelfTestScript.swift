@@ -7,6 +7,7 @@ import OneRoofCore
 /// outside. Results go to `ONEROOF_SELFTEST_OUT` + "-<name>" (png / json / txt). Lines starting with # are comments.
 ///
 ///   wait <seconds>                 terminal [dir]               type <text>        (types text + Return)
+///   send <text>                    (into the selected session through roofd, + Return)
 ///   plan <name>|<agent>|<repo>|<opening>|<launch 0/1>         select <session name>
 ///   launch · close · delete · reopen · interrupt · popout · quit
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
@@ -47,6 +48,13 @@ enum SelfTestScript {
         case "type":
             app.main.terminalArea.focusTerminal()
             SelfTest.type(arg + "\r", into: app.main.window)
+            delay = 1
+        case "send":
+            // Type into the selected session through the runtime (roofd input), not synthetic key events.
+            if let pane = m.selected?.paneId {
+                let r = m.runtime
+                DispatchQueue.global().async { try? r.type(pane: pane, text: arg + "\r") }
+            } else { log(out, "  no selected session") }
             delay = 1
         case "plan":
             let f = arg.components(separatedBy: "|")

@@ -15,6 +15,8 @@ let args = Array(CommandLine.arguments.dropFirst())
 // Whoever started roofd may have ignored or blocked signals (an app launched from some shells ignores SIGTERM):
 // take the defaults back, so `kill`, launchd and logout can always stop it.
 for sig in [SIGTERM, SIGINT, SIGHUP, SIGQUIT] { signal(sig, SIG_DFL) }
+// Never throttled like a background app (timer coalescing, App Nap): sessions answer, redraw and report status on time.
+let roofdActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: "roofd runs agent sessions")
 var none = sigset_t()
 sigemptyset(&none)
 sigprocmask(SIG_SETMASK, &none, nil)
