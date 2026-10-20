@@ -207,7 +207,7 @@ struct NewSessionSheet: View {
     private var workstreamPicker: some View {
         Menu {
             if linked { Button("No project") { wsId = ""; useTicket = nil; if kind == .workstream { kind = .session }; refreshOpening() } }
-            ForEach(openWorkstreams) { w in Button("\(w.wsId ?? "") · \(w.title)") { pickWorkstream(w) } }
+            ForEach(openWorkstreams) { w in Button(Self.short("\(w.wsId ?? "") · \(w.title)")) { pickWorkstream(w) } }
             if linked {
                 Divider()
                 Button("New project…") { wsId = ""; useTicket = nil; kind = .workstream; kindTouched = true; refreshOpening() }
@@ -219,6 +219,11 @@ struct NewSessionSheet: View {
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 290, alignment: .leading)
         .accessibilityLabel("Project")
+    }
+
+    /// Menu items stay narrow (LAB-245): long titles end in "…".
+    static func short(_ s: String, max: Int = 64) -> String {
+        s.count <= max ? s : String(s.prefix(max - 1)).trimmingCharacters(in: .whitespaces) + "…"
     }
 
     /// The project's open issues, newest first.
@@ -239,13 +244,14 @@ struct NewSessionSheet: View {
         Menu {
             Button("No issue") { useTicket = nil; kind = .session; refreshOpening() }
             if !openIssues.isEmpty {
-                Divider()
-                ForEach(openIssues.prefix(40)) { i in Button("\(i.identifier) · \(i.shortTitle)") { pickIssue(i) } }
+                Section("Open issues") {
+                    ForEach(openIssues.prefix(40)) { i in Button(Self.short("\(i.identifier) · \(i.shortTitle)")) { pickIssue(i) } }
+                }
             }
-            Divider()
-            Menu("New issue…") {
+            // The types sit in the menu itself, not a submenu (LAB-245: a wide menu pushed the submenu off screen).
+            Section("New issue") {
                 ForEach([WorkKind.deliverable, .defect, .chore, .spike, .decision], id: \.self) { k in
-                    Button(k.labelNames.first ?? k.rawValue) { newIssue(k) }
+                    Button("New " + (k.labelNames.first ?? k.rawValue).lowercased() + "…") { newIssue(k) }
                 }
             }
         } label: {

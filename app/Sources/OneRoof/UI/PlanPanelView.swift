@@ -192,7 +192,7 @@ struct PlanDetail: View {
                     Menu {
                         Button("No project") { workstream = ""; commit() }
                         ForEach(model.workstreams.filter { !["completed", "canceled"].contains($0.state) }) { w in
-                            Button("\(w.wsId ?? "") · \(w.title)") { workstream = w.wsId ?? ""; commit() }
+                            Button(NewSessionSheet.short("\(w.wsId ?? "") · \(w.title)")) { workstream = w.wsId ?? ""; commit() }
                         }
                     } label: { Text("Linear ▾").ui(11.5, .medium).foregroundStyle(t.text2.color) }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()

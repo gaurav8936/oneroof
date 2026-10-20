@@ -39,7 +39,7 @@ Without Linear connected there is no picker row. A free-text **Project** field t
 
 The last item of each menu creates something, then starts the session on it.
 
-**A new issue:** Issue ▾ › **New issue… ›** Deliverable, Bug, Task, Spike or Decision.
+**A new issue:** the bottom of Issue ▾, under **New issue**: **New deliverable…**, **New bug…**, **New task…**, **New spike…** or **New decision…**. Long issue and project titles in the menus end in "…" so the menus stay narrow.
 
 - The issue is created in the picked project, or in the team only when no project is picked. A team is required.
 - It gets that Type label in Linear. Older workspaces that use `type:*` labels still work. The title is used as you typed it; only projects in the older `WS-…` style also get a `[ws-…]` prefix.
