@@ -62,6 +62,14 @@ final class Holder {
     var exitedAt: Date?
     let created = Date()
     var pendingInput: [UInt8] = []
+    /// ROOFD_TRACE_INPUT=<file>: log every byte sent to the program, with where it came from (debugging only).
+    static let traceFile = ProcessInfo.processInfo.environment["ROOFD_TRACE_INPUT"]
+    static func trace(_ tag: String, _ b: [UInt8]) {
+        guard let f = traceFile else { return }
+        let line = String(format: "%.3f ", Date().timeIntervalSince1970) + tag + " " + b.map { $0 >= 32 && $0 < 127 ? String(UnicodeScalar($0)) : String(format: "\\x%02x", $0) }.joined() + "\n"
+        if let h = FileHandle(forWritingAtPath: f) { h.seekToEndOfFile(); h.write(Data(line.utf8)); h.closeFile() }
+        else { FileManager.default.createFile(atPath: f, contents: Data(line.utf8)) }
+    }
     /// Agent status (T14 §3f, Q4): evaluated here so it is right with the app closed.
     var engine = StatusEngine()
     var agent: AgentKind?
@@ -240,6 +248,7 @@ final class Holder {
         mailReplies = []
         mailLock.unlock()
         pendingInput += r
+        Holder.trace("query", r)
         flushInput()
     }
 
@@ -327,6 +336,7 @@ final class Holder {
             guard c.attached else { return }
             engine.input(at: Date())
             pendingInput += payload
+            Holder.trace("attach", payload)
             flushInput()
         case .resize:
             guard c.attached, payload.count >= 4 else { return }
@@ -408,6 +418,7 @@ final class Holder {
         if let at = enterAt, now >= at {
             enterAt = nil
             pendingInput.append(0x0D)
+            Holder.trace("enter", [0x0D])
             flushInput()
         }
         guard let text = spec.opening, let kind = spec.kind, master >= 0, exitedAt == nil else { return }
@@ -421,6 +432,7 @@ final class Holder {
             }
             guard let since = idleSince, now.timeIntervalSince(since) >= OpeningGate.settle(kind) else { return }
             pendingInput += Array(text.utf8)
+            Holder.trace("opening", Array(text.utf8))
             flushInput()
             enterAt = now.addingTimeInterval(0.15)   // Enter separately: a submit, not a newline inside a paste
             engine.input(at: now)
@@ -491,6 +503,7 @@ final class Holder {
             if (j["submit"] as? Bool) == true { bytes.append(0x0D) }
             engine.input(at: Date())
             pendingInput += bytes
+            Holder.trace("input-op", bytes)
             flushInput()
             return [:]
         case "report":

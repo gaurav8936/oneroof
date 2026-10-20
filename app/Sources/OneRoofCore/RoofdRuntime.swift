@@ -219,12 +219,19 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
 
     /// The environment a session starts with: the app's own minus account variables, plus Ghostty's terminal type and
     /// shell integration (prompt marks, cwd, title), plus the launch's own variables (account, etc.).
+    static func inheritedAgentMarker(_ k: String) -> Bool {
+        k == "CLAUDECODE" || k == "CLAUDE_PID" || k == "CLAUDE_EFFORT" || k.hasPrefix("CLAUDE_CODE_") || k == "CODEX_SANDBOX" || k.hasPrefix("CODEX_THREAD") || k == "AI_AGENT"
+    }
+
     func environment(_ spec: LaunchSpec) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }
         for k in ["GHOSTTY_BIN_DIR", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ROOFD_DIR", "ONEROOF_SESSION"] {
             env.removeValue(forKey: k)
         }
+        // Markers of an agent session the app itself was started from (One Roof opened from a terminal inside Claude
+        // Code): a session must start fresh, not as that agent's child (Claude turned transcript saving off).
+        for k in env.keys where RoofdRuntime.inheritedAgentMarker(k) { env.removeValue(forKey: k) }
         env["COLORTERM"] = "truecolor"
         if let terminfo {
             env["TERM"] = "xterm-ghostty"

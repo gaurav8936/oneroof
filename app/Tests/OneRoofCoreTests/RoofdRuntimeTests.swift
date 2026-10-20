@@ -28,6 +28,16 @@ final class RoofdRuntimeTests: XCTestCase {
         XCTAssertNil(env["ZDOTDIR"].flatMap { $0.contains("shell-integration") ? $0 : nil })
     }
 
+    /// Found in the visual pass: One Roof opened from a terminal inside Claude Code passed Claude's child-session
+    /// markers on, and Claude in the session turned transcript saving off.
+    func testInheritedAgentMarkersAreDropped() {
+        for k in ["CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_PID", "AI_AGENT"] {
+            XCTAssertTrue(RoofdRuntime.inheritedAgentMarker(k), k)
+        }
+        XCTAssertFalse(RoofdRuntime.inheritedAgentMarker("CLAUDE_CONFIG_DIR"), "the account variable is the launch's own")
+        XCTAssertFalse(RoofdRuntime.inheritedAgentMarker("PATH"))
+    }
+
     func testGhosttyResourcesTurnOnTerminfoAndShellIntegration() throws {
         let res = FileManager.default.temporaryDirectory.appendingPathComponent("roofd-res-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: res.appendingPathComponent("ghostty/shell-integration/zsh"), withIntermediateDirectories: true)

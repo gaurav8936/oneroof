@@ -158,6 +158,21 @@ final class StatusEngineTests: XCTestCase {
         XCTAssertFalse(StatusEngine.selectionMenu("● Read(file.swift)\n  ⎿ Read 40 lines\n> "), "Claude's tool bullets are not a menu")
     }
 
+    /// Found in the visual pass: Codex's braille logo is not a spinner; "⣻  Generating" still is.
+    func testBrailleLogoIsNotASpinner() {
+        let logo = """
+                    ⣀⣤⣤⣤⣀⣀
+                 ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀
+               ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄
+                ⠈⠙⠛⠿⠿⠿⠿⠛⠉
+        › Ask Codex to do anything
+          GPT-6.1-Sol default · ~/Projects
+        """
+        XCTAssertFalse(StatusEngine.workingLine(logo))
+        XCTAssertTrue(StatusEngine.workingLine("output\n⣻  Generating witty retort\n> "))
+        XCTAssertTrue(StatusEngine.workingLine("⠋ Thinking..."))
+    }
+
     func testClaudeHooksLead() {
         var e = StatusEngine()
         e.evaluate(obs(0, out: 0))

@@ -17,6 +17,8 @@ struct LiveCaption: Equatable {
 extension AppModel {
     /// The caption for a session: the caption engine's latest, else a status line (never invented output).
     func caption(for item: BoardItem) -> LiveCaption {
+        // A session that has ended says so, whatever its last live caption was ("Idle <1m" under Exited before).
+        if item.status == .exited { return LiveCaption(text: "Exited") }
         if let c = captions[item.id] { return c }
         let s = item.session
         switch item.status {

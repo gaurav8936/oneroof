@@ -173,9 +173,12 @@ public struct StatusEngine: Sendable {
             .contains(where: { lower.contains($0) }) { return true }
         // Gemini / Antigravity spinners: a line that starts with a braille frame ("⣻  Generating..."); it can sit
         // still while the model thinks, so it counts even when the screen does not change.
+        // Only one frame, then a space and words: Codex's start-up logo is drawn in braille too (whole rows of it) and
+        // kept a wide Codex session "working", so its opening message never went (found in the visual pass).
         return tail.split(separator: "\n").contains { line in
-            guard let c = line.trimmingCharacters(in: .whitespaces).unicodeScalars.first else { return false }
-            return (0x2801...0x28FF).contains(c.value)
+            let u = Array(line.trimmingCharacters(in: .whitespaces).unicodeScalars)
+            guard u.count >= 3, (0x2801...0x28FF).contains(u[0].value), u[1] == " " else { return false }
+            return u.dropFirst(2).contains { CharacterSet.letters.contains($0) && !(0x2800...0x28FF).contains($0.value) }
         }
     }
 
