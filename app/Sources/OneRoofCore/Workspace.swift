@@ -146,6 +146,22 @@ public enum Workspace {
         return nil
     }
 
+    /// The newest handoff in `dir` written for this session (LAB-250): its file name names the session's ticket key or
+    /// project code ("…_lab-roofd-…", "…lab-247…"). Nil when none does — never some other project's handoff.
+    public static func handoff(in dir: String, project: String?, ticket: String?) -> String? {
+        let keys = [ticket, project].compactMap { $0?.lowercased() }.filter { !$0.isEmpty }
+        guard !keys.isEmpty else { return nil }
+        let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+        func names(_ f: String, _ k: String) -> Bool {
+            let n = f.lowercased()
+            guard let r = n.range(of: k) else { return false }
+            // Whole id only: "lab-roofd" must not match "lab-roofd2", nor "lab-24" match "lab-247".
+            let after = n[r.upperBound...].first
+            return after.map { !$0.isLetter && !$0.isNumber } ?? true
+        }
+        return files.last { f in keys.contains { names(f, $0) } }.map { dir + "/" + $0 }
+    }
+
     /// A Linear project's code: the part of "CODE · title" before the dot when it is one id, else any id in the name.
     public static func projectCode(name: String) -> String? {
         if let r = name.range(of: " · ") {

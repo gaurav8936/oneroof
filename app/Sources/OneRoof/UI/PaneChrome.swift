@@ -357,7 +357,10 @@ struct PanePlaceholder: View {
                     }
                     HStack {
                         RoofButton("Relaunch", .primary) { model.launch(item) }
-                        RoofButton("Open handoff") { model.openLatestHandoff(item) }
+                        // Only this session's own handoff, named for what it is (LAB-250); none → no button.
+                        if let h = model.handoffPath(for: item) {
+                            RoofButton("Open \(item.session.workstream ?? item.session.ticket ?? "") handoff") { model.openInViewer(h) }
+                        }
                     }
                 } else if item.status == .doNotUse {
                     Text("Parked · do not use").ui(18, .semibold).foregroundStyle(t.text.color)
@@ -456,16 +459,9 @@ struct SubagentCard: View {
 }
 
 extension AppModel {
-    /// Exited placeholder › Open handoff: the newest handoff naming the session's workstream, else the folder.
-    func openLatestHandoff(_ item: BoardItem) {
-        let dir = settings.sharedFolder + "/docs/next-session-handoff"
-        guard Workspace.folderExists(dir) else {
-            lastError = "No handoffs folder at \(dir.replacingOccurrences(of: NSHomeDirectory(), with: "~")). Set the shared folder in Settings › Foundations."
-            return
-        }
-        let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).sorted()
-        let ws = item.session.workstream?.lowercased()
-        if let f = files.last(where: { ws != nil && $0.lowercased().contains(ws!) }) ?? files.last { openInViewer(dir + "/" + f) }
-        else { openInViewer(dir) }
+    /// Exited placeholder › Open … handoff: the newest handoff naming the session's ticket or project, else none.
+    func handoffPath(for item: BoardItem) -> String? {
+        Workspace.handoff(in: settings.sharedFolder + "/docs/next-session-handoff",
+                          project: item.session.workstream, ticket: item.session.ticket)
     }
 }
