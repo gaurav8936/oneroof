@@ -15,3 +15,7 @@ _INDEX.md
 
 # release zips (tools/package-app.sh)
 dist/
+# roofd's RoofVT build (Zig): link to the Ghostty source, zig caches and output
+app/roofd/RoofVT/ghostty
+app/roofd/RoofVT/.zig-cache/
+app/roofd/RoofVT/zig-out/

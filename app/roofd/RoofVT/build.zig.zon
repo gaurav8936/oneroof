@@ -1,0 +1,11 @@
+.{
+    .name = .roofvt,
+    .version = "0.1.0",
+    .fingerprint = 0xed58d66717923238,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        // A link to the pinned Ghostty v1.3.1 source (same tree as GhosttyKit); made by roofd/build-roofvt.sh.
+        .ghostty = .{ .path = "ghostty" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "include" },
+}
