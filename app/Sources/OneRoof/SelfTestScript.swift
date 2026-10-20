@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import OneRoofCore
 
 /// Scripted self-test (LAB-12): `ONEROOF_SELFTEST_SCRIPT=<file>` runs one step per line, in order, inside the app,
@@ -11,12 +12,17 @@ import OneRoofCore
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
 ///   answer allowOnce|always|deny   snap <name>   dump <name>   screen <name>   (selected session's text)
 enum SelfTestScript {
+    nonisolated(unsafe) static var perfBag: AnyCancellable?
     static func run(_ path: String, app: AppDelegate) {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
         let steps = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("#") }
         let out = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_OUT"] ?? "/tmp/oneroof-script"
         log(out, "start \(steps.count) steps")
+        // Perf probe: how often the model announces a change (each one re-renders every panel), per 5 s.
+        var changes = 0
+        perfBag = app.model.objectWillChange.sink { changes += 1 }
+        Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in log(out, "perf: \(changes) model changes in 5 s"); changes = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { step(steps, 0, app: app, out: out) }
     }
 

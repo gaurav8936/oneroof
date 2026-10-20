@@ -19,7 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Keeps App Nap off: One Roof watches agents from the background (status, decisions, Dock badge, schedules).
+    /// Napped, its timers and run loop were delayed by tens of seconds once its windows were hidden.
+    private var watchActivity: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        watchActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep], reason: "One Roof watches agent sessions")
         if let err = GhosttyRuntime.shared.initError { model.lastError = "Terminal engine: \(err)" }
         NSApp.mainMenu = buildMenu()
         applyShortcuts()

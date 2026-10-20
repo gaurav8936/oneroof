@@ -246,8 +246,16 @@ final class AppModel: ObservableObject {
                 self.runtimeState = "\(error)"
                 self.rebuild()
             }
+            // roofd is not answering (it stopped, or was never started): start it again at once, at most every 5 s.
+            // Sessions live in their holders; a new daemon finds them by their sockets.
+            if Date().timeIntervalSince(lastRecovery) > 5 {
+                lastRecovery = Date()
+                try? runtime.ensureRunning()
+            }
         }
     }
+    /// Last time poll() tried to bring roofd back (on the runtime queue).
+    private var lastRecovery = Date.distantPast
 
     /// Read each new agent's account from its process environment (pane → foreground PID → sysctl).
     private func probeAccounts(_ snap: RuntimeSnapshot) {
