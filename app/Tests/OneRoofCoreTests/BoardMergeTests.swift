@@ -59,6 +59,22 @@ final class BoardMergeTests: XCTestCase {
         XCTAssertEqual(items.count, 5)
     }
 
+    /// Owner 10-20: right after a launch the pane said "This agent has exited" until the next poll.
+    func testJustLaunchedSessionIsStartingNotExited() {
+        let now = Date()
+        var s = Session(name: "new", repoPath: "/p", lifecycle: .idle)
+        s.runtimeId = "roof-9"
+        s.launchedAt = now.addingTimeInterval(-2)
+        var t = Session(name: "term", agent: .shell, repoPath: "/p", lifecycle: .idle, runtimeId: "roof-10")
+        t.launchedAt = now.addingTimeInterval(-1)
+        let fresh = Board.merge(stored: [s, t], snapshot: RuntimeSnapshot(), now: now)
+        XCTAssertEqual(fresh.map(\.status), [.idle, .idle])
+        XCTAssertEqual(fresh.map(\.starting), [true, true])
+        let later = Board.merge(stored: [s, t], snapshot: RuntimeSnapshot(), now: now.addingTimeInterval(30))
+        XCTAssertEqual(later.map(\.status), [.exited, .exited], "still missing after 10 s: it has exited")
+        XCTAssertEqual(later.map(\.starting), [false, false])
+    }
+
     func testUnknownAgentIsAdoptedAsClaude() {
         let items = Board.merge(stored: [], snapshot: RuntimeSnapshot(sessions: [agent("x", "mystery", .idle, pane: "1")]))
         XCTAssertEqual(items.first?.session.agent, .claude)

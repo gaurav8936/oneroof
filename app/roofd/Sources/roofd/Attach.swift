@@ -22,6 +22,7 @@ enum Attach {
         var inbuf: [UInt8] = []
         var buf = [UInt8](repeating: 0, count: 256 * 1024)
         var stdinOpen = true
+        var cleared = false
         while true {
             if tty {
                 var c: UInt16 = 0, r: UInt16 = 0
@@ -48,6 +49,13 @@ enum Attach {
                     let n = Int(inbuf[off + 1]) << 24 | Int(inbuf[off + 2]) << 16 | Int(inbuf[off + 3]) << 8 | Int(inbuf[off + 4])
                     guard inbuf.count - off - 5 >= n else { break }
                     let type = Frame(rawValue: inbuf[off])
+                    if type == .redraw, !cleared {
+                        // Start from a blank terminal: login(1) has already printed "Last login: …" into it, and the
+                        // session's screen was drawn over those lines (Claude's header overlapped them, owner 10-20).
+                        cleared = true
+                        let clear: [UInt8] = Array("\u{1b}[H\u{1b}[2J\u{1b}[3J".utf8)
+                        _ = clear.withUnsafeBytes { write(1, $0.baseAddress!, $0.count) }
+                    }
                     if type == .output || type == .redraw {
                         let start = off + 5
                         inbuf.withUnsafeBytes { raw in

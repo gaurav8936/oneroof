@@ -19,6 +19,8 @@ public struct BoardItem: Identifiable, Equatable, Sendable {
     /// A plain terminal in which the owner started an agent (typed `claude`): the row shows that agent while it runs,
     /// but the stored session stays a terminal.
     public var agentInTerminal: Bool = false
+    /// Launched a moment ago and not in the runtime's list yet: starting, not exited.
+    public var starting: Bool = false
 
     public var account: String? { detectedAccount ?? session.account }
     public var repoLabel: String { Workspace.repoLabel(for: session.repoPath) }
@@ -53,8 +55,12 @@ public enum Board {
     public static func merge(
         stored: [Session],
         snapshot: RuntimeSnapshot,
-        accounts: [String: String] = [:]
+        accounts: [String: String] = [:],
+        now: Date = Date()
     ) -> [BoardItem] {
+        // A launch lands in the runtime's list on the next poll; until then (up to 10 s) the row is starting. It showed
+        // "This agent has exited" for a moment after every launch (owner 10-20), and could be swept as exited.
+        func justLaunched(_ s: Session) -> Bool { s.launchedAt.map { now.timeIntervalSince($0) < 10 } ?? false }
         var byAgent: [RuntimeID: RuntimeSessionState] = [:]
         var byShell: [RuntimeID: RuntimeSessionState] = [:]
         for r in snapshot.sessions { if r.isAgent { byAgent[r.id] = r } else { byShell[r.id] = r } }
@@ -78,28 +84,34 @@ public enum Board {
                     continue
                 }
                 let shell = s.runtimeId.flatMap { byShell[$0] ?? byAgent[$0] }
+                let starting = shell == nil && s.runtimeId != nil && s.lifecycle != .doNotUse && justLaunched(s)
                 let status: SessionStatus = shell != nil ? (s.lifecycle == .doNotUse ? .doNotUse : .idle)
-                    : (s.runtimeId != nil && s.lifecycle != .doNotUse ? .exited : s.lifecycle)
-                items.append(BoardItem(
+                    : starting ? .idle : (s.runtimeId != nil && s.lifecycle != .doNotUse ? .exited : s.lifecycle)
+                var item = BoardItem(
                     id: s.id, session: s, status: status,
                     liveAgent: shell != nil ? s.runtimeId : nil, paneId: shell?.pane, workspaceId: shell?.groupId,
-                    detectedAccount: nil, adopted: false, title: nil, ready: shell != nil))
+                    detectedAccount: nil, adopted: false, title: nil, ready: shell != nil)
+                item.starting = starting
+                items.append(item)
                 continue
             }
             var status = s.lifecycle
+            var starting = false
             var live: RuntimeSessionState?
             if let name = s.runtimeId, let a = byAgent[name] {
                 live = a
                 used.insert(name)
                 status = s.lifecycle == .doNotUse ? .doNotUse : SessionStatus(a.status)
             } else if s.runtimeId != nil, s.lifecycle != .doNotUse {
-                status = .exited
+                if justLaunched(s) { status = .idle; starting = true } else { status = .exited }
             }
-            items.append(BoardItem(
+            var item = BoardItem(
                 id: s.id, session: s, status: status,
                 liveAgent: live?.id, paneId: live?.pane, workspaceId: live?.groupId,
                 detectedAccount: live.flatMap { accounts[$0.id] },
-                adopted: false, title: live?.title, ready: live?.ready ?? false))
+                adopted: false, title: live?.title, ready: live?.ready ?? false)
+            item.starting = starting
+            items.append(item)
         }
 
         for a in snapshot.agents where !used.contains(a.id) {
