@@ -9,7 +9,7 @@ import OneRoofCore
 ///   wait <seconds>                 terminal [dir]               type <text>        (types text + Return)
 ///   send <text>                    (into the selected session through roofd, + Return)
 ///   plan <name>|<agent>|<repo>|<opening>|<launch 0/1>         select <session name>
-///   launch · close · delete · reopen · interrupt · popout · quit
+///   launch · close · delete · reopen · interrupt · popout · quit · newsession (⌘N sheet) · keys <text> (into the sheet)
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
 ///   answer allowOnce|always|deny   snap <name>   dump <name>   screen <name>   (selected session's text)
 enum SelfTestScript {
@@ -78,6 +78,12 @@ enum SelfTestScript {
         case "menu": SelfTest.invokeMenu(arg)
         case "answer":
             if let d = m.openDecisions.first, let a = Answer(rawValue: arg) { m.answer(d, a) } else { log(out, "  no open decision") }
+            delay = 1
+        case "newsession": app.main.newSession(); delay = 2
+        case "keys":
+            // Type into whatever has focus in the key window or its sheet (e.g. the New work sheet's text field).
+            let w = app.main.window?.attachedSheet ?? NSApp.keyWindow ?? app.main.window
+            SelfTest.type(arg, into: w)
             delay = 1
         case "probe": log(out, "  " + app.main.terminalArea.debugState())
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
