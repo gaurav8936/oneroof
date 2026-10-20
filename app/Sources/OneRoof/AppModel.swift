@@ -196,9 +196,9 @@ final class AppModel: ObservableObject {
     /// re-check every 30 s; ensureRunning hands over from an app-started daemon without touching sessions.
     func checkRoofdOwner() {
         guard let roofd = runtime as? RoofdRuntime, !SelfTest.isActive else { return }
-        let on = RoofdService.enabled
         queue.async {
-            roofd.managedByLaunchd = on
+            // register() also registers again after a rebuild (a new signature launchd would refuse to start).
+            roofd.managedByLaunchd = RoofdService.register()
             try? roofd.ensureRunning()
         }
     }

@@ -130,7 +130,9 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
                 if let h = try? call("hello", timeout: 1), (h["build"] as? Double ?? 0) >= want { return }
                 usleep(100_000)
             }
-            throw RuntimeError.failed("roofd did not come back after the upgrade")
+            // launchd did not bring the new binary up (e.g. it refused a changed signature): never leave the sessions
+            // without a daemon; the next check hands over to launchd once it can run it.
+            try startDaemon()
         }
         if managedByLaunchd {
             for _ in 0..<40 {

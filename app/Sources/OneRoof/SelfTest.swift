@@ -26,6 +26,7 @@ enum SelfTest {
 
     static func runIfRequested(app: AppDelegate) {
         let env = ProcessInfo.processInfo.environment
+        if let script = env["ONEROOF_SELFTEST_SCRIPT"] { SelfTestScript.run(script, app: app); return }
         if env["ONEROOF_SELFTEST_STICKERS"] == "soft" { app.model.settings.stickerStyle = "soft" }
         // v2: ONEROOF_SELFTEST_CENTRE=<overview|board|decisions|subagents|work|learn|editor|review>, TEXTSIZE=<0.85…1.3>.
         if let c = env["ONEROOF_SELFTEST_CENTRE"], let v = CentreView(rawValue: c) {

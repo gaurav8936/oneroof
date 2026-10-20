@@ -124,6 +124,18 @@ final class FakeRuntimeTests: XCTestCase {
         XCTAssertEqual(try r.snapshot().session(s.runtimeId!)?.status, .idle)
     }
 
+    /// Found in the core-operations pass: a relaunch sends the opening message again, as with herdr.
+    func testRelaunchCarriesTheOpeningAgain() {
+        var s = Session(name: "x", agent: .claude, repoPath: Workspace.projectsRoot, openingMessage: "Start step 1", lifecycle: .idle)
+        s.openingSent = true
+        s.runtimeId = "roof-1"
+        guard case .success(let spec) = LaunchPlan.spec(s, stored: [s], deliverOpening: true) else { return XCTFail() }
+        XCTAssertEqual(spec.opening, "Start step 1")
+        let shell = Session(name: "t", agent: .shell, repoPath: Workspace.projectsRoot, openingMessage: "ignored")
+        guard case .success(let t) = LaunchPlan.spec(shell, stored: [], deliverOpening: true) else { return XCTFail() }
+        XCTAssertNil(t.opening, "plain terminals never get one")
+    }
+
     func testStoppedRuntimeFails() {
         let r = FakeRuntime()
         r.running = false

@@ -24,7 +24,10 @@ public enum LaunchPlan {
             agent: s.agent, args: s.launchArgs, command: s.agent.isAgent ? nil : command,
             previousGroup: s.runtimeGroup, adoptOrphan: s.agent.isAgent && s.runtimeId == nil,
             claimed: Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix(Session.adoptedPrefix) ? nil : $0.runtimeId }))
-        if deliverOpening, s.agent.isAgent, s.openingPending { spec.opening = s.openingMessage }
+        // Every launch and relaunch sends the opening message (herdr-era behaviour: a relaunch started over). An agent
+        // that is merely re-linked (adoptOrphan) never gets it twice: roofd returns before creating anything.
+        let opening = s.openingMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if deliverOpening, s.agent.isAgent, !opening.isEmpty { spec.opening = s.openingMessage }
         return .success(spec)
     }
 }
