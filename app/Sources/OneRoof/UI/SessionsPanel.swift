@@ -277,7 +277,7 @@ struct SessionContextMenu: View {
         }
         if it.liveAgent != nil {
             Button("Open in New Window") { PopOutWindowController.popOut(it, model: model) }
-            Button("Roof Window for \(it.repoLabel)") { RoofWindowController.show(.repo(it.session.repoPath), model: model) }
+            Button("Roof Window for \(Workspace.repoLabel(for: it.session.repoPath))") { RoofWindowController.show(.repo(it.session.repoPath), model: model) }
         }
         Button("Review Changes") { model.reveal(it); model.openDiff(it.session.repoPath) }
         Button("Terminal Here") { model.newTerminal(in: it.session.repoPath) }

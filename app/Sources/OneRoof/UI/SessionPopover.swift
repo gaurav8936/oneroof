@@ -85,7 +85,7 @@ struct SessionPopover: View {
                 }
                 if it.liveAgent != nil {
                     link("New window", "macwindow.on.rectangle") { PopOutWindowController.popOut(it, model: model); close() }
-                    link("Roof window for \(it.repoLabel)", "house") { RoofWindowController.show(.repo(it.session.repoPath), model: model); close() }
+                    link("Roof window for \(Workspace.repoLabel(for: it.session.repoPath))", "house") { RoofWindowController.show(.repo(it.session.repoPath), model: model); close() }
                 }
                 if let a = it.liveAgent {
                     link("Copy attach", "doc.on.doc") {
