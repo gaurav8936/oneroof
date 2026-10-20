@@ -79,6 +79,7 @@ enum SelfTestScript {
         case "answer":
             if let d = m.openDecisions.first, let a = Answer(rawValue: arg) { m.answer(d, a) } else { log(out, "  no open decision") }
             delay = 1
+        case "probe": log(out, "  " + app.main.terminalArea.debugState())
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "dump":
             let rows = m.items.map { i -> [String: Any] in
