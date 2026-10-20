@@ -19,7 +19,7 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_HOWDOI=<question>         ask Learn "how do I…" (opens the best page)
 ///   ONEROOF_SELFTEST_PLAY=<page title>[@terminals]  play that Learn page's narration (then show the terminals)
 ///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
-///   ONEROOF_SELFTEST_KIND=session|ticket|defect|workstream   ONEROOF_SELFTEST_TEAM=<key>   New work sheet starting state
+///   ONEROOF_SELFTEST_KIND=session|ticket|defect|workstream   ONEROOF_SELFTEST_TEAM=<key>   ONEROOF_SELFTEST_PROJECT=<code>   New session sheet starting state
 ///   ONEROOF_SELFTEST_ROOF=<n>                   start n plain terminals in One Roof's source checkout (or
 ///                                               ONEROOF_SELFTEST_ROOF_REPO), then open its roof window
 enum SelfTest {
