@@ -436,16 +436,80 @@ final class AppModel: ObservableObject {
     func runFoundations() {
         guard !checkingFoundations else { return }
         checkingFoundations = true
-        let paths = FoundationPaths(common: settings.sharedFolder, agenticEngineering: settings.agenticEngineering.path)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            var r = Foundations.runAll(paths, runtime: self.runtime)
-            r.insert(RoofdService.check(), at: min(1, r.count))
+            let r = self.checkFoundationsNow()
             DispatchQueue.main.async {
                 self.foundations = r
                 self.checkingFoundations = false
                 self.foundationsCheckedAt = Date()
             }
+        }
+    }
+
+    /// One full foundations pass (blocking; call off the main thread).
+    nonisolated func checkFoundationsNow() -> [CheckResult] {
+        let s = DispatchQueue.main.sync { settings }
+        var r = Foundations.runAll(FoundationPaths(common: s.sharedFolder, agenticEngineering: s.agenticEngineering.path), runtime: runtime)
+        r.insert(RoofdService.check(), at: min(1, r.count))
+        return r
+    }
+
+    /// Red foundations before an agent starts (owner D5). The startup check can be hours old and the problem already
+    /// fixed (owner 10-20: a doors warning on the first launch of the day), so check again first and only ask when it
+    /// is still red. The question offers "Fix and launch" when every red check has a fix command.
+    func recheckFoundationsThenLaunch(_ item: BoardItem) {
+        busy.insert(item.id)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let r = self.checkFoundationsNow()
+            DispatchQueue.main.async {
+                self.foundations = r
+                self.foundationsCheckedAt = Date()
+                self.busy.remove(item.id)
+                guard Foundations.overall(r) == .fail, let fresh = self.item(item.id) else {
+                    if let fresh = self.item(item.id) { self.launch(fresh, foundationsChecked: true) }
+                    return
+                }
+                self.askAboutFoundations(fresh, triedFix: false)
+            }
+        }
+    }
+
+    private func askAboutFoundations(_ item: BoardItem, triedFix: Bool) {
+        let reds = foundations.filter { $0.level == .fail }
+        let fixes = reds.compactMap(\.fix)
+        let canFix = !triedFix && !fixes.isEmpty && fixes.count == reds.count
+        let a = NSAlert()
+        a.messageText = triedFix ? "The fix did not clear every problem" : "The foundations check found problems"
+        a.informativeText = reds.map { "• \($0.title): \($0.detail)" }.joined(separator: "\n")
+            + "\n\nAn agent started now may miss shared rules, skills or memory."
+            + (canFix ? " Fix and launch runs the fix for you, then starts the agent." : " Fix them in Window › Foundations, or launch anyway.")
+        if canFix { a.addButton(withTitle: "Fix and launch") }
+        a.addButton(withTitle: "Open Foundations")
+        a.addButton(withTitle: "Launch anyway")
+        a.addButton(withTitle: "Cancel")
+        var choice = a.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        if !canFix { choice += 1 }
+        switch choice {
+        case 0:
+            busy.insert(item.id)
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self else { return }
+                for fix in fixes { _ = Foundations.run("/bin/zsh", ["-lc", fix], cwd: Workspace.projectsRoot, timeout: 120) }
+                let r = self.checkFoundationsNow()
+                DispatchQueue.main.async {
+                    self.foundations = r
+                    self.foundationsCheckedAt = Date()
+                    self.busy.remove(item.id)
+                    guard let fresh = self.item(item.id) else { return }
+                    if Foundations.overall(r) == .fail { self.askAboutFoundations(fresh, triedFix: true) }
+                    else { self.launch(fresh, foundationsChecked: true) }
+                }
+            }
+        case 1: NotificationCenter.default.post(name: .openFoundations, object: nil)
+        case 2: foundationsOverride = true; launch(item, foundationsChecked: true)
+        default: break
         }
     }
 
@@ -600,22 +664,12 @@ final class AppModel: ObservableObject {
 
     /// Start the session's agent in the runtime (in ~/Projects or the repo, with the account's env). The opening
     /// message travels in the launch spec: roofd sends it once the agent is ready (it arrives with the app closed too).
-    func launch(_ item: BoardItem) {
+    func launch(_ item: BoardItem, foundationsChecked: Bool = false) {
         let s = item.session
         // Red foundations block starting an agent (owner D5), with a way through for this run.
-        if s.agent.isAgent, foundationsLevel == .fail, !foundationsOverride, !SelfTest.isActive {
-            let reds = foundations.filter { $0.level == .fail }.map { "• \($0.title): \($0.detail)" }.joined(separator: "\n")
-            let a = NSAlert()
-            a.messageText = "The foundations check found problems"
-            a.informativeText = reds + "\n\nAn agent started now may miss shared rules, skills or memory. Fix them in Window › Foundations, or launch anyway."
-            a.addButton(withTitle: "Open Foundations")
-            a.addButton(withTitle: "Launch anyway")
-            a.addButton(withTitle: "Cancel")
-            switch a.runModal() {
-            case .alertFirstButtonReturn: NotificationCenter.default.post(name: .openFoundations, object: nil); return
-            case .alertSecondButtonReturn: foundationsOverride = true
-            default: return
-            }
+        if s.agent.isAgent, !foundationsChecked, foundationsLevel == .fail, !foundationsOverride, !SelfTest.isActive {
+            recheckFoundationsThenLaunch(item)
+            return
         }
         let spec: LaunchSpec
         switch LaunchPlan.spec(s, stored: stored, command: pendingCommands[s.id], deliverOpening: true) {
