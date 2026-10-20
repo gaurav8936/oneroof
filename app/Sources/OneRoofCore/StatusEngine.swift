@@ -21,6 +21,8 @@ public struct StatusEngine: Sendable {
     public static let busyWindow: TimeInterval = 1.5
     /// Quiet this long after working means a turn finished.
     public static let doneAfter: TimeInterval = 3
+    /// A hook's "working" with nothing on screen to back it, after this long, is stale.
+    public static let staleHook: TimeInterval = 8
 
     public private(set) var status: RuntimeStatus = .unknown
     public private(set) var ready = false
@@ -105,7 +107,9 @@ public struct StatusEngine: Sendable {
         } else if let h = hookStatus {
             // Hooks decide (UserPromptSubmit / PreToolUse → working, Stop → done): screen repaints after a Stop are
             // not a new turn; a new turn sends its own hook. Only a prompt on screen overrides them (above).
-            next = h
+            // Safety net: "working" from a hook with no spinner and no screen change for 8 s is stale (a hook
+            // without its Stop): the CLI is at its prompt. Long tool runs keep a spinner line, so they stay working.
+            next = h == .working && !spinner && quietFor >= Self.staleHook ? (workedSinceInput ? .done : .idle) : h
         } else if busy || spinner {
             next = .working
         } else if workedSinceInput && quietFor >= Self.doneAfter {
@@ -162,9 +166,16 @@ public struct StatusEngine: Sendable {
 
     /// The "I am busy" line each CLI draws while a turn runs.
     public static func workingLine(_ screen: String) -> Bool {
-        let tail = bottomLines(screen, 12).lowercased()
-        return ["esc to interrupt", "esc to cancel", "ctrl+c to interrupt", "ctrl-c to interrupt", "press esc to stop"]
-            .contains { tail.contains($0) }
+        let tail = bottomLines(screen, 12)
+        let lower = tail.lowercased()
+        if ["esc to interrupt", "esc to cancel", "ctrl+c to interrupt", "ctrl-c to interrupt", "press esc to stop"]
+            .contains(where: { lower.contains($0) }) { return true }
+        // Gemini / Antigravity spinners: a line that starts with a braille frame ("⣻  Generating..."); it can sit
+        // still while the model thinks, so it counts even when the screen does not change.
+        return tail.split(separator: "\n").contains { line in
+            guard let c = line.trimmingCharacters(in: .whitespaces).unicodeScalars.first else { return false }
+            return (0x2801...0x28FF).contains(c.value)
+        }
     }
 
     /// The agent behind a process: its name or argv (node-based CLIs run as `node …/codex`).

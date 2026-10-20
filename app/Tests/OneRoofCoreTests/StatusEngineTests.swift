@@ -118,6 +118,27 @@ final class StatusEngineTests: XCTestCase {
                        "a status line appearing below the input box is not content")
     }
 
+    /// Found by the side-by-side run (Antigravity): a still braille spinner is still working.
+    func testBrailleSpinnerIsWorking() {
+        XCTAssertTrue(StatusEngine.workingLine("touch sbs-marker.txt\n⣻  Generating...\n└ Tip: Use /settings\n────\n>"))
+        var e = StatusEngine()
+        e.evaluate(obs(0, .agy, out: 0.1)); e.evaluate(obs(1.2, .agy, out: 0.1))
+        XCTAssertEqual(e.evaluate(obs(20, .agy, out: 5, screen: "⣻  Generating...\n────\n>")), .working)
+    }
+
+    /// Found by the side-by-side run (Claude): a "working" hook with no Stop and an idle screen goes stale.
+    func testStaleWorkingHookFallsBackToDone() {
+        var e = StatusEngine()
+        e.hook("SessionStart", at: at(0))
+        e.hook("UserPromptSubmit", at: at(1))
+        e.evaluate(obs(2, out: 1.5))
+        e.hook("Stop", at: at(10))
+        e.hook("PreToolUse", at: at(12))
+        XCTAssertEqual(e.evaluate(obs(14, out: 11, screen: "❯ ")), .working)
+        XCTAssertEqual(e.evaluate(obs(20, out: 11, screen: "❯ ")), .done, "8 s idle screen after a lone working hook")
+        XCTAssertEqual(e.evaluate(obs(20, out: 11, screen: "✻ Building… (esc to interrupt)\n❯ ")), .working, "a spinner keeps it working")
+    }
+
     func testClaudeHooksLead() {
         var e = StatusEngine()
         e.evaluate(obs(0, out: 0))
@@ -125,7 +146,8 @@ final class StatusEngineTests: XCTestCase {
         XCTAssertTrue(e.ready)
         XCTAssertEqual(e.evaluate(obs(2, out: 0.2)), .idle)
         e.hook("UserPromptSubmit", at: at(3))
-        XCTAssertEqual(e.evaluate(obs(20, out: 3)), .working, "a quiet tool call is still working per the hook")
+        XCTAssertEqual(e.evaluate(obs(20, out: 3, screen: "✻ Running… (12s · esc to interrupt)\n> ")), .working,
+                       "a quiet tool call (spinner on screen) is still working per the hook")
         e.hook("Notification", message: "Claude needs your permission to use Bash", at: at(21))
         XCTAssertEqual(e.evaluate(obs(22, out: 21)), .blocked)
         e.hook("PreToolUse", at: at(30))
