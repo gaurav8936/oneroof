@@ -65,7 +65,7 @@ public enum Board {
             // A plain terminal: live while its shell exists; it has no agent state, so it shows as idle.
             if !s.agent.isAgent {
                 // An agent started inside the terminal: the runtime reports it under the terminal's own name.
-                if let name = s.herdrAgent, let a = byAgent[name], let kind = a.agent, kind.isAgent {
+                if let name = s.runtimeId, let a = byAgent[name], let kind = a.agent, kind.isAgent {
                     used.insert(name)
                     var shown = s
                     shown.agent = kind
@@ -77,22 +77,22 @@ public enum Board {
                     items.append(item)
                     continue
                 }
-                let shell = s.herdrAgent.flatMap { byShell[$0] ?? byAgent[$0] }
+                let shell = s.runtimeId.flatMap { byShell[$0] ?? byAgent[$0] }
                 let status: SessionStatus = shell != nil ? (s.lifecycle == .doNotUse ? .doNotUse : .idle)
-                    : (s.herdrAgent != nil && s.lifecycle != .doNotUse ? .exited : s.lifecycle)
+                    : (s.runtimeId != nil && s.lifecycle != .doNotUse ? .exited : s.lifecycle)
                 items.append(BoardItem(
                     id: s.id, session: s, status: status,
-                    liveAgent: shell != nil ? s.herdrAgent : nil, paneId: shell?.pane, workspaceId: shell?.groupId,
+                    liveAgent: shell != nil ? s.runtimeId : nil, paneId: shell?.pane, workspaceId: shell?.groupId,
                     detectedAccount: nil, adopted: false, title: nil, ready: shell != nil))
                 continue
             }
             var status = s.lifecycle
             var live: RuntimeSessionState?
-            if let name = s.herdrAgent, let a = byAgent[name] {
+            if let name = s.runtimeId, let a = byAgent[name] {
                 live = a
                 used.insert(name)
                 status = s.lifecycle == .doNotUse ? .doNotUse : SessionStatus(a.status)
-            } else if s.herdrAgent != nil, s.lifecycle != .doNotUse {
+            } else if s.runtimeId != nil, s.lifecycle != .doNotUse {
                 status = .exited
             }
             items.append(BoardItem(
@@ -112,7 +112,7 @@ public enum Board {
             let s = Session(
                 id: "herdr:" + a.id, name: display, agent: kind, repoPath: cwd,
                 workstream: Workspace.workstream(in: [a.id, title ?? ""].joined(separator: " ")),
-                lifecycle: .idle, herdrAgent: a.id)
+                lifecycle: .idle, runtimeId: a.id)
             items.append(BoardItem(
                 id: s.id, session: s, status: SessionStatus(a.status),
                 liveAgent: a.id, paneId: a.pane, workspaceId: a.groupId,

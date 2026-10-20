@@ -348,7 +348,7 @@ final class AppModel: ObservableObject {
         guard let s = recentlyClosed.popLast() else { lastError = "Nothing closed to reopen."; return }
         if !stored.contains(where: { $0.id == s.id }) {
             var back = s
-            back.herdrAgent = nil; back.herdrWorkspace = nil; back.openingSent = false
+            back.runtimeId = nil; back.runtimeGroup = nil; back.openingSent = false
             save(back)
         }
         selectedId = s.id
@@ -374,8 +374,8 @@ final class AppModel: ObservableObject {
     func delete(_ item: BoardItem) {
         guard !item.adopted else { return }
         rememberClosed(item.session)
-        if item.liveAgent == nil, let ws = item.session.herdrWorkspace {
-            let id = item.session.herdrAgent ?? ""
+        if item.liveAgent == nil, let ws = item.session.runtimeGroup {
+            let id = item.session.runtimeId ?? ""
             queue.async { [weak self] in try? self?.runtime.close(id, group: ws) }
         }
         stored.removeAll { $0.id == item.id }
@@ -578,8 +578,8 @@ final class AppModel: ObservableObject {
             id: Session.herdrName(for: s.id), label: s.name, cwd: dir,
             env: AccountResolver.launchEnv(agent: s.agent, account: s.account),
             agent: s.agent, args: s.launchArgs, command: s.agent.isAgent ? nil : pendingCommands[s.id],
-            previousGroup: s.herdrWorkspace, adoptOrphan: s.agent.isAgent && s.herdrAgent == nil,
-            claimed: Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix("herdr:") ? nil : $0.herdrAgent }))
+            previousGroup: s.runtimeGroup, adoptOrphan: s.agent.isAgent && s.runtimeId == nil,
+            claimed: Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix("herdr:") ? nil : $0.runtimeId }))
         busy.insert(s.id)
         queue.async { [weak self] in
             guard let self else { return }
@@ -606,8 +606,8 @@ final class AppModel: ObservableObject {
                 self.stored.remove(at: i)
                 self.store?.delete(id: extra.id)
             }
-            s.herdrAgent = name
-            s.herdrWorkspace = workspaceId
+            s.runtimeId = name
+            s.runtimeGroup = workspaceId
             if !adopted {
                 s.launchedAt = Date()
                 s.openingSent = false
@@ -685,9 +685,9 @@ final class AppModel: ObservableObject {
 
     /// End the session in the runtime (its agent or shell process).
     func closeAgent(_ item: BoardItem, remember: Bool = true) {
-        let group = item.workspaceId ?? item.session.herdrWorkspace
+        let group = item.workspaceId ?? item.session.runtimeGroup
         guard group != nil || item.liveAgent != nil else { return }
-        let id = item.liveAgent ?? item.session.herdrAgent ?? ""
+        let id = item.liveAgent ?? item.session.runtimeId ?? ""
         if remember { rememberClosed(item.session) }
         queue.async { [weak self] in
             do { try self?.runtime.close(id, group: group) }

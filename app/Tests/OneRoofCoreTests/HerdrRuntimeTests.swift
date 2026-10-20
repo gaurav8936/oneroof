@@ -54,7 +54,7 @@ final class HerdrRuntimeTests: XCTestCase {
         LaunchSpec(id: id, label: "Fix login", cwd: "/p/repo", env: ["CLAUDE_CONFIG_DIR": "/c2"], agent: agent, args: ["--model", "haiku"],
                    adoptOrphan: agent.isAgent)
     }
-    func herdrAgent(_ name: String, ws: String = "w0") -> HerdrAgent {
+    func runtimeId(_ name: String, ws: String = "w0") -> HerdrAgent {
         HerdrAgent(name: name, agent: "claude", agent_status: "idle", cwd: "/p", pane_id: ws + ":p1", workspace_id: ws)
     }
 
@@ -68,7 +68,7 @@ final class HerdrRuntimeTests: XCTestCase {
 
 
     func testConvertAgentsThenShellsWithoutDuplicates() {
-        var a = herdrAgent("term:term_2", ws: "w2"); a.revision = 7; a.foreground_cwd = "/p/sub"
+        var a = runtimeId("term:term_2", ws: "w2"); a.revision = 7; a.foreground_cwd = "/p/sub"
         let snap = HerdrSnapshot(panes: [
             HerdrPane(pane_id: "w1:p1", terminal_id: "term_1", workspace_id: "w1", cwd: "/p", foreground_cwd: nil, agent_status: nil),
             HerdrPane(pane_id: "w2:p1", terminal_id: "term_2", workspace_id: "w2", cwd: "/p", foreground_cwd: nil, agent_status: nil),
@@ -92,7 +92,7 @@ final class HerdrRuntimeTests: XCTestCase {
 
     func testNamesAreMadeUniqueAndTheOldWorkspaceIsClosed() throws {
         let h = FakeHerdr()
-        h.snap.agents = [herdrAgent("roof-1a2b3c4d"), herdrAgent("roof-1a2b3c4d-2")]
+        h.snap.agents = [runtimeId("roof-1a2b3c4d"), runtimeId("roof-1a2b3c4d-2")]
         var s = spec(); s.previousGroup = "w0"; s.claimed = ["roof-1a2b3c4d", "roof-1a2b3c4d-2"]
         let ref = try runtime(h).start(s)
         XCTAssertEqual(ref.id, "roof-1a2b3c4d-3")
@@ -101,7 +101,7 @@ final class HerdrRuntimeTests: XCTestCase {
 
     func testAnUnclaimedAgentWithTheSessionsNameIsAdopted() throws {
         let h = FakeHerdr()
-        h.snap.agents = [herdrAgent("roof-1a2b3c4d", ws: "w7")]
+        h.snap.agents = [runtimeId("roof-1a2b3c4d", ws: "w7")]
         let ref = try runtime(h).start(spec())
         XCTAssertEqual(ref, RuntimeSessionRef(id: "roof-1a2b3c4d", groupId: "w7", adopted: true))
         XCTAssertFalse(h.calls.contains { $0.hasPrefix("createWorkspace") })
@@ -124,7 +124,7 @@ final class HerdrRuntimeTests: XCTestCase {
         let h = FakeHerdr()
         h.startErrors = [HerdrClient.Failure.io("timeout")]
         XCTAssertThrowsError(try runtime(h).start(s))      // no agent: the error stands
-        let late = LateAgentHerdr(herdrAgent("roof-1a2b3c4d", ws: "w1"))
+        let late = LateAgentHerdr(runtimeId("roof-1a2b3c4d", ws: "w1"))
         late.startErrors = [HerdrClient.Failure.io("timeout")]
         XCTAssertEqual(try runtime(late).start(s), RuntimeSessionRef(id: "roof-1a2b3c4d", groupId: "w1"))
     }
@@ -137,7 +137,7 @@ final class HerdrRuntimeTests: XCTestCase {
 
         let busy = FakeHerdr()
         busy.leaks = ["CLAUDE_CONFIG_DIR": "/c2"]
-        busy.snap.agents = [herdrAgent("other")]
+        busy.snap.agents = [runtimeId("other")]
         XCTAssertThrowsError(try runtime(busy).start(spec())) { e in
             XCTAssertTrue("\(e)".contains("wrong account"))
         }

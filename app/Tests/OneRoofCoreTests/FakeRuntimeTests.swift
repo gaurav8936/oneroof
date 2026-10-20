@@ -7,10 +7,10 @@ final class FakeRuntimeTests: XCTestCase {
 
     func launch(_ s: inout Session, on r: FakeRuntime) throws {
         let ref = try r.start(LaunchSpec(id: Session.herdrName(for: s.id), label: s.name, cwd: s.launchDirectory, agent: s.agent,
-                                         args: s.launchArgs, previousGroup: s.herdrWorkspace,
-                                         adoptOrphan: s.agent.isAgent && s.herdrAgent == nil))
-        s.herdrAgent = ref.id
-        s.herdrWorkspace = ref.groupId
+                                         args: s.launchArgs, previousGroup: s.runtimeGroup,
+                                         adoptOrphan: s.agent.isAgent && s.runtimeId == nil))
+        s.runtimeId = ref.id
+        s.runtimeGroup = ref.groupId
         s.lifecycle = .idle
     }
 
@@ -58,7 +58,7 @@ final class FakeRuntimeTests: XCTestCase {
         XCTAssertTrue(gate.due(items, now: t0.addingTimeInterval(5), sending: [], retryAfter: [:]).isEmpty)
         XCTAssertEqual(gate.due(items, now: t0.addingTimeInterval(10), sending: [], retryAfter: [:]).count, 1)
 
-        r.update(k.herdrAgent!) { $0.status = .blocked }
+        r.update(k.runtimeId!) { $0.status = .blocked }
         let blocked = Board.merge(stored: [k], snapshot: try r.snapshot())
         gate.observe(blocked, now: t0.addingTimeInterval(11))
         XCTAssertTrue(gate.due(blocked, now: t0.addingTimeInterval(30), sending: [], retryAfter: [:]).isEmpty)
@@ -68,15 +68,15 @@ final class FakeRuntimeTests: XCTestCase {
         let r = FakeRuntime()
         var s = Session(name: "x", agent: .claude, repoPath: "/p", lifecycle: .planned)
         try launch(&s, on: r)
-        r.notReady = [s.herdrAgent!]
-        XCTAssertThrowsError(try r.submit(s.herdrAgent!, text: "hi")) { XCTAssertEqual($0 as? RuntimeError, .notReady(s.herdrAgent!)) }
+        r.notReady = [s.runtimeId!]
+        XCTAssertThrowsError(try r.submit(s.runtimeId!, text: "hi")) { XCTAssertEqual($0 as? RuntimeError, .notReady(s.runtimeId!)) }
     }
 
     func testCloseLeavesTheRowExited() throws {
         let r = FakeRuntime()
         var s = Session(name: "x", agent: .claude, repoPath: "/p", lifecycle: .planned)
         try launch(&s, on: r)
-        try r.close(s.herdrAgent!, group: s.herdrWorkspace)
+        try r.close(s.runtimeId!, group: s.runtimeGroup)
         let items = Board.merge(stored: [s], snapshot: try r.snapshot())
         XCTAssertEqual(items.first?.status, .exited)
         XCTAssertNil(items.first?.liveAgent)
@@ -86,12 +86,12 @@ final class FakeRuntimeTests: XCTestCase {
         let r = FakeRuntime()
         var s = Session(name: "x", agent: .claude, repoPath: "/p", lifecycle: .planned)
         try launch(&s, on: r)
-        let first = s.herdrAgent!
-        try r.close(first, group: s.herdrWorkspace)
+        let first = s.runtimeId!
+        try r.close(first, group: s.runtimeGroup)
         // reopenClosed: the row forgets its runtime link, then launches.
-        s.herdrAgent = nil; s.herdrWorkspace = nil; s.openingSent = false
+        s.runtimeId = nil; s.runtimeGroup = nil; s.openingSent = false
         try launch(&s, on: r)
-        XCTAssertEqual(s.herdrAgent, first)
+        XCTAssertEqual(s.runtimeId, first)
         XCTAssertEqual(Board.merge(stored: [s], snapshot: try r.snapshot()).first?.status, .idle)
     }
 
@@ -99,7 +99,7 @@ final class FakeRuntimeTests: XCTestCase {
         let r = FakeRuntime()
         var s = Session(name: "x", agent: .claude, repoPath: "/p", lifecycle: .planned)
         try launch(&s, on: r)
-        let first = s.herdrAgent!
+        let first = s.runtimeId!
         // Another stored session owns the old name, so it is not adopted back.
         let ref = try r.start(LaunchSpec(id: first, label: "x", cwd: "/p", agent: .claude, adoptOrphan: true, claimed: [first]))
         XCTAssertEqual(ref.id, first + "-2")
@@ -119,9 +119,9 @@ final class FakeRuntimeTests: XCTestCase {
         let r = FakeRuntime()
         var s = Session(name: "x", agent: .claude, repoPath: "/p", lifecycle: .planned)
         try launch(&s, on: r)
-        r.update(s.herdrAgent!) { $0.status = .done }
-        r.markSeen(s.herdrAgent!)
-        XCTAssertEqual(try r.snapshot().session(s.herdrAgent!)?.status, .idle)
+        r.update(s.runtimeId!) { $0.status = .done }
+        r.markSeen(s.runtimeId!)
+        XCTAssertEqual(try r.snapshot().session(s.runtimeId!)?.status, .idle)
     }
 
     func testStoppedRuntimeFails() {

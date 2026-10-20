@@ -27,11 +27,11 @@ final class BoardMergeTests: XCTestCase {
     func testMergeStoredLiveExitedAndAdopted() {
         let planned = Session(name: "plan it", repoPath: "/p/a/b", lifecycle: .planned)
         var launched = Session(name: "live one", repoPath: "/p/a/b", lifecycle: .idle)
-        launched.herdrAgent = "roof-1"
+        launched.runtimeId = "roof-1"
         var gone = Session(name: "gone", repoPath: "/p/a/b", lifecycle: .idle)
-        gone.herdrAgent = "roof-2"
+        gone.runtimeId = "roof-2"
         var parked = Session(name: "parked", repoPath: "/p/a/b", lifecycle: .doNotUse)
-        parked.herdrAgent = "roof-3"
+        parked.runtimeId = "roof-3"
 
         let items = Board.merge(
             stored: [planned, launched, gone, parked],
@@ -81,7 +81,7 @@ final class BoardMergeTests: XCTestCase {
     }
 
     func testPlainTerminalRowIsLiveWhileItsShellExists() {
-        let s = Session(name: "Terminal 1", agent: .shell, repoPath: "/p", lifecycle: .idle, herdrAgent: "term:term_1")
+        let s = Session(name: "Terminal 1", agent: .shell, repoPath: "/p", lifecycle: .idle, runtimeId: "term:term_1")
         let live = Board.merge(stored: [s], snapshot: RuntimeSnapshot(sessions: [shell("term:term_1", pane: "w1:p1", group: "w1")]))
         XCTAssertEqual(live.first?.status, .idle)
         XCTAssertEqual(live.first?.liveAgent, "term:term_1")
@@ -94,7 +94,7 @@ final class BoardMergeTests: XCTestCase {
 
     /// Owner 10-18: typing `claude` in a One Roof terminal shows the row as Claude, with no second "unnamed" row.
     func testAgentStartedInsideTerminalShowsAsThatAgent() {
-        let s = Session(name: "Terminal 6", agent: .shell, repoPath: "/p", lifecycle: .idle, herdrAgent: "term:term_6")
+        let s = Session(name: "Terminal 6", agent: .shell, repoPath: "/p", lifecycle: .idle, runtimeId: "term:term_6")
         let items = Board.merge(stored: [s], snapshot: RuntimeSnapshot(sessions: [
             agent("term:term_6", "claude", .working, pane: "w1:p1", group: "w1"),
         ]))
@@ -108,12 +108,24 @@ final class BoardMergeTests: XCTestCase {
 
     /// The herdr path end to end: a herdr snapshot, converted, merges exactly as before the interface existed.
     func testHerdrSnapshotThroughConvertMergesAsBefore() {
-        let s = Session(name: "Terminal 6", agent: .shell, repoPath: "/p", lifecycle: .idle, herdrAgent: "term:term_6")
+        let s = Session(name: "Terminal 6", agent: .shell, repoPath: "/p", lifecycle: .idle, runtimeId: "term:term_6")
         let pane = HerdrPane(pane_id: "w1:p1", terminal_id: "term_6", workspace_id: "w1", cwd: "/p", foreground_cwd: nil, agent_status: "working")
         let a = HerdrAgent(name: "term:term_6", agent: "claude", agent_status: "working", cwd: "/p", pane_id: "w1:p1", workspace_id: "w1")
         let items = Board.merge(stored: [s], snapshot: HerdrRuntime.convert(HerdrSnapshot(panes: [pane], agents: [a])))
         XCTAssertEqual(items.count, 1)
         XCTAssertTrue(items.first?.agentInTerminal ?? false)
         XCTAssertEqual(items.first?.workspaceId, "w1")
+    }
+
+    /// LAB-15: rows saved before the rename (JSON keys herdrAgent / herdrWorkspace) load into runtimeId / runtimeGroup,
+    /// and save under the same keys.
+    func testRenamedFieldsKeepTheirStoredKeys() throws {
+        let json = #"{"id":"x","name":"n","agent":"claude","repoPath":"/p","lifecycle":"idle","herdrAgent":"roof-1","herdrWorkspace":"w7"}"#
+        let s = try JSONDecoder().decode(Session.self, from: Data(json.utf8))
+        XCTAssertEqual(s.runtimeId, "roof-1")
+        XCTAssertEqual(s.runtimeGroup, "w7")
+        let out = String(decoding: try JSONEncoder().encode(s), as: UTF8.self)
+        XCTAssertTrue(out.contains("\"herdrAgent\":\"roof-1\""))
+        XCTAssertTrue(out.contains("\"herdrWorkspace\":\"w7\""))
     }
 }

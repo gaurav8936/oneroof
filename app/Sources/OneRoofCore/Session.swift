@@ -139,9 +139,9 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     /// Owner-set lifecycle (planned / next / doNotUse). Live status comes from herdr.
     public var lifecycle: SessionStatus
     /// herdr agent name once launched (unique, e.g. "roof-1a2b3c").
-    public var herdrAgent: String?
+    public var runtimeId: String?
     /// herdr workspace the agent was started in (closed on relaunch so no empty shells pile up).
-    public var herdrWorkspace: String?
+    public var runtimeGroup: String?
     public var createdAt: Date
     public var launchedAt: Date?
     /// Start the agent inside `repoPath` (true) or in ~/Projects, the owner's usual launch folder (false).
@@ -170,7 +170,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         return (m.isEmpty ? [] : ["--model", m]) + agentArgs
     }
 
-    /// A plain terminal's herdr link is stored as "term:<terminal_id>" in `herdrAgent`.
+    /// A plain terminal's herdr link is stored as "term:<terminal_id>" in `runtimeId`.
     public static let terminalPrefix = "term:"
 
     public init(
@@ -185,7 +185,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         tags: [String] = [],
         notes: String = "",
         lifecycle: SessionStatus = .planned,
-        herdrAgent: String? = nil,
+        runtimeId: String? = nil,
         createdAt: Date = Date(),
         launchedAt: Date? = nil,
         startInRepo: Bool = false,
@@ -210,7 +210,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         self.tags = tags
         self.notes = notes
         self.lifecycle = lifecycle
-        self.herdrAgent = herdrAgent
+        self.runtimeId = runtimeId
         self.createdAt = createdAt
         self.launchedAt = launchedAt
         self.startInRepo = startInRepo
@@ -227,7 +227,9 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
-             herdrAgent, herdrWorkspace, createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam
+             createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam
+        // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
+        case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
 
     // Decode older rows that lack the newer fields.
@@ -244,8 +246,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         lifecycle = try c.decodeIfPresent(SessionStatus.self, forKey: .lifecycle) ?? .planned
-        herdrAgent = try c.decodeIfPresent(String.self, forKey: .herdrAgent)
-        herdrWorkspace = try c.decodeIfPresent(String.self, forKey: .herdrWorkspace)
+        runtimeId = try c.decodeIfPresent(String.self, forKey: .runtimeId)
+        runtimeGroup = try c.decodeIfPresent(String.self, forKey: .runtimeGroup)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         launchedAt = try c.decodeIfPresent(Date.self, forKey: .launchedAt)
         startInRepo = try c.decodeIfPresent(Bool.self, forKey: .startInRepo) ?? false
