@@ -9,6 +9,8 @@ enum Daemon {
     static let version = "0.1.0-spike"
 
     static func run() throws {
+        var noCore = rlimit(rlim_cur: 0, rlim_max: 0)
+        setrlimit(RLIMIT_CORE, &noCore)
         signal(SIGPIPE, SIG_IGN)
         signal(SIGCHLD, SIG_IGN)   // holders are reparented away; never leave zombies
         try FileManager.default.createDirectory(atPath: Paths.dir, withIntermediateDirectories: true,
@@ -61,7 +63,7 @@ enum Daemon {
         case "list":
             return ["proto": proto, "version": version,
                     "sessions": sessionIds().compactMap { try? Sock.holderRequest(Paths.session($0), ["op": "info"], timeout: 1) }]
-        case "info", "read", "input", "signal", "close":
+        case "info", "read", "input", "signal", "close", "seen":
             guard let id = p["id"] as? String, Paths.validId(id) else { throw RoofdError("bad id") }
             var r = p
             r["op"] = method

@@ -164,6 +164,12 @@ public protocol SessionRuntime: AnyObject, Sendable {
     func processes(pane: String) throws -> RuntimeProcesses
     /// What a terminal surface runs to show a session.
     func attachCommand(_ id: RuntimeID) -> String
+    /// The owner has looked at a finished session: its "done" becomes "idle".
+    func markSeen(_ id: RuntimeID)
+}
+
+extension SessionRuntime {
+    public func markSeen(_ id: RuntimeID) {}
 }
 
 extension SessionRuntime {

@@ -66,7 +66,7 @@ var roofdTargets: [Target] {
         // The session manager: daemon, per-session holders, attach client.
         .executableTarget(
             name: "roofd",
-            dependencies: ["RoofVT", "CRoofSpawn"],
+            dependencies: ["RoofVT", "CRoofSpawn", "OneRoofCore"],
             path: "roofd/Sources/roofd",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.linkedLibrary("c++")]

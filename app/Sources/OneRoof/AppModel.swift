@@ -243,7 +243,11 @@ final class AppModel: ObservableObject {
         for i in new where i.status == .running || (before[i.id] != nil && before[i.id] != i.status) {
             lastActive[i.id] = now
         }
-        for id in visibleInPanes.union([selectedId].compactMap { $0 }) { lastViewed[id] = now }
+        let inView = visibleInPanes.union([selectedId].compactMap { $0 })
+        for id in inView { lastViewed[id] = now }
+        // A finished turn the owner is looking at is no longer news (roofd: done → idle).
+        let seenDone = new.filter { inView.contains($0.id) && $0.status == .done }.compactMap(\.liveAgent)
+        if !seenDone.isEmpty { let r = runtime; queue.async { seenDone.forEach(r.markSeen) } }
         if new != items {
             items = new
             updateDockBadge()

@@ -1,0 +1,117 @@
+import XCTest
+@testable import OneRoofCore
+
+/// LAB-14: the status engine roofd runs per session (T14 §3f).
+final class StatusEngineTests: XCTestCase {
+    let t0 = Date(timeIntervalSince1970: 2_000_000)
+    func at(_ s: Double) -> Date { t0.addingTimeInterval(s) }
+
+    func obs(_ s: Double, _ agent: AgentKind? = .claude, out: Double?, screen: String = "> ") -> StatusEngine.Observation {
+        .init(now: at(s), agent: agent, lastOutput: out.map(at), screen: screen)
+    }
+
+    func testOutputMeansWorkingThenQuietMeansDone() {
+        var e = StatusEngine()
+        e.evaluate(obs(0, out: 0))
+        e.evaluate(obs(1.5, out: 0.2))
+        XCTAssertTrue(e.ready, "startup drawn")
+        XCTAssertEqual(e.status, .idle, "startup output is not a turn")
+        XCTAssertEqual(e.evaluate(obs(1.7, out: 1.6)), .working)
+        XCTAssertEqual(e.evaluate(obs(2, out: 1.8)), .working)
+        XCTAssertEqual(e.evaluate(obs(3.5, out: 1.8)), .working, "within doneAfter of the last output")
+        XCTAssertEqual(e.evaluate(obs(5, out: 1.8)), .done)
+        e.input(at: at(6))
+        XCTAssertEqual(e.status, .idle, "input clears done")
+        XCTAssertEqual(e.evaluate(obs(10, out: 1.8)), .idle)
+    }
+
+    func testSeenClearsDone() {
+        var e = StatusEngine()
+        e.evaluate(obs(0, out: 0))
+        e.evaluate(obs(1.5, out: 0.2))                 // ready
+        e.evaluate(obs(2, out: 1.9))                   // a turn
+        e.evaluate(obs(6, out: 2.5))
+        XCTAssertEqual(e.status, .done)
+        e.seen()
+        XCTAssertEqual(e.evaluate(obs(7, out: 2.5)), .idle)
+    }
+
+    func testReadyOnceTheCLIHasDrawnAndGoneQuiet() {
+        var e = StatusEngine()
+        e.evaluate(obs(0, out: 0))
+        XCTAssertFalse(e.ready)
+        e.evaluate(obs(0.5, out: 0.4))
+        XCTAssertFalse(e.ready)
+        XCTAssertEqual(e.evaluate(obs(2, out: 0.5)), .idle)
+        XCTAssertTrue(e.ready)
+    }
+
+    func testSpinnerLineMeansWorkingEvenWhenQuiet() {
+        var e = StatusEngine()
+        XCTAssertEqual(e.evaluate(obs(10, out: 1, screen: "✻ Thinking… (12s · esc to interrupt)\n> ")), .working)
+        XCTAssertTrue(StatusEngine.workingLine("• Working (3s • esc to interrupt)"))
+        XCTAssertFalse(StatusEngine.workingLine("all done\n> "))
+    }
+
+    /// Every agent's permission prompt fixture reads as blocked (Needs you).
+    func testPermissionPromptsBlockForEveryAgent() {
+        let cases: [(AgentKind, String)] = [
+            (.claude, Fixture.claudeBashPrompt), (.claude, Fixture.claudeEditPrompt),
+            (.codex, Fixture.codexPushPrompt), (.kimi, Fixture.kimiInstallPrompt),
+            (.gemini, Fixture.geminiDeletePrompt), (.agy, Fixture.antigravityNetworkPrompt),
+        ]
+        for (agent, screen) in cases {
+            var e = StatusEngine()
+            XCTAssertEqual(e.evaluate(obs(5, agent, out: 4, screen: screen)), .blocked, "\(agent)")
+        }
+    }
+
+    func testAnAnsweredPromptStillOnScreenDoesNotBlock() {
+        var e = StatusEngine()
+        let answered = Fixture.claudeBashPrompt + "\npushed to origin/main\n\n> "
+        XCTAssertNotEqual(e.evaluate(obs(9, out: 8, screen: answered)), .blocked)
+        XCTAssertEqual(e.evaluate(obs(12, out: 11, screen: Fixture.claudeBashPrompt)), .blocked)
+    }
+
+    func testClaudeHooksLead() {
+        var e = StatusEngine()
+        e.evaluate(obs(0, out: 0))
+        e.hook("SessionStart", at: at(1))
+        XCTAssertTrue(e.ready)
+        XCTAssertEqual(e.evaluate(obs(2, out: 0.2)), .idle)
+        e.hook("UserPromptSubmit", at: at(3))
+        XCTAssertEqual(e.evaluate(obs(20, out: 3)), .working, "a quiet tool call is still working per the hook")
+        e.hook("Notification", message: "Claude needs your permission to use Bash", at: at(21))
+        XCTAssertEqual(e.evaluate(obs(22, out: 21)), .blocked)
+        e.hook("PreToolUse", at: at(30))
+        XCTAssertEqual(e.evaluate(obs(31, out: 30)), .working)
+        e.hook("Stop", at: at(40))
+        XCTAssertEqual(e.evaluate(obs(41, out: 40)), .done)
+        // New output well after the Stop: a turn the hooks have not reported yet.
+        XCTAssertEqual(e.evaluate(obs(45, out: 44.9)), .working)
+    }
+
+    func testIdleNotificationDoesNotBlock() {
+        var e = StatusEngine()
+        e.hook("SessionStart", at: at(0))
+        e.hook("Notification", message: "Claude is waiting for your input", at: at(60))
+        XCTAssertEqual(e.evaluate(obs(61, out: 0)), .idle)
+    }
+
+    func testAgentLeavingResetsToAShell() {
+        var e = StatusEngine()
+        e.hook("SessionStart", at: at(0))
+        e.evaluate(obs(1, out: 0.5))
+        XCTAssertEqual(e.evaluate(obs(2, nil, out: 1.9)), .unknown)
+        XCTAssertFalse(e.ready)
+    }
+
+    func testAgentKindFromProcess() {
+        XCTAssertEqual(StatusEngine.agentKind(processName: "claude", argv: ["claude", "--resume"]), .claude)
+        XCTAssertEqual(StatusEngine.agentKind(processName: "node", argv: ["node", "/opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js"]), .codex)
+        XCTAssertEqual(StatusEngine.agentKind(processName: "kimi-code", argv: ["kimi-code"]), .kimi)
+        XCTAssertEqual(StatusEngine.agentKind(processName: "gemini", argv: []), .gemini)
+        XCTAssertNil(StatusEngine.agentKind(processName: "zsh", argv: ["-zsh"]))
+        XCTAssertNil(StatusEngine.agentKind(processName: "vim", argv: ["vim", "notes.md"]))
+    }
+}

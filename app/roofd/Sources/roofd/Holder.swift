@@ -1,6 +1,7 @@
 import CRoofSpawn
 import Darwin
 import Foundation
+import OneRoofCore
 import RoofVT
 
 /// One session: owns the PTY and the child, keeps a headless terminal (RoofVT) for redraw and `read`, and serves
@@ -56,6 +57,13 @@ final class Holder {
     var exitedAt: Date?
     let created = Date()
     var pendingInput: [UInt8] = []
+    /// Agent status (T14 §3f, Q4): evaluated here so it is right with the app closed.
+    var engine = StatusEngine()
+    var agent: AgentKind?
+    var lastOutput: Date?
+    var lastEval = Date.distantPast
+    var screenSeq = -1
+    var screen = ""
     /// Every RoofVT call runs on this serial queue: the parse never delays forwarding (T14 §3c hot path), and a
     /// `sync` on it is a barrier: everything read before it has been parsed.
     let vtQ = DispatchQueue(label: "roofd.vt", qos: .userInitiated)
@@ -75,6 +83,8 @@ final class Holder {
     deinit { let t = vt; vtQ.sync { rvt_free(t) } }
 
     func start() throws {
+        var noCore = rlimit(rlim_cur: 0, rlim_max: 0)
+        setrlimit(RLIMIT_CORE, &noCore)    // a crash never writes terminal content into a core file
         signal(SIGPIPE, SIG_IGN)
         signal(SIGHUP, SIG_IGN)
         var w: [Int32] = [0, 0]
@@ -121,6 +131,7 @@ final class Holder {
             let n = poll(&fds, nfds_t(fds.count), 200)
             if n < 0 && errno != EINTR { break }
             reapChild()
+            if Date().timeIntervalSince(lastEval) >= 0.25 { evaluateStatus() }
             for f in fds where f.revents != 0 {
                 if f.fd == listenFd { acceptClients(); continue }
                 if f.fd == wakeR { takeMail(&buf); continue }
@@ -151,6 +162,7 @@ final class Holder {
                 flush(c)
             }
             seq += n
+            lastOutput = Date()
             if !Holder.skipVT {
                 let bytes = Array(buf[0..<n])
                 let t = vt
@@ -283,6 +295,7 @@ final class Holder {
             flush(c)
         case .input:
             guard c.attached else { return }
+            engine.input(at: Date())
             pendingInput += payload
             flushInput()
         case .resize:
@@ -310,6 +323,36 @@ final class Holder {
         vtQ.sync { _ = rvt_resize(t, cols, rows) }
     }
 
+    // MARK: Status
+
+    /// Who is in the foreground, and what the screen says once output has paused.
+    func evaluateStatus() {
+        let now = Date()
+        lastEval = now
+        var fg: AgentKind?
+        if master >= 0, exitedAt == nil {
+            let pg = roof_foreground_pgrp(master)
+            if pg > 0, pg != pid {
+                var name = [CChar](repeating: 0, count: 256)
+                let pname = proc_name(pg, &name, UInt32(name.count)) > 0 ? String(cString: name) : nil
+                fg = StatusEngine.agentKind(processName: pname, argv: ProcessProbe.args(pid: pg)?.argv ?? [])
+            }
+        }
+        agent = fg
+        let quiet = lastOutput.map { now.timeIntervalSince($0) } ?? .infinity
+        if fg != nil, quiet >= 0.3, seq != screenSeq {
+            screenSeq = seq
+            let t = vt
+            screen = vtQ.sync {
+                var p: UnsafeMutablePointer<UInt8>?
+                let len = rvt_text(t, 40, &p)
+                defer { if let p { rvt_bytes_free(p, len) } }
+                return p.map { String(decoding: UnsafeBufferPointer(start: $0, count: len), as: UTF8.self) } ?? ""
+            }
+        }
+        engine.evaluate(.init(now: now, agent: fg, lastOutput: lastOutput, screen: screen))
+    }
+
     // MARK: Control (read / info / input / close), T14 §3d
 
     func info() -> [String: Any] {
@@ -329,6 +372,8 @@ final class Holder {
             return (title, pwd, x, y, alt, modes)
         }
         var out: [String: Any] = [
+            "status": exitedAt == nil ? engine.status.rawValue : "unknown", "ready": engine.ready && exitedAt == nil,
+            "agent": agent?.rawValue as Any,
             "x": Int(x), "y": Int(y), "modes": modes,
             "id": spec.id, "label": spec.label, "cwd": spec.cwd, "pid": Int(pid), "seq": seq, "title": title, "pwd": pwd,
             "alt": alt, "attached": clients.values.contains { $0.attached }, "created": created.timeIntervalSince1970,
@@ -361,8 +406,17 @@ final class Holder {
             if let t = j["text"] as? String { bytes += Array(t.utf8) }
             if let b = j["bytes_b64"] as? String, let d = Data(base64Encoded: b) { bytes += Array(d) }
             if (j["submit"] as? Bool) == true { bytes.append(0x0D) }
+            engine.input(at: Date())
             pendingInput += bytes
             flushInput()
+            return [:]
+        case "report":
+            // `roofd report <agent>` from an agent hook (Claude): the strongest status signal.
+            engine.hook(j["event"] as? String ?? "", message: j["message"] as? String, at: Date())
+            evaluateStatus()
+            return [:]
+        case "seen":
+            engine.seen()
             return [:]
         case "signal":
             guard master >= 0 else { return ["error": "session exited"] }

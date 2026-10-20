@@ -44,6 +44,17 @@ case "session":
         try h.start()
         h.run()
     } catch { fail("\(error)") }
+case "report":
+    // Called by agent hooks (Claude: SessionStart, UserPromptSubmit, PreToolUse, Notification, Stop, …) with the hook
+    // payload on stdin. Outside a One Roof session it does nothing; it always exits 0 and never makes the agent wait.
+    let env = ProcessInfo.processInfo.environment
+    guard let id = env["ONEROOF_SESSION"], let control = env["ONEROOF_ROOFD"], Paths.validId(id) else { exit(0) }
+    let payload = (try? JSONSerialization.jsonObject(with: FileHandle.standardInput.readDataToEndOfFile())) as? [String: Any] ?? [:]
+    let holder = (control as NSString).deletingLastPathComponent + "/\(id).sock"
+    _ = try? Sock.holderRequest(holder, ["op": "report", "agent": args.count > 1 ? args[1] : "claude",
+                                         "event": payload["hook_event_name"] as? String ?? "",
+                                         "message": payload["message"] as? String ?? ""], timeout: 1)
+    exit(0)
 case "attach":
     guard args.count > 1 else { fail("attach <id>") }
     exit(Attach.run(args[1]))

@@ -3,8 +3,7 @@ import Foundation
 
 /// Sessions on roofd, One Roof's own session manager (LAB-ROOFD, T14). Talks to the daemon's control socket
 /// (newline-delimited JSON, one request per connection); a terminal surface shows a session by running
-/// `roofd attach <id>`. Status is interim until the status engine (LAB-14): the foreground process names the agent,
-/// and recent output means working.
+/// `roofd attach <id>`. Agent and status come from roofd's status engine (LAB-14).
 public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     public let kind = RuntimeKind.roofd
     public var expectedProtocol: Int? { 1 }
@@ -14,9 +13,6 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     /// Ghostty's resources (terminfo, shell integration) inside the app bundle, when present.
     let ghosttyResources: String?
     let terminfo: String?
-    private let lock = NSLock()
-    private var lastSeq: [RuntimeID: (seq: Int, changed: Date)] = [:]
-    private var kinds: [RuntimeID: AgentKind] = [:]
 
     public init(roofdPath: String? = nil, dir: String? = nil, resources: URL? = Bundle.main.resourceURL) {
         self.roofdPath = roofdPath ?? RoofdRuntime.findRoofd()
@@ -138,36 +134,22 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     public func snapshot() throws -> RuntimeSnapshot {
         let r = try call("list")
         let list = r["sessions"] as? [[String: Any]] ?? []
-        let now = Date()
         var sessions: [RuntimeSessionState] = []
-        lock.lock()
-        defer { lock.unlock() }
-        var seen = Set<RuntimeID>()
         for s in list {
             guard let id = s["id"] as? String, s["exited"] == nil else { continue }
-            seen.insert(id)
-            let seq = s["seq"] as? Int ?? 0
-            if let last = lastSeq[id] { if last.seq != seq { lastSeq[id] = (seq, now) } } else { lastSeq[id] = (seq, .distantPast) }
-            let pgid = (s["pgid"] as? Int).map { Int32($0) } ?? 0
-            let shellPid = (s["pid"] as? Int).map { Int32($0) } ?? 0
-            // The agent is the foreground process: a launched agent, or one typed into a terminal.
-            let fg = pgid > 0 && pgid != shellPid ? RoofdRuntime.processName(pgid) : nil
-            let detected = fg.flatMap { AgentKind(herdrName: $0) }.flatMap { $0.isAgent ? $0 : nil } ?? kinds[id]
-            let busy = now.timeIntervalSince(lastSeq[id]?.changed ?? .distantPast) < 1.5
-            let created = (s["created"] as? Double).map { Date(timeIntervalSince1970: $0) } ?? now
             let title = (s["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             let cwd = (s["pwd"] as? String).flatMap { RoofdRuntime.pathFromOSC7($0) } ?? s["cwd"] as? String
-            if let agent = detected, fg != nil {
+            // roofd's status engine (LAB-14) names the foreground agent and its status; no agent = a plain shell.
+            if let agent = s["agent"] as? String {
                 sessions.append(RuntimeSessionState(
-                    id: id, isAgent: true, agentName: agent.rawValue, status: busy ? .working : .idle,
-                    ready: now.timeIntervalSince(created) > 3, title: title, cwd: cwd, pane: id, seq: seq))
+                    id: id, isAgent: true, agentName: agent, status: RuntimeStatus(s["status"] as? String),
+                    ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int))
             } else {
                 sessions.append(RuntimeSessionState(id: id, isAgent: false, status: .unknown, ready: true, title: title,
-                                                    cwd: cwd, pane: id, seq: seq))
+                                                    cwd: cwd, pane: id, seq: s["seq"] as? Int))
             }
         }
-        for id in lastSeq.keys where !seen.contains(id) { lastSeq[id] = nil; kinds[id] = nil }
-        return RuntimeSnapshot(version: r["version"] as? String ?? "roofd", protocolVersion: 1,
+        return RuntimeSnapshot(version: r["version"] as? String ?? "roofd", protocolVersion: r["proto"] as? Int ?? 1,
                                sessions: sessions.filter(\.isAgent) + sessions.filter { !$0.isAgent })
     }
 
@@ -237,7 +219,6 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         while all.contains(name) { n += 1; name = "\(spec.id)-\(n)" }
         _ = try call("create", ["id": name, "label": spec.label, "cwd": spec.cwd, "env": environment(spec),
                                 "argv": argv(spec), "cols": 120, "rows": 40])
-        if spec.agent.isAgent { lock.lock(); kinds[name] = spec.agent; lock.unlock() }
         if let cmd = spec.command {
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.2) { [weak self] in
                 _ = try? self?.call("input", ["id": name, "text": cmd, "submit": true])
@@ -281,6 +262,8 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         }
         return RuntimeProcesses(shellPid: shell, foreground: fg)
     }
+
+    public func markSeen(_ id: RuntimeID) { _ = try? call("seen", ["id": id], timeout: 2) }
 
     public func attachCommand(_ id: RuntimeID) -> String {
         "env ROOFD_DIR=\(RoofdRuntime.shellQuote(dir)) \(RoofdRuntime.shellQuote(roofdPath)) attach \(id)"

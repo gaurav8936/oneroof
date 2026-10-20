@@ -100,4 +100,5 @@ public final class FakeRuntime: SessionRuntime, @unchecked Sendable {
     }
     public func processes(pane: String) throws -> RuntimeProcesses { RuntimeProcesses() }
     public func attachCommand(_ id: RuntimeID) -> String { "/usr/bin/true \(id)" }
+    public func markSeen(_ id: RuntimeID) { update(id) { if $0.status == .done { $0.status = .idle } } }
 }

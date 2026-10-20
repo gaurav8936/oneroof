@@ -115,6 +115,15 @@ final class FakeRuntimeTests: XCTestCase {
         XCTAssertFalse(try r.snapshot().sessions[0].isAgent)
     }
 
+    func testSeenTurnsDoneIntoIdle() throws {
+        let r = FakeRuntime()
+        var s = Session(name: "x", agent: .claude, repoPath: "/p", lifecycle: .planned)
+        try launch(&s, on: r)
+        r.update(s.herdrAgent!) { $0.status = .done }
+        r.markSeen(s.herdrAgent!)
+        XCTAssertEqual(try r.snapshot().session(s.herdrAgent!)?.status, .idle)
+    }
+
     func testStoppedRuntimeFails() {
         let r = FakeRuntime()
         r.running = false
