@@ -73,6 +73,18 @@ struct SessionRow: View {
         .hoverHighlight(radius: Radius.row, selected: selected)
         .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
             .fill(row.tint.map { t.sticker($0).fill.color } ?? .clear))
+        // The session on screen stands out (LAB-240: a light fill alone was hard to find): accent outline and a bar
+        // down the left edge.
+        .overlay {
+            if selected {
+                RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(t.accent.color, lineWidth: 2)
+            }
+        }
+        .overlay(alignment: .leading) {
+            if selected {
+                Capsule().fill(t.accent.color).frame(width: 4).padding(.vertical, 8).offset(x: -2)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(row.name), \(StatusPalette.label(row.status)), \(row.caption.text)")
         .accessibilityAddTraits(selected ? .isSelected : [])

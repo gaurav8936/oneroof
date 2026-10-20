@@ -52,7 +52,7 @@ If something is red, launching an agent asks you to choose: **Open Foundations**
 
 1. Press **⌘N** (File › New Session…).
 2. In **What should happen**, type what you want done, for example `Add a dark mode toggle to settings`.
-3. Leave the kind on **Just a session**.
+3. Leave **Issue ▾** on **No issue** (or pick the Linear issue the session should work on).
 4. Pick an **agent card** (for example Claude1), the **Repo** (for example `acme/web`) and, if you like, a **Model**.
 5. Check the **Opening message**: the first prompt. One Roof sends it once the agent is ready, never while it is busy.
 6. Leave **When** on **Now** and press **Launch** (⌘↩). The row shows Working, the terminal appears in the centre, and the opening message arrives a moment later.
@@ -71,7 +71,7 @@ Agents start in your projects folder, so they all share one memory and one set o
 | Page | What it covers |
 |---|---|
 | [Sessions](01_sessions.md) | The sessions panel: states, stickers, colours, pins, rename, the session menu, the plan panel, pop-out windows |
-| [New session](02_planning-a-session.md) | The New session sheet: kinds, agent cards, models, roles, resuming a conversation, the start folder, When |
+| [New session](02_planning-a-session.md) | The New session sheet: team, project and issue pickers, agent cards, models, roles, resuming a conversation, the start folder, When |
 | [Objectives](03_objectives.md) | Write an objective, watch the planner, edit and approve the plan, follow the run |
 | [Work and tickets](04_work-and-tickets.md) | The Work view, New work item, tickets and sessions both ways (needs Linear) |
 | [Overview, Board, palette and shortcuts](05_launchpad-board-palette-and-shortcuts.md) | The overview pages, the command palette and a table of every keyboard shortcut |

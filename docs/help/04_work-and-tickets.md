@@ -39,14 +39,14 @@ Open it with **⇧⌘W** (View › Work: Projects and Roadmap), **Work** in the 
 
 ## From a ticket to a session
 
-1. Press the play button on a ticket. One Roof plans a session with the ticket key, the project, and an opening message that says to work on that ticket and commit as `ENG-42 · [eng-checkout] …`.
+1. Press the play button on a ticket, or pick it under **Issue ▾** in the New session sheet (⌘N). One Roof plans a session with the ticket key, the project, and an opening message that says to work on that ticket and commit as `ENG-42 · [eng-checkout] …`.
 2. Launch it. The ticket moves to **In Progress** in Linear.
 3. The row shows the ticket key, and the plan panel's **Ticket** tab shows the live state with buttons **In Progress**, **In Review** and **Done**.
 4. When you close the agent (Close Agent…), a box (on by default) posts a summary comment to the ticket (agent, seat, run time, newest handoff for the project, your notes) and moves it to **In Review**. Committing from the review panel can do the same ([Review](10_review-split-panes-and-session-rows.md)).
 
 ## New work item: decide what it is first
 
-Press **⌃⌘N** (File › New Work Item…), **New item** in the Work view, or **+ New work item** on the Overview. The New session sheet (⌘N) can create tickets too ([New session](02_planning-a-session.md)).
+Press **⌃⌘N** (File › New Work Item…), **New item** in the Work view, or **+ New work item** on the Overview. The New session sheet (⌘N) can also create an issue or a project, as the last item of its **Issue ▾** and **Project ▾** menus, and then starts the session on it ([New session](02_planning-a-session.md#when-the-work-is-not-in-linear-yet)).
 
 1. Say what you want done ("Login fails on Safari") and optional details.
 2. Tick "It needs several sessions and more than one deliverable" if it is bigger than a ticket.
@@ -54,7 +54,7 @@ Press **⌃⌘N** (File › New Work Item…), **New item** in the Work view, or
 4. If a ticket with a similar title already exists, it says "Looks like an existing ticket. Use it instead?" with **Plan a session for it**.
 5. Create it: the ticket is made in Linear (Backlog, with its Type label: Deliverable, Bug, Task, Spike or Decision), and "Plan a session for it now" plans the session in the same step.
 
-A **new project**, with Linear connected, is created straight in Linear (named "CODE · title", state Planned, with the milestones you list), and then One Roof plans a Claude session that writes its docs folder, adds the first tickets and posts a first project update. Without Linear, the Claude session does every step. See [A new project](02_planning-a-session.md#a-new-project).
+A **new project**, with Linear connected, is created straight in Linear (named "CODE · title", state Planned, with the milestones you list), and then One Roof plans a Claude session that writes its docs folder, adds the first tickets and posts a first project update. Without Linear, the Claude session does every step. See [When the work is not in Linear yet](02_planning-a-session.md#when-the-work-is-not-in-linear-yet).
 
 ## Which Linear projects and codes
 
