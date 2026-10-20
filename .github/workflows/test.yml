@@ -1,7 +1,8 @@
-name: test
+# FALLBACK ONLY (CMN-ACTIONS-OFF W3, 2026-10-20): tests run on Woodpecker (.woodpecker/test.yaml on Linux,
+# .woodpecker/test-mac.yaml on the owner's Mac). Run by hand only if Woodpecker is down. Deleted after the soak.
+name: test (fallback only)
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 jobs:
   test:
     strategy:

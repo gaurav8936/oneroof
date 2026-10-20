@@ -1,0 +1,31 @@
+# CMN-ACTIONS-OFF (W3) · oneroof tests on macOS (owner decision O1): the macos-latest half of the old `test` job and
+# the `swift` job (macos-15), run by the Woodpecker agent on the owner's Mac (local backend, label platform=darwin;
+# set up by _common/scratchpad/cmn-actions-off-oneroof-mac-agent.sh). Runs when the Mac is awake; until then the
+# workflow waits in the queue. Local backend: `image` names the shell, steps run as the owner's user, no container.
+labels:
+  platform: darwin
+
+# The repo has no Git LFS files and the Mac has no git-lfs: skip the LFS fetch (the default clone runs `git lfs fetch`).
+clone:
+  - name: clone
+    image: woodpeckerci/plugin-git:2.10.1
+    settings:
+      lfs: false
+
+when:
+  - event: [push, pull_request, manual]
+
+steps:
+  - name: test
+    image: bash
+    commands:
+      - export GIT_CONFIG_GLOBAL="$$PWD/.ci-gitconfig"   # keep the owner's ~/.gitconfig untouched
+      - git config --global user.email ci@example.com && git config --global user.name ci && git config --global init.defaultBranch main
+      - bash tests/run.sh
+
+  # OneRoofCore unit tests. The app target needs the libghostty build (gitignored), so CI skips it (Package.swift).
+  - name: swift
+    image: bash
+    depends_on: []
+    commands:
+      - cd app && swift --version && swift test
