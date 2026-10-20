@@ -38,6 +38,18 @@ final class RoofdRuntimeTests: XCTestCase {
         XCTAssertFalse(RoofdRuntime.inheritedAgentMarker("PATH"))
     }
 
+    func testSessionsGetACertificateBundleUnlessOneIsSet() throws {
+        var env: [String: String] = [:]
+        RoofdRuntime.addCertificateDefault(&env, bundle: "/etc/hosts")
+        XCTAssertEqual(env["SSL_CERT_FILE"], "/etc/hosts")
+        var mine = ["SSL_CERT_FILE": "/my/certs.pem"]
+        RoofdRuntime.addCertificateDefault(&mine, bundle: "/etc/hosts")
+        XCTAssertEqual(mine["SSL_CERT_FILE"], "/my/certs.pem", "the owner's own setting wins")
+        var none: [String: String] = [:]
+        RoofdRuntime.addCertificateDefault(&none, bundle: "/nonexistent.pem")
+        XCTAssertNil(none["SSL_CERT_FILE"])
+    }
+
     func testGhosttyResourcesTurnOnTerminfoAndShellIntegration() throws {
         let res = FileManager.default.temporaryDirectory.appendingPathComponent("roofd-res-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: res.appendingPathComponent("ghostty/shell-integration/zsh"), withIntermediateDirectories: true)
