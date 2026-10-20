@@ -24,7 +24,7 @@ struct NewObjectiveSheet: View {
                 TextField("Objective", text: $title, prompt: Text("e.g. Help map as a horizontal tree"))
                 TextField("Done when", text: $doneWhen, prompt: Text("e.g. map renders left-to-right on desktop and phone"), axis: .vertical).lineLimit(2...3)
                 Picker("Repo", selection: $repo) { ForEach(repos, id: \.self) { Text(Workspace.repoLabel(for: $0)).tag($0) } }
-                TextField("Workstream", text: $workstream, prompt: Text("optional, e.g. WS-WEB-12"))
+                TextField("Project", text: $workstream, prompt: Text("optional, e.g. WEB-CHECKOUT"))
                 Picker("Urgency", selection: $urgency) { Text("Today").tag("today"); Text("This week").tag("week"); Text("Whenever").tag("whenever") }
                     .pickerStyle(.segmented)
                 Picker("Budget", selection: $budget) { Text("Light").tag("light"); Text("Normal").tag("normal"); Text("Whatever it takes").tag("max") }

@@ -25,8 +25,27 @@ if CommandLine.arguments.contains("--linear") {
     let c = LinearClient()
     do {
         let ws = try c.workstreams()
-        print("\(ws.count) workstreams")
-        for w in ws.prefix(8) { print("  \(w.team) \(w.stateLabel.padding(toLength: 11, withPad: " ", startingAt: 0)) \(w.name)  [\(w.milestones.count) phases]") }
+        let teams = try c.teams()
+        print("\(teams.count) teams: " + teams.map { "\($0.key) \($0.name)" }.joined(separator: " · "))
+        print("\(ws.count) projects")
+        for w in ws.prefix(8) { print("  \(w.team) \(w.stateLabel.padding(toLength: 11, withPad: " ", startingAt: 0)) \(w.wsId ?? "-")  \(w.name)  [\(w.milestones.count) milestones]") }
+        // `--linear-roundtrip <TEAM>`: create a project with two milestones and a Bug ticket in it, print what Linear
+        // stored, then delete both (LAB-238 check; they land in Linear's trash).
+        if let i = CommandLine.arguments.firstIndex(of: "--linear-roundtrip"), i + 1 < CommandLine.arguments.count,
+           let team = teams.first(where: { $0.key == CommandLine.arguments[i + 1] }) {
+            let p = try c.createProject(team: team, code: team.key + "-SELFTEST", title: "One Roof self-test (delete me)",
+                                        summary: "Round-trip check.", milestones: ["P0 First", "P1 Second"])
+            print("created project: \(p.name) code=\(p.wsId ?? "-") team=\(p.team) milestones=\(p.milestones.map(\.name))")
+            let t = try c.team(key: team.key)
+            let issue = try c.createIssue(team: t, workstream: p, milestone: p.milestones.first?.id, title: "Self-test bug",
+                                          description: "Round-trip check.", type: WorkKind.defect.rawValue)
+            let back = try c.issues(project: p.id)
+            print("created issue: \(issue.identifier) title=\(issue.title); read back: " +
+                  back.map { "\($0.identifier) type=\($0.type ?? "-") milestone=\($0.milestone ?? "-") title=\($0.shortTitle)" }.joined(separator: ", "))
+            _ = try c.gql("mutation($id: String!) { issueDelete(id: $id) { success } }", ["id": issue.id])
+            _ = try c.gql("mutation($id: String!) { projectDelete(id: $id) { success } }", ["id": p.id])
+            print("deleted both")
+        }
         if let first = ws.first {
             let iss = try c.issues(project: first.id)
             print("\(first.name): \(iss.count) tickets; last: \(iss.last.map { "\($0.identifier) \($0.state) \($0.shortTitle)" } ?? "-")")

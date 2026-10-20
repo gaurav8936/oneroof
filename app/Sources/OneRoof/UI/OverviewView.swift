@@ -125,7 +125,7 @@ struct OverviewView: View {
         Card {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
-                    ForEach([("feed", "Feed"), ("agents", "Agents"), ("objectives", "Objectives"), ("workstreams", "Workstreams"), ("foundations", "Foundations")], id: \.0) { id, label in
+                    ForEach([("feed", "Feed"), ("agents", "Agents"), ("objectives", "Objectives"), ("workstreams", "Projects"), ("foundations", "Foundations")], id: \.0) { id, label in
                         Button { rail = id } label: {
                             VStack(spacing: 4) {
                                 Text(label).ui(12, .semibold).foregroundStyle(rail == id ? t.text.color : t.text2.color).lineLimit(1).fixedSize()
@@ -210,7 +210,7 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if activeWorkstreams.isEmpty {
-                    Text(model.linearLoading ? "Loading from Linear…" : "No session is linked to a workstream yet.").ui(12.5).foregroundStyle(t.text2.color)
+                    Text(model.linearLoading ? "Loading from Linear…" : "No session is linked to a project yet.").ui(12.5).foregroundStyle(t.text2.color)
                 }
                 ForEach(activeWorkstreams) { w in
                     let tickets = (model.issues[w.id] ?? []).filter { $0.type != "commit" }
