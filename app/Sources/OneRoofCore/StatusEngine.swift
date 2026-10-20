@@ -143,7 +143,8 @@ public struct StatusEngine: Sendable {
     /// A choice menu waiting at the bottom of the screen: a selection marker plus the CLI's confirm / cancel hint.
     public static func selectionMenu(_ screen: String) -> Bool {
         let tail = bottomLines(screen.trimmingCharacters(in: .whitespacesAndNewlines), 14).lowercased()
-        let marker = tail.contains("❯") || tail.contains("›") || tail.contains("> 1.")
+        // ❯ › (Claude, Codex) or ● ○ (Gemini's radio list); only counts together with a confirm/select hint below.
+        let marker = tail.contains("❯") || tail.contains("›") || tail.contains("> 1.") || tail.contains("●") || tail.contains("○")
         let hint = ["enter to confirm", "enter to select", "space to select", "esc to reject", "to navigate", "↑/↓",
                     "use arrow keys", "press enter"].contains { tail.contains($0) }
         return marker && hint

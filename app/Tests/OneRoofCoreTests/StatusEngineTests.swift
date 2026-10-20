@@ -139,6 +139,25 @@ final class StatusEngineTests: XCTestCase {
         XCTAssertEqual(e.evaluate(obs(20, out: 11, screen: "✻ Building… (esc to interrupt)\n❯ ")), .working, "a spinner keeps it working")
     }
 
+    /// Found in the core-ops pass: Gemini's sign-in menu (● radio list, "(Use Enter to select)") needs the owner.
+    func testGeminiSignInMenuNeedsYou() {
+        let screen = """
+        │ ? Get started                                                       │
+        │   How would you like to authenticate for this project?              │
+        │   ● 1. Sign in with Google                                          │
+        │     2. Use Gemini API Key                                           │
+        │     3. Vertex AI                                                    │
+        │   (Use Enter to select)                                             │
+        │   Terms of Services and Privacy Notice for Gemini CLI               │
+        ╰─────────────────────────────────────────────────────────────────────╯
+        """
+        XCTAssertTrue(StatusEngine.selectionMenu(screen))
+        var e = StatusEngine()
+        e.evaluate(obs(0, .gemini, out: 0))
+        XCTAssertEqual(e.evaluate(obs(5, .gemini, out: 1, screen: screen)), .blocked)
+        XCTAssertFalse(StatusEngine.selectionMenu("● Read(file.swift)\n  ⎿ Read 40 lines\n> "), "Claude's tool bullets are not a menu")
+    }
+
     func testClaudeHooksLead() {
         var e = StatusEngine()
         e.evaluate(obs(0, out: 0))
