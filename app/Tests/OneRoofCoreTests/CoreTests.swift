@@ -35,6 +35,16 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertNil(Workspace.projectCode(name: "Roadmap"))
     }
 
+    func testTicketOpeningNamesTheIssueNotTheProject() {
+        let o = Intake.ticketOpening(key: "ENG-247", title: "test03", url: "https://x/ENG-247", project: "ENG-ROOFD")
+        XCTAssertTrue(o.hasPrefix("Work on ENG-247 in project ENG-ROOFD: test03."), o)
+        XCTAssertTrue(o.contains("commit as `ENG-247 · [eng-roofd] …`"), o)
+        XCTAssertFalse(o.contains("new ticket"))
+        XCTAssertEqual(Intake.ticketOpening(key: "ENG-9", title: "t", project: nil), "Work on ENG-9: t. Read the ticket first; commit as `ENG-9 …`.")
+        XCTAssertEqual(Intake.sessionName(key: "ENG-247", title: "test03"), "ENG-247 · test03")
+        XCTAssertEqual(Intake.sessionName(key: "ENG-247", title: "ENG-247 · test03"), "ENG-247 · test03")
+    }
+
     func testWorkKindsMapToLinearTypeLabels() {
         XCTAssertEqual(WorkKind.defect.labelNames.first, "Bug")
         XCTAssertEqual(WorkKind.chore.labelNames.first, "Task")

@@ -346,6 +346,23 @@ public enum Intake {
     }
 
     /// Workstreams whose name shares the most words with the text (for the parent picker).
+    /// Stands in for the key of an issue not created yet; replaced by the real one once Linear assigns it (LAB-248).
+    public static let newIssueKey = "<new issue key>"
+
+    /// The opening message for a session on an issue: the issue's own key (never the project code), its link, and the
+    /// commit format (LAB-248: "Work on the new ticket (TEAM-PROJECT)" read as if the project code were the ticket).
+    public static func ticketOpening(key: String, title: String, url: String? = nil, project: String?) -> String {
+        let where_ = project.map { " in project \($0)" } ?? ""
+        let read = url.map { "Read the ticket (\($0))" } ?? "Read the ticket"
+        let tag = project.map { " · [\($0.lowercased())]" } ?? ""
+        return "Work on \(key)\(where_): \(title). \(read)\(project == nil ? "" : " and the project docs") first; commit as `\(key)\(tag) …`."
+    }
+
+    /// A session on an issue is named after it, Linear's way: "KEY · title" (LAB-248).
+    public static func sessionName(key: String, title: String) -> String {
+        title.hasPrefix(key) ? title : "\(key) · \(title)"
+    }
+
     public static func rankWorkstreams(_ text: String, _ all: [LinearWorkstream]) -> [LinearWorkstream] {
         let words = Set(text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 3 })
         guard !words.isEmpty else { return all }

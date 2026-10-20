@@ -54,10 +54,10 @@ extension AppModel {
     func planSession(for issue: LinearIssue, in w: LinearWorkstream, agent: AgentKind = .claude) -> Session {
         let d = settings.defaults(for: agent)
         let repo = Workspace.projectsRoot
-        let s = Session(name: issue.shortTitle, agent: agent, account: d.account, repoPath: repo,
+        let s = Session(name: Intake.sessionName(key: issue.identifier, title: issue.shortTitle), agent: agent, account: d.account, repoPath: repo,
                         workstream: w.wsId,
                         objective: issue.shortTitle + (issue.description.isEmpty ? "" : "\n\n" + String(issue.description.prefix(600))),
-                        openingMessage: "Work on \(issue.identifier) (\(w.wsId ?? w.name)): \(issue.shortTitle). Read the ticket \(issue.url) and the project docs first; commit as `\(issue.identifier) · [\((w.wsId ?? "").lowercased())] …`.",
+                        openingMessage: Intake.ticketOpening(key: issue.identifier, title: issue.shortTitle, url: issue.url, project: w.wsId),
                         lifecycle: .next, model: d.model.isEmpty ? nil : d.model,
                         ticket: issue.identifier, ticketId: issue.id, ticketTeam: w.team)
         createPlanned(s, launchNow: false)
