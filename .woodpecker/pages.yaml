@@ -26,7 +26,7 @@ steps:
       - ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
       - export GIT_SSH_COMMAND="ssh -i ~/.ssh/id -o IdentitiesOnly=yes"
       - rm -rf /tmp/pub && cp -r "$${SITE}" /tmp/pub && touch /tmp/pub/.nojekyll
-      - printf '<!-- published %s via Woodpecker -->\n' "$${CI_COMMIT_SHA:0:12}" >> /tmp/pub/index.html
+      - printf '<!-- published %s · pipeline %s via Woodpecker -->\n' "$${CI_COMMIT_SHA:0:12}" "$${CI_PIPELINE_NUMBER}" >> /tmp/pub/index.html
       - cd /tmp/pub && git init -q -b gh-pages && git add -A
       - git -c user.name=woodpecker -c user.email=ci@zibajoon.com commit -qm "publish $${CI_COMMIT_SHA:0:12} via Woodpecker"
       - git push -qf "git@github.com:$${CI_REPO}.git" gh-pages
