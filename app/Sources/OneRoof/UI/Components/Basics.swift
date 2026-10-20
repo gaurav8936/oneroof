@@ -138,12 +138,14 @@ struct StickerTag: View {
 
     var body: some View {
         let c = t.sticker(sticker.pastel)
+        // Not applied = its colour as an outline, at full strength, so it reads as something to click (LAB-246: the
+        // faint dashed grey looked disabled); applied = filled.
         Text(sticker.label)
             .ui(size, .semibold)
-            .foregroundStyle(filled ? c.ink.color : t.text3.color)
+            .foregroundStyle(c.ink.color)
             .padding(.vertical, 1).padding(.horizontal, 6)
             .background(Capsule().fill(filled ? c.fill.color : .clear))
-            .overlay { if !filled { Capsule().strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [3, 2])) } }
+            .overlay { if !filled { Capsule().strokeBorder(c.ink.color.opacity(0.55), lineWidth: 1) } }
             .lineLimit(1).fixedSize()
             .accessibilityLabel("Sticker " + sticker.label)
     }
@@ -257,5 +259,35 @@ struct PanelCloseButton: View {
                 .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(t.control.color))
         }
         .buttonStyle(.plain).help("Close the \(title)").accessibilityLabel("Close the \(title)")
+    }
+}
+
+/// A colour choice (LAB-246): big enough to see, outlined so pale pastels still show, and the chosen one gets an
+/// accent ring and a check. `pastel == nil` is "no colour".
+struct ColourSwatch: View {
+    @Environment(\.theme) private var t
+    @Environment(\.colorScheme) private var scheme
+    let pastel: Pastel?
+    var selected = false
+    var size: CGFloat = 22
+    @State private var hover = false
+
+    var body: some View {
+        ZStack {
+            if let p = pastel {
+                Circle().fill(p.fillColor(scheme))
+                Circle().strokeBorder(p.inkColor(scheme).opacity(0.45), lineWidth: 1.5)
+                if selected { Image(systemName: "checkmark").font(.system(size: size * 0.45, weight: .heavy)).foregroundStyle(p.inkColor(scheme)) }
+            } else {
+                Circle().strokeBorder(t.text2.color, lineWidth: 1.5)
+                Image(systemName: selected ? "checkmark" : "slash.circle").font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(t.text2.color)
+            }
+        }
+        .frame(width: size, height: size)
+        .padding(3)
+        .overlay(Circle().strokeBorder(selected ? t.accent.color : (hover ? t.separatorStrong.color : .clear), lineWidth: 2.5))
+        .onHover { hover = $0 }
+        .contentShape(Circle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

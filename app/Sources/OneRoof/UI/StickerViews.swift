@@ -24,10 +24,10 @@ struct StickerView: View {
         .foregroundStyle(soft && scheme == .dark ? fill : ink)
         .padding(.horizontal, size * 0.62)
         .padding(.vertical, size * 0.24)
-        .background(Capsule().fill(soft ? fill.opacity(scheme == .dark ? 0.16 : 0.55) : fill))
-        .overlay(Capsule().strokeBorder(soft ? fill.opacity(0.9) : ink.opacity(0.12), lineWidth: 1))
-        .opacity(selected ? 1 : 0.35)
-        .saturation(selected ? 1 : 0.3)
+        // In pickers, a sticker not chosen is an outline in its own colour at full strength (LAB-246: fading it to
+        // 35% made it look disabled); chosen is filled.
+        .background(Capsule().fill(selected ? (soft ? fill.opacity(scheme == .dark ? 0.16 : 0.55) : fill) : .clear))
+        .overlay(Capsule().strokeBorder(selected ? (soft ? fill.opacity(0.9) : ink.opacity(0.12)) : ink.opacity(0.55), lineWidth: 1))
     }
 }
 
