@@ -79,6 +79,7 @@ final class AppModel: ObservableObject {
             if settings.learnFolders != oldValue.learnFolders { learnItems = [] }
             if !settings.dockBadge { NSApp.dockTile.badgeLabel = nil }
             if settings.followSystemAppearance != oldValue.followSystemAppearance { applyAppearance() }
+            if settings.scheduledRuns != oldValue.scheduledRuns || settings.projectsPath != oldValue.projectsPath { configureRoofdScheduler() }
             if settings.agenticEngineeringPath != oldValue.agenticEngineeringPath { learnItems = [] }   // re-read on next open
             if settings.shortcuts != oldValue.shortcuts || settings.globalHotkey != oldValue.globalHotkey {
                 NotificationCenter.default.post(name: .shortcutsChanged, object: nil)
@@ -106,6 +107,8 @@ final class AppModel: ObservableObject {
         Dictionary(lastSnapshot.sessions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     }
     private var accounts: [String: String] = [:]     // runtime id → account label
+    /// Runtime ids the rows were reloaded for already (sessions started outside the app).
+    private var reloadedFor = Set<RuntimeID>()
     private var probing = Set<String>()
     private var sending = Set<String>()
     private var openingGate = OpeningGate()
@@ -173,6 +176,7 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             do {
                 try self.runtime.ensureRunning()
+                DispatchQueue.main.async { self.configureRoofdScheduler() }
             } catch {
                 DispatchQueue.main.async { self.runtimeState = "\(self.runtime.kind.displayName) not running: \(error)" }
             }
@@ -187,6 +191,15 @@ final class AppModel: ObservableObject {
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
         }
+    }
+
+    /// roofd fires Tonight / Nightly itself when scheduled runs are allowed (Q7); the app's own tick stands down then.
+    var roofdRunsSchedules: Bool { runtime.kind == .roofd && settings.scheduledRuns }
+
+    func configureRoofdScheduler() {
+        guard let roofd = runtime as? RoofdRuntime, let path = store?.path, !SelfTest.isActive else { return }
+        let s = settings
+        queue.async { roofd.configureScheduler(enabled: s.scheduledRuns, store: path, projects: s.projectsFolder, shared: s.sharedFolder) }
     }
 
     private func saveThemes() {
@@ -204,6 +217,14 @@ final class AppModel: ObservableObject {
             let state = runtime.statusLine(snap)
             probeAccounts(snap)
             DispatchQueue.main.async {
+                // A session started without the app (a scheduled run in roofd) was saved to the store by roofd:
+                // reload the rows once, so it shows as its own session and not as a stray.
+                let known = Set(self.stored.compactMap(\.runtimeId))
+                let fresh = Set(snap.agents.map(\.id)).subtracting(known).subtracting(self.reloadedFor)
+                if !fresh.isEmpty, let rows = self.store?.all() {
+                    self.reloadedFor.formUnion(fresh)
+                    self.stored = rows
+                }
                 self.lastSnapshot = snap
                 self.runtimeOK = true
                 self.runtimeState = state
@@ -568,18 +589,12 @@ final class AppModel: ObservableObject {
             default: return
             }
         }
-        let dir = s.launchDirectory
-        guard Workspace.isInsideProjects(dir) else {
-            lastError = "Agents start only inside ~/Projects. \(dir) is outside it."
-            return
+        let spec: LaunchSpec
+        switch LaunchPlan.spec(s, stored: stored, command: pendingCommands[s.id], deliverOpening: runtime.kind == .roofd) {
+        case .failure(let refusal): lastError = refusal.description; return
+        case .success(let sp): spec = sp
         }
         lastError = nil
-        let spec = LaunchSpec(
-            id: Session.herdrName(for: s.id), label: s.name, cwd: dir,
-            env: AccountResolver.launchEnv(agent: s.agent, account: s.account),
-            agent: s.agent, args: s.launchArgs, command: s.agent.isAgent ? nil : pendingCommands[s.id],
-            previousGroup: s.runtimeGroup, adoptOrphan: s.agent.isAgent && s.runtimeId == nil,
-            claimed: Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix("herdr:") ? nil : $0.runtimeId }))
         busy.insert(s.id)
         queue.async { [weak self] in
             guard let self else { return }
@@ -610,7 +625,8 @@ final class AppModel: ObservableObject {
             s.runtimeGroup = workspaceId
             if !adopted {
                 s.launchedAt = Date()
-                s.openingSent = false
+                // roofd delivers the opening message itself (it is in the launch spec); herdr needs deliverOpenings.
+                s.openingSent = self.runtime.kind == .roofd
             } else if s.launchedAt == nil {
                 s.launchedAt = Date()
             }

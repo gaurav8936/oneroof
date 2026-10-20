@@ -30,6 +30,8 @@ public struct StatusEngine: Sendable {
     private var hookAt: Date?
     private var workedSinceInput = false
     private var lastInput: Date?
+    /// When the CLI first drew and went quiet; output before it is start-up, not work.
+    private var readyAt: Date?
 
     public init() {}
 
@@ -38,7 +40,7 @@ public struct StatusEngine: Sendable {
     /// A Claude hook (`roofd report claude`): the strongest signal there is.
     public mutating func hook(_ event: String, message: String? = nil, at now: Date) {
         switch event {
-        case "SessionStart": hookStatus = .idle; ready = true
+        case "SessionStart": hookStatus = .idle; ready = true; readyAt = readyAt ?? now
         case "UserPromptSubmit", "PreToolUse", "PostToolUse": hookStatus = .working; workedSinceInput = true
         case "Notification":
             // Permission and question notifications block; "waiting for your input" is just idle.
@@ -74,12 +76,13 @@ public struct StatusEngine: Sendable {
         if o.agent != agent {
             agent = o.agent
             agentSince = o.agent == nil ? nil : o.now
-            hookStatus = nil; hookAt = nil; workedSinceInput = false; ready = false
+            hookStatus = nil; hookAt = nil; workedSinceInput = false; ready = false; readyAt = nil
         }
         guard let kind = o.agent else { status = .unknown; ready = false; return status }
 
         let quietFor = o.lastOutput.map { o.now.timeIntervalSince($0) } ?? .infinity
-        let busy = quietFor < Self.busyWindow
+        let outputSinceReady = readyAt.map { (o.lastOutput ?? .distantPast) > $0 } ?? true
+        let busy = quietFor < Self.busyWindow && outputSinceReady
         let bottom = StatusEngine.bottomLines(o.screen, 40)
         let prompt = quietFor >= 0.3 ? DecisionMatcher.match(bottom, agent: kind).flatMap { StatusEngine.isLive($0, in: bottom) ? $0 : nil } : nil
         let spinner = StatusEngine.workingLine(bottom)
@@ -89,6 +92,7 @@ public struct StatusEngine: Sendable {
         if !ready, let since = agentSince, o.now.timeIntervalSince(since) >= 1, o.lastOutput != nil, quietFor >= 1,
            prompt == nil, !spinner {
             ready = true
+            readyAt = o.now
             status = .idle
             return status
         }

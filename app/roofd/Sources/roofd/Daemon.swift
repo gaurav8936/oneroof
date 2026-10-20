@@ -19,6 +19,7 @@ enum Daemon {
         let lockFd = open(Paths.dir + "/roofd.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard lockFd >= 0, flock(lockFd, LOCK_EX | LOCK_NB) == 0 else { return }   // held for the daemon's life
         let fd = try Sock.listen(Paths.control)
+        Scheduler.start()
         var flags = fcntl(fd, F_GETFL); flags &= ~O_NONBLOCK; _ = fcntl(fd, F_SETFL, flags)
         while true {
             let c = accept(fd, nil, nil)
@@ -63,6 +64,13 @@ enum Daemon {
         case "list":
             return ["proto": proto, "version": version,
                     "sessions": sessionIds().compactMap { try? Sock.holderRequest(Paths.session($0), ["op": "info"], timeout: 1) }]
+        case "scheduler":
+            // From the app: Settings › Allow scheduled runs, and where its session store is.
+            if let enabled = p["enabled"] as? Bool, let store = p["store"] as? String {
+                try Scheduler.save(.init(enabled: enabled, store: store, projects: p["projects"] as? String, shared: p["shared"] as? String))
+            }
+            let c = Scheduler.config()
+            return ["enabled": c?.enabled ?? false, "store": c?.store ?? ""]
         case "info", "read", "input", "signal", "close", "seen":
             guard let id = p["id"] as? String, Paths.validId(id) else { throw RoofdError("bad id") }
             var r = p

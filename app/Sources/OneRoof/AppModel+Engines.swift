@@ -178,7 +178,7 @@ extension AppModel {
     /// Fire due schedules while One Roof is open (every 30 s): launch the session exactly as Launch does, record the
     /// run, and put "missed · run now?" in the feed when the Mac slept through it. Nothing is merged or committed.
     func tickSchedules(now: Date = Date()) {
-        guard !SelfTest.isActive else { return }
+        guard !SelfTest.isActive, !roofdRunsSchedules else { return }   // roofd fires them (Q7)
         for (id, r) in scheduleRecords {
             guard let item = item(id) else { continue }
             switch ScheduleClock.action(r, now: now) {

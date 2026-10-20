@@ -21,6 +21,7 @@ public final class SessionStore: @unchecked Sendable {
         guard sqlite3_open(path, &db) == SQLITE_OK else {
             throw NSError(domain: "SessionStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "cannot open \(path)"])
         }
+        sqlite3_busy_timeout(db, 3000)   // roofd's scheduler writes to the same file (WAL)
         try exec("PRAGMA journal_mode=WAL")
         try exec("CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, json TEXT NOT NULL, updated REAL NOT NULL)")
         try exec("CREATE TABLE IF NOT EXISTS objectives (id TEXT PRIMARY KEY, json TEXT NOT NULL, updated REAL NOT NULL)")

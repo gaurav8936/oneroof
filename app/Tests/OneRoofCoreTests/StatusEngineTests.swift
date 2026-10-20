@@ -25,6 +25,16 @@ final class StatusEngineTests: XCTestCase {
         XCTAssertEqual(e.evaluate(obs(10, out: 1.8)), .idle)
     }
 
+    /// Found by the opening-message test: start-up output must not turn into "working, then done" once ready.
+    func testStartupOutputDoesNotBecomeATurnAfterReady() {
+        var e = StatusEngine()
+        e.evaluate(obs(0, out: 0.1))
+        XCTAssertEqual(e.evaluate(obs(1.1, out: 0.1)), .idle)
+        XCTAssertTrue(e.ready)
+        for t in stride(from: 1.4, through: 8, by: 0.5) { XCTAssertEqual(e.evaluate(obs(t, out: 0.1)), .idle, "t=\(t)") }
+        XCTAssertEqual(e.evaluate(obs(9, out: 8.9)), .working, "new output after ready is work")
+    }
+
     func testSeenClearsDone() {
         var e = StatusEngine()
         e.evaluate(obs(0, out: 0))

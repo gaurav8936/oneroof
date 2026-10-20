@@ -217,8 +217,10 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         var name = spec.id
         var n = 1
         while all.contains(name) { n += 1; name = "\(spec.id)-\(n)" }
-        _ = try call("create", ["id": name, "label": spec.label, "cwd": spec.cwd, "env": environment(spec),
-                                "argv": argv(spec), "cols": 120, "rows": 40])
+        var params: [String: Any] = ["id": name, "label": spec.label, "cwd": spec.cwd, "env": environment(spec),
+                                     "argv": argv(spec), "cols": 120, "rows": 40, "kind": spec.agent.rawValue]
+        if let opening = spec.opening { params["opening"] = opening }
+        _ = try call("create", params)
         if let cmd = spec.command {
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.2) { [weak self] in
                 _ = try? self?.call("input", ["id": name, "text": cmd, "submit": true])
@@ -261,6 +263,13 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
             RuntimeProcesses.Proc(pid: pid, name: RoofdRuntime.processName(pid), argv: ProcessProbe.args(pid: pid)?.argv ?? [])
         }
         return RuntimeProcesses(shellPid: shell, foreground: fg)
+    }
+
+    /// Settings › Allow scheduled runs: roofd fires Tonight / Nightly from the store, with the app open or closed.
+    public func configureScheduler(enabled: Bool, store: String, projects: String, shared: String?) {
+        var p: [String: Any] = ["enabled": enabled, "store": store, "projects": projects]
+        if let shared { p["shared"] = shared }
+        _ = try? call("scheduler", p, timeout: 3)
     }
 
     public func markSeen(_ id: RuntimeID) { _ = try? call("seen", ["id": id], timeout: 2) }

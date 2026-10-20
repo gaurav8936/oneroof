@@ -16,6 +16,9 @@ final class Holder {
         var env: [String: String]
         var cols: UInt16
         var rows: UInt16
+        /// The agent launched (nil = a plain shell) and its opening message, which the holder delivers (T14, Q7).
+        var kind: AgentKind?
+        var opening: String?
 
         init(json j: [String: Any]) throws {
             guard let id = j["id"] as? String, Paths.validId(id) else { throw RoofdError("bad id") }
@@ -26,6 +29,8 @@ final class Holder {
             env = j["env"] as? [String: String] ?? [:]
             cols = UInt16(j["cols"] as? Int ?? 120)
             rows = UInt16(j["rows"] as? Int ?? 40)
+            kind = (j["kind"] as? String).flatMap(AgentKind.init(rawValue:)).flatMap { $0.isAgent ? $0 : nil }
+            opening = (j["opening"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         }
     }
 
@@ -64,6 +69,12 @@ final class Holder {
     var lastEval = Date.distantPast
     var screenSeq = -1
     var screen = ""
+    /// Opening message delivery: pending → sent (verifying) → done / failed.
+    var openingState = "none"
+    var idleSince: Date?
+    var openingSentAt: Date?
+    var openingTries = 0
+    var enterAt: Date?
     /// Every RoofVT call runs on this serial queue: the parse never delays forwarding (T14 §3c hot path), and a
     /// `sync` on it is a barrier: everything read before it has been parsed.
     let vtQ = DispatchQueue(label: "roofd.vt", qos: .userInitiated)
@@ -352,6 +363,41 @@ final class Holder {
             }
         }
         engine.evaluate(.init(now: now, agent: fg, lastOutput: lastOutput, screen: screen))
+        deliverOpening(now: now)
+    }
+
+    /// The app's opening-message rules (OpeningGate): only into a ready, idle agent after its settle time; marked sent
+    /// at once; if the agent has not started working within 45 s, sent once more; then given up on.
+    func deliverOpening(now: Date) {
+        if let at = enterAt, now >= at {
+            enterAt = nil
+            pendingInput.append(0x0D)
+            flushInput()
+        }
+        guard let text = spec.opening, let kind = spec.kind, master >= 0, exitedAt == nil else { return }
+        if openingState == "none" { openingState = "pending" }
+        switch openingState {
+        case "pending":
+            if engine.ready, engine.status == .idle, agent != nil {
+                if idleSince == nil { idleSince = now }
+            } else {
+                idleSince = nil
+            }
+            guard let since = idleSince, now.timeIntervalSince(since) >= OpeningGate.settle(kind) else { return }
+            pendingInput += Array(text.utf8)
+            flushInput()
+            enterAt = now.addingTimeInterval(0.15)   // Enter separately: a submit, not a newline inside a paste
+            engine.input(at: now)
+            openingSentAt = now
+            openingTries += 1
+            openingState = "sent"
+        case "sent":
+            if engine.status.started { openingState = "done"; return }
+            guard let at = openingSentAt, now.timeIntervalSince(at) >= 45 else { return }
+            if openingTries < 2 { openingState = "pending"; idleSince = now } else { openingState = "failed" }
+        default:
+            return
+        }
     }
 
     // MARK: Control (read / info / input / close), T14 §3d
@@ -374,7 +420,7 @@ final class Holder {
         }
         var out: [String: Any] = [
             "status": exitedAt == nil ? engine.status.rawValue : "unknown", "ready": engine.ready && exitedAt == nil,
-            "agent": agent?.rawValue as Any,
+            "agent": agent?.rawValue as Any, "opening": openingState,
             "x": Int(x), "y": Int(y), "modes": modes,
             "id": spec.id, "label": spec.label, "cwd": spec.cwd, "pid": Int(pid), "seq": seq, "title": title, "pwd": pwd,
             "alt": alt, "attached": clients.values.contains { $0.attached }, "created": created.timeIntervalSince1970,
