@@ -224,6 +224,14 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         k == "CLAUDECODE" || k == "CLAUDE_PID" || k == "CLAUDE_EFFORT" || k.hasPrefix("CLAUDE_CODE_") || k == "CODEX_SANDBOX" || k.hasPrefix("CODEX_THREAD") || k == "AI_AGENT"
     }
 
+    /// LAB-224: agents' tool calls run without the login shell's setup, so `python3` can be the python.org build whose
+    /// certificate file is missing until its "Install Certificates" step runs: HTTPS then fails with
+    /// CERTIFICATE_VERIFY_FAILED. With no SSL_CERT_FILE of the owner's own, point it at the macOS bundle.
+    static func addCertificateDefault(_ env: inout [String: String], bundle: String = "/etc/ssl/cert.pem") {
+        guard env["SSL_CERT_FILE"] == nil, FileManager.default.fileExists(atPath: bundle) else { return }
+        env["SSL_CERT_FILE"] = bundle
+    }
+
     func environment(_ spec: LaunchSpec) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }
@@ -233,6 +241,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         // Markers of an agent session the app itself was started from (One Roof opened from a terminal inside Claude
         // Code): a session must start fresh, not as that agent's child (Claude turned transcript saving off).
         for k in env.keys where RoofdRuntime.inheritedAgentMarker(k) { env.removeValue(forKey: k) }
+        RoofdRuntime.addCertificateDefault(&env)
         env["COLORTERM"] = "truecolor"
         if let terminfo {
             env["TERM"] = "xterm-ghostty"
