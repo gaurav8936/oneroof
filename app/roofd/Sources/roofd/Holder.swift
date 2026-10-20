@@ -97,6 +97,7 @@ final class Holder {
         var envList = spec.env.map { "\($0.key)=\($0.value)" }
         envList.append("ONEROOF_SESSION=\(spec.id)")
         envList.append("ONEROOF_ROOFD=\(Paths.control)")
+        envList.append("ONEROOF_ROOFD_BIN=\(Daemon.selfPath())")   // what agent hooks call: `$ONEROOF_ROOFD_BIN report claude`
         let args = [path] + spec.argv.dropFirst()
         var m: Int32 = -1
         let p = withCStrings(args) { a in withCStrings(envList) { e in roof_spawn(a, e, spec.cwd, spec.cols, spec.rows, &m) } }
