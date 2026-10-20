@@ -182,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func copyAttach(_ sender: Any?) {
         guard let a = model.selected?.liveAgent else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(model.herdr.attachCommand(agent: a), forType: .string)
+        NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
     }
     /// ⌘+ ⌘− ⌘0 scale the window's UI type (0.85–1.3, S00.W.2) and the terminal font with it.
     @objc func textBigger(_ sender: Any?) { model.active.setTextScale(model.active.textScale + 0.05); main.terminalArea.terminalAction("increase_font_size:1") }

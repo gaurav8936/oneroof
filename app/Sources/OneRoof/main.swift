@@ -12,7 +12,7 @@ if ["--check", "--linear", "--route"].contains(where: CommandLine.arguments.cont
 if CommandLine.arguments.contains("--check") {
     let st = Prefs.loadSettings(migrate: false)
     let results = Foundations.runAll(FoundationPaths(common: st.sharedFolder, agenticEngineering: st.agenticEngineering.path),
-                                     herdr: HerdrClient())
+                                     runtime: HerdrRuntime())
     for r in results {
         let mark = r.level == .ok ? "✓" : r.level == .warn ? "!" : "✗"
         print("\(mark) \(r.title): \(r.detail)" + (r.fix.map { "   fix: \($0)" } ?? ""))

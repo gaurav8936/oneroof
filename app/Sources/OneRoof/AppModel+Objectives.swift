@@ -166,8 +166,8 @@ extension AppModel {
                   let agentName = item.liveAgent else { continue }
             o.rotating[step.id] = item.session.agent.rawValue
             let text = "Your usage window is nearly full (\(seat.seat): \(seat.fiveHour.map { "\(Int($0))%" } ?? "?") of 5 h). Stop at a safe point. Write a handoff for the next agent to \(handoff): what is done, what is left, files touched, how to check. Then stop; do not write the .done marker."
-            let h = herdr
-            DispatchQueue.global().async { try? h.prompt(agent: agentName, text: text) }
+            let r = runtime
+            DispatchQueue.global().async { try? r.submit(agentName, text: text) }
         }
     }
 

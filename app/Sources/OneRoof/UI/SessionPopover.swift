@@ -90,7 +90,7 @@ struct SessionPopover: View {
                 if let a = it.liveAgent {
                     link("Copy attach", "doc.on.doc") {
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(model.herdr.attachCommand(agent: a), forType: .string)
+                        NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
                     }
                 }
             }

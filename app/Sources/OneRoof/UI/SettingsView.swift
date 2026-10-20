@@ -32,7 +32,7 @@ struct SettingsView: View {
             Text("Checks herdr, agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
                 .font(.caption).foregroundStyle(.secondary)
             LabeledContent("herdr") {
-                Text(model.herdrState).foregroundStyle(model.herdrOK ? .green : .red)
+                Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .green : .red)
             }
         }
         .formStyle(.grouped)

@@ -1,20 +1,20 @@
 import Foundation
 
-/// One row in the sidebar: a stored session, a live herdr agent, or both.
+/// One row in the sidebar: a stored session, a live runtime session, or both.
 public struct BoardItem: Identifiable, Equatable, Sendable {
     public var id: String
     public var session: Session
     public var status: SessionStatus
-    /// herdr agent name when live (what a terminal attaches to).
+    /// Runtime id when live (what a terminal attaches to).
     public var liveAgent: String?
     public var paneId: String?
     public var workspaceId: String?
     /// Account read from the live process (wins over the planned account).
     public var detectedAccount: String?
-    /// True when the row came from herdr only (started outside One Roof).
+    /// True when the row came from the runtime only (started outside One Roof).
     public var adopted: Bool
     public var title: String?
-    /// herdr says the agent is ready for input.
+    /// The runtime says the agent is ready for input.
     public var ready: Bool = false
     /// A plain terminal in which the owner started an agent (typed `claude`): the row shows that agent while it runs,
     /// but the stored session stays a terminal.
@@ -46,78 +46,77 @@ public struct BoardGroup: Identifiable, Equatable, Sendable {
 }
 
 public enum Board {
-    /// Merge stored sessions with herdr's live agents.
-    /// - A stored session whose herdr agent is live takes herdr's status.
+    /// Merge stored sessions with the runtime's live sessions.
+    /// - A stored session whose agent is live takes the runtime's status.
     /// - A stored session that was launched but whose agent is gone is `exited` (unless parked as do-not-use).
     /// - A live agent with no stored session is adopted as its own row (started from a shell or another tool).
     public static func merge(
         stored: [Session],
-        snapshot: HerdrSnapshot,
+        snapshot: RuntimeSnapshot,
         accounts: [String: String] = [:]
     ) -> [BoardItem] {
-        var byAgent: [String: HerdrAgent] = [:]
-        for a in snapshot.agents { byAgent[a.name] = a }
-        var byTerminal: [String: HerdrPane] = [:]
-        for p in snapshot.panes { if let t = p.terminal_id { byTerminal[Session.terminalPrefix + t] = p } }
+        var byAgent: [RuntimeID: RuntimeSessionState] = [:]
+        var byShell: [RuntimeID: RuntimeSessionState] = [:]
+        for r in snapshot.sessions { if r.isAgent { byAgent[r.id] = r } else { byShell[r.id] = r } }
         var used = Set<String>()
         var items: [BoardItem] = []
 
         for s in stored {
-            // A plain terminal: live while its herdr pane exists; it has no agent state, so it shows as idle.
+            // A plain terminal: live while its shell exists; it has no agent state, so it shows as idle.
             if !s.agent.isAgent {
-                // An agent started inside the terminal: herdr reports it under the terminal's own name.
-                if let name = s.herdrAgent, let a = byAgent[name], let kind = AgentKind(herdrName: a.agent), kind.isAgent {
+                // An agent started inside the terminal: the runtime reports it under the terminal's own name.
+                if let name = s.herdrAgent, let a = byAgent[name], let kind = a.agent, kind.isAgent {
                     used.insert(name)
                     var shown = s
                     shown.agent = kind
                     var item = BoardItem(
-                        id: s.id, session: shown, status: s.lifecycle == .doNotUse ? .doNotUse : SessionStatus.fromHerdr(a.agent_status),
-                        liveAgent: name, paneId: a.pane_id, workspaceId: a.workspace_id,
-                        detectedAccount: accounts[name], adopted: false, title: a.terminal_title_stripped, ready: a.interactive_ready ?? false)
+                        id: s.id, session: shown, status: s.lifecycle == .doNotUse ? .doNotUse : SessionStatus(a.status),
+                        liveAgent: name, paneId: a.pane, workspaceId: a.groupId,
+                        detectedAccount: accounts[name], adopted: false, title: a.title, ready: a.ready)
                     item.agentInTerminal = true
                     items.append(item)
                     continue
                 }
-                let pane = s.herdrAgent.flatMap { byTerminal[$0] }
-                let status: SessionStatus = pane != nil ? (s.lifecycle == .doNotUse ? .doNotUse : .idle)
+                let shell = s.herdrAgent.flatMap { byShell[$0] ?? byAgent[$0] }
+                let status: SessionStatus = shell != nil ? (s.lifecycle == .doNotUse ? .doNotUse : .idle)
                     : (s.herdrAgent != nil && s.lifecycle != .doNotUse ? .exited : s.lifecycle)
                 items.append(BoardItem(
                     id: s.id, session: s, status: status,
-                    liveAgent: pane != nil ? s.herdrAgent : nil, paneId: pane?.pane_id, workspaceId: pane?.workspace_id,
-                    detectedAccount: nil, adopted: false, title: nil, ready: pane != nil))
+                    liveAgent: shell != nil ? s.herdrAgent : nil, paneId: shell?.pane, workspaceId: shell?.groupId,
+                    detectedAccount: nil, adopted: false, title: nil, ready: shell != nil))
                 continue
             }
             var status = s.lifecycle
-            var live: HerdrAgent?
+            var live: RuntimeSessionState?
             if let name = s.herdrAgent, let a = byAgent[name] {
                 live = a
                 used.insert(name)
-                status = s.lifecycle == .doNotUse ? .doNotUse : SessionStatus.fromHerdr(a.agent_status)
+                status = s.lifecycle == .doNotUse ? .doNotUse : SessionStatus(a.status)
             } else if s.herdrAgent != nil, s.lifecycle != .doNotUse {
                 status = .exited
             }
             items.append(BoardItem(
                 id: s.id, session: s, status: status,
-                liveAgent: live?.name, paneId: live?.pane_id, workspaceId: live?.workspace_id,
-                detectedAccount: live.flatMap { accounts[$0.name] },
-                adopted: false, title: live?.terminal_title_stripped, ready: live?.interactive_ready ?? false))
+                liveAgent: live?.id, paneId: live?.pane, workspaceId: live?.groupId,
+                detectedAccount: live.flatMap { accounts[$0.id] },
+                adopted: false, title: live?.title, ready: live?.ready ?? false))
         }
 
-        for a in snapshot.agents where !used.contains(a.name) {
-            let kind = AgentKind(herdrName: a.agent) ?? .claude
-            let cwd = a.foreground_cwd ?? a.cwd ?? Workspace.projectsRoot
-            let title = a.terminal_title_stripped
+        for a in snapshot.agents where !used.contains(a.id) {
+            let kind = a.agent ?? .claude
+            let cwd = a.cwd ?? Workspace.projectsRoot
+            let title = a.title
             // Agents started without a name show their terminal title instead of "term:<id>".
-            let display = a.name.hasPrefix(Session.terminalPrefix) || a.name.hasPrefix("pane:")
-                ? ((title?.isEmpty == false ? title! : kind.displayName) + " (unnamed)") : a.name
+            let display = a.id.hasPrefix(Session.terminalPrefix) || a.id.hasPrefix("pane:")
+                ? ((title?.isEmpty == false ? title! : kind.displayName) + " (unnamed)") : a.id
             let s = Session(
-                id: "herdr:" + a.name, name: display, agent: kind, repoPath: cwd,
-                workstream: Workspace.workstream(in: [a.name, title ?? ""].joined(separator: " ")),
-                lifecycle: .idle, herdrAgent: a.name)
+                id: "herdr:" + a.id, name: display, agent: kind, repoPath: cwd,
+                workstream: Workspace.workstream(in: [a.id, title ?? ""].joined(separator: " ")),
+                lifecycle: .idle, herdrAgent: a.id)
             items.append(BoardItem(
-                id: s.id, session: s, status: SessionStatus.fromHerdr(a.agent_status),
-                liveAgent: a.name, paneId: a.pane_id, workspaceId: a.workspace_id,
-                detectedAccount: accounts[a.name], adopted: true, title: title, ready: a.interactive_ready ?? false))
+                id: s.id, session: s, status: SessionStatus(a.status),
+                liveAgent: a.id, paneId: a.pane, workspaceId: a.groupId,
+                detectedAccount: accounts[a.id], adopted: true, title: title, ready: a.ready))
         }
         return items
     }

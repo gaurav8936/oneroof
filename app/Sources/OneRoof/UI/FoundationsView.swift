@@ -151,8 +151,8 @@ struct SkillsTab: View {
 
     private func insert(_ s: Foundations.SkillInfo) {
         guard let pane = model.selected?.paneId else { return }
-        let herdrPath = model.herdr.herdrPath
-        DispatchQueue.global().async { _ = Foundations.run(herdrPath, ["pane", "send-text", pane, "/\(s.name) "], timeout: 5) }
+        let r = model.runtime
+        DispatchQueue.global().async { try? r.type(pane: pane, text: "/\(s.name) ") }
     }
 }
 

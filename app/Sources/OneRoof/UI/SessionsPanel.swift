@@ -181,8 +181,8 @@ struct SessionsPanel: View {
 
         private var footer: some View {
             HStack(spacing: 6) {
-                Circle().fill(t.statusColor(model.herdrOK ? .done : .needsYou).color).frame(width: 7, height: 7)
-                Text(model.herdrState).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
+                Circle().fill(t.statusColor(model.runtimeOK ? .done : .needsYou).color).frame(width: 7, height: 7)
+                Text(model.runtimeState).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                 Spacer()
                 Button { NotificationCenter.default.post(name: .openFoundations, object: nil) } label: {
                     let issues = model.foundations.filter { $0.level != .ok }.count

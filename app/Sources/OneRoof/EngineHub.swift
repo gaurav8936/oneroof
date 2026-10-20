@@ -3,9 +3,9 @@ import OneRoofCore
 
 /// Runs the v2 engines (ENGINES §1–§6) off the main thread and publishes their results to the model:
 /// captions (heuristic first, the on-device model when it answers), the FYI feed, decisions with their "why",
-/// Claude subagents from the transcript, chapters, and file claims. Input each second from the herdr poll: which
-/// sessions are live, their status and their pane revision (a cheap "new output" signal); terminal text comes from
-/// `herdr pane read` (read-only). Every engine has a deterministic fallback, so the UI never waits on a model.
+/// Claude subagents from the transcript, chapters, and file claims. Input each second from the runtime poll: which
+/// sessions are live, their status and their output seq (a cheap "new output" signal); terminal text comes from
+/// the runtime's `read` (read-only). Every engine has a deterministic fallback, so the UI never waits on a model.
 final class EngineHub {
     struct Live: Sendable {
         var id: String
@@ -29,7 +29,7 @@ final class EngineHub {
     private let q = DispatchQueue(label: "oneroof.engines", qos: .utility)
     private weak var model: AppModel?
     private let store: SessionStore?
-    private let herdrPath: String
+    private let runtime: SessionRuntime
     private var scheduler = CaptionScheduler()
     private var revisions: [String: Int] = [:]
     private var statuses: [String: SessionStatus] = [:]
@@ -45,13 +45,13 @@ final class EngineHub {
     private let modelClient = CaptionModelClient()
     private var modelUp = false
     private var lastModelCheck = Date.distantPast
-    /// Tests and self-tests can feed text instead of reading herdr.
+    /// Tests and self-tests can feed text instead of reading the runtime.
     var textOverride: ((String) -> String?)?
 
-    init(model: AppModel, store: SessionStore?, herdrPath: String) {
+    init(model: AppModel, store: SessionStore?, runtime: SessionRuntime) {
         self.model = model
         self.store = store
-        self.herdrPath = herdrPath
+        self.runtime = runtime
         q.async { [weak self] in self?.loadFromStore() }
     }
 
@@ -117,8 +117,7 @@ final class EngineHub {
     private func text(_ s: Live, lines: Int = 300) -> String {
         if let o = textOverride?(s.id) { return o }
         guard let pane = s.pane else { return "" }
-        let (rc, out) = Foundations.run(herdrPath, ["pane", "read", pane, "--source", "recent", "--lines", "\(lines)"], timeout: 4)
-        return rc == 0 ? out : ""
+        return (try? runtime.read(pane: pane, lines: lines)) ?? ""
     }
 
     private func caption(_ s: Live, now: Date) {
@@ -195,16 +194,16 @@ final class EngineHub {
         openDecision[decisions[i].sessionId] = nil
     }
 
-    /// Answer a decision: the agent's own keys via herdr (y / a / n or the CLI's numbers; Esc then text for Reply).
+    /// Answer a decision: the agent's own keys via the runtime (y / a / n or the CLI's numbers; Esc then text for Reply).
     func answer(_ d: Decision, _ a: Answer, reply: String? = nil, pane: String?) {
         q.async { [weak self] in
             guard let self, let pane else { return }
             let keys = AnswerKeys.keys(for: a, prompt: self.prompts[d.sessionId], agent: d.agent, reply: reply)
             for k in keys.sends {
                 switch k {
-                case AnswerKeys.escape, "esc": _ = Foundations.run(self.herdrPath, ["pane", "send-keys", pane, "esc"], timeout: 5)
-                case "\r": _ = Foundations.run(self.herdrPath, ["pane", "send-keys", pane, "enter"], timeout: 5)
-                default: _ = Foundations.run(self.herdrPath, ["pane", "send-text", pane, k], timeout: 5)
+                case AnswerKeys.escape, "esc": try? self.runtime.keys(pane: pane, [.escape])
+                case "\r": try? self.runtime.keys(pane: pane, [.enter])
+                default: try? self.runtime.type(pane: pane, text: k)
                 }
                 usleep(150_000)
             }

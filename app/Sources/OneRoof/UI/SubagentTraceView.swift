@@ -225,7 +225,7 @@ extension AppModel {
     func askToStop(_ sub: Subagent, in parent: BoardItem) {
         guard let agent = parent.liveAgent else { return }
         interrupt(parent)
-        let h = herdr
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? h.prompt(agent: agent, text: "Stop subagent \(sub.name) and tell me where it got to.") }
+        let r = runtime
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? r.submit(agent, text: "Stop subagent \(sub.name) and tell me where it got to.") }
     }
 }

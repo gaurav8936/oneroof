@@ -71,9 +71,9 @@ public enum Foundations {
 
     // MARK: Checks
 
-    public static func runAll(_ p: FoundationPaths = FoundationPaths(), herdr: HerdrClient? = nil) -> [CheckResult] {
+    public static func runAll(_ p: FoundationPaths = FoundationPaths(), runtime: SessionRuntime? = nil) -> [CheckResult] {
         var out: [CheckResult] = []
-        out.append(herdrCheck(herdr))
+        out.append(runtimeCheck(runtime))
         out.append(contentsOf: claudeSettingsChecks(p))
         out.append(doorsCheck(p))
         out.append(skillsCheck(p))
@@ -95,19 +95,12 @@ public enum Foundations {
         }
     }
 
-    public static func herdrCheck(_ h: HerdrClient?) -> CheckResult {
-        guard let h else { return CheckResult(id: "herdr", title: "herdr", level: .warn, detail: "not checked") }
-        guard let proto = h.ping() else {
-            return CheckResult(id: "herdr", title: "herdr", level: .fail, detail: "server not reachable at ~/.config/herdr/herdr.sock",
-                               fix: "herdr server")
-        }
-        let v = "running · protocol \(proto)" + (proto == 22 ? "" : " (One Roof was built for 22)")
-        let leaks = h.serverLeaks()
-        if !leaks.isEmpty {
-            return CheckResult(id: "herdr", title: "herdr", level: .warn,
-                               detail: "\(v) · server carries \(leaks.keys.sorted().joined(separator: ", ")): One Roof restarts it when no agents run")
-        }
-        return CheckResult(id: "herdr", title: "herdr", level: proto == 22 ? .ok : .warn, detail: v)
+    /// The session runtime row. Its id stays "herdr" so saved check state and the Setup page keep matching.
+    public static func runtimeCheck(_ r: SessionRuntime?) -> CheckResult {
+        let title = r?.kind.displayName ?? "herdr"
+        guard let r else { return CheckResult(id: "herdr", title: title, level: .warn, detail: "not checked") }
+        let h = r.health()
+        return CheckResult(id: "herdr", title: title, level: h.level, detail: h.detail, fix: h.fix)
     }
 
     /// Memory pin, launch-folder hook and the hooks' scripts, from ~/.claude/settings.json (shared by both Claude homes).

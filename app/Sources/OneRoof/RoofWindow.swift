@@ -150,7 +150,7 @@ final class RoofWindowController: NSWindowController, NSWindowDelegate {
     private func surface(agent: String, cwd: String, theme: ThemeName) -> TerminalSurfaceView {
         if let s = surfaces[agent] { return s }
         let dir = Workspace.isInsideProjects(cwd) ? cwd : Workspace.projectsRoot
-        let s = TerminalSurfaceView(command: model.herdr.attachCommand(agent: agent), workingDirectory: dir, theme: theme)
+        let s = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: theme)
         s.onProcessExit = { [weak self] _ in
             self?.surfaces[agent]?.removeFromSuperview()
             self?.surfaces[agent] = nil

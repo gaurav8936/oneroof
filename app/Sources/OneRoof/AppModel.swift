@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import OneRoofCore
 
-/// App state: stored sessions + herdr's live agents → sidebar rows. Polls herdr once a second.
+/// App state: stored sessions + the session runtime's live sessions → sidebar rows. Polls the runtime once a second.
 final class AppModel: ObservableObject {
     @Published private(set) var items: [BoardItem] = []
     @Published var grouping: Grouping {
@@ -23,7 +23,7 @@ final class AppModel: ObservableObject {
     /// Files the agents are editing right now (S07 claim banner).
     var fileClaims = FileClaims()
     var scheduleRecords: [String: ScheduleRecord] = [:]
-    lazy var engines = EngineHub(model: self, store: store, herdrPath: herdr.herdrPath)
+    lazy var engines = EngineHub(model: self, store: store, runtime: runtime)
     /// The FYI feed, newest first (Feed engine; S01).
     @Published var feed: [FeedEntry] = []
     @Published var mutedWindows: Set<String> = []
@@ -44,8 +44,8 @@ final class AppModel: ObservableObject {
         let t = chosenThemes.forAppearance(systemDark: dark, follow: settings.followSystemAppearance)
         if t != themes { themes = t }
     }
-    @Published private(set) var herdrState: String = "Connecting to herdr…"
-    @Published private(set) var herdrOK = false
+    @Published private(set) var runtimeState: String = "Connecting to herdr…"
+    @Published private(set) var runtimeOK = false
     @Published var lastError: String?
     @Published var busy: Set<String> = []
     /// A Learn page to open (e.g. a skill's page from Foundations › Skills).
@@ -58,7 +58,7 @@ final class AppModel: ObservableObject {
     /// Course audio; keeps playing whatever the centre shows.
     let player = CoursePlayer()
     private var learnLoading = false
-    /// Sessions whose terminal is in its own window (herdr agent names).
+    /// Sessions whose terminal is in its own window (runtime ids).
     @Published var poppedOut: Set<String> = []
     @Published var workstreams: [LinearWorkstream] = []
     /// Usage windows per seat (Claude1, Claude2, Codex), refreshed every 30 s.
@@ -96,16 +96,19 @@ final class AppModel: ObservableObject {
         }
     }
 
-    let herdr = HerdrClient()
+    /// What runs every session (herdr today; roofd from P3 of LAB-ROOFD).
+    let runtime: SessionRuntime = HerdrRuntime()
     let store: SessionStore?
     private var stored: [Session] = []
-    private var lastSnapshot = HerdrSnapshot()
-    /// herdr agents by name from the latest snapshot (pane revisions for the caption engine).
-    var lastSnapshotAgents: [String: HerdrAgent] { Dictionary(lastSnapshot.agents.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a }) }
-    private var accounts: [String: String] = [:]     // herdr agent name → account label
+    private var lastSnapshot = RuntimeSnapshot()
+    /// Live sessions by runtime id from the latest snapshot (output seq for the caption engine).
+    var lastSnapshotSessions: [RuntimeID: RuntimeSessionState] {
+        Dictionary(lastSnapshot.sessions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+    private var accounts: [String: String] = [:]     // runtime id → account label
     private var probing = Set<String>()
     private var sending = Set<String>()
-    private var idleSince: [String: Date] = [:]
+    private var openingGate = OpeningGate()
     private var attempts: [String: Int] = [:]
     private var retryAfter: [String: Date] = [:]
     private var timer: Timer?
@@ -125,7 +128,7 @@ final class AppModel: ObservableObject {
     /// When the owner last had each session in front of them (selected or showing in a pane).
     private var lastViewed: [String: Date] = [:]
     private let startedAt = Date()
-    private let queue = DispatchQueue(label: "oneroof.herdr", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "oneroof.runtime", qos: .userInitiated)
 
     init() {
         grouping = Grouping(rawValue: Prefs.defaults.string(forKey: "grouping") ?? "") ?? .status
@@ -169,9 +172,9 @@ final class AppModel: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             do {
-                try self.herdr.ensureServer()
+                try self.runtime.ensureRunning()
             } catch {
-                DispatchQueue.main.async { self.herdrState = "herdr not running: \(error)" }
+                DispatchQueue.main.async { self.runtimeState = "\(self.runtime.kind.displayName) not running: \(error)" }
             }
             self.poll()
         }
@@ -195,46 +198,39 @@ final class AppModel: ObservableObject {
 
     private func poll() {
         do {
-            var snap = try herdr.snapshot()
+            var snap = try runtime.snapshot()
             // Demo mode (screenshots for the public help): show only the seeded demo sessions, never live ones.
-            if ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_DEMO"] == "1" { snap.agents = []; snap.panes = [] }
-            let proto = snap.protocol ?? 0
-            let state: String
-            if proto != 0 && proto != HerdrClient.supportedProtocol {
-                state = "herdr \(snap.version ?? "?") · protocol \(proto) (One Roof expects \(HerdrClient.supportedProtocol))"
-            } else {
-                state = "herdr \(snap.version ?? "") · \(snap.agents.count) agent\(snap.agents.count == 1 ? "" : "s")"
-            }
+            if ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_DEMO"] == "1" { snap.sessions = [] }
+            let state = runtime.statusLine(snap)
             probeAccounts(snap)
             DispatchQueue.main.async {
                 self.lastSnapshot = snap
-                self.herdrOK = true
-                self.herdrState = state
+                self.runtimeOK = true
+                self.runtimeState = state
                 self.rebuild()
             }
         } catch {
             DispatchQueue.main.async {
-                self.herdrOK = false
-                self.herdrState = "\(error)"
+                self.runtimeOK = false
+                self.runtimeState = "\(error)"
                 self.rebuild()
             }
         }
     }
 
     /// Read each new agent's account from its process environment (pane → foreground PID → sysctl).
-    private func probeAccounts(_ snap: HerdrSnapshot) {
+    private func probeAccounts(_ snap: RuntimeSnapshot) {
         let known = DispatchQueue.main.sync { Set(accounts.keys) }
-        for a in snap.agents where !known.contains(a.name) && !probing.contains(a.name) {
-            guard let kind = AgentKind(herdrName: a.agent) else { continue }
-            probing.insert(a.name)
-            defer { probing.remove(a.name) }
-            guard let info = try? herdr.processInfo(paneId: a.pane_id) else { continue }
-            let procs = info.foreground_processes ?? []
+        for a in snap.agents where !known.contains(a.id) && !probing.contains(a.id) {
+            guard let kind = a.agent else { continue }
+            probing.insert(a.id)
+            defer { probing.remove(a.id) }
+            guard let procs = try? runtime.processes(pane: a.pane).foreground else { continue }
             // Prefer the process whose argv names the agent; otherwise the first foreground process.
-            let pick = procs.first { p in (p.argv ?? []).joined(separator: " ").lowercased().contains(kind.rawValue) } ?? procs.first
+            let pick = procs.first { p in p.argv.joined(separator: " ").lowercased().contains(kind.rawValue) } ?? procs.first
             guard let pid = pick?.pid, let args = ProcessProbe.args(pid: pid), !args.env.isEmpty else { continue }
             if let label = AccountResolver.label(agent: kind, env: args.env) {
-                DispatchQueue.main.async { self.accounts[a.name] = label; self.rebuild() }
+                DispatchQueue.main.async { self.accounts[a.id] = label; self.rebuild() }
             }
         }
     }
@@ -375,7 +371,8 @@ final class AppModel: ObservableObject {
         guard !item.adopted else { return }
         rememberClosed(item.session)
         if item.liveAgent == nil, let ws = item.session.herdrWorkspace {
-            queue.async { [weak self] in try? self?.herdr.closeWorkspace(ws) }
+            let id = item.session.herdrAgent ?? ""
+            queue.async { [weak self] in try? self?.runtime.close(id, group: ws) }
         }
         stored.removeAll { $0.id == item.id }
         store?.delete(id: item.id)
@@ -390,7 +387,7 @@ final class AppModel: ObservableObject {
         let paths = FoundationPaths(common: settings.sharedFolder, agenticEngineering: settings.agenticEngineering.path)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            let r = Foundations.runAll(paths, herdr: self.herdr)
+            let r = Foundations.runAll(paths, runtime: self.runtime)
             DispatchQueue.main.async {
                 self.foundations = r
                 self.checkingFoundations = false
@@ -523,8 +520,8 @@ final class AppModel: ObservableObject {
     func sendReview(_ text: String, repo: String) -> String {
         guard let target = reviewTarget(repo: repo), let agent = target.liveAgent else { return "No live agent session in this repo." }
         guard target.status != .running else { return "\(target.session.name) is working; send when it is idle." }
-        let h = herdr
-        DispatchQueue.global().async { try? h.prompt(agent: agent, text: text) }
+        let r = runtime
+        DispatchQueue.global().async { try? r.submit(agent, text: text) }
         return "Comment sent to \(target.session.name)."
     }
 
@@ -548,8 +545,8 @@ final class AppModel: ObservableObject {
         if launchNow, let item = item(s.id) { launch(item) }
     }
 
-    /// Start the session's agent in herdr: workspace in ~/Projects (or the repo) with the account's env →
-    /// agent.start. The opening message is sent later by `deliverOpenings`, once herdr reports the agent idle.
+    /// Start the session's agent in the runtime (in ~/Projects or the repo, with the account's env). The opening
+    /// message is sent later by `deliverOpenings`, once the runtime reports the agent idle.
     func launch(_ item: BoardItem) {
         let s = item.session
         // Red foundations block starting an agent (owner D5), with a way through for this run.
@@ -573,95 +570,30 @@ final class AppModel: ObservableObject {
             return
         }
         lastError = nil
-        let base = Session.herdrName(for: s.id)
-        let claimed = Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix("herdr:") ? nil : $0.herdrAgent })
-        let env = AccountResolver.launchEnv(agent: s.agent, account: s.account)
+        let spec = LaunchSpec(
+            id: Session.herdrName(for: s.id), label: s.name, cwd: dir,
+            env: AccountResolver.launchEnv(agent: s.agent, account: s.account),
+            agent: s.agent, args: s.launchArgs, command: s.agent.isAgent ? nil : pendingCommands[s.id],
+            previousGroup: s.herdrWorkspace, adoptOrphan: s.agent.isAgent && s.herdrAgent == nil,
+            claimed: Set(stored.compactMap { $0.id == s.id || $0.id.hasPrefix("herdr:") ? nil : $0.herdrAgent }))
         busy.insert(s.id)
         queue.async { [weak self] in
             guard let self else { return }
-            var startError: Error?
-            var workspaceId: String?
-            var name = base
-            var adoptedOrphan = false
-            defer { self.finishLaunch(s, name: name, workspaceId: workspaceId, error: startError, adopted: adoptedOrphan) }
-            do {
-                try self.herdr.ensureServer()
-                // herdr panes inherit the server's environment. A server started from a Claude2 shell would put
-                // every "Claude1" launch on the wrong account: restart it clean if nothing is running, else refuse.
-                let leaks = self.herdr.serverLeaks()
-                if !leaks.isEmpty {
-                    let liveAgents = (try? self.herdr.snapshot().agents.count) ?? 1
-                    if liveAgents == 0 {
-                        self.herdr.stopServer()
-                        try self.herdr.ensureServer()
-                    } else {
-                        throw HerdrClient.Failure.api(code: "herdr_env",
-                            message: "herdr was started with \(leaks.keys.sorted().joined(separator: ", ")) set, so agents would start on the wrong account. Close its agents (or run `herdr server stop`) and launch again; One Roof restarts herdr cleanly.")
-                    }
-                }
-                // An earlier launch of this session may have started its agent and then reported an error
-                // (the agent showed up as "started outside One Roof"). Link that agent instead of starting a second.
-                let live = (try? self.herdr.snapshot().agents) ?? []
-                if s.agent.isAgent, s.herdrAgent == nil, let orphan = live.first(where: { $0.name == base && !claimed.contains($0.name) }) {
-                    name = orphan.name
-                    workspaceId = orphan.workspace_id
-                    adoptedOrphan = true
-                    return
-                }
-                // herdr names must be unique: roof-<id>, then roof-<id>-2, -3 … on relaunches.
-                let taken = Set(live.map(\.name))
-                var n = 1
-                while taken.contains(name) { n += 1; name = "\(base)-\(n)" }
-                // Relaunch: close the previous (now empty) workspace first.
-                if let old = s.herdrWorkspace { try? self.herdr.closeWorkspace(old) }
-                let (ws, pane) = try self.herdr.createWorkspace(cwd: dir, env: env, label: s.name)
-                workspaceId = ws
-                // A plain terminal: the shell in the new pane is the session. Link it by its terminal id.
-                if !s.agent.isAgent {
-                    let p = try self.herdr.snapshot().panes.first { $0.pane_id == pane }
-                    guard let t = p?.terminal_id else { throw HerdrClient.Failure.decode("new pane has no terminal id") }
-                    name = Session.terminalPrefix + t
-                    // A terminal opened to run something (a Fix button): type the command once the shell is up.
-                    if let cmd = self.pendingCommands[s.id] {
-                        let herdrPath = self.herdr.herdrPath
-                        DispatchQueue.global().asyncAfter(deadline: .now() + 1.2) {
-                            _ = Foundations.run(herdrPath, ["pane", "run", pane, cmd], timeout: 10)
-                        }
-                    }
-                    return
-                }
-                // The new pane's shell may still be loading ~/.zshrc: retry while herdr says the pane is busy.
-                var tries = 0
-                while true {
-                    do {
-                        try self.herdr.startAgent(name: name, kind: s.agent.herdrKind, paneId: pane, args: s.launchArgs)
-                        break
-                    } catch HerdrClient.Failure.api(let code, _) where code == "agent_not_ready" {
-                        break   // started, but waiting on a prompt (e.g. folder trust): it needs the owner
-                    } catch HerdrClient.Failure.api(let code, _) where code == "agent_pane_busy" && tries < 40 {
-                        tries += 1
-                        usleep(500_000)
-                    }
-                }
-            } catch {
-                // herdr can create the agent and still return an error: if it exists, the launch worked.
-                if let a = try? self.herdr.snapshot().agents.first(where: { $0.name == name }) {
-                    workspaceId = workspaceId ?? a.workspace_id
-                } else {
-                    startError = error
-                }
-            }
+            do { self.finishLaunch(s, .success(try self.runtime.start(spec))) }
+            catch { self.finishLaunch(s, .failure(error)) }
         }
     }
 
-    private func finishLaunch(_ session: Session, name: String, workspaceId: String?, error: Error?, adopted: Bool) {
+    private func finishLaunch(_ session: Session, _ result: Result<RuntimeSessionRef, Error>) {
         DispatchQueue.main.async {
             var s = session
             self.busy.remove(s.id)
-            if let error {
-                self.lastError = "Launch failed: \(error)"
-                return
+            let ref: RuntimeSessionRef
+            switch result {
+            case .failure(let error): self.lastError = "Launch failed: \(error)"; return
+            case .success(let r): ref = r
             }
+            let name = ref.id, workspaceId = ref.groupId, adopted = ref.adopted
             // Fold the auto-saved "started outside One Roof" row for this agent into the session.
             if let i = self.stored.firstIndex(where: { $0.id == "herdr:" + name }) {
                 let extra = self.stored[i]
@@ -692,31 +624,17 @@ final class AppModel: ObservableObject {
 
     private func deliverOpenings() {
         let now = Date()
-        for item in items {
+        openingGate.observe(items, now: now)
+        for item in openingGate.due(items, now: now, sending: sending, retryAfter: retryAfter) {
             guard let agent = item.liveAgent else { continue }
-            if item.status == .idle && item.ready {
-                if idleSince[agent] == nil { idleSince[agent] = now }
-            } else {
-                idleSince[agent] = nil
-            }
-        }
-        // Some CLIs report ready before they accept input (Kimi connects its MCP servers first and drops what is
-        // typed meanwhile), so each agent gets its own settle time.
-        func settle(_ a: AgentKind) -> TimeInterval {
-            switch a { case .kimi: return 10; case .agy, .gemini: return 6; default: return 2 }
-        }
-        for item in items where item.session.agent.isAgent && item.session.openingPending && !sending.contains(item.id) {
-            guard let agent = item.liveAgent, let since = idleSince[agent],
-                  now.timeIntervalSince(since) >= settle(item.session.agent) else { continue }
-            if let next = retryAfter[item.id], now < next { continue }
             sending.insert(item.id)
             let text = item.session.openingMessage
             let id = item.id
             queue.async { [weak self] in
                 guard let self else { return }
                 do {
-                    try self.herdr.prompt(agent: agent, text: text)
-                    // Mark it sent at once (so a restart never sends it twice), then check it landed off the herdr
+                    try self.runtime.submit(agent, text: text)
+                    // Mark it sent at once (so a restart never sends it twice), then check it landed off the runtime
                     // queue: the agent should start within 45 s; if it is still idle, un-mark it and send once more.
                     DispatchQueue.main.async {
                         if let fresh = self.item(id) { self.update(fresh) { $0.openingSent = true } }
@@ -725,14 +643,13 @@ final class AppModel: ObservableObject {
                         var started = false
                         for _ in 0..<45 {
                             sleep(1)
-                            if let a = try? self.herdr.snapshot().agents.first(where: { $0.name == agent }),
-                               ["working", "blocked", "done"].contains(a.agent_status ?? "") { started = true; break }
+                            if let a = try? self.runtime.snapshot().session(agent), a.status.started { started = true; break }
                         }
                         DispatchQueue.main.async {
                             self.sending.remove(id)
                             if !started, (self.attempts[id] ?? 0) == 0, let fresh = self.item(id) {
                                 self.attempts[id] = 1
-                                self.idleSince[agent] = Date()
+                                self.openingGate.restart(agent, at: Date())
                                 self.update(fresh) { $0.openingSent = false }
                                 return
                             }
@@ -740,7 +657,7 @@ final class AppModel: ObservableObject {
                             if !started { self.lastError = "\(self.fresh(self, id)) may not have received its opening message." }
                         }
                     }
-                } catch HerdrClient.Failure.api(let code, _) where code == "agent_not_ready" {
+                } catch RuntimeError.notReady {
                     DispatchQueue.main.async {
                         let n = (self.attempts[id] ?? 0) + 1
                         self.attempts[id] = n
@@ -762,12 +679,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Close the agent's herdr workspace (ends the agent process).
+    /// End the session in the runtime (its agent or shell process).
     func closeAgent(_ item: BoardItem, remember: Bool = true) {
-        guard let ws = item.workspaceId ?? item.session.herdrWorkspace else { return }
+        let group = item.workspaceId ?? item.session.herdrWorkspace
+        guard group != nil || item.liveAgent != nil else { return }
+        let id = item.liveAgent ?? item.session.herdrAgent ?? ""
         if remember { rememberClosed(item.session) }
         queue.async { [weak self] in
-            do { try self?.herdr.closeWorkspace(ws) }
+            do { try self?.runtime.close(id, group: group) }
             catch { DispatchQueue.main.async { self?.lastError = "Close failed: \(error)" } }
             self?.poll()
         }

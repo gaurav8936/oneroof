@@ -299,7 +299,7 @@ enum SelfTest {
              "account": i.account ?? "", "repo": i.repoLabel, "workstream": i.session.workstream ?? "",
              "live": i.liveAgent ?? "", "adopted": i.adopted ? "yes" : "no"]
         }
-        let meta: [String: Any] = ["rows": rows, "herdr": app.model.herdrState, "selected": app.model.selectedId ?? "",
+        let meta: [String: Any] = ["rows": rows, "herdr": app.model.runtimeState, "selected": app.model.selectedId ?? "",
                                    "themes": [app.model.themes.sidebar.rawValue, app.model.themes.terminal.rawValue, app.model.themes.plan.rawValue],
                                    "grouping": app.model.grouping.rawValue, "error": app.model.lastError ?? "",
                                    "conversations": { () -> String in

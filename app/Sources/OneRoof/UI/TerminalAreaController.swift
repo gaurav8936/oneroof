@@ -263,7 +263,7 @@ final class TerminalAreaController: NSViewController {
     private func surface(agent: String, cwd: String, theme: ThemeName) -> TerminalSurfaceView {
         if let s = surfaces[agent] { return s }
         let dir = Workspace.isInsideProjects(cwd) ? cwd : Workspace.projectsRoot
-        let surface = TerminalSurfaceView(command: model.herdr.attachCommand(agent: agent), workingDirectory: dir, theme: theme)
+        let surface = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: theme)
         surface.onSearchTotal = { [weak self] n in self?.find.total = n }
         surface.onSearchSelected = { [weak self] n in self?.find.selected = n }
         surface.onOpenURL = { [weak self] url in self?.openLink(url) }

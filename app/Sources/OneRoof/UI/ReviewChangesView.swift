@@ -306,9 +306,9 @@ struct ReviewChangesView: View {
     /// Checks come from the session's own output (S08 §1.6): build and test results it printed, never invented.
     private func loadChecks() {
         guard let pane = session?.paneId else { checks = []; return }
-        let h = model.herdr.herdrPath
+        let r = model.runtime
         DispatchQueue.global(qos: .utility).async {
-            let (_, text) = Foundations.run(h, ["pane", "read", pane, "--source", "recent", "--lines", "600"], timeout: 4)
+            let text = (try? r.read(pane: pane, lines: 600)) ?? ""
             let c = ReviewCheck.read(text)
             DispatchQueue.main.async { checks = c }
         }
@@ -365,9 +365,9 @@ struct ReviewChangesView: View {
 
     private func askToFix(_ c: ReviewCheck) {
         guard let s = session, let agent = s.liveAgent else { return }
-        let h = model.herdr
+        let r = model.runtime
         let text = "The review check \"\(c.title)\" is not passing: \(c.detail). Please fix it."
-        DispatchQueue.global().async { try? h.prompt(agent: agent, text: text) }
+        DispatchQueue.global().async { try? r.submit(agent, text: text) }
         status = "Asked \(s.session.name) to fix \(c.title)."
     }
 }

@@ -19,7 +19,7 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: w)
         w.delegate = self
         let dir = Workspace.isInsideProjects(item.session.repoPath) ? item.session.repoPath : Workspace.projectsRoot
-        let s = TerminalSurfaceView(command: model.herdr.attachCommand(agent: agent), workingDirectory: dir, theme: model.themes.terminal)
+        let s = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: model.themes.terminal)
         s.onProcessExit = { [weak self] _ in self?.window?.close() }
         w.contentView = s
         surface = s
