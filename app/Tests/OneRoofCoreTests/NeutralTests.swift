@@ -207,7 +207,11 @@ final class SettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(LocalModel.resolve(setting: "/m.gguf", environment: [:]), "/m.gguf")
         XCTAssertEqual(LocalModel.resolve(setting: "/m.gguf", environment: ["ONEROOF_MODEL": "/e.gguf"]), "/e.gguf")
         XCTAssertFalse(LocalModel.shared.installed(modelPath: "/nonexistent.gguf"))
-        XCTAssertNil(LocalModel.shared.classify("fix the login bug", kinds: ["code": "write code"], modelPath: "/nonexistent.gguf"))
+        // A llama-server already up on the port (the owner's, or the CI Mac's) answers whatever the path; the
+        // "no model, no answer" case is only checkable when nothing is listening.
+        if !LocalModel.shared.healthy() {
+            XCTAssertNil(LocalModel.shared.classify("fix the login bug", kinds: ["code": "write code"], modelPath: "/nonexistent.gguf"))
+        }
     }
 }
 
