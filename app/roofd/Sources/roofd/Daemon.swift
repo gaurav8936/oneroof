@@ -13,6 +13,9 @@ enum Daemon {
         signal(SIGCHLD, SIG_IGN)   // holders are reparented away; never leave zombies
         try FileManager.default.createDirectory(atPath: Paths.dir, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
+        // One daemon per folder: two starts at once (the app's start and a launch) must not take each other's socket.
+        let lockFd = open(Paths.dir + "/roofd.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard lockFd >= 0, flock(lockFd, LOCK_EX | LOCK_NB) == 0 else { return }   // held for the daemon's life
         let fd = try Sock.listen(Paths.control)
         var flags = fcntl(fd, F_GETFL); flags &= ~O_NONBLOCK; _ = fcntl(fd, F_SETFL, flags)
         while true {

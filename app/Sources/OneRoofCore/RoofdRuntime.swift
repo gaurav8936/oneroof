@@ -90,7 +90,10 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
 
     // MARK: Lifecycle
 
+    /// One Roof starts roofd itself, so "not answering" is only red if it cannot be started (the foundations check
+    /// can run before the app's own start has finished).
     public func health() -> RuntimeHealth {
+        if (try? call("hello", timeout: 2)) == nil { try? ensureRunning() }
         guard let r = try? call("hello", timeout: 2) else {
             return RuntimeHealth(level: .fail, detail: "roofd not running (\(dir))", fix: "\(roofdPath) daemon")
         }
