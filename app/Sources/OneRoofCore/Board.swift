@@ -44,7 +44,7 @@ public enum Grouping: String, CaseIterable, Identifiable, Sendable {
         case .status: return "Status"
         case .repo: return "Repo"
         case .domain: return "Folder"
-        case .workstream: return "Workstream"
+        case .workstream: return "Project"
         case .agent: return "Agent"
         case .account: return "Account"
         }
@@ -159,7 +159,7 @@ public enum Board {
             case .status: return i.status.label
             case .repo: return i.repoPath.map { Workspace.repoLabel(for: $0) } ?? Board.noRepo
             case .domain: return i.repoPath.map(Workspace.domainLabel) ?? Board.noRepo
-            case .workstream: return i.session.workstream ?? "No workstream"
+            case .workstream: return i.session.workstream ?? "No project"
             case .agent: return i.session.agent.displayName
             case .account: return i.account ?? i.session.agent.displayName
             }

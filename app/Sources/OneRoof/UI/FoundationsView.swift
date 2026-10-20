@@ -207,7 +207,7 @@ struct MemoryTab: View {
     var body: some View {
         HSplitView {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Latest handoff per workstream").font(.system(size: 13, weight: .bold))
+                Text("Latest handoff per project").font(.system(size: 13, weight: .bold))
                 List(handoffs) { f in
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {

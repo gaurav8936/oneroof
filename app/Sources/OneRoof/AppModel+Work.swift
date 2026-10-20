@@ -10,7 +10,11 @@ extension AppModel {
             guard let self else { return }
             do {
                 let ws = try self.linear.workstreams()
-                DispatchQueue.main.async { self.workstreams = ws; self.linearError = nil; self.linearLoading = false }
+                let teams = (try? self.linear.teams()) ?? []
+                DispatchQueue.main.async {
+                    self.workstreams = ws; self.linearError = nil; self.linearLoading = false
+                    if !teams.isEmpty { self.linearTeams = teams }
+                }
             } catch {
                 DispatchQueue.main.async { self.linearError = "\(error)"; self.linearLoading = false }
             }
@@ -53,7 +57,7 @@ extension AppModel {
         let s = Session(name: issue.shortTitle, agent: agent, account: d.account, repoPath: repo,
                         workstream: w.wsId,
                         objective: issue.shortTitle + (issue.description.isEmpty ? "" : "\n\n" + String(issue.description.prefix(600))),
-                        openingMessage: "Work on \(issue.identifier) (\(w.wsId ?? w.name)): \(issue.shortTitle). Read the ticket \(issue.url) and the workstream docs first; commit as `\(issue.identifier) · [\((w.wsId ?? "").lowercased())] …`.",
+                        openingMessage: "Work on \(issue.identifier) (\(w.wsId ?? w.name)): \(issue.shortTitle). Read the ticket \(issue.url) and the project docs first; commit as `\(issue.identifier) · [\((w.wsId ?? "").lowercased())] …`.",
                         lifecycle: .next, model: d.model.isEmpty ? nil : d.model,
                         ticket: issue.identifier, ticketId: issue.id, ticketTeam: w.team)
         createPlanned(s, launchNow: false)
@@ -61,18 +65,24 @@ extension AppModel {
         return s
     }
 
-    /// Create a ticket after the intake filter; calls back on the main thread.
-    func createTicket(kind: WorkKind, title: String, details: String, in w: LinearWorkstream, milestone: String?,
-                      planSession: Bool, done: @escaping (Result<LinearIssue, Error>) -> Void) {
+    /// Create a ticket after the intake filter; calls back on the main thread. The team is the project's, or, with no
+    /// project, the one picked (LAB-237: a ticket always has a team; the project is optional).
+    func createTicket(kind: WorkKind, title: String, details: String, in w: LinearWorkstream?, team teamKey: String? = nil,
+                      milestone: String?, planSession: Bool, done: @escaping (Result<LinearIssue, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                let t = try self.team(w.team)
+                guard let key = (teamKey?.isEmpty == false ? teamKey : nil) ?? w?.team, !key.isEmpty else {
+                    throw LinearClient.Failure.api("pick a team first")
+                }
+                let t = try self.team(key)
                 let issue = try self.linear.createIssue(team: t, workstream: w, milestone: milestone, title: title,
                                                        description: details, type: kind.rawValue)
                 DispatchQueue.main.async {
-                    self.issues[w.id, default: []].append(issue)
-                    if planSession { self.planSession(for: issue, in: w) }
+                    if let w {
+                        self.issues[w.id, default: []].append(issue)
+                        if planSession { self.planSession(for: issue, in: w) }
+                    }
                     done(.success(issue))
                 }
             } catch {
@@ -81,18 +91,48 @@ extension AppModel {
         }
     }
 
-    /// A new workstream is tracker-first (WS id registry, tracker pane, docs README, linear_sync): an agent does
-    /// those steps the workspace way, so tracker and Linear never drift. One Roof plans that session.
-    func planWorkstreamSession(title: String, details: String) {
-        let s = Session(name: "Open workstream: \(title)", agent: .claude, account: settings.defaults(for: .claude).account,
-                        repoPath: Workspace.projectsRoot,
-                        objective: "Open a new workstream: \(title)",
-                        openingMessage: """
-                        Open a new workstream for: \(title).
-                        \(details)
-                        Follow the workspace's READ-FIRST and tracker conventions if it has them: pick a workstream id, add it to the tracker, create docs/workstreams/<id>/README.md (goal, phases, done-when), and, if Linear is connected, create the project, its phase milestones and the first tickets. Then tell me the id.
-                        """,
-                        lifecycle: .next)
+    /// Create a Linear project (code · title, milestones) from One Roof (LAB-238); calls back on the main thread.
+    func createProject(team: LinearTeamRef, code: String, title: String, summary: String, milestones: [String],
+                       done: @escaping (Result<LinearWorkstream, Error>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                let p = try self.linear.createProject(team: team, code: code, title: title, summary: summary, milestones: milestones)
+                DispatchQueue.main.async {
+                    self.workstreams.append(p)
+                    self.workstreams.sort { $0.name < $1.name }
+                    done(.success(p))
+                }
+            } catch {
+                DispatchQueue.main.async { done(.failure(error)) }
+            }
+        }
+    }
+
+    /// A new project: One Roof creates it in Linear when connected (LAB-238), then plans a session that writes its docs
+    /// the workspace way; without Linear the session does every step.
+    func planWorkstreamSession(title: String, details: String, project: LinearWorkstream? = nil) {
+        let body: String
+        if let p = project {
+            // LAB-238: the Linear project already exists; the session writes its docs the workspace way.
+            let ms = p.milestones.map(\.name).joined(separator: ", ")
+            body = """
+            Linear project \(p.name) was just created from One Roof (\(p.url))\(ms.isEmpty ? "" : ", milestones: " + ms).
+            \(details)
+            Follow the workspace's READ-FIRST conventions if it has them: write the project's docs folder (README with goal, milestones and done-when; STATUS), add the first tickets in Linear, and post a first project update.
+            """
+        } else {
+            body = """
+            Open a new project for: \(title).
+            \(details)
+            Follow the workspace's READ-FIRST conventions if it has them: pick a project code, create its docs folder (README with goal, phases, done-when), and, if Linear is connected, create the project, its milestones and the first tickets. Then tell me the code.
+            """
+        }
+        let s = Session(name: "Open project: \(project?.wsId ?? title)", agent: .claude, account: settings.defaults(for: .claude).account,
+                        repoPath: Workspace.projectsRoot, workstream: project?.wsId,
+                        objective: "Open a new project: \(title)",
+                        openingMessage: body,
+                        lifecycle: .next, ticketTeam: project?.team)
         createPlanned(s, launchNow: false)
         selectedId = s.id
     }

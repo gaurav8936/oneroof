@@ -1,6 +1,6 @@
 # One Roof help: Overview, Board, Decisions, command palette and keyboard shortcuts
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** the Overview is one page of all your work, the Board is a Kanban of every session, Decisions lists every agent waiting on you, the command palette (⌘K) finds anything, and the table at the end lists every keyboard shortcut in One Roof.
 
@@ -23,7 +23,7 @@ One page that answers "what needs me, and what is going on?" across every window
 
 ![The Board](img/board.png)
 
-A Kanban of every session in every window, left to right: **Planned · Next → Working → Needs you → Ready → Idle · Parked → Tonight → Exited → Do not use**. Drag a card onto Planned · Next, Tonight or Do not use to change it; the other columns follow the agents' live state. The Tonight column has **Schedule** with a time and an **Every night** switch. Exited and Do not use can be collapsed. Double-click a card to open that session. ⌘B again closes the Board.
+A Kanban of every session in every window, left to right: **Planned · Next → Working → Needs you → Ready → Idle · Parked → Tonight → Exited → Do not use**. Drag a card onto Planned · Next, Tonight or Do not use to change it; the other columns follow the agents' live state. The Tonight column has **Schedule** with a time and an **Every night** switch. Exited and Do not use can be collapsed. Double-click a card to open that session. **By project** groups the cards by their Linear project. ⌘B again closes the Board.
 
 ## Decisions (⌘I)
 
@@ -43,7 +43,7 @@ Press **⌘K** (⌘P works too), or click the search box in the toolbar, and typ
 - **Windows:** every workspace window, and New workspace window.
 - **Actions:** plan a session, new terminal, new objective, new work item, find in terminal, search in workspace, toggle each panel, review changes, split right or down, close or maximize a pane, even out panes, reopen a closed session, run the startup check, remove exited sessions, open the selected session in a new window, roof windows, How do I…?
 - **Themes:** set all panels to one theme.
-- **Sessions, objectives and workstreams** by name.
+- **Sessions, objectives and projects** by name.
 - **Files** tracked in the selected session's repo (up to 4,000), which open in the viewer.
 - **Skills**, which open their Learn page.
 
@@ -81,13 +81,13 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | ⌘F | Edit › Find… | Find in the focused terminal |
 | ⌘G / ⇧⌘G | Edit › Find Next / Find Previous | Next or previous match |
 | ⇧⌘S | Edit › Find in Workspace | Search across your repos |
-| ⌘1 … ⌘5 | View › Group by Status, Repo, Workstream, Agent, Account | Group the sessions panel |
+| ⌘1 … ⌘5 | View › Group by Status, Repo, Project, Agent, Account | Group the sessions panel |
 | ⇧⌘L | View › Overview | One page of all work |
 | ⌘B | View › Board | Kanban of every session |
 | ⌘I | View › Decisions | Every agent waiting on you |
 | ⇧⌘A | View › Subagents | Timeline of Claude subagents |
 | ⇧⌘E | View › Learn | The course, skills and your Learn folders |
-| ⇧⌘W | View › Work: Workstreams and Roadmap | Workstreams, phases, tickets |
+| ⇧⌘W | View › Work: Projects and Roadmap | Projects, milestones, tickets |
 | ⌘+ / ⌘− / ⌘0 | View › Bigger Text / Smaller Text / Actual Size | Text size |
 | ⌥⌘S | View › Toggle Sidebar | Show or hide the sessions panel |
 | ⌥⌘P | View › Toggle Plan Panel | Show or hide the plan panel |

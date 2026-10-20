@@ -129,12 +129,30 @@ public enum Workspace {
     private static let wsRegex = try! NSRegularExpression(
         pattern: #"\bWS-[A-Z]{2,6}(?:-[A-Z0-9]{2,8})?-\d{2,4}\b"#, options: [.caseInsensitive])
 
-    /// The first workstream id (WS-<CODE>-<TOPIC>-<NN> or WS-<CODE>-<NN>) in `text`, upper-cased.
+    // Linear project codes (owner 10-20, LAB-236): TEAM-TOPIC or TEAM-TOPIC-NN, the topic starting with a letter so an
+    // issue key (TEAM-123) never reads as a project. Bare in text they must be upper case; as a commit tag
+    // ("[team-topic]") any case.
+    private static let codeRegex = try! NSRegularExpression(pattern: #"\b[A-Z][A-Z0-9]{1,5}-[A-Z][A-Z0-9]{1,15}(?:-\d{2,4})?\b"#)
+    private static let tagRegex = try! NSRegularExpression(
+        pattern: #"\[([a-z][a-z0-9]{1,5}-[a-z][a-z0-9]{1,15}(?:-[a-z0-9]{1,15})*)\]"#, options: [.caseInsensitive])
+
+    /// The first project id in `text`, upper-cased: a workstream id (WS-<CODE>-<TOPIC>-<NN> or WS-<CODE>-<NN>), a
+    /// commit tag ("[lab-roofd]") or a bare project code ("ZIB-KNOW-03").
     public static func workstream(in text: String) -> String? {
         let range = NSRange(text.startIndex..., in: text)
-        guard let m = wsRegex.firstMatch(in: text, range: range),
-              let r = Range(m.range, in: text) else { return nil }
-        return String(text[r]).uppercased()
+        if let m = wsRegex.firstMatch(in: text, range: range), let r = Range(m.range, in: text) { return String(text[r]).uppercased() }
+        if let m = tagRegex.firstMatch(in: text, range: range), let r = Range(m.range(at: 1), in: text) { return String(text[r]).uppercased() }
+        if let m = codeRegex.firstMatch(in: text, range: range), let r = Range(m.range, in: text) { return String(text[r]) }
+        return nil
+    }
+
+    /// A Linear project's code: the part of "CODE · title" before the dot when it is one id, else any id in the name.
+    public static func projectCode(name: String) -> String? {
+        if let r = name.range(of: " · ") {
+            let head = String(name[..<r.lowerBound]).trimmingCharacters(in: .whitespaces)
+            if head.range(of: #"^[A-Za-z][A-Za-z0-9]{1,5}(?:-[A-Za-z0-9]{1,15})+$"#, options: .regularExpression) != nil { return head.uppercased() }
+        }
+        return workstream(in: name)
     }
 
     /// Repos under the projects folder (two levels: domain/repo that contain .git), for the "new session" picker.

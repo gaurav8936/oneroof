@@ -1,8 +1,9 @@
 import Foundation
 
 /// Linear, read and written from One Roof (owner, 2026-10-17: "I shouldn't need to go to Linear … one place").
-/// Workstreams are Linear projects named `WS-… · title` (mirrored from the master trackers by linear_sync.py);
-/// tickets are issues with a `type:*` label. Uses the API key already on this Mac for the commit hook.
+/// Projects are Linear projects, named "CODE · title" (TEAM-TOPIC[-NN]; older ones WS-…); tickets are issues with one
+/// Type label (Deliverable · Bug · Task · Spike · Decision; older workspaces `type:*`). Uses the API key already on this
+/// Mac for the commit hook. (The Swift names still say "workstream": stored sessions keep that field.)
 public struct LinearWorkstream: Identifiable, Equatable, Sendable {
     public var id: String           // Linear project id
     public var name: String         // "WS-WEB-12 · New checkout"
@@ -11,8 +12,8 @@ public struct LinearWorkstream: Identifiable, Equatable, Sendable {
     public var team: String         // CMN, GBL, HYP, AGM
     public var milestones: [LinearMilestone]
 
-    /// The WS id at the start of the name.
-    public var wsId: String? { Workspace.workstream(in: name) }
+    /// The project code at the start of the name (TEAM-TOPIC, or an older WS- id).
+    public var wsId: String? { Workspace.projectCode(name: name) }
     public var title: String {
         guard let r = name.range(of: " · ") else { return name }
         return String(name[r.upperBound...])
@@ -48,10 +49,18 @@ public struct LinearIssue: Identifiable, Equatable, Sendable {
     public var milestone: String?
     public var url: String
 
-    /// The ticket title without the "[ws-…] " prefix.
+    /// The ticket title without a "[code] " prefix (older tickets carry one).
     public var shortTitle: String {
-        title.replacingOccurrences(of: #"^\[ws-[a-z0-9-]+\]\s*"#, with: "", options: .regularExpression)
+        title.replacingOccurrences(of: #"^\[[a-z][a-z0-9]*-[a-z0-9-]+\]\s*"#, with: "", options: .regularExpression)
     }
+}
+
+/// A team as listed for the pickers (key + name), before its states and labels are loaded.
+public struct LinearTeamRef: Identifiable, Equatable, Hashable, Sendable {
+    public var id: String
+    public var key: String
+    public var name: String
+    public init(id: String, key: String, name: String) { self.id = id; self.key = key; self.name = name }
 }
 
 public struct LinearTeam: Equatable, Sendable {
@@ -131,13 +140,13 @@ public final class LinearClient: @unchecked Sendable {
         return json["data"] as? [String: Any] ?? [:]
     }
 
-    /// Every workstream project (name starts with WS-), with its milestones.
+    /// Every project, with its team and milestones (LAB-236: not only WS- names; the owner's are TEAM-TOPIC).
     public func workstreams() throws -> [LinearWorkstream] {
         var out: [LinearWorkstream] = []
         var after: String?
         repeat {
             let d = try gql("""
-            query($after: String) { projects(first: 50, after: $after, filter: { name: { startsWith: "WS-" } }) {
+            query($after: String) { projects(first: 50, after: $after) {
               pageInfo { hasNextPage endCursor }
               nodes { id name state url teams(first: 1) { nodes { key } } projectMilestones(first: 20) { nodes { id name sortOrder } } } } }
             """, after.map { ["after": $0] } ?? [:])
@@ -167,7 +176,7 @@ public final class LinearClient: @unchecked Sendable {
             let st = n["state"] as? [String: Any] ?? [:]
             let ms = n["projectMilestone"] as? [String: Any]
             let labels = ((n["labels"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
-            let type = labels.first { $0.hasPrefix("type:") }.map { String($0.dropFirst(5)) }
+            let type = labels.lazy.compactMap(WorkKind.fromLabel).first?.rawValue
             return LinearIssue(id: n["id"] as? String ?? "", identifier: n["identifier"] as? String ?? "", title: n["title"] as? String ?? "",
                                description: n["description"] as? String ?? "", state: st["name"] as? String ?? "",
                                stateType: st["type"] as? String ?? "", type: type, milestoneId: ms?["id"] as? String,
@@ -193,16 +202,48 @@ public final class LinearClient: @unchecked Sendable {
         return LinearTeam(id: n["id"] as? String ?? "", key: key, states: states, labels: labels)
     }
 
-    /// Create a ticket in a workstream. Title gets the `[ws-…]` prefix the workspace uses.
-    public func createIssue(team: LinearTeam, workstream: LinearWorkstream, milestone: String?, title: String,
+    /// Every team (key + name), for the team picker (LAB-237).
+    public func teams() throws -> [LinearTeamRef] {
+        let d = try gql("query { teams(first: 100) { nodes { id key name } } }")
+        return ((d["teams"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []).map {
+            LinearTeamRef(id: $0["id"] as? String ?? "", key: $0["key"] as? String ?? "", name: $0["name"] as? String ?? "")
+        }.sorted { $0.key < $1.key }
+    }
+
+    /// Create a project in a team, named "CODE · title", with its milestones in order (LAB-238).
+    public func createProject(team: LinearTeamRef, code: String, title: String, summary: String,
+                              milestones: [String]) throws -> LinearWorkstream {
+        let name = code.isEmpty ? title : "\(code) · \(title)"
+        var input: [String: Any] = ["teamIds": [team.id], "name": name, "state": "planned"]
+        if !summary.isEmpty { input["description"] = summary + "\n\nCreated from One Roof." }
+        let d = try gql("mutation($i: ProjectCreateInput!) { projectCreate(input: $i) { project { id name state url } } }", ["i": input])
+        guard let n = (d["projectCreate"] as? [String: Any])?["project"] as? [String: Any], let pid = n["id"] as? String else {
+            throw Failure.api("projectCreate returned nothing")
+        }
+        var ms: [LinearMilestone] = []
+        for (i, m) in milestones.enumerated() where !m.trimmingCharacters(in: .whitespaces).isEmpty {
+            let r = try gql("mutation($i: ProjectMilestoneCreateInput!) { projectMilestoneCreate(input: $i) { projectMilestone { id name sortOrder } } }",
+                            ["i": ["projectId": pid, "name": m.trimmingCharacters(in: .whitespaces), "sortOrder": Double(i)]])
+            if let x = (r["projectMilestoneCreate"] as? [String: Any])?["projectMilestone"] as? [String: Any] {
+                ms.append(LinearMilestone(id: x["id"] as? String ?? "", name: x["name"] as? String ?? m, sortOrder: x["sortOrder"] as? Double ?? Double(i)))
+            }
+        }
+        return LinearWorkstream(id: pid, name: n["name"] as? String ?? name, state: n["state"] as? String ?? "planned",
+                                url: n["url"] as? String ?? "", team: team.key, milestones: ms)
+    }
+
+    /// Create a ticket in a project (or, with no project, in the team only). Old WS- projects keep their
+    /// `[ws-…]` title prefix; TEAM-TOPIC projects need none (the commit carries the tag).
+    public func createIssue(team: LinearTeam, workstream: LinearWorkstream?, milestone: String?, title: String,
                             description: String, type: String) throws -> LinearIssue {
+        let prefix = workstream?.wsId.flatMap { $0.hasPrefix("WS-") ? "[\($0.lowercased())] " : nil } ?? ""
         var input: [String: Any] = [
-            "teamId": team.id, "projectId": workstream.id,
-            "title": (workstream.wsId.map { "[\($0.lowercased())] " } ?? "") + title,
+            "teamId": team.id, "title": prefix + title,
             "description": description + "\n\nCreated from One Roof.",
         ]
+        if let workstream { input["projectId"] = workstream.id }
         if let milestone { input["projectMilestoneId"] = milestone }
-        if let l = team.labels["type:" + type] { input["labelIds"] = [l] }
+        if let kind = WorkKind(rawValue: type), let l = kind.labelNames.lazy.compactMap({ team.labels[$0] }).first { input["labelIds"] = [l] }
         if let backlog = team.states.first(where: { $0.type == "backlog" }) { input["stateId"] = backlog.id }
         let d = try gql("""
         mutation($i: IssueCreateInput!) { issueCreate(input: $i) { issue { id identifier title url state { name type } } } }
@@ -244,9 +285,26 @@ public enum WorkKind: String, CaseIterable, Identifiable, Sendable {
     case workstream, deliverable, defect, spike, decision, chore, session
     public var id: String { rawValue }
 
+    /// The Linear Type label for this kind, newest name first (then the older `type:*` name).
+    public var labelNames: [String] {
+        switch self {
+        case .deliverable: return ["Deliverable", "type:deliverable"]
+        case .defect: return ["Bug", "type:defect"]
+        case .spike: return ["Spike", "type:spike"]
+        case .decision: return ["Decision", "type:decision"]
+        case .chore: return ["Task", "type:chore"]
+        case .workstream, .session: return []
+        }
+    }
+
+    /// The kind a Linear label names, if it is a Type label.
+    public static func fromLabel(_ label: String) -> WorkKind? {
+        allCases.first { $0.labelNames.contains(label) }
+    }
+
     public var label: String {
         switch self {
-        case .workstream: return "Workstream"
+        case .workstream: return "Project"
         case .deliverable: return "Ticket · deliverable"
         case .defect: return "Ticket · defect"
         case .spike: return "Ticket · spike"
@@ -259,7 +317,7 @@ public enum WorkKind: String, CaseIterable, Identifiable, Sendable {
     public var meaning: String {
         switch self {
         case .workstream: return "An outcome that needs several sessions and more than one deliverable. Gets a WS id, a tracker pane, a docs folder and a Linear project."
-        case .deliverable: return "One thing to build or write, done in one to three sessions, inside a workstream."
+        case .deliverable: return "One thing to build or write, done in one to three sessions, inside a project."
         case .defect: return "Something is broken or wrong and needs fixing."
         case .spike: return "Find something out (try, measure, research) before deciding or building."
         case .decision: return "A question with options that someone has to settle."
@@ -279,7 +337,7 @@ public enum Intake {
         if has([" bug", "broken", " fails", "failing", " error", " crash", "regression", "doesn't work", "does not work", " fix "]) { return .defect }
         if has(["decide", "decision", "should we", " vs ", " or not", "choose ", "pick between"]) { return .decision }
         if has(["investigate", "spike", "research", "explore", "find out", "evaluate", "compare", "prototype"]) { return .spike }
-        if has(["workstream", "initiative", "programme", "program ", "platform", "end-to-end", "e2e", "migration", "redesign", " v2", "phases"]) { return .workstream }
+        if has(["workstream", "new project", "initiative", "programme", "program ", "platform", "end-to-end", "e2e", "migration", "redesign", " v2", "phases"]) { return .workstream }
         if has(["upgrade", "bump", "cleanup", "clean up", "rename", "tidy", "chore"]) { return .chore }
         if has(["quick", "just check", "look at", "ask ", "where are we", "status"]) { return .session }
         return .deliverable
@@ -341,21 +399,25 @@ public enum Trackers {
         let fm = FileManager.default
         let sharedDir = shared ?? (root == Workspace.projectsRoot ? Workspace.sharedRoot
                                    : Workspace.resolveShared(setting: "", projects: root, environment: [:]))
-        if fm.fileExists(atPath: sharedDir + "/docs/workstreams/" + id) { return sharedDir + "/docs/workstreams/" + id }
+        // Older ids live in workstreams/<id>, project codes in projects/<code> (LAB-235).
+        let kinds = ["workstreams", "projects"]
+        for k in kinds where fm.fileExists(atPath: "\(sharedDir)/docs/\(k)/\(id)") { return "\(sharedDir)/docs/\(k)/\(id)" }
         let domains = ((try? fm.contentsOfDirectory(atPath: root)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
         func repos(_ d: String) -> [String] {
             ((try? fm.contentsOfDirectory(atPath: root + "/" + d)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
         }
-        for d in domains {
-            for r in repos(d) where r.hasSuffix("-docs") {
-                let path = "\(root)/\(d)/\(r)/workstreams/\(id)"
-                if fm.fileExists(atPath: path) { return path }
+        for k in kinds {
+            for d in domains {
+                for r in repos(d) where r.hasSuffix("-docs") {
+                    let path = "\(root)/\(d)/\(r)/\(k)/\(id)"
+                    if fm.fileExists(atPath: path) { return path }
+                }
             }
-        }
-        for d in domains {
-            for r in repos(d) {
-                let path = "\(root)/\(d)/\(r)/docs/workstreams/\(id)"
-                if fm.fileExists(atPath: path) { return path }
+            for d in domains {
+                for r in repos(d) {
+                    let path = "\(root)/\(d)/\(r)/docs/\(k)/\(id)"
+                    if fm.fileExists(atPath: path) { return path }
+                }
             }
         }
         return nil

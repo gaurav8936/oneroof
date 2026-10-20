@@ -1,6 +1,6 @@
 # One Roof help: sessions
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** the sessions panel on the left shows every agent and terminal in this window with its live state, agent, account, repo and stickers; this page explains every part of it, the session menu, the plan panel and pop-out windows.
 
@@ -49,7 +49,7 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 
 - **Seat bars:** how much of each seat's usage window is used (Claude1, Claude2, Codex). They stay empty when there is no usage data. See [Seats and routing](07_seats-router-and-on-device-model.md).
 - **Count chips:** all, need you, working, ready (finished, not yet looked at), idle, exited (agent sessions whose agent has ended; terminals are not counted). Click one to show only that state; click **all** (or the same chip again) to get the full list back. Under **exited**, *Remove all exited sessions* clears them. Next and planned sessions are under all.
-- **Group ▾:** Status, Repo, Workstream, Agent, Account or Folder (also View › Group by, ⌘1 to ⌘6).
+- **Group ▾:** Status, Repo, Project, Agent, Account or Folder (also View › Group by, ⌘1 to ⌘6).
   - **Repo** is the git repo a session works in. Sessions start at the workspace root, which is not a repo, so One Roof learns the repo as the agent works: from the files Claude's tools touch and the folders its commands `cd` into, or from a terminal's current folder. It keeps the last one after the session ends. Until then the session is under **Workspace root · no repo yet** (last). Codex, Kimi, Gemini and Antigravity have no hooks, so they show their repo only when started in one.
   - **Folder** is the top-level folder under the workspace (one per product or area), for a coarser view.
 - **Filter:** type to narrow the list; ✕ clears it.
@@ -60,7 +60,7 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 - **Pin**, the **unread dot** (new since you last looked, see [Review, split panes and session rows](10_review-split-panes-and-session-rows.md)), your **emoji** if you picked one, and the **name**. Double-click the name to rename it; Return saves, Esc cancels.
 - **Second line:** the account (Claude1, Claude2) or the agent name, the repo, the time since it was last active, and a status pill when the list is not grouped by status.
 - **Caption:** one line on what the session is doing right now, read from its terminal.
-- **Third line:** the **branch and uncommitted change** chip (`⎇ main +34 −5`), **stickers**, the **Linear ticket** key and the **workstream** id.
+- **Third line:** the **branch and uncommitted change** chip (`⎇ main +34 −5`), **stickers**, the **Linear ticket** key and the **project** code.
 - **Colour:** a row colour fills the whole row (Settings › Appearance › Fill rows with their colour).
 - **Click** selects the session and shows its terminal. ⌘] and ⌘[ move to the next and previous row.
 
@@ -92,7 +92,7 @@ Launch, Mark as Next, Mark as Planned, Do Not Use, Pin, Rename…, Move to Windo
 
 With a session selected it has four tabs:
 
-- **Plan:** the state with **Launch** / **Relaunch**, the name, the **Workstream**, **Objective · done when**, the plan steps when the session belongs to an objective, **Stickers**, **Related in Learn**, the **Opening message** (sent when the agent is ready), **Agent arguments** and the **Start folder**. **Save** (⌘S) keeps your edits; they are also saved when you select another row.
+- **Plan:** the state with **Launch** / **Relaunch**, the name, the **Project**, **Objective · done when**, the plan steps when the session belongs to an objective, **Stickers**, **Related in Learn**, the **Opening message** (sent when the agent is ready), **Agent arguments** and the **Start folder**. **Save** (⌘S) keeps your edits; they are also saved when you select another row.
 - **Ticket:** the linked Linear ticket with its live state and buttons, or how to link one.
 - **Notes:** your own notes for this session.
 - **Artifacts:** plan files, handoffs and screenshots for this session.
