@@ -14,14 +14,16 @@ You should be able to look at the left panel and know, without clicking, which a
 
 | State | Where it comes from | What it means for you |
 |---|---|---|
-| Needs you | roofd (a prompt is waiting) | It is waiting on a question or a permission prompt. Answer in its terminal, or in Decisions (⌘I). Counted on the Dock badge. |
-| Ready | roofd | It finished a turn you have not looked at yet. |
-| Working | roofd | It is working right now. |
-| Idle | roofd | At its prompt, nothing new. |
+| Needs you | roofd (a prompt is waiting) | Stopped on a question or a permission prompt; it waits for you. Answer in its terminal, or in Decisions (⌘I). Counted on the Dock badge. |
+| Working | roofd | Busy right now: thinking, running a tool or writing. Goes back to Ready or Idle a few seconds after it stops. |
+| Ready | roofd | Finished a turn you have not looked at yet. Turns Idle as soon as you open the session or type in it. There is no timer. |
+| Idle | roofd | Alive at its prompt with nothing new for you; not executing. Plain terminals are always Idle (they have no agent). |
 | Next | One Roof | Planned and up next (When › Next, Mark as Next, or the Next sticker). |
 | Planned | One Roof | Written ahead of time, not started. |
-| Exited | One Roof | It was launched, and roofd no longer has it. Relaunch brings it back. |
+| Exited | One Roof | The agent's process has ended. Relaunch it, or remove it. |
 | Parked (Do not use) | One Roof | Put aside by you. The name is struck through. |
+
+The filter chips and the group headings use the same names: **Needs you · Working · Ready · Idle · Exited**. Hover a chip or a heading to see what it means.
 
 Grouped by status, the panel lists them in that order (needs you first). Pinned sessions always sit in a Pinned group on top.
 
@@ -37,7 +39,7 @@ Every session runs in **roofd**, One Roof's own session manager, which ships ins
 | You log out or restart the Mac | end; their rows stay, with Relaunch (Claude and Codex can resume the conversation) |
 
 - **History:** each session keeps 8 MB of scrollback in memory. It is never written to disk, because agents print keys and file contents.
-- **Status:** roofd reads each agent's screen (permission prompts, menus, spinners) and, for Claude, its hooks, so Working, Needs you and Done stay right even with One Roof closed.
+- **Status:** roofd reads each agent's screen (permission prompts, menus, spinners) and, for Claude, its hooks, so Working, Needs you and Ready stay right even with One Roof closed.
 - **Tonight and Nightly** run with One Roof closed when Settings › Allow scheduled runs is on; roofd sends the opening message once the agent is ready.
 - **Copy attach** gives `roofd attach <id>`: paste it into any terminal to see the same session there.
 
@@ -48,7 +50,7 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 ## The top of the panel
 
 - **Seat bars:** how much of each seat's usage window is used (Claude1, Claude2, Codex). They stay empty when there is no usage data. See [Seats and routing](07_seats-router-and-on-device-model.md).
-- **Count chips:** all, need you, working, ready (finished, not yet looked at), idle, exited (agent sessions whose agent has ended; terminals are not counted). Click one to show only that state; click **all** (or the same chip again) to get the full list back. Under **exited**, *Remove all exited sessions* clears them. Next and planned sessions are under all.
+- **Count chips:** All, **Needs you**, **Working**, **Ready**, **Idle** and **Exited** (agent sessions whose agent has ended; terminals are not counted), the same names as the group headings. Click one to show only that state; click **All** (or the same chip again) to get the full list back. Under **Exited**, *Remove all exited sessions* clears them. Next and planned sessions are under All.
 - **Group ▾:** Status, Repo, Project, Agent, Account or Folder (also View › Group by, ⌘1 to ⌘6).
   - **Repo** is the git repo a session works in. Sessions start at the workspace root, which is not a repo, so One Roof learns the repo as the agent works: from the files Claude's tools touch and the folders its commands `cd` into, or from a terminal's current folder. It keeps the last one after the session ends. Until then the session is under **Workspace root · no repo yet** (last). Codex, Kimi, Gemini and Antigravity have no hooks, so they show their repo only when started in one.
   - **Folder** is the top-level folder under the workspace (one per product or area), for a coarser view.
@@ -63,6 +65,7 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 - **Third line:** the **branch and uncommitted change** chip (`⎇ main +34 −5`), **stickers**, the **Linear ticket** key and the **project** code.
 - **Colour:** a row colour fills the whole row (Settings › Appearance › Fill rows with their colour).
 - **Click** selects the session and shows its terminal. ⌘] and ⌘[ move to the next and previous row.
+- **The selected row** (the session shown in the terminal) stands out: an accent outline and a bar down its left edge.
 
 ## The session menu
 
@@ -92,7 +95,7 @@ Launch, Mark as Next, Mark as Planned, Do Not Use, Pin, Rename…, Move to Windo
 
 With a session selected it has four tabs:
 
-- **Plan:** the state with **Launch** / **Relaunch**, the name, the **Project**, **Objective · done when**, the plan steps when the session belongs to an objective, **Stickers**, **Related in Learn**, the **Opening message** (sent when the agent is ready), **Agent arguments** and the **Start folder**. **Save** (⌘S) keeps your edits; they are also saved when you select another row.
+- **Plan:** the state with **Launch** / **Relaunch**, the name, the **Project** (type a code, or pick one from the **Linear ▾** menu next to the box), **Objective · done when**, the plan steps when the session belongs to an objective, **Stickers**, **Related in Learn**, the **Opening message** (sent when the agent is ready), **Agent arguments** and the **Start folder**. **Save** (⌘S) keeps your edits; they are also saved when you select another row.
 - **Ticket:** the linked Linear ticket with its live state and buttons, or how to link one.
 - **Notes:** your own notes for this session.
 - **Artifacts:** plan files, handoffs and screenshots for this session.

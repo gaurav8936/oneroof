@@ -86,12 +86,27 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
         switch self {
         case .planned: return "Planned"
         case .next: return "Next"
-        case .running: return "Running"
+        case .running: return "Working"
         case .needsYou: return "Needs you"
-        case .done: return "Done"
+        case .done: return "Ready"
         case .idle: return "Idle"
         case .exited: return "Exited"
         case .doNotUse: return "Do not use"
+        }
+    }
+
+    /// One line on what the status means (LAB-241), for tooltips and help. The filter chips and the group headings use
+    /// the same names: Needs you · Working · Ready · Idle · Exited.
+    public var meaning: String {
+        switch self {
+        case .planned: return "Written ahead of time, not started."
+        case .next: return "Planned and up next."
+        case .running: return "Busy right now: thinking, running a tool or writing. It goes back to Ready or Idle a few seconds after it stops."
+        case .needsYou: return "Stopped on a question or a permission prompt. It waits for you."
+        case .done: return "Finished a turn you have not looked at yet. It turns Idle as soon as you open the session or type in it."
+        case .idle: return "Alive at its prompt with nothing new for you; not executing. Plain terminals are always Idle (they have no agent)."
+        case .exited: return "The agent's process has ended. Relaunch it or remove it."
+        case .doNotUse: return "Parked by you: kept, but not to be used."
         }
     }
 

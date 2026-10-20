@@ -99,6 +99,18 @@ enum StatusChip: String, CaseIterable {
         return statuses?.contains(i.status) ?? true
     }
 
+    /// What the chip's sessions are (LAB-241), shown on hover.
+    var meaning: String {
+        switch self {
+        case .all: return "Every session in this window."
+        case .needs: return SessionStatus.needsYou.meaning
+        case .working: return SessionStatus.running.meaning
+        case .ready: return SessionStatus.done.meaning
+        case .idle: return SessionStatus.idle.meaning
+        case .exited: return SessionStatus.exited.meaning
+        }
+    }
+
     func label(_ n: Int) -> String {
         switch self {
         case .all: return "\(n) all"
