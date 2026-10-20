@@ -207,4 +207,13 @@ final class RoofProtocolTests: XCTestCase {
         XCTAssertEqual(ids, ["keep"], "the session survived the upgrade")
         if let p = hello["pid"] as? Int { kill(pid_t(p), SIGTERM) }
     }
+
+    /// Where an agent works, from Claude's hook payload (owner 10-20, group by repo).
+    func testWorkPathFromHookPayload() {
+        XCTAssertEqual(WorkPath.from(hook: ["tool_input": ["file_path": "/p/a/b.swift"]]), "/p/a/b.swift")
+        XCTAssertEqual(WorkPath.from(hook: ["cwd": "/p", "tool_input": ["command": "cd labs/x && sed -n 1p f"]]), "/p/labs/x")
+        XCTAssertEqual(WorkPath.cdTarget("cd \"/a b\"; ls"), "/a b")
+        XCTAssertNil(WorkPath.from(hook: ["tool_input": ["command": "ls -la"]]))
+        XCTAssertNil(WorkPath.from(hook: [:]))
+    }
 }

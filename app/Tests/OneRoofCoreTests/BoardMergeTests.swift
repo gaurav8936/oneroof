@@ -75,6 +75,36 @@ final class BoardMergeTests: XCTestCase {
         XCTAssertEqual(later.map(\.starting), [false, false])
     }
 
+    /// Owner 10-20: sessions start at the workspace root, which is not a repo; group by the repo they work in.
+    func testRepoComesFromWhereTheAgentWorks() throws {
+        let root = Workspace.projectsRoot
+        let base = root + "/.oneroof-test-\(UUID().uuidString.prefix(6))"
+        let repo = base + "/dom/repo-a"
+        try FileManager.default.createDirectory(atPath: repo + "/.git", withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: repo + "/src", withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        XCTAssertEqual(Workspace.repoRoot(for: repo + "/src/x.swift"), repo)
+        XCTAssertNil(Workspace.repoRoot(for: root))
+
+        var a = Session(name: "a", repoPath: root, lifecycle: .idle); a.runtimeId = "r1"
+        var b = Session(name: "b", repoPath: root, lifecycle: .idle); b.runtimeId = "r2"
+        var c = Session(name: "c", repoPath: root, lifecycle: .idle); c.runtimeId = "r3"; c.lastRepo = repo
+        let items = Board.merge(stored: [a, b, c], snapshot: RuntimeSnapshot(sessions: [
+            RuntimeSessionState(id: "r1", isAgent: true, agentName: "claude", status: .idle, cwd: root, pane: "r1",
+                                workPath: repo + "/src/x.swift"),
+            RuntimeSessionState(id: "r2", isAgent: true, agentName: "codex", status: .idle, cwd: root, pane: "r2"),
+        ]))
+        let by = Dictionary(uniqueKeysWithValues: items.map { ($0.session.name, $0) })
+        XCTAssertEqual(by["a"]?.workRepo, repo)
+        XCTAssertNil(by["b"]?.repoPath, "only at the root so far: no repo")
+        XCTAssertEqual(by["c"]?.repoPath, repo, "exited, but remembered")
+        let groups = Board.group(items, by: .repo)
+        XCTAssertEqual(groups.last?.title, Board.noRepo, "the root group goes last")
+        XCTAssertEqual(groups.first { $0.title != Board.noRepo }?.items.map(\.session.name), ["a", "c"])
+        let dom = repo.dropFirst(root.count + 1).split(separator: "/").first.map(String.init)
+        XCTAssertEqual(Board.group(items, by: .domain).first?.title, dom)
+    }
+
     func testUnknownAgentIsAdoptedAsClaude() {
         let items = Board.merge(stored: [], snapshot: RuntimeSnapshot(sessions: [agent("x", "mystery", .idle, pane: "1")]))
         XCTAssertEqual(items.first?.session.agent, .claude)

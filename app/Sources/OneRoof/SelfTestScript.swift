@@ -79,6 +79,8 @@ enum SelfTestScript {
         case "answer":
             if let d = m.openDecisions.first, let a = Answer(rawValue: arg) { m.answer(d, a) } else { log(out, "  no open decision") }
             delay = 1
+        case "group": if let g = Grouping(rawValue: arg) { m.grouping = g } else { log(out, "  bad grouping") }
+        case "chip": if let c = StatusChip(rawValue: arg) { app.main.win.statusFilter = c == .all ? nil : c }
         case "newsession": app.main.newSession(); delay = 2
         case "keys":
             // Type into whatever has focus in the key window or its sheet (e.g. the New work sheet's text field).

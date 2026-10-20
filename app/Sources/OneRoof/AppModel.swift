@@ -275,7 +275,17 @@ final class AppModel: ObservableObject {
     }
 
     private func rebuild() {
-        let new = Board.merge(stored: stored, snapshot: lastSnapshot, accounts: accounts)
+        var new = Board.merge(stored: stored, snapshot: lastSnapshot, accounts: accounts)
+        // Remember the repo each session was last seen working in, so it keeps its group after it exits.
+        let learnt = new.filter { !$0.adopted && $0.workRepo != nil && $0.workRepo != $0.session.lastRepo }
+        if !learnt.isEmpty {
+            for i in learnt {
+                guard let k = stored.firstIndex(where: { $0.id == i.id }) else { continue }
+                stored[k].lastRepo = i.workRepo
+                store?.save(stored[k])
+            }
+            new = Board.merge(stored: stored, snapshot: lastSnapshot, accounts: accounts)
+        }
         // Last active: any status change, or while an agent is working.
         let now = Date()
         let before = Dictionary(items.map { ($0.id, $0.status) }, uniquingKeysWith: { a, _ in a })

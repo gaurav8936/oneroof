@@ -78,6 +78,8 @@ final class Holder {
     var screenSeq = -1
     var screen = ""
     var contentKey = ""
+    /// Where the agent last worked (from its hooks): a file or folder, absolute.
+    var workPath = ""
     /// Process group leader of the agent last seen in the foreground (kept while it lives).
     var agentLeader: pid_t = 0
     var contentChangedAt: Date?
@@ -470,7 +472,7 @@ final class Holder {
             "status": exitedAt == nil ? engine.status.rawValue : "unknown", "ready": engine.ready && exitedAt == nil,
             "agent": agent?.rawValue as Any, "opening": openingState,
             "x": Int(x), "y": Int(y), "modes": modes,
-            "id": spec.id, "label": spec.label, "cwd": spec.cwd, "pid": Int(pid), "seq": seq, "title": title, "pwd": pwd,
+            "id": spec.id, "label": spec.label, "cwd": spec.cwd, "pid": Int(pid), "seq": seq, "title": title, "pwd": pwd, "work": workPath,
             "alt": alt, "attached": clients.values.contains { $0.attached }, "created": created.timeIntervalSince1970,
         ]
         if master >= 0 { out["pgid"] = Int(roof_foreground_pgrp(master)) }
@@ -509,6 +511,7 @@ final class Holder {
         case "report":
             // `roofd report <agent>` from an agent hook (Claude): the strongest status signal.
             engine.hook(j["event"] as? String ?? "", message: j["message"] as? String, at: Date())
+            if let p = j["path"] as? String, p.hasPrefix("/") { workPath = p }
             evaluateStatus()
             return [:]
         case "seen":

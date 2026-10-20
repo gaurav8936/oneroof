@@ -78,7 +78,7 @@ final class WindowState: ObservableObject, Identifiable {
 /// The Sessions panel's count chips (S06 §1.2). Owner 10-20: they cover where sessions actually sit (most are idle or
 /// finished, "next" was rarely used), and "All" is always there to get the full list back.
 enum StatusChip: String, CaseIterable {
-    case all, needs, working, ready, idle
+    case all, needs, working, ready, idle, exited
 
     /// nil: every session.
     var statuses: Set<SessionStatus>? {
@@ -88,18 +88,25 @@ enum StatusChip: String, CaseIterable {
         case .working: return [.running]
         case .ready: return [.done]
         case .idle: return [.idle]
+        case .exited: return [.exited]
         }
     }
 
-    func matches(_ s: SessionStatus) -> Bool { statuses?.contains(s) ?? true }
+    /// Exited counts agent sessions only (owner 10-20): an agent that ended is worth relaunching or clearing; a
+    /// terminal that ended is not news.
+    func matches(_ i: BoardItem) -> Bool {
+        if self == .exited, !i.session.agent.isAgent { return false }
+        return statuses?.contains(i.status) ?? true
+    }
 
     func label(_ n: Int) -> String {
         switch self {
-        case .all: return "\(n)\nall"
-        case .needs: return "\(n)\nneed you"
-        case .working: return "\(n)\nworking"
-        case .ready: return "\(n)\nready"
-        case .idle: return "\(n)\nidle"
+        case .all: return "\(n) all"
+        case .needs: return "\(n) need you"
+        case .working: return "\(n) working"
+        case .ready: return "\(n) ready"
+        case .idle: return "\(n) idle"
+        case .exited: return "\(n) exited"
         }
     }
 }

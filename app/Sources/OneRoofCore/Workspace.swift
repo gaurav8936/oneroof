@@ -73,6 +73,46 @@ public enum Workspace {
 
     /// "domain/repo" for a path under the projects folder, "domain" for a domain folder, the folder itself (with ~)
     /// for the root, or the last path component for anything else.
+    public static func isProjectsRoot(_ path: String, root: String = projectsRoot) -> Bool {
+        (path as NSString).standardizingPath == (root as NSString).standardizingPath
+    }
+
+    /// How the workspace root is named where a repo would be: it is not a repo.
+    public static let rootLabel = "workspace root"
+
+    /// The git repo a file or folder belongs to: the nearest folder with a `.git` (a worktree's `.git` file counts),
+    /// inside the workspace and below its root. Nil at the root itself or outside a repo. Cached.
+    public static func repoRoot(for path: String, root: String = projectsRoot) -> String? {
+        let r = (root as NSString).standardizingPath
+        var p = (path as NSString).standardizingPath
+        guard isInsideProjects(p, root: r), p != r else { return nil }
+        repoCacheLock.lock()
+        if let hit = repoCache[p] { repoCacheLock.unlock(); return hit.isEmpty ? nil : hit }
+        repoCacheLock.unlock()
+        let start = p
+        var found: String?
+        while p.count > r.count {
+            // Worktrees under <repo>/.worktrees/<unit> count as their repo.
+            if (p as NSString).deletingLastPathComponent.hasSuffix("/.worktrees") {
+                found = ((p as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+                break
+            }
+            if FileManager.default.fileExists(atPath: p + "/.git") { found = p; break }
+            p = (p as NSString).deletingLastPathComponent
+        }
+        repoCacheLock.lock(); repoCache[start] = found ?? ""; repoCacheLock.unlock()
+        return found
+    }
+    nonisolated(unsafe) private static var repoCache: [String: String] = [:]
+    private static let repoCacheLock = NSLock()
+
+    /// The top-level folder under the workspace a path sits in ("product-a", "labs", "shared").
+    public static func domainLabel(_ path: String) -> String {
+        let p = (path as NSString).standardizingPath, r = (projectsRoot as NSString).standardizingPath
+        guard isInsideProjects(p, root: r), p != r else { return (p as NSString).lastPathComponent }
+        return String(p.dropFirst(r.count + 1).split(separator: "/").first ?? "")
+    }
+
     public static func repoLabel(for path: String, root: String = projectsRoot) -> String {
         let p = (path as NSString).standardizingPath
         let r = (root as NSString).standardizingPath

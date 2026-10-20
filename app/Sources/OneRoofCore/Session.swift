@@ -162,6 +162,9 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var ticket: String?
     public var ticketId: String?
     public var ticketTeam: String?
+    /// The repo the session was last seen working in (learnt from its agent's hooks or its terminal's folder); sessions
+    /// start at the workspace root, so this is what "Group by repo" uses.
+    public var lastRepo: String?
 
     /// Everything after the agent command: the model flag, then any extra arguments.
     public var launchArgs: [String] {
@@ -229,7 +232,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
-             createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam
+             createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
+             lastRepo
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -262,6 +266,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         ticket = try c.decodeIfPresent(String.self, forKey: .ticket)
         ticketId = try c.decodeIfPresent(String.self, forKey: .ticketId)
         ticketTeam = try c.decodeIfPresent(String.self, forKey: .ticketTeam)
+        lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
     }
 
     /// Split an arguments string on whitespace, keeping "quoted parts" together.

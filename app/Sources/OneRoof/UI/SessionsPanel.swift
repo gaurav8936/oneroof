@@ -53,6 +53,11 @@ struct SessionsPanel: View {
                 Hairline()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 1, pinnedViews: [.sectionHeaders]) {
+                        if win.statusFilter == .exited, !model.groups(in: win).isEmpty {
+                            // Exited agents: relaunch one (select it), or clear them all at once.
+                            Button("Remove all exited sessions") { model.removeExited() }
+                                .buttonStyle(.link).ui(12).padding(.horizontal, 8).padding(.vertical, 6)
+                        }
                         ForEach(model.groups(in: win)) { g in
                             Section {
                                 ForEach(g.items) { item in
@@ -60,7 +65,7 @@ struct SessionsPanel: View {
                                 }
                             } header: { groupHeader(g) }
                         }
-                        if model.items(in: win).isEmpty { empty }
+                        if model.groups(in: win).isEmpty { empty }
                     }
                     .padding(.horizontal, 8).padding(.bottom, 8)
                 }
@@ -113,16 +118,16 @@ struct SessionsPanel: View {
 
         private var chips: some View {
             let list = model.items(in: win)
-            return HStack(spacing: 5) {
+            // Two rows of three, so every label reads in full at the panel's width.
+            return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
                 ForEach(StatusChip.allCases, id: \.self) { c in
-                    let n = list.filter { c.matches($0.status) }.count
+                    let n = list.filter { c.matches($0) }.count
                     let on = (win.statusFilter ?? .all) == c
                     Button { win.statusFilter = (on || c == .all) ? nil : c } label: {
                         Text(c.label(n)).ui(11.5, .semibold)
                             .foregroundStyle(c == .needs && n > 0 ? t.pill(.needsYou).text.color : t.text.color)
-                            .lineLimit(2).multilineTextAlignment(.leading).minimumScaleFactor(0.75)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: c == .all ? 30 : .infinity, minHeight: 34, alignment: .leading)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
                             .padding(.horizontal, 6)
                             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(c == .needs && n > 0 ? (t.pill(.needsYou).fill ?? t.surface).color : t.surface.color))

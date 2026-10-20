@@ -48,11 +48,14 @@ public struct RuntimeSessionState: Sendable, Equatable {
     public var groupId: String?
     /// Bumps when the session's output changes (the caption engine's "new output" signal).
     public var seq: Int?
+    /// Where the agent last worked (a file or folder its tools touched), when its hooks report it.
+    public var workPath: String?
 
     public init(id: RuntimeID, isAgent: Bool, agentName: String? = nil, status: RuntimeStatus = .unknown, ready: Bool = false,
-                title: String? = nil, cwd: String? = nil, pane: String, groupId: String? = nil, seq: Int? = nil) {
+                title: String? = nil, cwd: String? = nil, pane: String, groupId: String? = nil, seq: Int? = nil,
+                workPath: String? = nil) {
         self.id = id; self.isAgent = isAgent; self.agentName = agentName; self.status = status; self.ready = ready
-        self.title = title; self.cwd = cwd; self.pane = pane; self.groupId = groupId; self.seq = seq
+        self.title = title; self.cwd = cwd; self.pane = pane; self.groupId = groupId; self.seq = seq; self.workPath = workPath
     }
 }
 

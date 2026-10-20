@@ -62,7 +62,8 @@ case "report":
     let holder = (control as NSString).deletingLastPathComponent + "/\(id).sock"
     _ = try? Sock.holderRequest(holder, ["op": "report", "agent": args.count > 1 ? args[1] : "claude",
                                          "event": payload["hook_event_name"] as? String ?? "",
-                                         "message": payload["message"] as? String ?? ""], timeout: 1)
+                                         "message": payload["message"] as? String ?? "",
+                                         "path": WorkPath.from(hook: payload) ?? ""], timeout: 1)
     exit(0)
 case "attach":
     guard args.count > 1 else { fail("attach <id>") }

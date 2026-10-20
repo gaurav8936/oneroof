@@ -194,10 +194,11 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
             if let agent = s["agent"] as? String {
                 sessions.append(RuntimeSessionState(
                     id: id, isAgent: true, agentName: agent, status: RuntimeStatus(s["status"] as? String),
-                    ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int))
+                    ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int,
+                    workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }))
             } else {
                 sessions.append(RuntimeSessionState(id: id, isAgent: false, status: .unknown, ready: true, title: title,
-                                                    cwd: cwd, pane: id, seq: s["seq"] as? Int))
+                                                    cwd: cwd, pane: id, seq: s["seq"] as? Int, workPath: cwd))
             }
         }
         return RuntimeSnapshot(version: r["version"] as? String ?? "roofd", protocolVersion: r["proto"] as? Int ?? 1,

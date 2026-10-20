@@ -22,18 +22,28 @@ public struct BoardItem: Identifiable, Equatable, Sendable {
     /// Launched a moment ago and not in the runtime's list yet: starting, not exited.
     public var starting: Bool = false
 
+    /// The repo seen live this poll (from the agent's hooks or the terminal's folder), resolved to its git root.
+    public var workRepo: String?
+
     public var account: String? { detectedAccount ?? session.account }
-    public var repoLabel: String { Workspace.repoLabel(for: session.repoPath) }
+    /// The repo this session works in: seen live, else last seen, else the one it was planned for. Nil: it has only
+    /// worked at the workspace root so far (not a repo).
+    public var repoPath: String? {
+        if let r = workRepo ?? session.lastRepo { return r }
+        return Workspace.isProjectsRoot(session.repoPath) ? nil : session.repoPath
+    }
+    public var repoLabel: String { repoPath.map { Workspace.repoLabel(for: $0) } ?? Workspace.rootLabel }
 }
 
 /// How the sidebar groups rows — automatic, never drag-and-drop.
 public enum Grouping: String, CaseIterable, Identifiable, Sendable {
-    case status, repo, workstream, agent, account
+    case status, repo, workstream, agent, account, domain   // new ones go last: ⌘1…⌘5 keep their meaning
     public var id: String { rawValue }
     public var label: String {
         switch self {
         case .status: return "Status"
         case .repo: return "Repo"
+        case .domain: return "Folder"
         case .workstream: return "Workstream"
         case .agent: return "Agent"
         case .account: return "Account"
@@ -48,6 +58,9 @@ public struct BoardGroup: Identifiable, Equatable, Sendable {
 }
 
 public enum Board {
+    /// The repo/folder group for sessions that have only worked at the workspace root: it is not a repo.
+    public static let noRepo = "Workspace root · no repo yet"
+
     /// Merge stored sessions with the runtime's live sessions.
     /// - A stored session whose agent is live takes the runtime's status.
     /// - A stored session that was launched but whose agent is gone is `exited` (unless parked as do-not-use).
@@ -130,6 +143,13 @@ public enum Board {
                 liveAgent: a.id, paneId: a.pane, workspaceId: a.groupId,
                 detectedAccount: accounts[a.id], adopted: true, title: title, ready: a.ready))
         }
+        // Where each live session is working now (its agent's last file or `cd`, or its terminal's folder).
+        let live = Dictionary(snapshot.sessions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for i in items.indices {
+            guard let id = items[i].liveAgent ?? items[i].session.runtimeId, let st = live[id],
+                  let where_ = st.workPath ?? st.cwd else { continue }
+            items[i].workRepo = Workspace.repoRoot(for: where_)
+        }
         return items
     }
 
@@ -137,7 +157,8 @@ public enum Board {
         func key(_ i: BoardItem) -> String {
             switch g {
             case .status: return i.status.label
-            case .repo: return i.repoLabel
+            case .repo: return i.repoPath.map { Workspace.repoLabel(for: $0) } ?? Board.noRepo
+            case .domain: return i.repoPath.map(Workspace.domainLabel) ?? Board.noRepo
             case .workstream: return i.session.workstream ?? "No workstream"
             case .agent: return i.session.agent.displayName
             case .account: return i.account ?? i.session.agent.displayName
@@ -159,7 +180,7 @@ public enum Board {
             groups.sort { (rank[$0.title] ?? 99) < (rank[$1.title] ?? 99) }
         } else {
             groups.sort { a, b in
-                let an = a.title.hasPrefix("No "), bn = b.title.hasPrefix("No ")
+                let an = a.title.hasPrefix("No ") || a.title == Board.noRepo, bn = b.title.hasPrefix("No ") || b.title == Board.noRepo
                 if an != bn { return bn }
                 return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
             }

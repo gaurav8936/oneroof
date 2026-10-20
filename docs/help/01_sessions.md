@@ -48,8 +48,10 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 ## The top of the panel
 
 - **Seat bars:** how much of each seat's usage window is used (Claude1, Claude2, Codex). They stay empty when there is no usage data. See [Seats and routing](07_seats-router-and-on-device-model.md).
-- **Count chips:** all, need you, working, ready (finished, not yet looked at), idle. Click one to show only that state; click **all** (or the same chip again) to get the full list back. Next, planned and exited sessions are under all.
-- **Group ▾:** Status, Repo, Workstream, Agent or Account (also View › Group by, ⌘1 to ⌘5).
+- **Count chips:** all, need you, working, ready (finished, not yet looked at), idle, exited (agent sessions whose agent has ended; terminals are not counted). Click one to show only that state; click **all** (or the same chip again) to get the full list back. Under **exited**, *Remove all exited sessions* clears them. Next and planned sessions are under all.
+- **Group ▾:** Status, Repo, Workstream, Agent, Account or Folder (also View › Group by, ⌘1 to ⌘6).
+  - **Repo** is the git repo a session works in. Sessions start at the workspace root, which is not a repo, so One Roof learns the repo as the agent works: from the files Claude's tools touch and the folders its commands `cd` into, or from a terminal's current folder. It keeps the last one after the session ends. Until then the session is under **Workspace root · no repo yet** (last). Codex, Kimi, Gemini and Antigravity have no hooks, so they show their repo only when started in one.
+  - **Folder** is the top-level folder under the workspace (one per product or area), for a coarser view.
 - **Filter:** type to narrow the list; ✕ clears it.
 
 ## A session row
