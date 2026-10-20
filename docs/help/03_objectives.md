@@ -1,6 +1,6 @@
 # One Roof help: objectives
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** an objective is a goal you type in; a planner agent you can watch writes a plan, you edit and approve it, and One Roof runs the steps as ordinary sessions, at most three at a time, in order.
 
@@ -15,9 +15,9 @@ Press **⇧⌘O** (File › New Objective…), **+ New objective** on the Overvi
 | Field | Example |
 |---|---|
 | Objective | Write a glossary for the docs site |
-| Done when | `docs/glossary.md` defines session, objective, plan, sticker and workstream in one line each |
+| Done when | `docs/glossary.md` defines session, objective, plan, sticker and project in one line each |
 | Repo | docs-site |
-| Workstream | `WS-DOCS-3` (optional) |
+| Project | `ENG-DOCS-03` (optional) |
 | Urgency | Today · This week · Whenever |
 | Budget | Light · Normal · Whatever it takes |
 | Notes for the planner | anything it should know |
@@ -30,7 +30,7 @@ The planner is an ordinary Claude session named "Plan: " plus your title. It use
 
 - **Watch the planner** jumps to its terminal; answer it there if it asks something.
 - The objective page fills in by itself when the plan file appears (checked every few seconds). **Check for the plan now** reads it at once.
-- **Where the plan file goes:** in the workstream's docs folder (a `docs/workstreams/<id>/` folder in your shared folder or a repo), under `plans/<date>_<slug>.md`. Without a workstream it goes to `docs/plans/` in your shared folder. It is Markdown for people plus an `oneroof-plan` block for One Roof.
+- **Where the plan file goes:** in the project's docs folder (`docs/projects/<code>/` or `docs/workstreams/<id>/`, in your shared folder, a `*-docs` repo or a repo's `docs/`), under `plans/<date>_<slug>.md`. Without a project it goes to `docs/plans/` in your shared folder. It is Markdown for people plus an `oneroof-plan` block for One Roof.
 
 ## 3. Read and edit the plan
 

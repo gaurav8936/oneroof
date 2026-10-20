@@ -1,6 +1,6 @@
 # One Roof help: review changes, split panes, session rows and reopen closed
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** review an agent's uncommitted changes, comment on a line and commit (⌥⌘R), watch several sessions side by side in split panes (⌘D, ⇧⌘D), see each row's branch, change size and an unread dot, and bring back a session you closed (⇧⌘T).
 
@@ -21,7 +21,7 @@ You should be able to check what an agent changed, tell it what to fix, commit, 
 - **Comment:** click a line number and write what the agent should change. **Send to …** (the agent's name, ⌘↩) types `Review comment on <file>:<line>: <your text>` into the session working in this repo. If that agent is working right now, the comment is not sent; One Roof says that session is working and to send when it is idle. **Save as note** adds the comment to the session's notes instead.
 - **Checks (right):** build and test results the session printed in its own terminal, never invented. **Ask to fix** sends a failing check to the agent.
 - **Artifacts:** plan files, handoffs and screenshots for this session.
-- **Commit:** a message filled in from the ticket key, the workstream and the session's summary (edit it), **Move ENG-42 to In Review** when the session has a ticket, and **Ask … to write the handoff**. **Commit** (⌘↩) stages every change in the repo (`git add -A`) and commits. It never pushes: you see "Committed. Nothing was pushed."
+- **Commit:** a message filled in from the ticket key, the project and the session's summary (edit it), **Move ENG-42 to In Review** when the session has a ticket, and **Ask … to write the handoff**. **Commit** (⌘↩) stages every change in the repo (`git add -A`) and commits. It never pushes: you see "Committed. Nothing was pushed."
 - **Messages:** "No changes since the last commit on main." when the tree is clean; "No live agent session in this repo." when nobody can receive a comment; "… is not in a git repo, so there is nothing to review." when the session's folder is not a repo.
 
 Close the panel with **Back to terminal** (⌘L).

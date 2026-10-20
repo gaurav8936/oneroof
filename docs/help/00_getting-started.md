@@ -1,6 +1,6 @@
 # One Roof help: getting started
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** install One Roof, finish the first-run setup, and have your first agent session running in about five minutes; this page is also the index of every help page.
 
@@ -34,7 +34,7 @@ On a fresh install One Roof opens a setup window. You can open it again any time
 
 ## What One Roof is
 
-One Roof is a Mac app that holds all your coding agents in one window. Each session is a real command-line agent (Claude, Codex, Kimi, Gemini CLI, Antigravity) or a plain shell. The agents run inside roofd, One Roof's own session manager; One Roof draws their terminals and shows each session's status, agent, account, repo and workstream. Quit One Roof and the agents keep running. Open it again and they are all still there.
+One Roof is a Mac app that holds all your coding agents in one window. Each session is a real command-line agent (Claude, Codex, Kimi, Gemini CLI, Antigravity) or a plain shell. The agents run inside roofd, One Roof's own session manager; One Roof draws their terminals and shows each session's status, agent, account, repo and project. Quit One Roof and the agents keep running. Open it again and they are all still there.
 
 - **Sessions panel (left):** every session in this window, live, grouped for you.
 - **Centre:** the selected session's terminal, split into panes if you like, or one of the full views: Overview, Board, Decisions, Work, Learn, an objective, a file, or the review panel.
@@ -63,7 +63,7 @@ Agents start in your projects folder, so they all share one memory and one set o
 ## Also from the command line
 
 - **Startup check:** `"/Applications/One Roof.app/Contents/MacOS/OneRoof" --check` prints the same check (exit 1 on red).
-- **Linear connection:** `… OneRoof --linear` prints how many workstreams it found.
+- **Linear connection:** `… OneRoof --linear` prints your Linear teams and how many projects it found, with each project's code.
 - **Routing:** `… OneRoof --route "<task>"` prints the kind of task and the agent the router would pick, with its reason.
 
 ## Every help page
@@ -80,6 +80,6 @@ Agents start in your projects folder, so they all share one memory and one set o
 | [Themes, layout, viewer and find](08_themes-layout-viewer-and-find.md) | Themes per panel, opening and closing panels, file browser, viewer, find, links, text size |
 | [Learn](09_learn.md) | The course, the skills and your own Learn folders inside One Roof; How do I…?; the player |
 | [Review, split panes and session rows](10_review-split-panes-and-session-rows.md) | Review changes, split panes, branch and diff on rows, the unread dot, reopen a closed session |
-| [Roof windows](11_roof-windows.md) | Every live session of one repo or workstream in its own window |
+| [Roof windows](11_roof-windows.md) | Every live session of one repo or project in its own window |
 
 The Help menu inside One Roof opens these pages (One Roof Help), How Do I…?, the keyboard shortcuts, the release notes and the README.

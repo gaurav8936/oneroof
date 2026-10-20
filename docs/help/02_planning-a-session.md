@@ -1,6 +1,6 @@
 # One Roof help: starting a new session
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** ⌘N opens the New session sheet, where you say what should happen, pick an agent card, model, repo and start folder, write the opening message, and choose when it runs: now, next, tonight or on demand.
 
@@ -22,22 +22,47 @@ At the top, pick what this is. It starts as **Just a session** and stays on what
 | Kind | What happens |
 |---|---|
 | Just a session | One session, nothing is created in Linear. |
-| Ticket · Deliverable (▾ Spike, Decision, Chore) | A ticket is created in the workstream you pick (top right), then the session works on it. Needs Linear. |
+| Ticket · Deliverable (▾ Spike, Decision, Chore) | A ticket is created in the team and project you pick (top right), then the session works on it. Needs Linear. |
 | Defect | The same, as a defect ticket. |
-| Workstream | One Roof plans a Claude session that opens the new workstream for you. |
+| Project | A new project: with Linear connected, One Roof creates it in Linear and plans a Claude session that sets it up (see below). |
 
-For a ticket or defect, pick the workstream. If a ticket with a similar title already exists, a **Similar ticket** banner offers **Plan a session for ENG-42 instead**.
+## Team and project
+
+When Linear is connected, the top right of the sheet has **Team ▾** and **Project ▾**, filled from Linear.
+
+- **Picking a team** limits the Project list to that team's projects. **Picking a project** sets its team.
+- **Tickets and defects need a team.** The project is optional: **No project** files the ticket in the team only.
+- **Just a session** may use **No team** and **No project**.
+- The last team and project you used are remembered.
+
+Without Linear, a free-text **Project** field takes the project code instead.
+
+If a ticket with a similar title already exists, a **Similar ticket** banner offers **Plan a session for ENG-42 instead**.
+
+Tickets made here get Linear's Type label: Deliverable, Bug (for a defect), Task (for a chore), Spike or Decision. Older workspaces that use `type:*` labels still work. The title is used as you typed it; only projects in the older `WS-…` style also get a `[ws-…]` prefix.
+
+## A new project
+
+Pick **Project** as the kind. With Linear connected, two more fields appear:
+
+| Field | What to put there | Example |
+|---|---|---|
+| Code | Optional. The project's code, in the TEAM-TOPIC shape; One Roof checks the shape. | `ENG-CHECKOUT` |
+| Milestones | Comma separated, in order. | `Design, Build, Ship` |
+
+**Create project and launch** creates the project in Linear, named "CODE · title" (for example `ENG-CHECKOUT · New checkout`), in state **Planned**, with those milestones. It then plans a Claude session that writes the project's docs folder (README, STATUS), adds the first tickets and posts a first project update.
+
+Without Linear, it still plans a Claude session that does every step.
 
 ## The fields
 
 | Field | What to put there |
 |---|---|
-| What should happen | What you want done, in your words. It becomes the session's name. A workstream id in it (like `WS-WEB-12`) fills Workstream for you. |
+| What should happen | What you want done, in your words. It becomes the session's name. A project code in it (like `ENG-KNOW-03`) fills Project for you. |
 | Agent and account | One card per agent: Claude1, Claude2 (only when you have a second Claude config), Codex, Kimi, Gemini, Antigravity, and Terminal (a plain shell, no agent). Each card shows its seat use when known. **Suggested:** names the router's pick and why; **Use it** selects it. |
 | Model | Passed to the CLI as `--model <name>`. Claude: opus, sonnet, haiku; any name works. Empty means the CLI's default. |
 | Repo | The repo the session works on, or your projects folder itself. It decides the repo label, the file browser and the branch chip. |
 | Start in | **Projects folder · one memory** (the default) or **Repo folder**. In the repo folder, Claude may ask once to trust it, and its memory is kept separately from your projects folder. |
-| Workstream | For "Just a session": the `WS-…` id. Shown on the row and used for grouping. |
 | Done when | What finished looks like. Shown in the plan panel. |
 | Opening message | The first prompt. One Roof sends it once the agent is at its prompt and idle, and never twice, even across restarts. For a ticket it says which ticket to work on and how to name commits. |
 

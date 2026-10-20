@@ -13,6 +13,10 @@
   the agent is ready.
 - **Paste images into a terminal.** ⌘V with a screenshot or copied image saves it and types its path, so the agent
   attaches it; files copied in Finder paste as full paths; images dragged in from a browser work too.
+- **Linear projects, all of them.** One Roof reads every Linear project (code = the part of the name before " · ",
+  like `ENG-CHECKOUT`; older `WS-` names still work), and "Workstream" is now called Project everywhere. The New work
+  sheet has Team and Project pickers, tickets get Linear's Type label (Deliverable, Bug, Task, Spike, Decision), and
+  a new project is created in Linear with its milestones before a Claude session sets up its docs and first tickets.
 - Agents typed into a One Roof terminal still show as that agent. Agents started in other terminal apps are no longer
   listed; Copy attach opens any One Roof session from another terminal.
 
