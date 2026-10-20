@@ -188,6 +188,18 @@ final class AppModel: ObservableObject {
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
+            if ticks % 30 == 15 { self?.checkRoofdOwner() }
+        }
+    }
+
+    /// Once the background item is on (approved in Login Items after start, say), launchd's roofd should serve:
+    /// re-check every 30 s; ensureRunning hands over from an app-started daemon without touching sessions.
+    func checkRoofdOwner() {
+        guard let roofd = runtime as? RoofdRuntime, !SelfTest.isActive else { return }
+        let on = RoofdService.enabled
+        queue.async {
+            roofd.managedByLaunchd = on
+            try? roofd.ensureRunning()
         }
     }
 

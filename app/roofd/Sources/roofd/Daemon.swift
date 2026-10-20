@@ -7,6 +7,8 @@ import Foundation
 enum Daemon {
     static let proto = 1
     static let version = "0.4.0"
+    /// Started by launchd as One Roof's background item (launchd sets XPC_SERVICE_NAME to the job's label).
+    static let underLaunchd = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == "io.github.gaurav8936.oneroof.roofd"
     /// This binary's build: its modification time at start. The app compares it with the roofd in its bundle.
     static let build: Double = {
         let attrs = try? FileManager.default.attributesOfItem(atPath: selfPath())
@@ -58,7 +60,8 @@ enum Daemon {
     static func handle(_ method: String, _ p: [String: Any]) throws -> [String: Any] {
         switch method {
         case "hello":
-            return ["proto": proto, "version": version, "build": build, "pid": Int(getpid()), "sessions": sessionIds().count]
+            return ["proto": proto, "version": version, "build": build, "pid": Int(getpid()), "launchd": underLaunchd,
+                    "sessions": sessionIds().count]
         case "upgrade":
             // The app found a newer roofd: reply, then exit; launchd (or the app) starts the new binary, which takes the
             // lock. Holders are separate processes and keep every session running (Q8).

@@ -16,14 +16,33 @@ enum RoofdService {
             .withCString { access($0, R_OK) == 0 }
     }
 
-    /// Register on start (idempotent). Returns whether launchd now runs roofd.
+    /// The bundled roofd's build (modification time). macOS records the binary's code identity when the item is
+    /// registered; after a rebuild with a new signature (every ad-hoc dev build) launchd refuses to start it
+    /// ("needs LWCR update", exit 78) until the item is registered again.
+    static var bundledBuild: Double? {
+        let path = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/roofd").path
+        return ((try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970.rounded()
+    }
+    static let registeredKey = "roofd.registeredBuild"
+
+    /// Register on start (idempotent); register again when the bundled roofd changed since the last registration.
+    /// Returns whether launchd now runs roofd.
     @discardableResult
     static func register() -> Bool {
         guard bundled, ProcessInfo.processInfo.environment["ROOFD_DIR"] == nil else { return false }   // tests use their own
         let s = service
+        let build = bundledBuild ?? 0
+        if s.status == .enabled, Prefs.defaults.double(forKey: registeredKey) != build {
+            // A new roofd binary: drop the old registration (launchd stops its daemon; the holders, in their own
+            // sessions, keep every agent running) and register the new one.
+            let done = DispatchSemaphore(value: 0)
+            s.unregister { _ in done.signal() }
+            _ = done.wait(timeout: .now() + 5)
+        }
         if s.status != .enabled {
             do { try s.register() } catch { NSLog("One Roof: roofd background item not registered: \(error)") }
         }
+        if s.status == .enabled { Prefs.defaults.set(build, forKey: registeredKey) }
         return s.status == .enabled
     }
 
@@ -47,6 +66,9 @@ enum RoofdService {
             return CheckResult(id: "roofd-login", title: "roofd background item", level: .warn, detail: "unknown state")
         }
     }
+
+    /// The background item is on (launchd runs roofd).
+    static var enabled: Bool { bundled && ProcessInfo.processInfo.environment["ROOFD_DIR"] == nil && service.status == .enabled }
 
     static func openLoginItems() { SMAppService.openSystemSettingsLoginItems() }
 }

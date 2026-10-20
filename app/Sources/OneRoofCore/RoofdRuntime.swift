@@ -111,6 +111,17 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     /// (it exits; launchd or the app starts the new binary). Sessions live in their holders and keep running (Q8).
     public func ensureRunning() throws {
         if let hello = try? call("hello", timeout: 2) {
+            // The background item is on but the app started this daemon (before launchd had it): hand over to
+            // launchd's copy, which is waiting for the lock. Sessions live in their holders and do not notice.
+            if managedByLaunchd, hello["launchd"] as? Bool == false {
+                _ = try? call("upgrade", timeout: 2)
+                for _ in 0..<40 {
+                    usleep(100_000)
+                    if let h = try? call("hello", timeout: 1), h["launchd"] as? Bool == true { return }
+                }
+                try startDaemon()   // launchd did not take over: keep a daemon running regardless
+                return
+            }
             guard let want = bundledBuild, let have = hello["build"] as? Double, have < want else { return }
             _ = try? call("upgrade", timeout: 2)
             usleep(400_000)
@@ -150,6 +161,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         var env = ProcessInfo.processInfo.environment
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }   // never leak an account into sessions
         env["ROOFD_DIR"] = dir
+        env.removeValue(forKey: "XPC_SERVICE_NAME")       // only launchd's copy carries the job label
         let args: [String] = [roofdPath, "daemon"]
         var argv: [UnsafeMutablePointer<CChar>?] = args.map { s -> UnsafeMutablePointer<CChar>? in strdup(s) }
         argv.append(nil)
