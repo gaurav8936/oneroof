@@ -135,6 +135,7 @@ struct SessionsPanel: View {
                                 .strokeBorder(on ? t.accent.color : t.separator.color, lineWidth: on ? 1.5 : 1))
                     }
                     .buttonStyle(.plain)
+                    .help(c.meaning)
                     .accessibilityLabel(c.label(n).replacingOccurrences(of: "\n", with: " ") + (on ? ", showing" : ""))
                 }
             }
@@ -171,6 +172,7 @@ struct SessionsPanel: View {
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(t.surface2.color))
             .padding(.top, 10).padding(.bottom, 4)
             .background(t.sidebar.color)
+            .help(SessionStatus.allCases.first { $0.label == g.title }?.meaning ?? "")
         }
 
         private var empty: some View {

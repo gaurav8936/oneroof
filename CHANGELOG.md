@@ -8,7 +8,7 @@
 - **Sessions outlive the app, and a crash costs only what it must.** Quit, update or reopen One Roof and every session
   comes back with its history; one session's crash never ends another.
 - **Status from the agents themselves:** Claude's hooks, screen prompts and screen activity give Working, Needs you
-  and Done for all five agents, including first-run menus.
+  and Ready for all five agents, including first-run menus.
 - **Tonight and Nightly run with the app closed** when scheduled runs are allowed; roofd sends the opening message once
   the agent is ready.
 - **Paste images into a terminal.** ⌘V with a screenshot or copied image saves it and types its path, so the agent
@@ -17,6 +17,11 @@
   like `ENG-CHECKOUT`; older `WS-` names still work), and "Workstream" is now called Project everywhere. The New work
   sheet has Team and Project pickers, tickets get Linear's Type label (Deliverable, Bug, Task, Spike, Decision), and
   a new project is created in Linear with its milestones before a Claude session sets up its docs and first tickets.
+- **The New session sheet starts sessions on existing work.** ⌘N has **Team ▾ · Project ▾ · Issue ▾** pickers
+  instead of kind tabs: pick an open issue and the session works on it; **New issue…** and **New project…** are the
+  last menu items, for work not in Linear yet. Status names are the same in the filter chips and the group headings
+  (Needs you · Working · Ready · Idle · Exited, with meanings on hover), and the session shown in the terminal stands
+  out in the sidebar with an accent outline and a left bar.
 - Agents typed into a One Roof terminal still show as that agent. Agents started in other terminal apps are no longer
   listed; Copy attach opens any One Roof session from another terminal.
 
