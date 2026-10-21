@@ -9,6 +9,8 @@
 - **A second window no longer blinks** while attaching, and no longer shows the doors dialog on launch.
 - **The session menu is one click for everything.** Stickers are labels only, colours are swatches and emoji sit in the menu itself; the colourful menu has a row of buttons (Open, Next, Pin, Rename, Highlight) instead of tiles, and no Close.
 - **Sessions don't inherit self-test settings**, so One Roof opened from a terminal session starts normally.
+- **Paste or drop screenshots into New session** (LAB-462): ⌘V or a drop attaches them as removable thumbnails; the opening message names them for the agent, and a new Linear issue gets them uploaded into its description.
+- **A launched agent's terminal shows at once** (LAB-299), with a "Starting…" strip while your login shell and the agent start, instead of a blank pane for 2–3 s.
 
 ## 0.4.0 — roofd, One Roof's own session manager (20 Oct 2026)
 
