@@ -110,12 +110,13 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Sort order in the "status" grouping: what needs attention first.
+    /// Sort order in the "status" grouping (LAB-256): blocked first, then live work, then finished turns, then the rest.
+    /// Matches the chip order: Needs you · Working · Ready · Idle · Exited.
     public var rank: Int {
         switch self {
         case .needsYou: return 0
-        case .done: return 1
-        case .running: return 2
+        case .running: return 1
+        case .done: return 2
         case .idle: return 3
         case .next: return 4
         case .planned: return 5

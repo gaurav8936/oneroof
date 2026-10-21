@@ -122,8 +122,10 @@ final class BoardMergeTests: XCTestCase {
     func testGroupingByStatusPutsNeedsYouFirst() {
         let items = Board.merge(
             stored: [Session(name: "q", repoPath: "/p", lifecycle: .next)],
-            snapshot: RuntimeSnapshot(sessions: [agent("a", "claude", .idle, pane: "1"), agent("b", "claude", .blocked, pane: "2")]))
-        XCTAssertEqual(Board.group(items, by: .status).map(\.title), ["Needs you", "Idle", "Next"])
+            snapshot: RuntimeSnapshot(sessions: [agent("a", "claude", .idle, pane: "1"), agent("b", "claude", .blocked, pane: "2"),
+                                                 agent("c", "claude", .done, pane: "3"), agent("d", "claude", .working, pane: "4")]))
+        // LAB-256: Working sits above Ready, the same order as the chips.
+        XCTAssertEqual(Board.group(items, by: .status).map(\.title), ["Needs you", "Working", "Ready", "Idle", "Next"])
     }
 
     func testPlainTerminalRowIsLiveWhileItsShellExists() {
