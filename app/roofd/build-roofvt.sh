@@ -17,6 +17,14 @@ ZIG="${ZIG:-/opt/homebrew/opt/zig@0.15/bin/zig}"
 
 cd roofd/RoofVT
 ln -sfn "$DIR" ghostty
+# A release build (Ghostty source outside the home folder, from tools/package-app.sh) uses the neutral package cache
+# build-ghosttykit.sh --release-build seeded next to it: C/C++ sources from zig's default cache (~/.cache/zig) would
+# put that home-folder path in the binary (highway's __FILE__), and the release gate rejects it.
+case "$DIR" in
+  "$HOME"/*) ;;
+  *) export ZIG_GLOBAL_CACHE_DIR="$(dirname "$DIR")/zig-cache"; export ZIG_LOCAL_CACHE_DIR="$PWD/.zig-cache-release"
+     mkdir -p "$ZIG_GLOBAL_CACHE_DIR/p" ;;
+esac
 "$ZIG" build --release=fast
 OUT="$APP/build/RoofVT"
 rm -rf "$OUT" && mkdir -p "$OUT/include"
