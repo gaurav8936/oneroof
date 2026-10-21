@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import OneRoofCore
 
 /// The control plane (T14 §3d): create, list, info, read, input, signal, close over newline-delimited JSON on
 /// roofd.sock. It holds no session state of its own: every session is a holder process with its own socket, so a
@@ -27,18 +28,45 @@ enum Daemon {
                                                 attributes: [.posixPermissions: 0o700])
         // One daemon per folder. A second start waits for the lock instead of exiting: under launchd (KeepAlive) an
         // exit would be restarted in a loop; waiting means it takes over the moment the running one stops (upgrade).
-        let lockFd = open(Paths.dir + "/roofd.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
-        guard lockFd >= 0 else { throw RoofdError("cannot open the lock file") }
-        while flock(lockFd, LOCK_EX) != 0 { if errno != EINTR { throw RoofdError("lock failed") } }   // held for life
+        // Only this lock decides which daemon serves the folder (LAB-310 checked: a second daemon, from launchd or the
+        // app, blocks here and never binds the socket). The lock is held for life; the kernel frees it on any exit.
+        guard let lockFd = try FileLock.acquire(Paths.dir + "/roofd.lock", wait: true) else { throw RoofdError("lock failed") }
+        _ = lockFd
         let fd = try Sock.listen(Paths.control)
         Scheduler.start()
+        startWatchdog()
         var flags = fcntl(fd, F_GETFL); flags &= ~O_NONBLOCK; _ = fcntl(fd, F_SETFL, flags)
         while true {
             let c = accept(fd, nil, nil)
             if c < 0 { if errno == EINTR { continue }; break }
-            DispatchQueue.global().async { serve(c) }
+            DispatchQueue.global().async { autoreleasepool { serve(c) } }
         }
     }
+
+    /// The memory guard (LAB-310): the daemon keeps no session state, so it is a few MB; far above that something is
+    /// wrong and it stops (launchd or the app starts a fresh one; sessions live in their holders and keep running).
+    static func startWatchdog() {
+        Thread.detachNewThread {
+            var dog = MemoryWatchdog.from(env: ProcessInfo.processInfo.environment, prefix: "ROOFD_DAEMON",
+                                          warnMB: MemoryWatchdog.daemonWarnMB, limitMB: MemoryWatchdog.daemonLimitMB)
+            while true {
+                autoreleasepool {
+                    guard let f = MemoryWatchdog.footprint() else { return }
+                    let action = dog.check(footprint: f)
+                    guard action != .ok else { return }
+                    MemoryLog.append(MemoryWatchdog.logLine(at: Date(), who: "daemon", footprint: f, action: action))
+                    if action == .stop { exit(3) }
+                }
+                Thread.sleep(forTimeInterval: watchdogInterval)
+            }
+        }
+    }
+
+    /// How often each roofd process looks at its footprint (ROOFD_WATCHDOG_SECONDS for tests).
+    static let watchdogInterval = Double(ProcessInfo.processInfo.environment["ROOFD_WATCHDOG_SECONDS"] ?? "") ?? 10
+
+    /// A request is one JSON line; `create` carries an environment, so allow a few MB, never more.
+    static let maxRequestBytes = 4 << 20
 
     private static func serve(_ fd: Int32) {
         defer { close(fd) }
@@ -50,6 +78,7 @@ enum Daemon {
             let n = read(fd, &chunk, chunk.count)
             if n <= 0 { return }
             buf += chunk[0..<n]
+            if buf.count > maxRequestBytes { return }
         }
         let req = (try? JSONSerialization.jsonObject(with: Data(buf.prefix { $0 != 0x0A }))) as? [String: Any] ?? [:]
         var reply: [String: Any]
@@ -64,7 +93,7 @@ enum Daemon {
         switch method {
         case "hello":
             return ["proto": proto, "version": version, "build": build, "pid": Int(getpid()), "launchd": underLaunchd,
-                    "sessions": sessionIds().count]
+                    "sessions": sessionIds().count, "footprint": Int(MemoryWatchdog.footprint() ?? 0)]
         case "upgrade":
             // The app found a newer roofd: reply, then exit; launchd (or the app) starts the new binary, which takes the
             // lock. Holders are separate processes and keep every session running (Q8).
