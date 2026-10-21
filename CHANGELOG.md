@@ -11,6 +11,9 @@
   and Ready for all five agents, including first-run menus.
 - **Tonight and Nightly run with the app closed** when scheduled runs are allowed; roofd sends the opening message once
   the agent is ready.
+- **Steps you can rewind and explain.** The steps list at the top of a pane is capped at six (it scrolls); click a
+  step to scroll the terminal back to it and read on, **Back to current** to return, and the magnifier on a step asks
+  Claude what was asked, what happened, what was decided and the risks.
 - **Paste images into a terminal.** ⌘V with a screenshot or copied image saves it and types its path, so the agent
   attaches it; files copied in Finder paste as full paths; images dragged in from a browser work too.
 - **Linear projects, all of them.** One Roof reads every Linear project (code = the part of the name before " · ",

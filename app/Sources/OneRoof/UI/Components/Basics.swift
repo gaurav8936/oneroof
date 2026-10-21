@@ -205,11 +205,36 @@ struct StepList: View {
         var state: State
     }
     let steps: [Step]
+    /// Cap (LAB-259): more steps than this scroll inside the list, which keeps showing the current one.
+    var maxVisible: Int?
+    /// The step the terminal is rewound to (highlighted), and what a click on a step does.
+    var selected: Int?
+    var onTap: ((Int) -> Void)?
+    /// Something at the end of a row (the Explain button).
+    var accessory: ((Step) -> AnyView)?
+
+    private static let rowHeight: CGFloat = 25
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        if let cap = maxVisible, steps.count > cap {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) { list.padding(.trailing, 6) }
+                    .frame(height: CGFloat(cap) * Self.rowHeight)
+                    .onAppear { proxy.scrollTo(focus, anchor: .bottom) }
+                    .onChange(of: focus) { _, f in withAnimation(Motion.fast) { proxy.scrollTo(f, anchor: selected == nil ? .bottom : .center) } }
+            }
+        } else {
+            list
+        }
+    }
+
+    /// The row to keep in view: the rewound-to step, else the current one, else the last.
+    private var focus: Int? { selected ?? steps.first { $0.state == .now }?.id ?? steps.last?.id }
+
+    private var list: some View {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(steps) { s in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
                     ZStack {
                         switch s.state {
                         case .done: Circle().fill(t.statusColor(.done).color)
@@ -217,11 +242,20 @@ struct StepList: View {
                         case .todo: Circle().strokeBorder(t.separatorStrong.color, lineWidth: 2)
                         }
                     }
-                    .frame(width: 14, height: 14).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    .frame(width: 14, height: 14)
                     (Text(s.title).foregroundColor(t.text.color) + Text(s.note.map { " · " + $0 } ?? "").foregroundColor(t.text3.color))
-                        .ui(13)
+                        .ui(13).lineLimit(1)
+                    Spacer(minLength: 4)
+                    if let accessory { accessory(s) }
                 }
+                .frame(height: Self.rowHeight)
+                .padding(.horizontal, 4)
+                .background(RoundedRectangle(cornerRadius: 6).fill(selected == s.id ? t.selection.color : .clear))
+                .contentShape(Rectangle())
+                .onTapGesture { onTap?(s.id) }
+                .help(onTap == nil ? "" : (selected == s.id ? "Back to the current step" : "Rewind the terminal to this step"))
                 .accessibilityElement(children: .combine)
+                .id(s.id)
             }
         }
     }
