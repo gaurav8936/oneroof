@@ -162,6 +162,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         for fd: Int32 in [0, 1, 2] { posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == 0 ? O_RDONLY : O_WRONLY, 0) }
         var env = ProcessInfo.processInfo.environment
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }   // never leak an account into sessions
+        for k in env.keys where RoofdRuntime.appTestVariable(k) { env.removeValue(forKey: k) }
         env["ROOFD_DIR"] = dir
         env.removeValue(forKey: "XPC_SERVICE_NAME")       // only launchd's copy carries the job label
         let args: [String] = [roofdPath, "daemon"]
@@ -224,6 +225,12 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         k == "CLAUDECODE" || k == "CLAUDE_PID" || k == "CLAUDE_EFFORT" || k.hasPrefix("CLAUDE_CODE_") || k == "CODEX_SANDBOX" || k.hasPrefix("CODEX_THREAD") || k == "AI_AGENT"
     }
 
+    /// LAB-255: a self-test run's own variables (ONEROOF_SELFTEST_*, ONEROOF_STORE, ONEROOF_BUNDLE_OUT) reached the
+    /// sessions it started: an agent there that opened One Roof got a self-test app on a scratch store that quit.
+    static func appTestVariable(_ k: String) -> Bool {
+        k.hasPrefix("ONEROOF_SELFTEST_") || k == "ONEROOF_STORE" || k == "ONEROOF_BUNDLE_OUT"
+    }
+
     /// LAB-224: agents' tool calls run without the login shell's setup, so `python3` can be the python.org build whose
     /// certificate file is missing until its "Install Certificates" step runs: HTTPS then fails with
     /// CERTIFICATE_VERIFY_FAILED. With no SSL_CERT_FILE of the owner's own, point it at the macOS bundle.
@@ -240,7 +247,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         }
         // Markers of an agent session the app itself was started from (One Roof opened from a terminal inside Claude
         // Code): a session must start fresh, not as that agent's child (Claude turned transcript saving off).
-        for k in env.keys where RoofdRuntime.inheritedAgentMarker(k) { env.removeValue(forKey: k) }
+        for k in env.keys where RoofdRuntime.inheritedAgentMarker(k) || RoofdRuntime.appTestVariable(k) { env.removeValue(forKey: k) }
         RoofdRuntime.addCertificateDefault(&env)
         env["COLORTERM"] = "truecolor"
         if let terminfo {

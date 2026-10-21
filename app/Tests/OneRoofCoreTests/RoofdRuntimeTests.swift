@@ -38,6 +38,16 @@ final class RoofdRuntimeTests: XCTestCase {
         XCTAssertFalse(RoofdRuntime.inheritedAgentMarker("PATH"))
     }
 
+    /// LAB-255: a session opened by a self-test run carried ONEROOF_SELFTEST_* and ONEROOF_STORE; One Roof started
+    /// from that session came up as a self-test on a scratch store and quit.
+    func testAppTestVariablesAreDropped() {
+        for k in ["ONEROOF_SELFTEST_LAUNCH", "ONEROOF_SELFTEST_QUIT", "ONEROOF_SELFTEST_OUT", "ONEROOF_STORE", "ONEROOF_BUNDLE_OUT"] {
+            XCTAssertTrue(RoofdRuntime.appTestVariable(k), k)
+        }
+        XCTAssertFalse(RoofdRuntime.appTestVariable("ONEROOF_SESSION"), "the launch sets its own session id")
+        XCTAssertFalse(RoofdRuntime.appTestVariable("ONEROOF_ROOFD"))
+    }
+
     func testSessionsGetACertificateBundleUnlessOneIsSet() throws {
         var env: [String: String] = [:]
         RoofdRuntime.addCertificateDefault(&env, bundle: "/etc/hosts")
