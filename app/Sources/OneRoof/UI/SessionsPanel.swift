@@ -143,9 +143,17 @@ struct SessionsPanel: View {
 
         // MARK: Rows
 
+        /// The row's ✕: a live session closes after the usual question; a stopped one is removed (Reopen Closed Session
+        /// brings it back). Adopted sessions have no ✕, like the menu's Delete.
+        private func closeAction(_ item: BoardItem) -> (() -> Void)? {
+            if item.liveAgent != nil { return { model.confirmClose(item) } }
+            return item.adopted ? nil : { model.delete(item) }
+        }
+
         private func row(_ item: BoardItem, now: Date) -> some View {
             SessionRow(row: model.rowData(item, now: now), density: .full, selected: win.selectedId == item.id, ring: t.sidebar,
-                       onRename: { model.rename(item, $0) })
+                       onRename: { model.rename(item, $0) }, onClose: closeAction(item),
+                       closeHelp: item.liveAgent != nil ? "Close session (asks first)" : "Remove session (⇧⌘T reopens it)")
                 .onTapGesture { win.selectedId = item.id; model.show(.workspace, in: win) }
                 .contextMenu { SessionContextMenu(model: model, item: item, win: win, editStickers: { popoverFor = item.id }) }
                 .popover(isPresented: Binding(get: { popoverFor == item.id }, set: { if !$0 { popoverFor = nil } }), arrowEdge: .trailing) {
