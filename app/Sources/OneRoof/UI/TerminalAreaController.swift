@@ -233,11 +233,18 @@ final class TerminalAreaController: NSViewController {
     /// Rewind to a step (LAB-259): scroll the surface to where the step starts, a view over the scrollback; the owner
     /// scrolls on from there. The same step again (or Back to current) returns to the live bottom.
     private func toggleChapter(_ pane: String, _ index: Int, _ item: BoardItem?) {
-        if openChapter[pane] == index { openChapter[pane] = nil; terminalAction("scroll_to_bottom"); update(); return }
+        if openChapter[pane] == index {
+            openChapter[pane] = nil
+            if let item { model.reviewStep[item.id] = nil }
+            terminalAction("scroll_to_bottom"); update(); return
+        }
         openChapter[pane] = index
         update()
         let chs = item.flatMap { model.chapters[$0.id] } ?? []
         guard let item, let ch = chs.first(where: { $0.index == index }) else { return }
+        // The right panel's Step review follows the step (LAB-260), and reads it at once.
+        model.reviewStep[item.id] = index
+        if ch.ended != nil, model.stepExplanations[AppModel.stepKey(item, ch)] == nil { model.explainStep(item, ch) }
         // Where the step starts, read fresh from the session (the chapter list only covers its last 300 lines).
         let fallback = chs.last.map { max(0, $0.scrollbackRange.upperBound - ch.scrollbackRange.lowerBound) }
         model.stepOffset(item, ch) { [weak self] n in
