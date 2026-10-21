@@ -41,6 +41,7 @@ Every session runs in **roofd**, One Roof's own session manager, which ships ins
 - **History:** each session keeps 8 MB of scrollback in memory. It is never written to disk, because agents print keys and file contents.
 - **Status:** roofd reads each agent's screen (permission prompts, menus, spinners) and, for Claude, its hooks, so Working, Needs you and Ready stay right even with One Roof closed.
 - **Tonight and Nightly** run with One Roof closed when Settings › Allow scheduled runs is on; roofd sends the opening message once the agent is ready.
+- **Loops (Every 15 min … 4 h):** right-click a row › Repeat, or When › Every in the New session sheet. Each round, a session that is not running is launched; a running one gets its opening message (or objective) again, but only once the agent waits at its prompt: a round that finds it working or needing you waits, and is skipped after a whole interval. The row shows **⏱ next time · every 1 h**; Repeat › Stop Repeating ends it. Like Tonight, rounds run with the app closed when scheduled runs are allowed. An agent's own loop (Claude Code's `/loop`) also works inside any session, since roofd keeps the agent running.
 - **Copy Attach Command** (right-click) gives `roofd attach <id>`: paste it into any terminal to see the same session there.
 
 ## Workspace windows

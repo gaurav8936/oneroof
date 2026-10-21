@@ -155,7 +155,7 @@ final class AppModel: ObservableObject {
         for r in WorkspaceStore.shared.workspaces where r.open { adopt(WindowState(id: r.id, name: r.name, colour: r.colour)) }
         if windows.isEmpty, let r = WorkspaceStore.shared.workspaces.first { adopt(WindowState(id: r.id, name: r.name, colour: r.colour)) }
         scheduleRecords = Dictionary((store?.schedules() ?? []).map { ($0.sessionId, $0) }, uniquingKeysWith: { a, _ in a })
-        schedules = scheduleRecords.compactMapValues { $0.schedule.timeText }
+        schedules = scheduleRecords.compactMapValues { ScheduleClock.rowLabel($0) }
         sessionWorkspace = WorkspaceStore.shared.assignments
         activeWindowId = windows.first?.id
     }

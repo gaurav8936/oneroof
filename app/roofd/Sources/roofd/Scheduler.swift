@@ -59,8 +59,13 @@ enum Scheduler {
                 store.recordScheduledRun(session: r.sessionId, at: now, result: "missed")
             case .run:
                 guard var s = all.first(where: { $0.id == r.sessionId }) else { continue }
-                if let id = s.runtimeId, live.contains(id) {   // already running: nothing to start
-                    store.recordScheduledRun(session: r.sessionId, at: now, result: "started")
+                if let id = s.runtimeId, live.contains(id) {
+                    if case .every = r.schedule {
+                        // A loop round on a live session (LAB-254): its message again, once the agent waits.
+                        loopRound(r, session: s, holder: id, store: store, now: now)
+                    } else {                                   // already running: nothing to start
+                        store.recordScheduledRun(session: r.sessionId, at: now, result: "started")
+                    }
                     continue
                 }
                 guard case .success(let spec) = LaunchPlan.spec(s, stored: all, deliverOpening: true) else {
@@ -79,6 +84,29 @@ enum Scheduler {
                 } catch {
                     store.recordScheduledRun(session: r.sessionId, at: now, result: "failed: \(error)")
                 }
+            }
+        }
+    }
+
+    /// Send a loop's message to a live session when its agent is at its prompt; otherwise wait (next tick) or, a whole
+    /// interval late, give the round up.
+    static func loopRound(_ r: ScheduleRecord, session s: Session, holder id: String, store: SessionStore, now: Date) {
+        let text = (s.openingMessage.isEmpty ? s.objective : s.openingMessage).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { store.recordScheduledRun(session: r.sessionId, at: now, result: "skipped: no message"); return }
+        let info = try? Sock.holderRequest(Paths.session(id), ["op": "info"], timeout: 1)
+        switch ScheduleClock.liveRound(r, status: info?["status"] as? String, ready: info?["ready"] as? Bool ?? false, now: now) {
+        case .wait:
+            return
+        case .skip:
+            store.recordScheduledRun(session: r.sessionId, at: now, result: "skipped: busy")
+        case .send:
+            do {
+                _ = try Sock.holderRequest(Paths.session(id), ["op": "input", "text": text], timeout: 2)
+                Thread.sleep(forTimeInterval: 0.2)           // Enter separately: a submit, not a newline in a paste
+                _ = try Sock.holderRequest(Paths.session(id), ["op": "input", "submit": true], timeout: 2)
+                store.recordScheduledRun(session: r.sessionId, at: now, result: "sent")
+            } catch {
+                store.recordScheduledRun(session: r.sessionId, at: now, result: "failed: \(error)")
             }
         }
     }
