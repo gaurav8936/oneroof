@@ -83,6 +83,7 @@ Defaults for account, model and arguments come from Settings › Agents (⌘,), 
 | Now | Launch ⌘↩ | Starts the agent right away and selects it. |
 | Next | Save as next ⌘↩ | Saves it as Next, ready for one click. |
 | Tonight 2:00 AM (▾ Nightly) | Save for tonight ⌘↩ | Schedules it. Scheduled sessions start while One Roof is open; missed runs are reported. |
+| Every 1 h (▾ 15 min … 4 h) | Launch, repeat every 1 h ⌘↩ | A loop: starts now, then sends the opening message again every interval when the agent is waiting at its prompt (never while it works or needs you). |
 | On demand | Save on demand ⌘↩ | Saves it as Planned. |
 
 When you are creating an issue or a project, the button says **Create issue, launch ⌘↩** or **Create project, launch ⌘↩**, and **Create issue, next ⌘↩** or **Create project, next ⌘↩** for Next.

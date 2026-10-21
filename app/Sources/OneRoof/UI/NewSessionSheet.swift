@@ -12,7 +12,7 @@ struct NewSessionSheet: View {
     var close: () -> Void
 
     enum Kind: String, CaseIterable { case session, ticket, defect, workstream }
-    enum When: String, CaseIterable { case now, next, tonight, onDemand }
+    enum When: String, CaseIterable { case now, next, tonight, every, onDemand }
 
     @State private var kind: Kind = .session
     @State private var ticketType: WorkKind = .deliverable
@@ -39,6 +39,7 @@ struct NewSessionSheet: View {
     @State private var conversations: [Conversation] = []
     @State private var when: When = .now
     @State private var nightly = false
+    @State private var everyMinutes = 60
     @State private var suggestion: RouteSuggestion?
     @State private var suggestedMark: AgentMark?
     @State private var busy = false
@@ -132,7 +133,7 @@ struct NewSessionSheet: View {
                 if busy { ProgressView().controlSize(.small) }
                 RoofButton("Cancel") { close() }.fixedSize().keyboardShortcut(.cancelAction)
                 RoofButton("Save as planned") { go(launch: false, forcePlanned: true) }.fixedSize().disabled(!valid)
-                RoofButton(primaryLabel, .primary) { go(launch: when == .now) }
+                RoofButton(primaryLabel, .primary) { go(launch: when == .now || when == .every) }
                     .fixedSize()
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(!valid || busy)
@@ -533,6 +534,16 @@ struct NewSessionSheet: View {
                 } label: { Text("▾").ui(11).foregroundStyle(t.text2.color) }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             }
+            // A loop (LAB-254): start now, then send the message again every N minutes when the agent waits.
+            Button { when = .every } label: { segment("Every " + Schedule.every(everyMinutes), on: when == .every, inset: 9) }
+                .buttonStyle(.plain)
+                .help("Start now, then send the message again every \(Schedule.every(everyMinutes)), when the agent is waiting (never while it works)")
+            if when == .every {
+                Menu {
+                    ForEach(Schedule.everyChoices, id: \.self) { m in Button("Every " + Schedule.every(m)) { everyMinutes = m } }
+                } label: { Text("▾").ui(11).foregroundStyle(t.text2.color) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            }
             whenButton(.onDemand, "On demand")
         }
         .padding(3)
@@ -549,6 +560,7 @@ struct NewSessionSheet: View {
         case .now: return ticket ? "Create issue, launch ⌘↩" : kind == .workstream ? (linked ? "Create project, launch ⌘↩" : "Plan the project ⌘↩") : "Launch ⌘↩"
         case .next: return ticket ? "Create issue, next ⌘↩" : kind == .workstream && linked ? "Create project, next ⌘↩" : "Save as next ⌘↩"
         case .tonight: return nightly ? "Save for every night ⌘↩" : "Save for tonight ⌘↩"
+        case .every: return "Launch, repeat every \(Schedule.every(everyMinutes)) ⌘↩"
         case .onDemand: return "Save on demand ⌘↩"
         }
     }
@@ -573,7 +585,7 @@ struct NewSessionSheet: View {
         if let k = env["ONEROOF_SELFTEST_KIND"].flatMap(Kind.init(rawValue:)) { kind = k; kindTouched = true }
         if let k = env["ONEROOF_SELFTEST_TEAM"] { teamKey = k }
         if let w = env["ONEROOF_SELFTEST_WHEN"] {
-            when = ["now": When.now, "next": .next, "tonight": .tonight, "ondemand": .onDemand][w] ?? .now
+            when = ["now": When.now, "next": .next, "tonight": .tonight, "every": .every, "ondemand": .onDemand][w] ?? .now
         }
         let dir = Workspace.projectsRoot
         DispatchQueue.global(qos: .userInitiated).async {
@@ -686,6 +698,7 @@ struct NewSessionSheet: View {
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
             model.createPlanned(s, launchNow: launch && !forcePlanned)
             if when == .tonight && !forcePlanned, let i = model.item(s.id) { model.schedule(i, hour: 2, minute: 0, nightly: nightly) }
+            if when == .every && !forcePlanned, let i = model.item(s.id) { model.repeatEvery(i, minutes: everyMinutes) }
             close()
         }
         if let tk = useTicket { makeSession(ticket: tk, w: currentWorkstream); return }

@@ -14,6 +14,8 @@
 - **Steps you can rewind and explain.** The steps list at the top of a pane is capped at six (it scrolls); click a
   step to scroll the terminal back to it and read on, **Back to current** to return, and the magnifier on a step asks
   Claude what was asked, what happened, what was decided and the risks.
+- **Loops.** Repeat a session every 15 min to 4 h (right-click › Repeat, or When › Every): roofd launches it, or
+  sends its message again when the agent waits, never mid-work, even with the app closed.
 - **Paste images into a terminal.** ⌘V with a screenshot or copied image saves it and types its path, so the agent
   attaches it; files copied in Finder paste as full paths; images dragged in from a browser work too.
 - **Linear projects, all of them.** One Roof reads every Linear project (code = the part of the name before " · ",
