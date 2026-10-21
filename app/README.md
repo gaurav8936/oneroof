@@ -203,6 +203,11 @@ compiles no source path and reads its folders from the app's Resources only), an
 The gate (`tools/release-check.sh --app` / `--zip`) fails the run if the app holds a home-folder path, a zig cache
 path, an absolute `.swift` source path or the build machine's hostname, or the zip has `__MACOSX` entries. `ONEROOF_RELEASE_DIR` moves the staging folder.
 
+**A release is finished only when it can be downloaded everywhere.** Merging to `main` builds no app. After the zip:
+publish GitHub release `v<version>` with the zip and its `.sha256` and make it Latest; point every download link in
+`site/` (`index.html`, `assets/site.js`) at `One-Roof-<version>.zip` and ship that to `main`, which republishes the
+Pages site; update any other launch page that links the zip. Then open each page and check that it serves the new file.
+
 ## Layout
 
 | Path | What it is |
