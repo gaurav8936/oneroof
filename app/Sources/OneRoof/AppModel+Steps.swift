@@ -27,6 +27,7 @@ extension AppModel {
 
     /// Ask Claude (headless, no tools, nothing saved) to explain one step; the answer lands in `stepExplanations`.
     func explainStep(_ item: BoardItem, _ chapter: Chapter) {
+        guard settings.stepReview else { return }            // off: no model calls (LAB-260)
         let key = Self.stepKey(item, chapter)
         if case .working? = stepExplanations[key] { return }
         guard let pane = item.paneId else { stepExplanations[key] = .failed("The session is not running."); return }

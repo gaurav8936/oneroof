@@ -244,7 +244,9 @@ final class TerminalAreaController: NSViewController {
         guard let item, let ch = chs.first(where: { $0.index == index }) else { return }
         // The right panel's Step review follows the step (LAB-260), and reads it at once.
         model.reviewStep[item.id] = index
-        if ch.ended != nil, model.stepExplanations[AppModel.stepKey(item, ch)] == nil { model.explainStep(item, ch) }
+        if model.settings.stepReview, ch.ended != nil, model.stepExplanations[AppModel.stepKey(item, ch)] == nil {
+            model.explainStep(item, ch)
+        }
         // Where the step starts, read fresh from the session (the chapter list only covers its last 300 lines).
         let fallback = chs.last.map { max(0, $0.scrollbackRange.upperBound - ch.scrollbackRange.lowerBound) }
         model.stepOffset(item, ch) { [weak self] n in

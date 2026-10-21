@@ -520,59 +520,78 @@ struct StepReviewSection: View {
     let item: BoardItem
 
     var body: some View {
+        let on = model.settings.stepReview
         let chs = (model.chapters[item.id] ?? []).filter { $0.ended != nil }
         let picked = model.reviewStep[item.id].flatMap { i in chs.first { $0.index == i } }
-        if let ch = picked ?? chs.last {
-            let key = AppModel.stepKey(item, ch)
-            let state = model.stepExplanations[key]
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text("Step review").ui(12, .semibold).foregroundStyle(t.text2.color)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("Step review").ui(12, .semibold).foregroundStyle(t.text2.color)
+                if on, !chs.isEmpty {
                     Text(picked == nil ? "latest" : "selected").ui(10.5, .medium).foregroundStyle(t.text3.color)
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(Capsule().fill(t.control.color))
-                    Spacer()
-                    if picked != nil {
-                        Button("Latest") { model.reviewStep[item.id] = nil }.buttonStyle(.plain).ui(11, .medium)
-                            .foregroundStyle(t.accent.color).help("Review the latest finished step")
-                    }
-                    Button { model.explainStep(item, ch) } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold)) }
-                        .buttonStyle(.plain).foregroundStyle(t.text3.color).help("Read this step again")
-                        .disabled(state == .working)
                 }
-                Text("Step \(ch.index + 1) · \(ch.title)").ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(2)
-                Group {
-                    switch state {
-                    case .done(let e)?:
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 10) {
-                                part("What was asked", e.question)
-                                part("What happened", e.happened)
-                                part("Decisions", e.decisions)
-                                part("Risks", e.risks)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.trailing, 6)
-                        }
-                        .frame(height: 230)
-                    case .failed(let why)?:
-                        Text(why).ui(12).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
-                    default:
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("Reading the step…").ui(12).foregroundStyle(t.text2.color)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-                    }
-                }
-                Text("By Claude (\(StepExplainer.model)) from the terminal text. Click a step above the terminal to review it.")
-                    .ui(10.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Toggle("", isOn: $model.settings.stepReview).toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                    .help(on ? "Turn off: no more model calls for step reviews" : "Turn on: Claude reads each step (one model call per step)")
+                    .accessibilityLabel("Step review")
             }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(t.surface.color))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(t.separator.color))
-            .task(id: key) { if model.stepExplanations[key] == nil { model.explainStep(item, ch) } }
+            if !on {
+                // Off by default: say what turning it on costs (owner, LAB-260).
+                Text("Off. Turn it on to have Claude (\(StepExplainer.model)) read each finished step and say what was asked, what happened, the decisions and the risks. Each step it reviews is one more model call on your Claude account, so it is off until you want it.")
+                    .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+            } else if let ch = picked ?? chs.last {
+                reviewBody(ch, picked: picked != nil)
+            } else {
+                Text("No finished step yet.").ui(11.5).foregroundStyle(t.text3.color)
+            }
         }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(t.surface.color))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(t.separator.color))
+    }
+
+    @ViewBuilder private func reviewBody(_ ch: Chapter, picked: Bool) -> some View {
+        let key = AppModel.stepKey(item, ch)
+        let state = model.stepExplanations[key]
+        HStack(spacing: 6) {
+            Text("Step \(ch.index + 1) · \(ch.title)").ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(2)
+            Spacer()
+            if picked {
+                Button("Latest") { model.reviewStep[item.id] = nil }.buttonStyle(.plain).ui(11, .medium)
+                    .foregroundStyle(t.accent.color).help("Review the latest finished step")
+            }
+            Button { model.explainStep(item, ch) } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold)) }
+                .buttonStyle(.plain).foregroundStyle(t.text3.color).help("Read this step again (one more model call)")
+                .disabled(state == .working)
+        }
+        Group {
+            switch state {
+            case .done(let e)?:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        part("What was asked", e.question)
+                        part("What happened", e.happened)
+                        part("Decisions", e.decisions)
+                        part("Risks", e.risks)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 6)
+                }
+                .frame(height: 230)
+            case .failed(let why)?:
+                Text(why).ui(12).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
+            default:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading the step…").ui(12).foregroundStyle(t.text2.color)
+                }
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            }
+        }
+        .task(id: key) { if model.stepExplanations[key] == nil { model.explainStep(item, ch) } }
+        Text("By Claude (\(StepExplainer.model)) from the terminal text, one call per step. Click a step above the terminal to review it.")
+            .ui(10.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
     }
 
     private func part(_ title: String, _ body: String) -> some View {
