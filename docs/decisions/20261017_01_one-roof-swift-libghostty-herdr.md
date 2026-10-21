@@ -1,5 +1,7 @@
 # ADR · One Roof is a new Swift app that draws libghostty terminals on herdr sessions
 
+> **Superseded in part (2026-10-20):** herdr was replaced by roofd in 0.4.0. The Swift app and libghostty terminals stand. See [20261020_01_roofd-replaces-herdr.md](20261020_01_roofd-replaces-herdr.md).
+
 **Status:** ACCEPTED · **Date:** 2026-10-17
 
 > **One line:** One Roof is built new in Swift 6 (AppKit + SwiftUI), uses herdr 0.9.5 unmodified as the session runtime and libghostty from Ghostty v1.3.1 to draw each terminal, and reads each agent's account from its running process.
