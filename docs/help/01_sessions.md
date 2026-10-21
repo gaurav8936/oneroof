@@ -45,7 +45,7 @@ Every session runs in **roofd**, One Roof's own session manager, which ships ins
 
 ## Workspace windows
 
-Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy Attach Command opens a One Roof session from any terminal). Rows started outside One Roof.
+Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Closing any One Roof window (a workspace, a session in its own window, a roof window) first asks **Close …?**: tick **Yes, I'm sure** to enable Close; Cancel or Esc keeps it open. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy Attach Command opens a One Roof session from any terminal). Rows started outside One Roof.
 
 ## The top of the panel
 
