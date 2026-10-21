@@ -75,6 +75,30 @@ final class BoardMergeTests: XCTestCase {
         XCTAssertEqual(later.map(\.starting), [false, false])
     }
 
+    /// LAB-299: roofd lists the session (as a shell) before the agent is in the foreground (the login shell's setup
+    /// runs first). The pane shows its live terminal at once, marked starting, instead of waiting for the agent.
+    func test_LAB299_launchedAgentInShellPhaseIsLiveAndStarting() {
+        let now = Date()
+        var s = Session(name: "new", repoPath: "/p", lifecycle: .idle)
+        s.runtimeId = "roof-7"
+        s.launchedAt = now.addingTimeInterval(-0.5)
+        let snap = RuntimeSnapshot(sessions: [shell("roof-7", pane: "roof-7", group: "g")])
+        let early = Board.merge(stored: [s], snapshot: snap, now: now)
+        XCTAssertEqual(early.count, 1, "not adopted as a second row")
+        XCTAssertEqual(early[0].liveAgent, "roof-7")
+        XCTAssertTrue(early[0].starting)
+        XCTAssertFalse(early[0].ready)
+        XCTAssertEqual(early[0].status, .idle)
+        // The agent is seen: the same terminal, no longer starting.
+        let up = Board.merge(stored: [s], snapshot: RuntimeSnapshot(sessions: [agent("roof-7", "claude", .idle, pane: "roof-7", ready: true)]), now: now)
+        XCTAssertEqual(up[0].liveAgent, "roof-7")
+        XCTAssertFalse(up[0].starting)
+        // Long after the launch, a bare shell means the agent exited (unchanged).
+        let late = Board.merge(stored: [s], snapshot: snap, now: now.addingTimeInterval(60))
+        XCTAssertNil(late[0].liveAgent)
+        XCTAssertEqual(late[0].status, .exited)
+    }
+
     /// Owner 10-20: sessions start at the workspace root, which is not a repo; group by the repo they work in.
     func testRepoComesFromWhereTheAgentWorks() throws {
         let root = Workspace.projectsRoot

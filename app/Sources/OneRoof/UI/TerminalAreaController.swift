@@ -220,6 +220,9 @@ final class TerminalAreaController: NSViewController {
                 }
                 if item.status == .needsYou, let d = model.openDecisions.first(where: { $0.sessionId == item.id }) {
                     pv.setOverlay(AnyView(ApprovalCard(model: model, decision: d).themed(theme).padding(.horizontal, 16).padding(.bottom, 10)))
+                } else if StartingStrip.shows(item) {
+                    // LAB-299: the terminal shows at once; this says the agent is still starting.
+                    pv.setOverlay(AnyView(StartingStrip(item: item).themed(theme)))
                 } else {
                     pv.setOverlay(nil)
                 }

@@ -116,6 +116,56 @@ public final class LinearClient: @unchecked Sendable {
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
     }
 
+    /// Replaces the network in tests (no real Linear calls): returns the status code and body for a request.
+    public var transport: ((URLRequest) throws -> (Int, Data))?
+
+    /// One HTTP request, synchronous (call off the main thread).
+    func send(_ req: URLRequest) throws -> (Int, Data) {
+        if let transport { return try transport(req) }
+        let sem = DispatchSemaphore(value: 0)
+        var result: Result<(Int, Data), Error> = .failure(Failure.api("no response"))
+        URLSession.shared.dataTask(with: req) { d, r, e in
+            if let e { result = .failure(e) } else { result = .success(((r as? HTTPURLResponse)?.statusCode ?? 0, d ?? Data())) }
+            sem.signal()
+        }.resume()
+        sem.wait()
+        return try result.get()
+    }
+
+    /// Upload a file to Linear's storage (LAB-462) and return its asset URL, for `![name](url)` in a description:
+    /// `fileUpload` gives a signed URL and headers, then the bytes go there with a PUT.
+    public func uploadFile(_ data: Data, filename: String, contentType: String) throws -> String {
+        let d = try gql("""
+        mutation($ct: String!, $fn: String!, $size: Int!) {
+          fileUpload(contentType: $ct, filename: $fn, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } }
+        }
+        """, ["ct": contentType, "fn": filename, "size": data.count])
+        guard let f = (d["fileUpload"] as? [String: Any])?["uploadFile"] as? [String: Any],
+              let upload = (f["uploadUrl"] as? String).flatMap(URL.init(string:)), let asset = f["assetUrl"] as? String else {
+            throw Failure.api("fileUpload returned nothing")
+        }
+        var req = URLRequest(url: upload, timeoutInterval: 60)
+        req.httpMethod = "PUT"
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        req.setValue("public, max-age=31536000", forHTTPHeaderField: "Cache-Control")
+        for h in f["headers"] as? [[String: Any]] ?? [] {
+            if let k = h["key"] as? String, let v = h["value"] as? String { req.setValue(v, forHTTPHeaderField: k) }
+        }
+        req.httpBody = data
+        let (code, body) = try send(req)
+        guard (200..<300).contains(code) else { throw Failure.http(code, String(decoding: body, as: UTF8.self)) }
+        return asset
+    }
+
+    /// Upload each image (LAB-462); one that cannot be read or uploaded keeps only its local path.
+    public func uploadImages(_ paths: [String]) -> [ImageAttachments.Upload] {
+        paths.map { p in
+            guard let data = FileManager.default.contents(atPath: p) else { return .init(path: p, url: nil) }
+            let url = try? uploadFile(data, filename: (p as NSString).lastPathComponent, contentType: ImageAttachments.contentType(for: p))
+            return .init(path: p, url: url)
+        }
+    }
+
     /// One GraphQL request (synchronous; call off the main thread).
     public func gql(_ query: String, _ vars: [String: Any] = [:]) throws -> [String: Any] {
         guard let key, !key.isEmpty else { throw Failure.noKey }
@@ -124,14 +174,7 @@ public final class LinearClient: @unchecked Sendable {
         req.setValue(key, forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["query": query, "variables": vars])
-        let sem = DispatchSemaphore(value: 0)
-        var result: Result<(Int, Data), Error> = .failure(Failure.api("no response"))
-        URLSession.shared.dataTask(with: req) { d, r, e in
-            if let e { result = .failure(e) } else { result = .success(((r as? HTTPURLResponse)?.statusCode ?? 0, d ?? Data())) }
-            sem.signal()
-        }.resume()
-        sem.wait()
-        let (code, data) = try result.get()
+        let (code, data) = try send(req)
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         if let errs = json["errors"] as? [[String: Any]], !errs.isEmpty {
             throw Failure.api(errs.compactMap { $0["message"] as? String }.joined(separator: "; "))
