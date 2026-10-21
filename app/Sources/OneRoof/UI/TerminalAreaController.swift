@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 import OneRoofCore
 
-/// Centre panel: live terminals (`herdr agent attach <name>` in libghostty) in split panes, or a
+/// Centre panel: live terminals (`roofd attach <id>` in libghostty) in split panes, or a
 /// placeholder for planned / exited sessions. Each pane shows one session; the focused pane follows the sidebar
 /// selection, and clicking a pane selects its session. Surfaces are cached per agent so switching is instant.
 final class TerminalAreaController: NSViewController {
@@ -230,17 +230,30 @@ final class TerminalAreaController: NSViewController {
         }
     }
 
-    /// Expand a finished chapter: scroll the surface to where it starts (a view over the scrollback).
+    /// Rewind to a step (LAB-259): scroll the surface to where the step starts, a view over the scrollback; the owner
+    /// scrolls on from there. The same step again (or Back to current) returns to the live bottom.
     private func toggleChapter(_ pane: String, _ index: Int, _ item: BoardItem?) {
-        if openChapter[pane] == index { openChapter[pane] = nil; terminalAction("scroll_to_bottom"); update(); return }
-        openChapter[pane] = index
-        let chs = item.flatMap { model.chapters[$0.id] } ?? []
-        if let ch = chs.first(where: { $0.index == index }), let last = chs.last {
-            let fromBottom = max(0, last.scrollbackRange.upperBound - ch.scrollbackRange.lowerBound)
-            terminalAction("scroll_to_bottom")
-            terminalAction("scroll_page_lines:-\(fromBottom)")
+        if openChapter[pane] == index {
+            openChapter[pane] = nil
+            if let item { model.reviewStep[item.id] = nil }
+            terminalAction("scroll_to_bottom"); update(); return
         }
+        openChapter[pane] = index
         update()
+        let chs = item.flatMap { model.chapters[$0.id] } ?? []
+        guard let item, let ch = chs.first(where: { $0.index == index }) else { return }
+        // The right panel's Step review follows the step (LAB-260), and reads it at once.
+        model.reviewStep[item.id] = index
+        if model.settings.stepReview, ch.ended != nil, model.stepExplanations[AppModel.stepKey(item, ch)] == nil {
+            model.explainStep(item, ch)
+        }
+        // Where the step starts, read fresh from the session (the chapter list only covers its last 300 lines).
+        let fallback = chs.last.map { max(0, $0.scrollbackRange.upperBound - ch.scrollbackRange.lowerBound) }
+        model.stepOffset(item, ch) { [weak self] n in
+            guard let self, self.openChapter[pane] == index, let lines = n ?? fallback else { return }
+            self.terminalAction("scroll_to_bottom")
+            self.terminalAction("scroll_page_lines:-\(lines)")
+        }
     }
 
     private func updateColumn(theme: ThemeName) {
@@ -260,10 +273,20 @@ final class TerminalAreaController: NSViewController {
         return agent
     }
 
+    /// When each session's terminal surface was last made (for the retry above).
+    private var surfaceTried: [String: Date] = [:]
+
     private func surface(agent: String, cwd: String, theme: ThemeName) -> TerminalSurfaceView {
-        if let s = surfaces[agent] { return s }
+        if let s = surfaces[agent] {
+            // libghostty cannot make a surface while the screen is locked (no GPU): a session started then (a scheduled
+            // run overnight) had a blank pane for good. Try again, at most every 5 s, until it has one.
+            guard s.surface == nil, Date().timeIntervalSince(surfaceTried[agent] ?? .distantPast) > 5 else { return s }
+            s.removeFromSuperview()
+            surfaces[agent] = nil
+        }
+        surfaceTried[agent] = Date()
         let dir = Workspace.isInsideProjects(cwd) ? cwd : Workspace.projectsRoot
-        let surface = TerminalSurfaceView(command: model.herdr.attachCommand(agent: agent), workingDirectory: dir, theme: theme)
+        let surface = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: theme)
         surface.onSearchTotal = { [weak self] n in self?.find.total = n }
         surface.onSearchSelected = { [weak self] n in self?.find.selected = n }
         surface.onOpenURL = { [weak self] url in self?.openLink(url) }
@@ -356,6 +379,13 @@ final class TerminalAreaController: NSViewController {
     }
 
     /// Text currently on screen in the focused terminal (self-test).
+    /// Self-test probe: what the terminal area shows and holds.
+    func debugState() -> String {
+        "shown=\(shownAgent ?? "-") surfaces=\(surfaces.keys.sorted()) panes=\(tree.leaves.map { $0.session ?? "-" }) " +
+        "sel=\(win.selectedId ?? "-") live=\(model.items.compactMap(\.liveAgent)) popped=\(model.poppedOut.sorted()) " +
+        "hasSurface=\(surfaces.values.map { $0.surface != nil })"
+    }
+
     func visibleText() -> String? {
         guard let agent = shownAgent, let s = surfaces[agent] else { return nil }
         return s.screenText()

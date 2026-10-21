@@ -138,12 +138,14 @@ struct StickerTag: View {
 
     var body: some View {
         let c = t.sticker(sticker.pastel)
+        // Not applied = its colour as an outline, at full strength, so it reads as something to click (LAB-246: the
+        // faint dashed grey looked disabled); applied = filled.
         Text(sticker.label)
             .ui(size, .semibold)
-            .foregroundStyle(filled ? c.ink.color : t.text3.color)
+            .foregroundStyle(c.ink.color)
             .padding(.vertical, 1).padding(.horizontal, 6)
             .background(Capsule().fill(filled ? c.fill.color : .clear))
-            .overlay { if !filled { Capsule().strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [3, 2])) } }
+            .overlay { if !filled { Capsule().strokeBorder(c.ink.color.opacity(0.55), lineWidth: 1) } }
             .lineLimit(1).fixedSize()
             .accessibilityLabel("Sticker " + sticker.label)
     }
@@ -203,11 +205,36 @@ struct StepList: View {
         var state: State
     }
     let steps: [Step]
+    /// Cap (LAB-259): more steps than this scroll inside the list, which keeps showing the current one.
+    var maxVisible: Int?
+    /// The step the terminal is rewound to (highlighted), and what a click on a step does.
+    var selected: Int?
+    var onTap: ((Int) -> Void)?
+    /// Something at the end of a row (the Explain button).
+    var accessory: ((Step) -> AnyView)?
+
+    private static let rowHeight: CGFloat = 25
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        if let cap = maxVisible, steps.count > cap {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) { list.padding(.trailing, 6) }
+                    .frame(height: CGFloat(cap) * Self.rowHeight)
+                    .onAppear { proxy.scrollTo(focus, anchor: .bottom) }
+                    .onChange(of: focus) { _, f in withAnimation(Motion.fast) { proxy.scrollTo(f, anchor: selected == nil ? .bottom : .center) } }
+            }
+        } else {
+            list
+        }
+    }
+
+    /// The row to keep in view: the rewound-to step, else the current one, else the last.
+    private var focus: Int? { selected ?? steps.first { $0.state == .now }?.id ?? steps.last?.id }
+
+    private var list: some View {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(steps) { s in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
                     ZStack {
                         switch s.state {
                         case .done: Circle().fill(t.statusColor(.done).color)
@@ -215,11 +242,20 @@ struct StepList: View {
                         case .todo: Circle().strokeBorder(t.separatorStrong.color, lineWidth: 2)
                         }
                     }
-                    .frame(width: 14, height: 14).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    .frame(width: 14, height: 14)
                     (Text(s.title).foregroundColor(t.text.color) + Text(s.note.map { " · " + $0 } ?? "").foregroundColor(t.text3.color))
-                        .ui(13)
+                        .ui(13).lineLimit(1)
+                    Spacer(minLength: 4)
+                    if let accessory { accessory(s) }
                 }
+                .frame(height: Self.rowHeight)
+                .padding(.horizontal, 4)
+                .background(RoundedRectangle(cornerRadius: 6).fill(selected == s.id ? t.selection.color : .clear))
+                .contentShape(Rectangle())
+                .onTapGesture { onTap?(s.id) }
+                .help(onTap == nil ? "" : (selected == s.id ? "Back to the current step" : "Rewind the terminal to this step"))
                 .accessibilityElement(children: .combine)
+                .id(s.id)
             }
         }
     }
@@ -257,5 +293,35 @@ struct PanelCloseButton: View {
                 .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(t.control.color))
         }
         .buttonStyle(.plain).help("Close the \(title)").accessibilityLabel("Close the \(title)")
+    }
+}
+
+/// A colour choice (LAB-246): big enough to see, outlined so pale pastels still show, and the chosen one gets an
+/// accent ring and a check. `pastel == nil` is "no colour".
+struct ColourSwatch: View {
+    @Environment(\.theme) private var t
+    @Environment(\.colorScheme) private var scheme
+    let pastel: Pastel?
+    var selected = false
+    var size: CGFloat = 22
+    @State private var hover = false
+
+    var body: some View {
+        ZStack {
+            if let p = pastel {
+                Circle().fill(p.fillColor(scheme))
+                Circle().strokeBorder(p.inkColor(scheme).opacity(0.45), lineWidth: 1.5)
+                if selected { Image(systemName: "checkmark").font(.system(size: size * 0.45, weight: .heavy)).foregroundStyle(p.inkColor(scheme)) }
+            } else {
+                Circle().strokeBorder(t.text2.color, lineWidth: 1.5)
+                Image(systemName: selected ? "checkmark" : "slash.circle").font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(t.text2.color)
+            }
+        }
+        .frame(width: size, height: size)
+        .padding(3)
+        .overlay(Circle().strokeBorder(selected ? t.accent.color : (hover ? t.separatorStrong.color : .clear), lineWidth: 2.5))
+        .onHover { hover = $0 }
+        .contentShape(Circle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

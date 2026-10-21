@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 /// Planned and launched sessions, kept in one SQLite file:
-/// ~/Library/Application Support/One Roof/sessions.sqlite. herdr stays the source of truth for what is running.
+/// ~/Library/Application Support/One Roof/sessions.sqlite. roofd is the source of truth for what is running.
 public final class SessionStore: @unchecked Sendable {
     // Internal (not private) so the v2 tables in SessionStoreV2.swift can share the connection and lock.
     var db: OpaquePointer?
@@ -21,6 +21,7 @@ public final class SessionStore: @unchecked Sendable {
         guard sqlite3_open(path, &db) == SQLITE_OK else {
             throw NSError(domain: "SessionStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "cannot open \(path)"])
         }
+        sqlite3_busy_timeout(db, 3000)   // roofd's scheduler writes to the same file (WAL)
         try exec("PRAGMA journal_mode=WAL")
         try exec("CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, json TEXT NOT NULL, updated REAL NOT NULL)")
         try exec("CREATE TABLE IF NOT EXISTS objectives (id TEXT PRIMARY KEY, json TEXT NOT NULL, updated REAL NOT NULL)")

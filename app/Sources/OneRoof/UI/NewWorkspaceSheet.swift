@@ -19,15 +19,12 @@ struct NewWorkspaceSheet: View {
                 .padding(9).background(RoundedRectangle(cornerRadius: Radius.field).fill(t.control.color))
                 .onSubmit(create)
             HStack(spacing: 7) {
-                Text("Colour").ui(12).foregroundStyle(t.text2.color)
-                Button { colour = nil } label: {
-                    Circle().strokeBorder(t.separatorStrong.color, lineWidth: colour == nil ? 2.5 : 1).frame(width: 18, height: 18)
-                }.buttonStyle(.plain).accessibilityLabel("No colour")
+                Text("Colour").ui(12).foregroundStyle(t.text.color)
+                Button { colour = nil } label: { ColourSwatch(pastel: nil, selected: colour == nil, size: 20) }
+                    .buttonStyle(.plain).accessibilityLabel("No colour").help("No colour")
                 ForEach(Sticker.rowColors, id: \.name) { p in
-                    Button { colour = p.name } label: {
-                        Circle().fill(p.lightFill.color).frame(width: 18, height: 18)
-                            .overlay(Circle().strokeBorder(p.lightInk.color, lineWidth: colour == p.name ? 2.5 : 0))
-                    }.buttonStyle(.plain).accessibilityLabel(p.name)
+                    Button { colour = p.name } label: { ColourSwatch(pastel: p, selected: colour == p.name, size: 20) }
+                        .buttonStyle(.plain).accessibilityLabel(p.name).help(p.name.capitalized)
                 }
             }
             HStack {

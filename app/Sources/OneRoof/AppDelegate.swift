@@ -19,7 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Keeps App Nap off: One Roof watches agents from the background (status, decisions, Dock badge, schedules).
+    /// Napped, its timers and run loop were delayed by tens of seconds once its windows were hidden.
+    private var watchActivity: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        watchActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep], reason: "One Roof watches agent sessions")
         if let err = GhosttyRuntime.shared.initError { model.lastError = "Terminal engine: \(err)" }
         NSApp.mainMenu = buildMenu()
         applyShortcuts()
@@ -50,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(model: model)
         launched = true
         if !pendingLinks.isEmpty {
-            // A link that launched the app: give herdr and the store a moment to fill the sidebar first.
+            // A link that launched the app: give roofd and the store a moment to fill the sidebar first.
             let links = pendingLinks; pendingLinks = []
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.application(NSApp, open: links) }
         }
@@ -182,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func copyAttach(_ sender: Any?) {
         guard let a = model.selected?.liveAgent else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(model.herdr.attachCommand(agent: a), forType: .string)
+        NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
     }
     /// ⌘+ ⌘− ⌘0 scale the window's UI type (0.85–1.3, S00.W.2) and the terminal font with it.
     @objc func textBigger(_ sender: Any?) { model.active.setTextScale(model.active.textScale + 0.05); main.terminalArea.terminalAction("increase_font_size:1") }
@@ -225,7 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func scheduleOff(_ sender: Any?) { if let i = model.selected { model.unschedule(i) } }
     @objc func interruptSelected(_ sender: Any?) { if let i = model.selected { model.interrupt(i) } }
     @objc func sendHandoff(_ sender: Any?) { if let i = model.selected { model.askForHandoff(i) } }
-    @objc func copyHerdrId(_ sender: Any?) {
+    @objc func copySessionId(_ sender: Any?) {
         guard let a = model.selected?.liveAgent else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(a, forType: .string)
@@ -272,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             add(d.headline, "Decision · " + (m.item(d.sessionId)?.session.name ?? ""), "hand.raised", "Decision") { m.centre = .decisions }
         }
         add("Board", "Kanban of every session", "rectangle.split.3x1", "View") { m.boardMode = true }
-        add("Work", "Workstreams, roadmap, tickets", "list.bullet.rectangle", "View") { m.workMode = true }
+        add("Work", "Projects, roadmap, tickets", "list.bullet.rectangle", "View") { m.workMode = true }
         add("Learn", "Course, skills, Help, your Learn folders", "graduationcap", "View") { m.learnMode = true }
         add("Foundations", "Startup check, skills, hooks, memory", "checkmark.shield", "View") { [weak self] in self?.showFoundations(nil) }
         add("Settings", "Themes, agents, accounts, foundations", "gearshape", "View") { [weak self] in self?.showSettings(nil) }
@@ -316,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             add(o.title, "Objective · \(o.status.rawValue)", "target", "Objective") { m.objectiveId = o.id }
         }
         for w in m.workstreams where !["completed", "canceled"].contains(w.state) {
-            add(w.name, "Workstream · \(w.stateLabel)", "list.bullet.rectangle", "Workstream") { m.workMode = true }
+            add(w.name, "Project · \(w.stateLabel)", "list.bullet.rectangle", "Project") { m.workMode = true }
         }
         // Files tracked in the selected session's repo (git ls-files), capped.
         let repo = m.selected?.session.repoPath ?? Workspace.projectsRoot
@@ -533,7 +539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(item("Decisions", #selector(showDecisions(_:)), "i"))
         view.addItem(item("Subagents", #selector(showSubagents(_:)), "a", [.command, .shift]))
         view.addItem(item("Learn", #selector(toggleLearn(_:)), "e", [.command, .shift]))
-        view.addItem(item("Work: Workstreams and Roadmap", #selector(toggleWork(_:)), "w", [.command, .shift]))
+        view.addItem(item("Work: Projects and Roadmap", #selector(toggleWork(_:)), "w", [.command, .shift]))
         view.addItem(.separator())
         view.addItem(item("Bigger Text", #selector(textBigger(_:)), "+"))
         view.addItem(item("Smaller Text", #selector(textSmaller(_:)), "-"))
@@ -591,7 +597,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sess.addItem(.separator())
         sess.addItem(item("Open in New Window", #selector(popOut(_:)), ""))
         sess.addItem(item("Open Repo in Finder", #selector(openRepo(_:)), ""))
-        sess.addItem(item("Copy herdr id", #selector(copyHerdrId(_:)), ""))
+        sess.addItem(item("Copy session id", #selector(copySessionId(_:)), ""))
         sess.addItem(item("Copy Working Directory", #selector(copyCwd(_:)), ""))
         sess.addItem(item("Copy Attach Command", #selector(copyAttach(_:)), ""))
         sess.addItem(item("Copy Link to Session", #selector(copyLink(_:)), ""))
@@ -671,7 +677,7 @@ extension AppDelegate: NSMenuItemValidation {
             return model.selected != nil
         case #selector(renameSelected(_:)), #selector(scheduleTonight(_:)), #selector(scheduleNightly(_:)), #selector(scheduleOff(_:)):
             return model.selected != nil
-        case #selector(interruptSelected(_:)), #selector(sendHandoff(_:)), #selector(copyHerdrId(_:)):
+        case #selector(interruptSelected(_:)), #selector(sendHandoff(_:)), #selector(copySessionId(_:)):
             return model.selected?.liveAgent != nil
         case #selector(reviewChanges(_:)):
             return GitDiff.repoRoot(for: model.selected?.session.repoPath ?? Workspace.projectsRoot) != nil

@@ -53,6 +53,11 @@ struct SessionsPanel: View {
                 Hairline()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 1, pinnedViews: [.sectionHeaders]) {
+                        if win.statusFilter == .exited, !model.groups(in: win).isEmpty {
+                            // Exited agents: relaunch one (select it), or clear them all at once.
+                            Button("Remove all exited sessions") { model.removeExited() }
+                                .buttonStyle(.link).ui(12).padding(.horizontal, 8).padding(.vertical, 6)
+                        }
                         ForEach(model.groups(in: win)) { g in
                             Section {
                                 ForEach(g.items) { item in
@@ -60,7 +65,7 @@ struct SessionsPanel: View {
                                 }
                             } header: { groupHeader(g) }
                         }
-                        if model.items(in: win).isEmpty { empty }
+                        if model.groups(in: win).isEmpty { empty }
                     }
                     .padding(.horizontal, 8).padding(.bottom, 8)
                 }
@@ -113,24 +118,25 @@ struct SessionsPanel: View {
 
         private var chips: some View {
             let list = model.items(in: win)
-            return HStack(spacing: 6) {
+            // Two rows of three, so every label reads in full at the panel's width.
+            return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
                 ForEach(StatusChip.allCases, id: \.self) { c in
-                    let n = list.filter { c.statuses.contains($0.status) }.count
-                    let on = win.statusFilter == c
-                    Button { win.statusFilter = on ? nil : c } label: {
+                    let n = list.filter { c.matches($0) }.count
+                    let on = (win.statusFilter ?? .all) == c
+                    Button { win.statusFilter = (on || c == .all) ? nil : c } label: {
                         Text(c.label(n)).ui(11.5, .semibold)
                             .foregroundStyle(c == .needs && n > 0 ? t.pill(.needsYou).text.color : t.text.color)
-                            .lineLimit(2).multilineTextAlignment(.leading).minimumScaleFactor(0.85)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-                            .padding(.horizontal, 7)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
+                            .padding(.horizontal, 6)
                             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(c == .needs && n > 0 ? (t.pill(.needsYou).fill ?? t.surface).color : t.surface.color))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .strokeBorder(on ? t.accent.color : t.separator.color, lineWidth: on ? 1.5 : 1))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(c.label(n) + (on ? ", filtering" : ""))
+                    .help(c.meaning)
+                    .accessibilityLabel(c.label(n).replacingOccurrences(of: "\n", with: " ") + (on ? ", showing" : ""))
                 }
             }
         }
@@ -166,13 +172,21 @@ struct SessionsPanel: View {
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(t.surface2.color))
             .padding(.top, 10).padding(.bottom, 4)
             .background(t.sidebar.color)
+            .help(SessionStatus.allCases.first { $0.label == g.title }?.meaning ?? "")
         }
 
         private var empty: some View {
             VStack(alignment: .leading, spacing: 6) {
-                Text("No sessions in \(win.name)").ui(13, .semibold).foregroundStyle(t.text.color)
-                Text("Press ⌘N for a new session. Agents you start in herdr from anywhere show up in the first window.")
-                    .ui(12).foregroundStyle(t.text2.color)
+                if win.statusFilter != nil || !win.filter.isEmpty {
+                    // The list is filtered, not empty: say so and offer the way back.
+                    Text("Nothing matches the filter").ui(13, .semibold).foregroundStyle(t.text.color)
+                    Button("Show all \(model.items(in: win).count) sessions") { win.statusFilter = nil; win.filter = "" }
+                        .buttonStyle(.link).ui(12)
+                } else {
+                    Text("No sessions in \(win.name)").ui(13, .semibold).foregroundStyle(t.text.color)
+                    Text("Press ⌘N for a new session. Agents you start in a One Roof terminal show up here too.")
+                        .ui(12).foregroundStyle(t.text2.color)
+                }
             }
             .padding(12)
         }
@@ -181,8 +195,8 @@ struct SessionsPanel: View {
 
         private var footer: some View {
             HStack(spacing: 6) {
-                Circle().fill(t.statusColor(model.herdrOK ? .done : .needsYou).color).frame(width: 7, height: 7)
-                Text(model.herdrState).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
+                Circle().fill(t.statusColor(model.runtimeOK ? .done : .needsYou).color).frame(width: 7, height: 7)
+                Text(model.runtimeState).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                 Spacer()
                 Button { NotificationCenter.default.post(name: .openFoundations, object: nil) } label: {
                     let issues = model.foundations.filter { $0.level != .ok }.count
@@ -234,27 +248,58 @@ struct SessionContextMenu: View {
         let it = model.item(item.id) ?? item
         if it.liveAgent == nil && it.status != .doNotUse {
             Button(it.status == .exited ? "Relaunch" : "Launch") { model.launch(it) }
+        } else if it.liveAgent != nil {
+            Button("Open") { model.reveal(it) }
         }
+        // Next = scheduling: "do this one next" (LAB-257). A planned session moves to Next; a live one gets the Next sticker.
         if !it.status.isLive {
             Button(it.status == .next ? "Mark as Planned" : "Mark as Next") { model.setLifecycle(it, it.status == .next ? .planned : .next) }
+        } else {
+            let next = it.session.tags.contains { Sticker.resolve($0).id == "next" }
+            Button(next ? "Not Next" : "Mark as Next") { model.toggleSticker(it, "next") }
         }
         Button(it.status == .doNotUse ? "Use Again" : "Do Not Use") { model.toggleSticker(it, "dnu") }
         Button(it.session.pinned ? "Unpin" : "Pin") { model.togglePin(it) }
+        // Loops (LAB-254): send the session's message again every N minutes while it waits; launch it if it is not running.
+        if it.session.agent.isAgent {
+            let looping = model.scheduleRecords[it.id]?.schedule.interval != nil
+            Menu(looping ? "Repeat (\(model.scheduleRecords[it.id]?.schedule.label ?? ""))" : "Repeat") {
+                if model.loopMessage(it) == nil {
+                    Text("Give it an opening message first (Plan panel)")
+                } else {
+                    ForEach(Schedule.everyChoices, id: \.self) { m in
+                        Button("Every " + Schedule.every(m)) { model.repeatEvery(it, minutes: m) }
+                    }
+                }
+                if looping {
+                    Divider()
+                    Button("Stop Repeating") { model.unschedule(it) }
+                }
+            }
+        }
         Divider()
         Section("Stickers") {
             let ids = Set(it.session.tags.map { Sticker.resolve($0).id })
             let customs = it.session.tags.map(Sticker.resolve).filter { !$0.builtIn }
             ForEach(Sticker.catalog.filter { $0.id != "next" && $0.id != "dnu" } + customs) { s in
-                Toggle(s.label, isOn: Binding(get: { ids.contains(s.id) }, set: { _ in model.toggleSticker(it, s.id) }))
+                Toggle(isOn: Binding(get: { ids.contains(s.id) }, set: { _ in model.toggleSticker(it, s.id) })) {
+                    Label { Text("\(s.label)  ·  \(s.meaning)") } icon: { Image(nsImage: MenuArt.sticker(s)) }
+                }
             }
         }
-        Menu("Colour") {
-            Button("None") { model.setColor(it, nil) }
+        Menu {
+            Toggle(isOn: Binding(get: { Pastel.named(it.session.color) == nil }, set: { _ in model.setColor(it, nil) })) {
+                Label { Text("None") } icon: { Image(nsImage: MenuArt.swatch(nil)) }
+            }
             ForEach(Sticker.rowColors, id: \.name) { p in
-                Toggle(p.name.capitalized, isOn: Binding(get: { Pastel.named(it.session.color) == p }, set: { _ in model.setColor(it, p.name) }))
+                Toggle(isOn: Binding(get: { Pastel.named(it.session.color) == p }, set: { _ in model.setColor(it, p.name) })) {
+                    Label { Text(p.name.capitalized) } icon: { Image(nsImage: MenuArt.swatch(p)) }
+                }
             }
+        } label: {
+            Label { Text("Row Colour") } icon: { Image(nsImage: MenuArt.swatch(Pastel.named(it.session.color))) }
         }
-        if let editStickers { Button("Emoji and New Sticker…") { editStickers() } }
+        if let editStickers { Button("Emoji, New Sticker and Rename…") { editStickers() } }
         Divider()
         Menu("Move to Window") {
             ForEach(model.windows) { w in
@@ -265,13 +310,24 @@ struct SessionContextMenu: View {
         }
         if it.liveAgent != nil {
             Button("Open in New Window") { PopOutWindowController.popOut(it, model: model) }
-            Button("Roof Window for \(it.repoLabel)") { RoofWindowController.show(.repo(it.session.repoPath), model: model) }
+            Button("Roof Window for \(Workspace.repoLabel(for: it.session.repoPath))") { RoofWindowController.show(.repo(it.session.repoPath), model: model) }
         }
         Button("Review Changes") { model.reveal(it); model.openDiff(it.session.repoPath) }
         Button("Terminal Here") { model.newTerminal(in: it.session.repoPath) }
+        Button("Show Folder in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: it.session.repoPath)) }
+        Button("Copy Folder Path") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(it.session.launchDirectory, forType: .string)
+        }
         Button("Copy Link to Session") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(RoofLink.link(session: it.id), forType: .string)
+        }
+        if let a = it.liveAgent {
+            Button("Copy Attach Command") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
+            }
         }
         Divider()
         if it.liveAgent != nil { Button("Close Agent…") { model.confirmClose(it) } }

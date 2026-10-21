@@ -53,7 +53,7 @@ struct WorkView: View {
             }
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(t.secondaryText.color)
-                TextField("Filter workstreams", text: $query).textFieldStyle(.plain).font(.system(size: 12))
+                TextField("Filter projects", text: $query).textFieldStyle(.plain).font(.system(size: 12))
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: 6).fill(t.surface.color))
@@ -117,8 +117,8 @@ struct WorkView: View {
     private var empty: some View {
         VStack(spacing: 10) {
             Image(systemName: "square.stack.3d.up").font(.system(size: 34)).foregroundStyle(t.secondaryText.color)
-            Text("Pick a workstream to see its roadmap, tickets and sessions").font(.system(size: 13)).foregroundStyle(t.secondaryText.color)
-            Text("New work starts with New item: One Roof asks whether it is a workstream, a ticket, a defect or just a session before creating anything.")
+            Text("Pick a project to see its roadmap, tickets and sessions").font(.system(size: 13)).foregroundStyle(t.secondaryText.color)
+            Text("New work starts with New item: One Roof asks whether it is a project, a ticket, a defect or just a session before creating anything.")
                 .font(.system(size: 11.5)).foregroundStyle(t.secondaryText.color).multilineTextAlignment(.center).frame(maxWidth: 420)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -326,7 +326,7 @@ struct IntakeSheet: View {
             } label: { Label("What is it?", systemImage: "questionmark.circle") }
 
             if kind.isTicket {
-                Picker("Workstream", selection: $workstream) {
+                Picker("Project", selection: $workstream) {
                     Text("Choose…").tag("")
                     ForEach(Intake.rankWorkstreams(title + " " + details, model.workstreams.filter { !["completed", "canceled"].contains($0.state) })) {
                         Text($0.name).tag($0.id)
@@ -385,7 +385,7 @@ struct IntakeSheet: View {
 
     private var primaryTitle: String {
         switch kind {
-        case .workstream: return "Plan the workstream"
+        case .workstream: return "Plan the project"
         case .session: return "Plan the session"
         default: return "Create ticket"
         }
@@ -394,11 +394,11 @@ struct IntakeSheet: View {
     private var summary: String {
         switch kind {
         case .workstream:
-            return "One Roof plans a Claude session that opens the workstream the workspace way: WS id, tracker pane, docs README, Linear project and phases. Nothing is created until that session runs."
+            return "One Roof plans a Claude session that opens the project the workspace way: project code, docs README, Linear project and milestones. Nothing is created until that session runs."
         case .session:
             return "A planned session only. No ticket, nothing in Linear or the tracker."
         default:
-            return "Creates a \(kind.rawValue) ticket in \(ws?.wsId ?? "the chosen workstream")\(milestone.isEmpty ? "" : ", in that phase") on Linear" + (planIt ? ", and a planned session linked to it (launching it moves the ticket to In Progress)." : ".")
+            return "Creates a \(kind.rawValue) ticket in \(ws?.wsId ?? "the chosen project")\(milestone.isEmpty ? "" : ", in that phase") on Linear" + (planIt ? ", and a planned session linked to it (launching it moves the ticket to In Progress)." : ".")
         }
     }
 

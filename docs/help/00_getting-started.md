@@ -1,6 +1,6 @@
 # One Roof help: getting started
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** install One Roof, finish the first-run setup, and have your first agent session running in about five minutes; this page is also the index of every help page.
 
@@ -10,11 +10,11 @@
 
 1. **Download** `One-Roof-<version>.zip` from the project's Releases page, unzip it, and move **One Roof.app** to Applications.
 2. **Open it.** The app is signed with an Apple Developer ID and notarized by Apple, so it opens like any other app (macOS asks once to confirm it came from the internet).
-3. **Or build from source:** see the [app README](../../app/README.md).
+3. **First launch:** macOS shows "One Roof added a background item". That is roofd, which keeps your sessions running when One Roof is closed; leave it on in System Settings › General › Login Items.
+4. **Or build from source:** see the [app README](../../app/README.md).
 
 You also need:
 
-- **herdr**, the small server that keeps your agents' terminals alive: `brew install herdr`. On macOS 15 or later this installs a ready-made package; on macOS 14 Homebrew builds it from source first, which takes a few minutes. One Roof starts the herdr server itself if it is not running.
 - **At least one agent CLI, installed and signed in:** `claude` (Claude Code), `codex`, `kimi`, `gemini` (Gemini CLI) or `agy` (Antigravity). Sign in once from any terminal before you start.
 - **Optional:** `brew install llama.cpp` for the small on-device routing model ([Seats and routing](07_seats-router-and-on-device-model.md)).
 
@@ -34,7 +34,7 @@ On a fresh install One Roof opens a setup window. You can open it again any time
 
 ## What One Roof is
 
-One Roof is a Mac app that holds all your coding agents in one window. Each session is a real command-line agent (Claude, Codex, Kimi, Gemini CLI, Antigravity) or a plain shell. The agents run inside herdr; One Roof draws their terminals and shows each session's status, agent, account, repo and workstream. Quit One Roof and the agents keep running. Open it again and they are all still there.
+One Roof is a Mac app that holds all your coding agents in one window. Each session is a real command-line agent (Claude, Codex, Kimi, Gemini CLI, Antigravity) or a plain shell. The agents run inside roofd, One Roof's own session manager; One Roof draws their terminals and shows each session's status, agent, account, repo and project. Quit One Roof and the agents keep running. Open it again and they are all still there.
 
 - **Sessions panel (left):** every session in this window, live, grouped for you.
 - **Centre:** the selected session's terminal, split into panes if you like, or one of the full views: Overview, Board, Decisions, Work, Learn, an objective, a file, or the review panel.
@@ -44,7 +44,7 @@ One Roof is a Mac app that holds all your coding agents in one window. Each sess
 
 ## The startup check
 
-Every time One Roof starts it checks that your agents are ready: herdr, logins, skills, the launch folder and more. The pill at the bottom of the sessions panel shows the result. Click it for details and Fix buttons ([Foundations](06_foundations.md)).
+Every time One Roof starts it checks that your agents are ready: roofd, logins, skills, the launch folder and more. The pill at the bottom of the sessions panel shows the result. Click it for details and Fix buttons ([Foundations](06_foundations.md)).
 
 If something is red, launching an agent asks you to choose: **Open Foundations**, **Launch anyway** (lasts until you quit) or **Cancel**.
 
@@ -52,7 +52,7 @@ If something is red, launching an agent asks you to choose: **Open Foundations**
 
 1. Press **⌘N** (File › New Session…).
 2. In **What should happen**, type what you want done, for example `Add a dark mode toggle to settings`.
-3. Leave the kind on **Just a session**.
+3. Leave **Issue ▾** on **No issue** (or pick the Linear issue the session should work on).
 4. Pick an **agent card** (for example Claude1), the **Repo** (for example `acme/web`) and, if you like, a **Model**.
 5. Check the **Opening message**: the first prompt. One Roof sends it once the agent is ready, never while it is busy.
 6. Leave **When** on **Now** and press **Launch** (⌘↩). The row shows Working, the terminal appears in the centre, and the opening message arrives a moment later.
@@ -63,7 +63,7 @@ Agents start in your projects folder, so they all share one memory and one set o
 ## Also from the command line
 
 - **Startup check:** `"/Applications/One Roof.app/Contents/MacOS/OneRoof" --check` prints the same check (exit 1 on red).
-- **Linear connection:** `… OneRoof --linear` prints how many workstreams it found.
+- **Linear connection:** `… OneRoof --linear` prints your Linear teams and how many projects it found, with each project's code.
 - **Routing:** `… OneRoof --route "<task>"` prints the kind of task and the agent the router would pick, with its reason.
 
 ## Every help page
@@ -71,7 +71,7 @@ Agents start in your projects folder, so they all share one memory and one set o
 | Page | What it covers |
 |---|---|
 | [Sessions](01_sessions.md) | The sessions panel: states, stickers, colours, pins, rename, the session menu, the plan panel, pop-out windows |
-| [New session](02_planning-a-session.md) | The New session sheet: kinds, agent cards, models, roles, resuming a conversation, the start folder, When |
+| [New session](02_planning-a-session.md) | The New session sheet: team, project and issue pickers, agent cards, models, roles, resuming a conversation, the start folder, When |
 | [Objectives](03_objectives.md) | Write an objective, watch the planner, edit and approve the plan, follow the run |
 | [Work and tickets](04_work-and-tickets.md) | The Work view, New work item, tickets and sessions both ways (needs Linear) |
 | [Overview, Board, palette and shortcuts](05_launchpad-board-palette-and-shortcuts.md) | The overview pages, the command palette and a table of every keyboard shortcut |
@@ -80,6 +80,6 @@ Agents start in your projects folder, so they all share one memory and one set o
 | [Themes, layout, viewer and find](08_themes-layout-viewer-and-find.md) | Themes per panel, opening and closing panels, file browser, viewer, find, links, text size |
 | [Learn](09_learn.md) | The course, the skills and your own Learn folders inside One Roof; How do I…?; the player |
 | [Review, split panes and session rows](10_review-split-panes-and-session-rows.md) | Review changes, split panes, branch and diff on rows, the unread dot, reopen a closed session |
-| [Roof windows](11_roof-windows.md) | Every live session of one repo or workstream in its own window |
+| [Roof windows](11_roof-windows.md) | Every live session of one repo or project in its own window |
 
 The Help menu inside One Roof opens these pages (One Roof Help), How Do I…?, the keyboard shortcuts, the release notes and the README.

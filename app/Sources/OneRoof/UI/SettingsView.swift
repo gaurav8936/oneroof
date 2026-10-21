@@ -29,10 +29,10 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Show sessions that need you on the Dock icon", isOn: $model.settings.dockBadge)
             Toggle("Check the foundations every time One Roof starts", isOn: $model.settings.startupCheck)
-            Text("Checks herdr, agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
+            Text("Checks roofd (the session manager), agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
                 .font(.caption).foregroundStyle(.secondary)
-            LabeledContent("herdr") {
-                Text(model.herdrState).foregroundStyle(model.herdrOK ? .green : .red)
+            LabeledContent("Sessions") {
+                Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .green : .red)
             }
         }
         .formStyle(.grouped)
@@ -99,6 +99,9 @@ struct SettingsView: View {
         Form {
             Toggle("Use the on-device model for captions and reasons", isOn: $model.settings.captionsModel)
             Text("When llama-server runs on 127.0.0.1:\(LocalModel.port), One Roof asks it for one-line captions. Off, or when it is not running, captions come from the terminal (tool calls, test counts, prompts). Nothing leaves this Mac.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Step review: Claude reads each finished step", isOn: $model.settings.stepReview)
+            Text("Shown in the Plan panel (also switched there). Each step it reviews is one Claude (\(StepExplainer.model)) call on your Claude account, so it is off by default.")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Allow scheduled runs (Tonight, Nightly)", isOn: $model.settings.scheduledRuns)
             Text("Installs a launchd agent (com.oneroof.scheduler) that starts scheduled sessions; nothing is merged or committed on its own.")

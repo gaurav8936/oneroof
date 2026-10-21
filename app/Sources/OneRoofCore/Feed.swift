@@ -79,7 +79,7 @@ public struct FeedBuffer: Sendable {
     public mutating func removeAll(session: String) { events.removeAll { $0.sessionId == session } }
 }
 
-/// Feed events from hard signals: herdr status changes, plan steps, subagents, rotation, schedule runs.
+/// Feed events from hard signals: runtime status changes, plan steps, subagents, rotation, schedule runs.
 public enum FeedSignals {
     /// A status change → events. Blocked is not here: it becomes a Decision.
     public static func statusChange(from old: SessionStatus?, to new: SessionStatus, sessionId: String, name: String,

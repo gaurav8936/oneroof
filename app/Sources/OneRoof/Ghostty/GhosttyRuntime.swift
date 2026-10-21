@@ -164,7 +164,7 @@ final class GhosttyRuntime {
     private static func readClipboard(_ userdata: UnsafeMutableRawPointer?, location: ghostty_clipboard_e, state: UnsafeMutableRawPointer?) -> Bool {
         guard location == GHOSTTY_CLIPBOARD_STANDARD,
               let view = view(from: userdata), let surface = view.surface,
-              let str = NSPasteboard.general.string(forType: .string) else { return false }
+              let str = TerminalMouse.pasteText(from: .general) else { return false }
         str.withCString { ghostty_surface_complete_clipboard_request(surface, $0, state, false) }
         return true
     }

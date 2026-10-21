@@ -151,8 +151,8 @@ struct SkillsTab: View {
 
     private func insert(_ s: Foundations.SkillInfo) {
         guard let pane = model.selected?.paneId else { return }
-        let herdrPath = model.herdr.herdrPath
-        DispatchQueue.global().async { _ = Foundations.run(herdrPath, ["pane", "send-text", pane, "/\(s.name) "], timeout: 5) }
+        let r = model.runtime
+        DispatchQueue.global().async { try? r.type(pane: pane, text: "/\(s.name) ") }
     }
 }
 
@@ -207,7 +207,7 @@ struct MemoryTab: View {
     var body: some View {
         HSplitView {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Latest handoff per workstream").font(.system(size: 13, weight: .bold))
+                Text("Latest handoff per project").font(.system(size: 13, weight: .bold))
                 List(handoffs) { f in
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {

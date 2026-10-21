@@ -1,6 +1,6 @@
 # One Roof help: Foundations and the startup check
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** at every launch One Roof checks that each agent can see the same rules, skills, hooks, memory and logins, by reading them where they live and running their own check scripts; this page says what each check means, why it matters and how to fix it, and covers Settings › Foundations.
 
@@ -20,13 +20,14 @@ Every agent you start should see the same rules, skills, hooks and memory. If a 
 
 ## What red does
 
-Launching an agent while a check is red shows a choice: **Open Foundations**, **Launch anyway** (until One Roof quits) or **Cancel**. Running objectives pause with a message. Amber never blocks.
+Launching an agent while a check is red shows a choice: **Open Foundations**, **Launch anyway** (until One Roof quits) or **Cancel**. One Roof runs the check again first, and when every red check has a fix it offers **Fix and launch**, which runs the fixes and then launches. Running objectives pause with a message. Amber never blocks.
 
 ## Each check
 
 | Check | Why it matters | Red or amber when | How to fix |
 |---|---|---|---|
-| herdr | Every session runs in the herdr server. | Red: the server does not answer at `~/.config/herdr/herdr.sock`. Amber: an unexpected protocol version. | Fix runs `herdr server`. Install it with `brew install herdr`. |
+| roofd | Every session runs in roofd, One Roof's session manager, which ships inside the app. | Red: roofd does not answer and cannot be started. Amber: an unexpected protocol version. | One Roof starts it on its own; Fix starts it again. |
+| roofd background item | macOS starts roofd at login and restarts it if it stops (System Settings › General › Login Items › One Roof). | Amber: waiting for your approval in Login Items, or not registered; One Roof then starts roofd itself while it runs. | Fix opens Login Items. |
 | Memory pin | Claude keys its memory on the launch folder. The pin makes every Claude session share one memory, the one for your projects folder. | Red: `autoMemoryDirectory` is missing from `~/.claude/settings.json`, or points elsewhere. Amber: `MEMORY.md` is missing, or over 200 lines (only the first 200 load). | Run `roof install` from the kit, or set `autoMemoryDirectory` yourself. Trim the index. |
 | Launch-folder guard | A Claude hook stops prompts while a session is outside your projects folder. | Red: no `UserPromptSubmit` hook in `~/.claude/settings.json`. | Run `roof install` from the kit, or add your own hook. |
 | Hooks | Each Claude hook points at a script. | Amber: a hook's script file is missing. | Restore the script (its name is in the detail line). |
@@ -45,7 +46,7 @@ Launching an agent while a check is red shows a choice: **Open Foundations**, **
 
 - **Skills:** every skill in your agentic engineering folder, searchable, with its group and description and which agent skill folders have it (CL, CO, KI, GM). Per skill: type `/name` into the selected session (not sent), open its `SKILL.md`, or open it in Learn.
 - **Hooks & rules:** the rules every agent reads, and every Claude hook with its event, matcher and script. Codex, Kimi and Antigravity have no hooks; the kit reaches them through PATH stand-ins and the doors.
-- **Memory:** the latest handoff per workstream from `docs/next-session-handoff/` in your shared folder (**Resume** plans a Claude session that reads it and continues), recent gotchas from `docs/gotchas/`, and `MEMORY.md`. Empty when you have no shared folder.
+- **Memory:** **Latest handoff per project** from `docs/next-session-handoff/` in your shared folder (**Resume** plans a Claude session that reads it and continues), recent gotchas from `docs/gotchas/`, and `MEMORY.md`. Empty when you have no shared folder.
 
 ## Settings › Foundations
 

@@ -3,7 +3,7 @@ import Foundation
 /// `oneroof://` links, so a doc, a Slack message or a Knowledge page can point into One Roof.
 /// A link can select, show or plan, never launch an agent or run anything (links can come from anywhere).
 ///
-///   oneroof://session/<id | name | herdr agent>      select that session
+///   oneroof://session/<id | name | roofd id>       select that session
 ///   oneroof://objective/<id | title>                 open the objective
 ///   oneroof://view/<terminals|launchpad|board|work|learn|review|search>[?q=text]
 ///   oneroof://open?path=<absolute path in ~/Projects>[&line=N]   show a file in the viewer

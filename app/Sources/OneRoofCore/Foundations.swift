@@ -71,9 +71,9 @@ public enum Foundations {
 
     // MARK: Checks
 
-    public static func runAll(_ p: FoundationPaths = FoundationPaths(), herdr: HerdrClient? = nil) -> [CheckResult] {
+    public static func runAll(_ p: FoundationPaths = FoundationPaths(), runtime: SessionRuntime? = nil) -> [CheckResult] {
         var out: [CheckResult] = []
-        out.append(herdrCheck(herdr))
+        out.append(runtimeCheck(runtime))
         out.append(contentsOf: claudeSettingsChecks(p))
         out.append(doorsCheck(p))
         out.append(skillsCheck(p))
@@ -95,19 +95,12 @@ public enum Foundations {
         }
     }
 
-    public static func herdrCheck(_ h: HerdrClient?) -> CheckResult {
-        guard let h else { return CheckResult(id: "herdr", title: "herdr", level: .warn, detail: "not checked") }
-        guard let proto = h.ping() else {
-            return CheckResult(id: "herdr", title: "herdr", level: .fail, detail: "server not reachable at ~/.config/herdr/herdr.sock",
-                               fix: "herdr server")
-        }
-        let v = "running · protocol \(proto)" + (proto == 22 ? "" : " (One Roof was built for 22)")
-        let leaks = h.serverLeaks()
-        if !leaks.isEmpty {
-            return CheckResult(id: "herdr", title: "herdr", level: .warn,
-                               detail: "\(v) · server carries \(leaks.keys.sorted().joined(separator: ", ")): One Roof restarts it when no agents run")
-        }
-        return CheckResult(id: "herdr", title: "herdr", level: proto == 22 ? .ok : .warn, detail: v)
+    /// The session runtime row (roofd).
+    public static func runtimeCheck(_ r: SessionRuntime?) -> CheckResult {
+        let title = r?.kind.displayName ?? "roofd"
+        guard let r else { return CheckResult(id: "roofd", title: title, level: .warn, detail: "not checked") }
+        let h = r.health()
+        return CheckResult(id: "roofd", title: title, level: h.level, detail: h.detail, fix: h.fix)
     }
 
     /// Memory pin, launch-folder hook and the hooks' scripts, from ~/.claude/settings.json (shared by both Claude homes).
@@ -253,17 +246,13 @@ public enum Foundations {
         return out
     }
 
-    /// Tools One Roof itself needs: herdr (runs every session) and git (diffs, branches, review). `run` is injectable
+    /// Tools One Roof itself needs: git (diffs, branches, review); roofd ships inside the app. `run` is injectable
     /// for tests. Missing tools are reported, never blocking.
     public static func requiredTools(home: String = NSHomeDirectory(),
                                      installed: (String) -> Bool = { AccountResolver.installed($0) },
                                      run: (String, [String]) -> Int32 = { Foundations.run($0, $1, timeout: 10).0 }) -> [CheckResult] {
-        let herdr = installed("herdr")
         let git = run("/usr/bin/git", ["--version"]) == 0
         return [
-            CheckResult(id: "tool-herdr", title: "herdr", level: herdr ? .ok : .fail,
-                        detail: herdr ? "found" : "not found: sessions need herdr. Install with `brew install herdr`",
-                        fix: herdr ? nil : "brew install herdr"),
             CheckResult(id: "tool-git", title: "git", level: git ? .ok : .fail,
                         detail: git ? "found" : "not working: install the Xcode Command Line Tools: `xcode-select --install`",
                         fix: git ? nil : "xcode-select --install"),

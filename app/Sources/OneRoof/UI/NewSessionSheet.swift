@@ -3,7 +3,7 @@ import OneRoofCore
 
 /// New work (⌘N): what it is (intake), what should happen, duplicate check, agent and account with the router's
 /// suggestion, model · repo · start folder, done when + opening message, Advanced (args, resume, role), and when.
-/// The launch path is v0.1's: herdr workspace in the start folder with the account's environment → agent.start →
+/// The launch path: a roofd session in the start folder with the account's environment, the agent started through the login shell →
 /// opening message once the agent is ready and idle.
 struct NewSessionSheet: View {
     @Environment(\.theme) private var t
@@ -12,13 +12,17 @@ struct NewSessionSheet: View {
     var close: () -> Void
 
     enum Kind: String, CaseIterable { case session, ticket, defect, workstream }
-    enum When: String, CaseIterable { case now, next, tonight, onDemand }
+    enum When: String, CaseIterable { case now, next, tonight, every, onDemand }
 
     @State private var kind: Kind = .session
     @State private var ticketType: WorkKind = .deliverable
     @State private var kindTouched = false
     @State private var text = ""
     @State private var wsId = ""
+    @State private var teamKey = ""
+    @State private var projectCode = ""
+    @State private var milestonesText = ""
+    @State private var textForIssue = ""
     @State private var useTicket: LinearIssue?
     @State private var mark: AgentMark = .claude1
     @State private var modelName = ""
@@ -35,6 +39,7 @@ struct NewSessionSheet: View {
     @State private var conversations: [Conversation] = []
     @State private var when: When = .now
     @State private var nightly = false
+    @State private var everyMinutes = 60
     @State private var suggestion: RouteSuggestion?
     @State private var suggestedMark: AgentMark?
     @State private var busy = false
@@ -50,18 +55,23 @@ struct NewSessionSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             section {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("New work").ui(20, .semibold).foregroundStyle(t.text.color)
+                    Text("New session").ui(20, .semibold).foregroundStyle(t.text.color)
                     Text("in \(win.name)").ui(13).foregroundStyle(t.text3.color)
                     Spacer()
                 }
-                HStack(spacing: 10) {
-                    kindPicker
-                    Spacer()
-                    if kind == .ticket || kind == .defect { workstreamPicker }
+                // A session first (owner 10-20, LAB-242): optionally in a team, project and issue picked from what
+                // exists; a new issue or project is the last item of its menu, not a mode of the sheet.
+                if linked {
+                    HStack(spacing: 14) {
+                        teamPicker
+                        workstreamPicker
+                        issuePicker
+                        Spacer(minLength: 0)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("What should happen").ui(12, .semibold).foregroundStyle(t.text.color)
-                    TextField("", text: $text, prompt: Text("e.g. Help search returns results as you type"))
+                    TextField("", text: $text, prompt: Text(textForIssue.isEmpty ? "e.g. Help search returns results as you type" : textForIssue))
                         .textFieldStyle(.plain).ui(15).focused($textFocused)
                         .padding(.horizontal, 12).frame(height: 40)
                         .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.surface.color))
@@ -70,6 +80,7 @@ struct NewSessionSheet: View {
                         .onChange(of: text) { _, v in textChanged(v) }
                 }
                 if let d = duplicate { duplicateBanner(d) }
+                if kind == .workstream && linked { projectFields }
             }
             Hairline()
             section {
@@ -92,9 +103,9 @@ struct NewSessionSheet: View {
                     if mark != .shell { labelled("Model") { modelMenu } }
                     labelled("Repo") { repoMenu }
                     labelled("Start in") { startIn }
-                    if kind == .session {
-                        labelled("Workstream") {
-                            TextField("WS-…", text: $wsText).textFieldStyle(.plain).ui(13, mono: true)
+                    if kind == .session && !linked {
+                        labelled("Project") {
+                            TextField("CODE-…", text: $wsText).textFieldStyle(.plain).ui(13, mono: true)
                                 .padding(.horizontal, 10).frame(height: 30)
                                 .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.card.color))
                         }
@@ -113,15 +124,17 @@ struct NewSessionSheet: View {
             }
             Hairline()
             HStack(spacing: 10) {
-                Text("When").ui(12, .semibold).foregroundStyle(t.text.color)
+                Text("When").ui(12, .semibold).foregroundStyle(t.text.color).fixedSize()
                 whenPicker
-                if let error { Text(error).ui(12).foregroundStyle(t.needsText.color).lineLimit(2) }
-                else if let why = blockedReason { Text(why).ui(12).foregroundStyle(t.needsText.color).lineLimit(2) }
+                // Messages wrap inside their own space, so the bottom row never widens the sheet (LAB-243).
+                if let error { Text(error).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
+                else if let why = blockedReason { Text(why).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
                 Spacer()
                 if busy { ProgressView().controlSize(.small) }
-                RoofButton("Cancel") { close() }.keyboardShortcut(.cancelAction)
-                RoofButton("Save as planned") { go(launch: false, forcePlanned: true) }.disabled(!valid)
-                RoofButton(primaryLabel, .primary) { go(launch: when == .now) }
+                RoofButton("Cancel") { close() }.fixedSize().keyboardShortcut(.cancelAction)
+                RoofButton("Save as planned") { go(launch: false, forcePlanned: true) }.fixedSize().disabled(!valid)
+                RoofButton(primaryLabel, .primary) { go(launch: when == .now || when == .every) }
+                    .fixedSize()
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(!valid || busy)
             }
@@ -147,86 +160,191 @@ struct NewSessionSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var kindPicker: some View {
-        HStack(spacing: 2) {
-            kindButton(.session, "Just a session")
-            Button { kind = .ticket; kindTouched = true; refreshOpening() } label: {
-                segment("Ticket · \(ticketType.rawValue)", on: kind == .ticket)
-            }
-            .buttonStyle(.plain)
-            .contextMenu { ticketTypes }
-            if kind == .ticket {
-                Menu { ticketTypes } label: { Text("▾").ui(11).foregroundStyle(t.text2.color) }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .accessibilityLabel("Ticket type")
-            }
-            kindButton(.defect, "Defect")
-            kindButton(.workstream, "Workstream")
-        }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.control.color))
-    }
-
-    @ViewBuilder private var ticketTypes: some View {
-        ForEach([WorkKind.deliverable, .spike, .decision, .chore], id: \.self) { k in
-            Button(k.rawValue.capitalized) { ticketType = k; kind = .ticket; kindTouched = true; refreshOpening() }
-        }
-    }
-
-    private func kindButton(_ k: Kind, _ label: String) -> some View {
-        Button { kind = k; kindTouched = true; refreshOpening() } label: { segment(label, on: kind == k) }.buttonStyle(.plain)
-    }
-
-    private func segment(_ label: String, on: Bool) -> some View {
+    private func segment(_ label: String, on: Bool, inset: CGFloat = 14) -> some View {
         Text(label).ui(13, on ? .semibold : .medium).foregroundStyle(on ? t.text.color : t.text2.color)
-            .padding(.vertical, 6).padding(.horizontal, 14)
+            .lineLimit(1).fixedSize()
+            .padding(.vertical, 6).padding(.horizontal, inset)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(on ? t.surface.color : .clear)
                 .shadow(color: on ? .black.opacity(0.1) : .clear, radius: 1, y: 1))
             .contentShape(Rectangle())
     }
 
+    /// Linear is connected: Team and Project come from it (LAB-236/237).
+    private var linked: Bool { model.linear.hasKey }
+    private var needsTeam: Bool { kind != .session && useTicket == nil }
+
+    /// Open projects, in the picked team (LAB-237), best match for the text first.
     private var openWorkstreams: [LinearWorkstream] {
-        Intake.rankWorkstreams(text, model.workstreams.filter { !["completed", "canceled"].contains($0.state) })
+        Intake.rankWorkstreams(text, model.workstreams.filter {
+            !["completed", "canceled"].contains($0.state) && (teamKey.isEmpty || $0.team == teamKey)
+        })
+    }
+
+    /// One Text (a borderless Menu draws only the first view of an HStack label, so the ▾ went missing).
+    private func pickerLabel(_ title: String, _ value: String, warn: Bool) -> some View {
+        (Text(title + "  ").foregroundColor(t.text2.color) + Text(value).foregroundColor(warn ? t.needsText.color : t.text.color)
+         + Text("  ▾").foregroundColor(t.text2.color))
+            .ui(12.5, .medium).lineLimit(1).truncationMode(.middle)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(warn ? t.needsText.color : .clear, lineWidth: 1))
+    }
+
+    private var currentTeam: LinearTeamRef? { model.linearTeams.first { $0.key == teamKey } }
+
+    /// Team first (LAB-237): a ticket or project always has one; a plain session may have none.
+    private var teamPicker: some View {
+        Menu {
+            if kind == .session { Button("No team") { pickTeam("") } }
+            ForEach(model.linearTeams) { tm in Button("\(tm.key) · \(tm.name)") { pickTeam(tm.key) } }
+        } label: {
+            pickerLabel("Team", currentTeam.map { "\($0.key) · \($0.name)" }
+                        ?? (model.linearLoading ? "Loading teams…" : kind == .session ? "No team" : "Pick a team"),
+                        warn: needsTeam && teamKey.isEmpty)
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 170, alignment: .leading)
+        .accessibilityLabel("Team")
     }
 
     private var workstreamPicker: some View {
         Menu {
-            ForEach(openWorkstreams) { w in Button("\(w.wsId ?? "") · \(w.title)") { pickWorkstream(w) } }
-        } label: {
-            HStack(spacing: 4) {
-                Text(currentWorkstream.map { "\($0.wsId ?? "") · \($0.title)" } ?? (model.linearLoading ? "Loading workstreams…" : "Pick a workstream"))
-                    .ui(12.5, .medium).foregroundStyle(currentWorkstream == nil ? t.needsText.color : t.text.color).lineLimit(1)
-                Text("▾").ui(10).foregroundStyle(t.text2.color)
+            if linked { Button("No project") { wsId = ""; useTicket = nil; if kind == .workstream { kind = .session }; refreshOpening() } }
+            ForEach(openWorkstreams) { w in Button(Self.short("\(w.wsId ?? "") · \(w.title)")) { pickWorkstream(w) } }
+            if linked {
+                Divider()
+                Button("New project…") { wsId = ""; useTicket = nil; kind = .workstream; kindTouched = true; refreshOpening() }
             }
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(currentWorkstream == nil ? t.needsText.color : .clear, lineWidth: 1))
-            .frame(maxWidth: 300)
+        } label: {
+            pickerLabel("Project", kind == .workstream ? "New project" : currentWorkstream.map { "\($0.wsId ?? "") · \($0.title)" }
+                        ?? (model.linearLoading ? "Loading projects…" : linked ? "No project" : "Pick a project"),
+                        warn: !linked && currentWorkstream == nil)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 290, alignment: .leading)
+        .accessibilityLabel("Project")
+    }
+
+    /// Menu items stay narrow (LAB-245): long titles end in "…".
+    static func short(_ s: String, max: Int = 64) -> String {
+        s.count <= max ? s : String(s.prefix(max - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    /// The project's open issues, newest first.
+    private var openIssues: [LinearIssue] {
+        guard let w = currentWorkstream else { return [] }
+        return (model.issues[w.id] ?? []).filter { !["completed", "canceled"].contains($0.stateType) }.reversed()
+    }
+
+    private var issueLabel: String {
+        if let tk = useTicket { return "\(tk.identifier) · \(tk.shortTitle)" }
+        if kind == .defect { return "New bug" }
+        if kind == .ticket { return "New " + (ticketType.labelNames.first ?? "issue").lowercased() }
+        return "No issue"
+    }
+
+    /// Issue: none, an existing one (the session works on it), or a new one as the last item (LAB-242).
+    private var issuePicker: some View {
+        Menu {
+            Button("No issue") { useTicket = nil; kind = .session; refreshOpening() }
+            if !openIssues.isEmpty {
+                Section("Open issues") {
+                    ForEach(openIssues.prefix(40)) { i in Button(Self.short("\(i.identifier) · \(i.shortTitle)")) { pickIssue(i) } }
+                }
+            }
+            // The types sit in the menu itself, not a submenu (LAB-245: a wide menu pushed the submenu off screen).
+            Section("New issue") {
+                ForEach([WorkKind.deliverable, .defect, .chore, .spike, .decision], id: \.self) { k in
+                    Button("New " + (k.labelNames.first ?? k.rawValue).lowercased() + "…") { newIssue(k) }
+                }
+            }
+        } label: {
+            pickerLabel("Issue", issueLabel, warn: false)
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 300, alignment: .leading)
+        .disabled(kind == .workstream)
+        .accessibilityLabel("Issue")
+    }
+
+    private func pickIssue(_ i: LinearIssue) {
+        useTicket = i; kind = .session; kindTouched = true
+        if text.trimmingCharacters(in: .whitespaces).isEmpty { textForIssue = i.shortTitle }
+        refreshOpening()
+    }
+
+    private func newIssue(_ k: WorkKind) {
+        useTicket = nil; kindTouched = true
+        if k == .defect { kind = .defect } else { kind = .ticket; ticketType = k }
+        if kind == .workstream { wsId = "" }
+        refreshOpening()
     }
 
     private var currentWorkstream: LinearWorkstream? { model.workstreams.first { $0.id == wsId } }
 
     private func pickWorkstream(_ w: LinearWorkstream) {
-        wsId = w.id; model.loadIssues(w); refreshOpening()
-        if !SelfTest.isActive { Prefs.defaults.set(w.id, forKey: "newWork.lastWorkstream") }
+        if wsId != w.id { useTicket = nil }
+        if kind == .workstream { kind = .session }
+        wsId = w.id; model.loadIssues(w)
+        if !w.team.isEmpty { teamKey = w.team }
+        refreshOpening()
+        if !SelfTest.isActive {
+            Prefs.defaults.set(w.id, forKey: "newWork.lastWorkstream")
+            Prefs.defaults.set(teamKey, forKey: "newWork.lastTeam")
+        }
     }
 
-    /// The selected session's workstream, else the one used last (owner 10-18: an empty picker silently greyed out
-    /// "Create ticket and launch").
+    private func pickTeam(_ key: String) {
+        teamKey = key
+        if let w = currentWorkstream, !key.isEmpty, w.team != key { wsId = "" }
+        refreshOpening()
+        if !SelfTest.isActive { Prefs.defaults.set(key, forKey: "newWork.lastTeam") }
+    }
+
+    /// The selected session's project, else the one used last (owner 10-18: an empty picker silently greyed out
+    /// "Create ticket and launch"); the team follows it, else the team used last.
     private func defaultWorkstream() {
-        guard wsId.isEmpty else { return }
-        let open = model.workstreams.filter { !["completed", "canceled"].contains($0.state) }
-        if let sel = model.selected?.session.workstream, let w = open.first(where: { $0.wsId == sel }) { wsId = w.id; model.loadIssues(w) }
-        else if let last = Prefs.defaults.string(forKey: "newWork.lastWorkstream"), let w = open.first(where: { $0.id == last }) { wsId = w.id; model.loadIssues(w) }
+        if wsId.isEmpty {
+            let open = model.workstreams.filter { !["completed", "canceled"].contains($0.state) }
+            if let code = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PROJECT"], let w = open.first(where: { $0.wsId == code }) {
+                pickWorkstream(w); return
+            }
+            if let sel = model.selected?.session.workstream, let w = open.first(where: { $0.wsId == sel }) { wsId = w.id; model.loadIssues(w) }
+            else if let last = Prefs.defaults.string(forKey: "newWork.lastWorkstream"), let w = open.first(where: { $0.id == last }) { wsId = w.id; model.loadIssues(w) }
+        }
+        if teamKey.isEmpty {
+            if let w = currentWorkstream, !w.team.isEmpty { teamKey = w.team }
+            else if let last = Prefs.defaults.string(forKey: "newWork.lastTeam") { teamKey = last }
+        }
+    }
+
+    /// Project code (TEAM-TOPIC[-NN]) and milestones for a new Linear project (LAB-238).
+    private var projectFields: some View {
+        HStack(alignment: .top, spacing: 10) {
+            labelled("Code") {
+                TextField("", text: $projectCode, prompt: Text("\(teamKey.isEmpty ? "TEAM" : teamKey)-TOPIC"))
+                    .textFieldStyle(.plain).ui(13, mono: true)
+                    .padding(.horizontal, 10).frame(width: 200, height: 30)
+                    .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.card.color))
+            }
+            labelled("Milestones · comma separated, in order") {
+                TextField("", text: $milestonesText, prompt: Text("P0 Design, P1 Build, P2 Ship"))
+                    .textFieldStyle(.plain).ui(13)
+                    .padding(.horizontal, 10).frame(height: 30)
+                    .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.card.color))
+            }
+        }
+    }
+
+    private var codeOK: Bool {
+        let c = projectCode.trimmingCharacters(in: .whitespaces)
+        return c.isEmpty || Workspace.projectCode(name: c + " · x") != nil
     }
 
     /// Why the primary button is greyed out, in words.
     private var blockedReason: String? {
         guard !valid else { return nil }
         if text.trimmingCharacters(in: .whitespaces).isEmpty && useTicket == nil { return nil }
-        return model.linearLoading ? "Loading workstreams from Linear…" : "Pick a workstream (top right) to file the ticket in"
+        if model.linearLoading { return "Loading teams and projects from Linear…" }
+        if linked && needsTeam && teamKey.isEmpty { return kind == .workstream ? "Pick a team (top right) for the project" : "Pick a team (top right) to file the ticket in" }
+        if kind == .workstream && !codeOK { return "The code looks like TEAM-TOPIC or TEAM-TOPIC-01" }
+        return "Pick a project (top right) to file the ticket in"
     }
 
     // MARK: Duplicate check (S09 §1.4)
@@ -239,7 +357,7 @@ struct NewSessionSheet: View {
     private func duplicateBanner(_ d: LinearIssue) -> some View {
         HStack(spacing: 10) {
             Text("Similar ticket").ui(12.5, .semibold).foregroundStyle(t.text.color)
-            Text("\(d.identifier) · \(d.shortTitle) (\(d.state), \(currentWorkstream?.wsId ?? ""))").ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
+            Text("\(d.identifier) · \(d.shortTitle) (\(d.state)\(currentWorkstream?.wsId.map { ", " + $0 } ?? ""))").ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
             Spacer()
             Button { useTicket = d; refreshOpening() } label: {
                 Text("Plan a session for \(d.identifier) instead").ui(12.5, .semibold).foregroundStyle(t.accentText.color)
@@ -407,12 +525,22 @@ struct NewSessionSheet: View {
         HStack(spacing: 2) {
             whenButton(.now, "Now")
             whenButton(.next, "Next")
-            Button { when = .tonight } label: { segment(nightly ? "Nightly 2:00 AM" : "Tonight 2:00 AM", on: when == .tonight) }
+            Button { when = .tonight } label: { segment(nightly ? "Nightly 2 AM" : "Tonight 2 AM", on: when == .tonight, inset: 9) }
                 .buttonStyle(.plain)
             if when == .tonight {
                 Menu {
                     Button("Tonight 2:00 AM") { nightly = false }
                     Button("Nightly at 2:00 AM") { nightly = true }
+                } label: { Text("▾").ui(11).foregroundStyle(t.text2.color) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            }
+            // A loop (LAB-254): start now, then send the message again every N minutes when the agent waits.
+            Button { when = .every } label: { segment("Every " + Schedule.every(everyMinutes), on: when == .every, inset: 9) }
+                .buttonStyle(.plain)
+                .help("Start now, then send the message again every \(Schedule.every(everyMinutes)), when the agent is waiting (never while it works)")
+            if when == .every {
+                Menu {
+                    ForEach(Schedule.everyChoices, id: \.self) { m in Button("Every " + Schedule.every(m)) { everyMinutes = m } }
                 } label: { Text("▾").ui(11).foregroundStyle(t.text2.color) }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             }
@@ -423,22 +551,24 @@ struct NewSessionSheet: View {
     }
 
     private func whenButton(_ w: When, _ label: String) -> some View {
-        Button { when = w } label: { segment(label, on: when == w) }.buttonStyle(.plain)
+        Button { when = w } label: { segment(label, on: when == w, inset: 9) }.buttonStyle(.plain)
     }
 
     private var primaryLabel: String {
         let ticket = (kind == .ticket || kind == .defect) && useTicket == nil
         switch when {
-        case .now: return ticket ? "Create ticket and launch ⌘↩" : kind == .workstream ? "Plan the workstream session ⌘↩" : "Launch ⌘↩"
-        case .next: return ticket ? "Create ticket, up next ⌘↩" : "Save as next ⌘↩"
+        case .now: return ticket ? "Create issue, launch ⌘↩" : kind == .workstream ? (linked ? "Create project, launch ⌘↩" : "Plan the project ⌘↩") : "Launch ⌘↩"
+        case .next: return ticket ? "Create issue, next ⌘↩" : kind == .workstream && linked ? "Create project, next ⌘↩" : "Save as next ⌘↩"
         case .tonight: return nightly ? "Save for every night ⌘↩" : "Save for tonight ⌘↩"
+        case .every: return "Launch, repeat every \(Schedule.every(everyMinutes)) ⌘↩"
         case .onDemand: return "Save on demand ⌘↩"
         }
     }
 
     private var valid: Bool {
         let has = !text.trimmingCharacters(in: .whitespaces).isEmpty || useTicket != nil
-        if (kind == .ticket || kind == .defect) && useTicket == nil { return has && currentWorkstream != nil }
+        if (kind == .ticket || kind == .defect) && useTicket == nil { return has && (linked ? !teamKey.isEmpty : currentWorkstream != nil) }
+        if kind == .workstream && linked { return has && !teamKey.isEmpty && codeOK }
         return has
     }
 
@@ -447,12 +577,15 @@ struct NewSessionSheet: View {
     private func appear() {
         DispatchQueue.main.async { textFocused = true }
         roles = Role.load(agenticEngineering: model.settings.agenticEngineering.path)
-        model.loadWorkstreams()
+        model.loadWorkstreams(force: model.linearTeams.isEmpty)
         defaultWorkstream()
         let acc = model.settings.defaults(for: .claude).account
         select(acc == "Claude2" && marks.contains(.claude2) ? .claude2 : .claude1)
-        if let w = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_WHEN"] {
-            when = ["now": When.now, "next": .next, "tonight": .tonight, "ondemand": .onDemand][w] ?? .now
+        let env = ProcessInfo.processInfo.environment
+        if let k = env["ONEROOF_SELFTEST_KIND"].flatMap(Kind.init(rawValue:)) { kind = k; kindTouched = true }
+        if let k = env["ONEROOF_SELFTEST_TEAM"] { teamKey = k }
+        if let w = env["ONEROOF_SELFTEST_WHEN"] {
+            when = ["now": When.now, "next": .next, "tonight": .tonight, "every": .every, "ondemand": .onDemand][w] ?? .now
         }
         let dir = Workspace.projectsRoot
         DispatchQueue.global(qos: .userInitiated).async {
@@ -461,15 +594,15 @@ struct NewSessionSheet: View {
         }
     }
 
-    /// Debounced 500 ms: kind suggestion (intake), router suggestion (on-device model + seats), duplicate check.
+    /// Debounced 500 ms: ticket-type suggestion (intake), router suggestion (on-device model + seats), duplicate check.
     private func textChanged(_ v: String) {
-        useTicket = nil
+        // A picked issue stays picked while you type (LAB-242: it is chosen on purpose in the Issue menu).
+        // The kind stays what the owner picked (owner 10-20: "it starts as just a session and should remain just a
+        // session"). The text only pre-picks the ticket type, for when the owner switches to Ticket.
         if !kindTouched {
             switch Intake.suggest(v) {
-            case .session: kind = .session
-            case .defect: kind = .defect
-            case .workstream: kind = .workstream
-            case let k: kind = .ticket; ticketType = k
+            case .session, .defect, .workstream: break
+            case let k: ticketType = k
             }
         }
         refreshOpening()
@@ -491,10 +624,11 @@ struct NewSessionSheet: View {
     private func refreshOpening() {
         guard !openingTouched else { return }
         let title = useTicket?.shortTitle ?? text.trimmingCharacters(in: .whitespaces)
-        if let tk = useTicket, let w = currentWorkstream {
-            opening = "Work on \(tk.identifier) (\(w.wsId ?? w.name)): \(tk.shortTitle). Read the ticket and the workstream docs first; commit as `\(tk.identifier) · [\((w.wsId ?? "").lowercased())] …`."
-        } else if (kind == .ticket || kind == .defect), let w = currentWorkstream {
-            opening = "Work on the new ticket (\(w.wsId ?? w.name)): \(title). Read the ticket and the workstream docs first; commit as `<KEY> · [\((w.wsId ?? "").lowercased())] …`."
+        if let tk = useTicket {
+            opening = Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url, project: currentWorkstream?.wsId)
+        } else if kind == .ticket || kind == .defect {
+            // The key is filled in once Linear creates the issue.
+            opening = Intake.ticketOpening(key: Intake.newIssueKey, title: title, project: currentWorkstream?.wsId)
         } else {
             opening = title
         }
@@ -517,7 +651,24 @@ struct NewSessionSheet: View {
     }
 
     private func go(launch: Bool, forcePlanned: Bool = false) {
-        let title = useTicket?.shortTitle ?? text.trimmingCharacters(in: .whitespaces)
+        let typed = text.trimmingCharacters(in: .whitespaces)
+        let title = typed.isEmpty ? (useTicket?.shortTitle ?? "") : typed
+        if kind == .workstream && useTicket == nil, linked, let team = currentTeam {
+            busy = true
+            let ms = milestonesText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            model.createProject(team: team, code: projectCode.trimmingCharacters(in: .whitespaces).uppercased(), title: title,
+                                summary: doneWhen, milestones: ms) { r in
+                busy = false
+                switch r {
+                case .success(let p):
+                    model.planWorkstreamSession(title: title, details: doneWhen, project: p)
+                    if launch && !forcePlanned, let s = model.selected { model.launch(s) }
+                    close()
+                case .failure(let e): error = "Linear: \(e)"
+                }
+            }
+            return
+        }
         if kind == .workstream && useTicket == nil {
             model.planWorkstreamSession(title: title, details: doneWhen)
             if launch, let s = model.selected { model.launch(s) }
@@ -526,7 +677,14 @@ struct NewSessionSheet: View {
         }
         func makeSession(ticket: LinearIssue?, w: LinearWorkstream?) {
             let a = agent(mark)
-            var s = Session(name: title, agent: a,
+            // LAB-248: a new issue's real key replaces the placeholder (the template is rebuilt unless edited).
+            if let tk = ticket {
+                if !openingTouched || opening.contains(Intake.newIssueKey) {
+                    opening = openingTouched ? opening.replacingOccurrences(of: Intake.newIssueKey, with: tk.identifier)
+                        : Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url.isEmpty ? nil : tk.url, project: w?.wsId)
+                }
+            }
+            var s = Session(name: ticket.map { Intake.sessionName(key: $0.identifier, title: title) } ?? title, agent: a,
                             account: a == .claude ? name(mark) : (AccountResolver.choices(for: a).first),
                             repoPath: repo,
                             workstream: w?.wsId ?? (wsText.trimmingCharacters(in: .whitespaces).isEmpty ? Workspace.workstream(in: title) : wsText.trimmingCharacters(in: .whitespaces).uppercased()),
@@ -535,17 +693,20 @@ struct NewSessionSheet: View {
                             startInRepo: startInRepo,
                             agentArgs: a.isAgent ? (resumeId.isEmpty ? [] : ["--resume", resumeId]) + Session.parseArgs(args) : [],
                             model: modelName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : modelName,
-                            ticket: ticket?.identifier, ticketId: ticket?.id, ticketTeam: w?.team)
+                            ticket: ticket?.identifier, ticketId: ticket?.id,
+                            ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
             model.createPlanned(s, launchNow: launch && !forcePlanned)
             if when == .tonight && !forcePlanned, let i = model.item(s.id) { model.schedule(i, hour: 2, minute: 0, nightly: nightly) }
+            if when == .every && !forcePlanned, let i = model.item(s.id) { model.repeatEvery(i, minutes: everyMinutes) }
             close()
         }
         if let tk = useTicket { makeSession(ticket: tk, w: currentWorkstream); return }
-        if (kind == .ticket || kind == .defect), let w = currentWorkstream {
+        if (kind == .ticket || kind == .defect), currentWorkstream != nil || (linked && !teamKey.isEmpty) {
             busy = true
+            let w = currentWorkstream
             let type: WorkKind = kind == .defect ? .defect : ticketType
-            model.createTicket(kind: type, title: title, details: doneWhen, in: w, milestone: nil, planSession: false) { r in
+            model.createTicket(kind: type, title: title, details: doneWhen, in: w, team: teamKey, milestone: nil, planSession: false) { r in
                 busy = false
                 switch r {
                 case .success(let issue): makeSession(ticket: issue, w: w)
@@ -554,6 +715,6 @@ struct NewSessionSheet: View {
             }
             return
         }
-        makeSession(ticket: nil, w: nil)
+        makeSession(ticket: nil, w: currentWorkstream)
     }
 }

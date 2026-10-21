@@ -35,7 +35,7 @@ struct PlanPanelView: View {
                 Text(win.name).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
                 Text("\(c.needsYou) need you · \(c.running) working · \(c.done) ready · \(c.queued) next")
                     .ui(12.5).foregroundStyle(t.text2.color)
-                Text("Select a session to see its plan, ticket, notes and artifacts. ⌘N starts a new one: Launch runs it in herdr on the agent and account you picked and sends the opening message once the agent is ready.")
+                Text("Select a session to see its plan, ticket, notes and artifacts. ⌘N starts a new one: Launch runs it on the agent and account you picked and sends the opening message once the agent is ready.")
                     .ui(12.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 if let err = model.lastError { Text(err).ui(12).foregroundStyle(t.needsText.color) }
             }
@@ -161,7 +161,11 @@ struct PlanDetail: View {
         let it = live
         HStack(spacing: 6) {
             StatusDot(status: it.status)
-            Text(StatusPalette.label(it.status)).ui(13, .semibold).foregroundStyle(t.pill(it.status).text.color)
+            // The pill's text colour is made for the pill's own fill: draw the fill too, or it can vanish on the panel.
+            let pill = t.pill(it.status)
+            Text(StatusPalette.label(it.status)).ui(13, .semibold).foregroundStyle(pill.text.color)
+                .padding(.horizontal, pill.fill == nil ? 0 : 8).padding(.vertical, pill.fill == nil ? 0 : 2)
+                .background(Capsule().fill(pill.fill?.color ?? .clear))
             Spacer()
             actionButton(it)
             Button { showMore = true } label: { Text("•••").ui(13, .semibold).foregroundStyle(t.text2.color) }
@@ -178,11 +182,26 @@ struct PlanDetail: View {
             .textFieldStyle(.plain).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
             .onSubmit(commit)
         facts(it)
+        if it.session.agent.isAgent, it.liveAgent != nil { StepReviewSection(model: model, item: it) }
         if it.session.ticket != nil { TicketBox(item: it, model: model) }
-        field("Workstream") {
-            TextField("WS-…", text: $workstream).textFieldStyle(.plain).ui(12.5, mono: true)
-                .padding(8).background(RoundedRectangle(cornerRadius: Radius.field).fill(t.card.color))
-                .onSubmit(commit)
+        field("Project") {
+            HStack(spacing: 6) {
+                TextField("CODE-…", text: $workstream).textFieldStyle(.plain).ui(12.5, mono: true)
+                    .onSubmit(commit)
+                // Pick from Linear (LAB-236) when it is connected; typing a code still works.
+                if model.linear.hasKey {
+                    Menu {
+                        Button("No project") { workstream = ""; commit() }
+                        ForEach(model.workstreams.filter { !["completed", "canceled"].contains($0.state) }) { w in
+                            Button(NewSessionSheet.short("\(w.wsId ?? "") · \(w.title)")) { workstream = w.wsId ?? ""; commit() }
+                        }
+                    } label: { Text("Linear ▾").ui(11.5, .medium).foregroundStyle(t.text2.color) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .onAppear { model.loadWorkstreams() }
+                        .accessibilityLabel("Pick the project from Linear")
+                }
+            }
+            .padding(8).background(RoundedRectangle(cornerRadius: Radius.field).fill(t.card.color))
         }
         field("Objective · done when") { editor($objective, minHeight: 54) }
         let steps = planSteps(it)
@@ -215,7 +234,9 @@ struct PlanDetail: View {
                 Text((it.session.launchDirectory as NSString).abbreviatingWithTildeInPath).ui(12.5).foregroundStyle(t.text.color).lineLimit(1)
                 if !it.session.startInRepo { Text("✓ one memory").ui(12.5).foregroundStyle(t.statusDone.color).lineLimit(1).fixedSize() }
             }
-            if let a = it.liveAgent { fact("herdr", a + (it.paneId.map { " · " + $0 } ?? ""), mono: true) }
+            if let a = it.liveAgent {
+                fact(model.runtime.kind.displayName, a + (it.paneId.flatMap { $0 == a ? nil : " · " + $0 } ?? ""), mono: true)
+            }
             if let title = it.title, !title.isEmpty { fact("Title", title) }
             if let at = it.session.launchedAt { fact("Launched", at.formatted(date: .omitted, time: .shortened) + " · " + ageText(at)) }
             if it.adopted { fact("Source", "Started outside One Roof") }
@@ -269,9 +290,9 @@ struct PlanDetail: View {
                 .textFieldStyle(.plain).ui(11.5).frame(width: 90)
             } else {
                 Button { addingSticker = true } label: {
-                    Text("+ New").ui(11.5, .semibold).foregroundStyle(t.text3.color)
+                    Text("+ New").ui(11.5, .semibold).foregroundStyle(t.text2.color)
                         .padding(.vertical, 1).padding(.horizontal, 6)
-                        .overlay(Capsule().strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                        .overlay(Capsule().strokeBorder(t.text2.color.opacity(0.6), lineWidth: 1))
                 }.buttonStyle(.plain)
             }
         }

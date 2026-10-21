@@ -73,6 +73,46 @@ public enum Workspace {
 
     /// "domain/repo" for a path under the projects folder, "domain" for a domain folder, the folder itself (with ~)
     /// for the root, or the last path component for anything else.
+    public static func isProjectsRoot(_ path: String, root: String = projectsRoot) -> Bool {
+        (path as NSString).standardizingPath == (root as NSString).standardizingPath
+    }
+
+    /// How the workspace root is named where a repo would be: it is not a repo.
+    public static let rootLabel = "workspace root"
+
+    /// The git repo a file or folder belongs to: the nearest folder with a `.git` (a worktree's `.git` file counts),
+    /// inside the workspace and below its root. Nil at the root itself or outside a repo. Cached.
+    public static func repoRoot(for path: String, root: String = projectsRoot) -> String? {
+        let r = (root as NSString).standardizingPath
+        var p = (path as NSString).standardizingPath
+        guard isInsideProjects(p, root: r), p != r else { return nil }
+        repoCacheLock.lock()
+        if let hit = repoCache[p] { repoCacheLock.unlock(); return hit.isEmpty ? nil : hit }
+        repoCacheLock.unlock()
+        let start = p
+        var found: String?
+        while p.count > r.count {
+            // Worktrees under <repo>/.worktrees/<unit> count as their repo.
+            if (p as NSString).deletingLastPathComponent.hasSuffix("/.worktrees") {
+                found = ((p as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+                break
+            }
+            if FileManager.default.fileExists(atPath: p + "/.git") { found = p; break }
+            p = (p as NSString).deletingLastPathComponent
+        }
+        repoCacheLock.lock(); repoCache[start] = found ?? ""; repoCacheLock.unlock()
+        return found
+    }
+    nonisolated(unsafe) private static var repoCache: [String: String] = [:]
+    private static let repoCacheLock = NSLock()
+
+    /// The top-level folder under the workspace a path sits in ("product-a", "labs", "shared").
+    public static func domainLabel(_ path: String) -> String {
+        let p = (path as NSString).standardizingPath, r = (projectsRoot as NSString).standardizingPath
+        guard isInsideProjects(p, root: r), p != r else { return (p as NSString).lastPathComponent }
+        return String(p.dropFirst(r.count + 1).split(separator: "/").first ?? "")
+    }
+
     public static func repoLabel(for path: String, root: String = projectsRoot) -> String {
         let p = (path as NSString).standardizingPath
         let r = (root as NSString).standardizingPath
@@ -89,12 +129,46 @@ public enum Workspace {
     private static let wsRegex = try! NSRegularExpression(
         pattern: #"\bWS-[A-Z]{2,6}(?:-[A-Z0-9]{2,8})?-\d{2,4}\b"#, options: [.caseInsensitive])
 
-    /// The first workstream id (WS-<CODE>-<TOPIC>-<NN> or WS-<CODE>-<NN>) in `text`, upper-cased.
+    // Linear project codes (owner 10-20, LAB-236): TEAM-TOPIC or TEAM-TOPIC-NN, the topic starting with a letter so an
+    // issue key (TEAM-123) never reads as a project. Bare in text they must be upper case; as a commit tag
+    // ("[team-topic]") any case.
+    private static let codeRegex = try! NSRegularExpression(pattern: #"\b[A-Z][A-Z0-9]{1,5}-[A-Z][A-Z0-9]{1,15}(?:-\d{2,4})?\b"#)
+    private static let tagRegex = try! NSRegularExpression(
+        pattern: #"\[([a-z][a-z0-9]{1,5}-[a-z][a-z0-9]{1,15}(?:-[a-z0-9]{1,15})*)\]"#, options: [.caseInsensitive])
+
+    /// The first project id in `text`, upper-cased: a workstream id (WS-<CODE>-<TOPIC>-<NN> or WS-<CODE>-<NN>), a
+    /// commit tag ("[lab-roofd]") or a bare project code ("ZIB-KNOW-03").
     public static func workstream(in text: String) -> String? {
         let range = NSRange(text.startIndex..., in: text)
-        guard let m = wsRegex.firstMatch(in: text, range: range),
-              let r = Range(m.range, in: text) else { return nil }
-        return String(text[r]).uppercased()
+        if let m = wsRegex.firstMatch(in: text, range: range), let r = Range(m.range, in: text) { return String(text[r]).uppercased() }
+        if let m = tagRegex.firstMatch(in: text, range: range), let r = Range(m.range(at: 1), in: text) { return String(text[r]).uppercased() }
+        if let m = codeRegex.firstMatch(in: text, range: range), let r = Range(m.range, in: text) { return String(text[r]) }
+        return nil
+    }
+
+    /// The newest handoff in `dir` written for this session (LAB-250): its file name names the session's ticket key or
+    /// project code ("…_lab-roofd-…", "…lab-247…"). Nil when none does — never some other project's handoff.
+    public static func handoff(in dir: String, project: String?, ticket: String?) -> String? {
+        let keys = [ticket, project].compactMap { $0?.lowercased() }.filter { !$0.isEmpty }
+        guard !keys.isEmpty else { return nil }
+        let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+        func names(_ f: String, _ k: String) -> Bool {
+            let n = f.lowercased()
+            guard let r = n.range(of: k) else { return false }
+            // Whole id only: "lab-roofd" must not match "lab-roofd2", nor "lab-24" match "lab-247".
+            let after = n[r.upperBound...].first
+            return after.map { !$0.isLetter && !$0.isNumber } ?? true
+        }
+        return files.last { f in keys.contains { names(f, $0) } }.map { dir + "/" + $0 }
+    }
+
+    /// A Linear project's code: the part of "CODE · title" before the dot when it is one id, else any id in the name.
+    public static func projectCode(name: String) -> String? {
+        if let r = name.range(of: " · ") {
+            let head = String(name[..<r.lowerBound]).trimmingCharacters(in: .whitespaces)
+            if head.range(of: #"^[A-Za-z][A-Za-z0-9]{1,5}(?:-[A-Za-z0-9]{1,15})+$"#, options: .regularExpression) != nil { return head.uppercased() }
+        }
+        return workstream(in: name)
     }
 
     /// Repos under the projects folder (two levels: domain/repo that contain .git), for the "new session" picker.
@@ -146,14 +220,14 @@ public enum AccountResolver {
 
     /// Environment to launch `agent` on the account `label` (the inverse of `label`).
     /// Claude1 sets nothing: an EMPTY CLAUDE_CONFIG_DIR is not "unset" — Claude then uses the current folder as its
-    /// config folder (gotcha 20261017). The herdr server must therefore not carry account variables itself;
-    /// One Roof checks that before launching (`HerdrClient.serverLeaks`).
+    /// config folder (gotcha 20261017). Sessions must therefore not inherit account variables from One Roof;
+    /// roofd and RoofdRuntime strip them before starting a session.
     public static func launchEnv(agent: AgentKind, account: String?, home: String = NSHomeDirectory()) -> [String: String] {
         guard agent == .claude, account == "Claude2" else { return [:] }
         return ["CLAUDE_CONFIG_DIR": home + "/.claude-2"]
     }
 
-    /// Account variables removed from herdr's environment when One Roof starts the server.
+    /// Account variables removed from a session's environment unless the launch sets them.
     public static let accountVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "KIMI_HOME", "GEMINI_HOME"]
 
     /// The Claude accounts on this Mac: "Claude1" (~/.claude) always, "Claude2" only when ~/.claude-2 exists.

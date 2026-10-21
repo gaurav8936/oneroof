@@ -23,7 +23,7 @@ struct PaneTop: View {
             PaneHeader(model: model, item: item, focused: focused, split: split, onZoom: onZoom, onClose: onClose)
             if let item, item.session.agent.isAgent, item.liveAgent != nil {
                 if expanded {
-                    SummaryCard(model: model, item: item, onCollapse: onToggleSummary)
+                    SummaryCard(model: model, item: item, openChapter: openChapter, onChapter: onChapter, onCollapse: onToggleSummary)
                         .themed(model.themes.centre)
                 } else {
                     SummaryStrip(model: model, item: item, onExpand: onToggleSummary)
@@ -32,6 +32,10 @@ struct PaneTop: View {
                     let chs = (model.chapters[item.id] ?? []).filter { $0.ended != nil }
                     ForEach(chs.suffix(expanded ? 3 : 2), id: \.index) { c in
                         ChapterRow(chapter: c, open: openChapter == c.index) { onChapter(c.index) }
+                    }
+                    // Rewound to a step (LAB-259): one click back to the live bottom of the terminal.
+                    if let open = openChapter, let c = (model.chapters[item.id] ?? []).first(where: { $0.index == open }) {
+                        RewindBar(chapter: c) { onChapter(open) }
                     }
                 }
             }
@@ -127,6 +131,8 @@ struct SummaryCard: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     let item: BoardItem
+    var openChapter: Int? = nil
+    var onChapter: (Int) -> Void = { _ in }
     var onCollapse: () -> Void
 
     var body: some View {
@@ -160,8 +166,22 @@ struct SummaryCard: View {
                 let steps = stepList(c)
                 if !steps.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        MicroLabel("Steps · \(c.step ?? 0) of \(c.steps ?? steps.count)")
-                        StepList(steps: steps)
+                        HStack(spacing: 6) {
+                            MicroLabel("Steps · \(c.step ?? 0) of \(c.steps ?? steps.count)")
+                            Spacer()
+                            if let open = openChapter {
+                                Button { onChapter(open) } label: {
+                                    Label("Current", systemImage: "arrow.down.to.line").ui(11, .medium)
+                                }
+                                .buttonStyle(.plain).foregroundStyle(t.accent.color)
+                                .help("Back to the current step, at the bottom of the terminal")
+                            }
+                        }
+                        if usesChapters {
+                            StepList(steps: steps, maxVisible: 6, selected: openChapter, onTap: onChapter)
+                        } else {
+                            StepList(steps: steps, maxVisible: 6)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -171,6 +191,9 @@ struct SummaryCard: View {
         .background(t.surface.color)
         .overlay(alignment: .bottom) { Hairline() }
     }
+
+    /// The steps are the terminal's chapters (not an objective's plan), so they can be rewound to and explained.
+    private var usesChapters: Bool { !model.objectives.contains { $0.stepSessions.values.contains(item.id) && $0.plan != nil } }
 
     private func stepList(_ c: LiveCaption) -> [StepList.Step] {
         if let o = model.objectives.first(where: { $0.stepSessions.values.contains(item.id) }), let p = o.plan {
@@ -214,6 +237,28 @@ struct ChapterRow: View {
     private var duration: String {
         guard let e = chapter.ended else { return "" }
         return CaptionEngine.ageText(e.timeIntervalSince(chapter.started))
+    }
+}
+
+/// Shown while the terminal is rewound to a step (LAB-259): which step, and the way back to the live bottom.
+struct RewindBar: View {
+    @Environment(\.theme) private var t
+    let chapter: Chapter
+    var onCurrent: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath").font(.system(size: 12, weight: .semibold)).foregroundStyle(t.accent.color)
+            Text("Viewing step \(chapter.index + 1) · \(chapter.title)").ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
+            Text("scroll to read on from here").ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+            Spacer()
+            Button(action: onCurrent) { Label("Back to current", systemImage: "arrow.down.to.line").ui(12, .medium) }
+                .buttonStyle(.plain).foregroundStyle(t.accent.color)
+                .help("Scroll to the bottom: the step in progress now")
+        }
+        .padding(.vertical, 7).padding(.horizontal, 20)
+        .background(t.terminal.background.color)
+        .overlay(alignment: .bottom) { Hairline() }
     }
 }
 
@@ -344,6 +389,11 @@ struct PanePlaceholder: View {
                         RoofButton("Run now", .primary) { model.unschedule(item); model.launch(item) }
                         RoofButton("Change schedule") { model.unschedule(item) }
                     }
+                } else if item.starting || model.busy.contains(item.id) {
+                    ProgressView().controlSize(.small)
+                    Text(item.session.agent.isAgent ? "Starting \(item.session.agent.displayName)…" : "Starting the terminal…")
+                        .ui(18, .semibold).foregroundStyle(t.text.color)
+                    Text(item.session.name).ui(13).foregroundStyle(t.text2.color)
                 } else if item.status == .exited {
                     Text("This agent has exited").ui(18, .semibold).foregroundStyle(t.text.color)
                     Text(item.session.name).ui(13).foregroundStyle(t.text2.color)
@@ -352,7 +402,10 @@ struct PanePlaceholder: View {
                     }
                     HStack {
                         RoofButton("Relaunch", .primary) { model.launch(item) }
-                        RoofButton("Open handoff") { model.openLatestHandoff(item) }
+                        // Only this session's own handoff, named for what it is (LAB-250); none → no button.
+                        if let h = model.handoffPath(for: item) {
+                            RoofButton("Open \(item.session.workstream ?? item.session.ticket ?? "") handoff") { model.openInViewer(h) }
+                        }
                     }
                 } else if item.status == .doNotUse {
                     Text("Parked · do not use").ui(18, .semibold).foregroundStyle(t.text.color)
@@ -451,16 +504,101 @@ struct SubagentCard: View {
 }
 
 extension AppModel {
-    /// Exited placeholder › Open handoff: the newest handoff naming the session's workstream, else the folder.
-    func openLatestHandoff(_ item: BoardItem) {
-        let dir = settings.sharedFolder + "/docs/next-session-handoff"
-        guard Workspace.folderExists(dir) else {
-            lastError = "No handoffs folder at \(dir.replacingOccurrences(of: NSHomeDirectory(), with: "~")). Set the shared folder in Settings › Foundations."
-            return
+    /// Exited placeholder › Open … handoff: the newest handoff naming the session's ticket or project, else none.
+    func handoffPath(for item: BoardItem) -> String? {
+        Workspace.handoff(in: settings.sharedFolder + "/docs/next-session-handoff",
+                          project: item.session.workstream, ticket: item.session.ticket)
+    }
+}
+
+/// Step review in the right panel (LAB-260): a model's reading of one step of the selected session (what was asked,
+/// what happened, decisions, risks). It follows the step the terminal is rewound to; otherwise it is the latest finished
+/// step. It is read on its own, without a click, once per step.
+struct StepReviewSection: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    let item: BoardItem
+
+    var body: some View {
+        let on = model.settings.stepReview
+        let chs = (model.chapters[item.id] ?? []).filter { $0.ended != nil }
+        let picked = model.reviewStep[item.id].flatMap { i in chs.first { $0.index == i } }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("Step review").ui(12, .semibold).foregroundStyle(t.text2.color)
+                if on, !chs.isEmpty {
+                    Text(picked == nil ? "latest" : "selected").ui(10.5, .medium).foregroundStyle(t.text3.color)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Capsule().fill(t.control.color))
+                }
+                Spacer()
+                Toggle("", isOn: $model.settings.stepReview).toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                    .help(on ? "Turn off: no more model calls for step reviews" : "Turn on: Claude reads each step (one model call per step)")
+                    .accessibilityLabel("Step review")
+            }
+            if !on {
+                // Off by default: say what turning it on costs (owner, LAB-260).
+                Text("Off. Turn it on to have Claude (\(StepExplainer.model)) read each finished step and say what was asked, what happened, the decisions and the risks. Each step it reviews is one more model call on your Claude account, so it is off until you want it.")
+                    .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+            } else if let ch = picked ?? chs.last {
+                reviewBody(ch, picked: picked != nil)
+            } else {
+                Text("No finished step yet.").ui(11.5).foregroundStyle(t.text3.color)
+            }
         }
-        let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).sorted()
-        let ws = item.session.workstream?.lowercased()
-        if let f = files.last(where: { ws != nil && $0.lowercased().contains(ws!) }) ?? files.last { openInViewer(dir + "/" + f) }
-        else { openInViewer(dir) }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(t.surface.color))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(t.separator.color))
+    }
+
+    @ViewBuilder private func reviewBody(_ ch: Chapter, picked: Bool) -> some View {
+        let key = AppModel.stepKey(item, ch)
+        let state = model.stepExplanations[key]
+        HStack(spacing: 6) {
+            Text("Step \(ch.index + 1) · \(ch.title)").ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(2)
+            Spacer()
+            if picked {
+                Button("Latest") { model.reviewStep[item.id] = nil }.buttonStyle(.plain).ui(11, .medium)
+                    .foregroundStyle(t.accent.color).help("Review the latest finished step")
+            }
+            Button { model.explainStep(item, ch) } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold)) }
+                .buttonStyle(.plain).foregroundStyle(t.text3.color).help("Read this step again (one more model call)")
+                .disabled(state == .working)
+        }
+        Group {
+            switch state {
+            case .done(let e)?:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        part("What was asked", e.question)
+                        part("What happened", e.happened)
+                        part("Decisions", e.decisions)
+                        part("Risks", e.risks)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 6)
+                }
+                .frame(height: 230)
+            case .failed(let why)?:
+                Text(why).ui(12).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
+            default:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading the step…").ui(12).foregroundStyle(t.text2.color)
+                }
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            }
+        }
+        .task(id: key) { if model.stepExplanations[key] == nil { model.explainStep(item, ch) } }
+        Text("By Claude (\(StepExplainer.model)) from the terminal text, one call per step. Click a step above the terminal to review it.")
+            .ui(10.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func part(_ title: String, _ body: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased()).ui(9.5, .semibold).tracking(0.6).foregroundStyle(t.text3.color)
+            Text(.init(body.isEmpty ? "None" : body)).ui(12.5).foregroundStyle(t.text.color)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        }
     }
 }

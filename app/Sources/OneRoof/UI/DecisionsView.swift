@@ -138,7 +138,8 @@ struct DecisionsView: View {
             Text(d.headline.replacingOccurrences(of: d.agent.displayName, with: agentName)).ui(30, .semibold).tracking(-0.4)
                 .foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
             if let c = d.command ?? d.path {
-                Text(c).ui(14, mono: true).foregroundStyle(t.terminal.foreground.color).textSelection(.enabled)
+                // The box is always Midnight, so its text is too (Daylight's terminal text is dark: unreadable on it).
+                Text(c).ui(14, mono: true).foregroundStyle(ThemeName.midnight.tokens.terminal.foreground.color).textSelection(.enabled)
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(ThemeName.midnight.tokens.terminal.background.color))

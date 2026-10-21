@@ -1,6 +1,6 @@
 # One Roof help: Overview, Board, Decisions, command palette and keyboard shortcuts
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-20
 
 > **One line:** the Overview is one page of all your work, the Board is a Kanban of every session, Decisions lists every agent waiting on you, the command palette (⌘K) finds anything, and the table at the end lists every keyboard shortcut in One Roof.
 
@@ -23,7 +23,7 @@ One page that answers "what needs me, and what is going on?" across every window
 
 ![The Board](img/board.png)
 
-A Kanban of every session in every window, left to right: **Planned · Next → Working → Needs you → Ready → Idle · Parked → Tonight → Exited → Do not use**. Drag a card onto Planned · Next, Tonight or Do not use to change it; the other columns follow herdr's live state. The Tonight column has **Schedule** with a time and an **Every night** switch. Exited and Do not use can be collapsed. Double-click a card to open that session. ⌘B again closes the Board.
+A Kanban of every session in every window, left to right: **Planned · Next → Working → Needs you → Ready → Idle · Parked → Tonight → Exited → Do not use**. Drag a card onto Planned · Next, Tonight or Do not use to change it; the other columns follow the agents' live state. The Tonight column has **Schedule** with a time and an **Every night** switch. Exited and Do not use can be collapsed. Double-click a card to open that session. **By project** groups the cards by their Linear project. ⌘B again closes the Board.
 
 ## Decisions (⌘I)
 
@@ -43,7 +43,7 @@ Press **⌘K** (⌘P works too), or click the search box in the toolbar, and typ
 - **Windows:** every workspace window, and New workspace window.
 - **Actions:** plan a session, new terminal, new objective, new work item, find in terminal, search in workspace, toggle each panel, review changes, split right or down, close or maximize a pane, even out panes, reopen a closed session, run the startup check, remove exited sessions, open the selected session in a new window, roof windows, How do I…?
 - **Themes:** set all panels to one theme.
-- **Sessions, objectives and workstreams** by name.
+- **Sessions, objectives and projects** by name.
 - **Files** tracked in the selected session's repo (up to 4,000), which open in the viewer.
 - **Skills**, which open their Learn page.
 
@@ -60,7 +60,7 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | ⇧⌘F | One Roof › Foundations… | The startup check, skills, hooks, memory |
 | ⌘K (or ⌘P) | One Roof › Command Palette… | Find views, actions, sessions, files, skills |
 | ⌘H / ⌥⌘H | One Roof › Hide One Roof / Hide Others | Hide the app, or the other apps |
-| ⌘Q | One Roof › Quit One Roof | Quit (agents keep running in herdr) |
+| ⌘Q | One Roof › Quit One Roof | Quit (agents keep running in roofd) |
 | ⌘N | File › New Session… | Start or plan a new session |
 | ⌘T | File › New Terminal | A plain shell in your projects folder |
 | ⌃⌘T | File › New Terminal in Selected Repo | A plain shell in the selected session's repo |
@@ -74,20 +74,20 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | ⌘W | File › Close Session… | Close the selected session (asks if it is running) |
 | ⇧⌘T (or ⌥⌘T) | File › Reopen Closed Session | Bring back and relaunch the last closed session |
 | ⌥⌘O | File › Open in New Window | Move a running session into its own window |
-| ⌃⌘W | File › Close Window | Close the window (agents keep running in herdr) |
+| ⌃⌘W | File › Close Window | Close the window (agents keep running in roofd) |
 | ⌘Z / ⇧⌘Z | Edit › Undo / Redo | Undo and redo in text fields |
 | ⌘X / ⌘C / ⌘V / ⌘A | Edit › Cut / Copy / Paste / Select All | Text editing and terminal copy and paste |
 | ⌥⌘K | Edit › Clear Terminal | Clear the focused terminal |
 | ⌘F | Edit › Find… | Find in the focused terminal |
 | ⌘G / ⇧⌘G | Edit › Find Next / Find Previous | Next or previous match |
 | ⇧⌘S | Edit › Find in Workspace | Search across your repos |
-| ⌘1 … ⌘5 | View › Group by Status, Repo, Workstream, Agent, Account | Group the sessions panel |
+| ⌘1 … ⌘5 | View › Group by Status, Repo, Project, Agent, Account | Group the sessions panel |
 | ⇧⌘L | View › Overview | One page of all work |
 | ⌘B | View › Board | Kanban of every session |
 | ⌘I | View › Decisions | Every agent waiting on you |
 | ⇧⌘A | View › Subagents | Timeline of Claude subagents |
 | ⇧⌘E | View › Learn | The course, skills and your Learn folders |
-| ⇧⌘W | View › Work: Workstreams and Roadmap | Workstreams, phases, tickets |
+| ⇧⌘W | View › Work: Projects and Roadmap | Projects, milestones, tickets |
 | ⌘+ / ⌘− / ⌘0 | View › Bigger Text / Smaller Text / Actual Size | Text size |
 | ⌥⌘S | View › Toggle Sidebar | Show or hide the sessions panel |
 | ⌥⌘P | View › Toggle Plan Panel | Show or hide the plan panel |
@@ -110,7 +110,7 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | ⌥⌘1 … ⌥⌘9 | Window › Workspaces | Go to workspace window 1 to 9 |
 | ⌥⌘/ | Help › How Do I…? | Ask Learn a question ([page 09](09_learn.md)) |
 
-Without a shortcut, in the menus: Run Startup Check (One Roof menu); Ask Agent About Selection (Edit); the panel theme menus and Search in Workspace (View); Launch, Mark as Next, Mark as Planned, Do Not Use, Pin, Rename…, Move to Window, Schedule, Run Now, Send Handoff, Open Repo in Finder, Copy herdr id, Copy Working Directory, Copy Attach Command, Copy Link to Session, Close Agent…, Delete Session, Remove Exited Sessions… (Session); Zoom, Roof Windows, Foundations and Bring All to Front (Window); One Roof Help, Keyboard Shortcuts, Release Notes and the README (Help).
+Without a shortcut, in the menus: Run Startup Check (One Roof menu); Ask Agent About Selection (Edit); the panel theme menus and Search in Workspace (View); Launch, Mark as Next, Mark as Planned, Do Not Use, Pin, Rename…, Move to Window, Schedule, Run Now, Send Handoff, Open Repo in Finder, Copy session id, Copy Working Directory, Copy Attach Command, Copy Link to Session, Close Agent…, Delete Session, Remove Exited Sessions… (Session); Zoom, Roof Windows, Foundations and Bring All to Front (Window); One Roof Help, Keyboard Shortcuts, Release Notes and the README (Help).
 
 ### Keys inside a view
 

@@ -24,10 +24,10 @@ struct StickerView: View {
         .foregroundStyle(soft && scheme == .dark ? fill : ink)
         .padding(.horizontal, size * 0.62)
         .padding(.vertical, size * 0.24)
-        .background(Capsule().fill(soft ? fill.opacity(scheme == .dark ? 0.16 : 0.55) : fill))
-        .overlay(Capsule().strokeBorder(soft ? fill.opacity(0.9) : ink.opacity(0.12), lineWidth: 1))
-        .opacity(selected ? 1 : 0.35)
-        .saturation(selected ? 1 : 0.3)
+        // In pickers, a sticker not chosen is an outline in its own colour at full strength (LAB-246: fading it to
+        // 35% made it look disabled); chosen is filled.
+        .background(Capsule().fill(selected ? (soft ? fill.opacity(scheme == .dark ? 0.16 : 0.55) : fill) : .clear))
+        .overlay(Capsule().strokeBorder(selected ? (soft ? fill.opacity(0.9) : ink.opacity(0.12)) : ink.opacity(0.55), lineWidth: 1))
     }
 }
 
@@ -81,7 +81,7 @@ struct StickerPicker: View {
                 ForEach(Sticker.catalog.filter { $0.id != "next" && $0.id != "dnu" } + customs) { s in
                     Button { toggle(s.id) } label: { StickerView(sticker: s, soft: soft, size: 11, selected: ids.contains(s.id)) }
                         .buttonStyle(.plain)
-                        .help(ids.contains(s.id) ? "Remove \(s.label)" : "Add \(s.label)")
+                        .help((ids.contains(s.id) ? "Remove \(s.label)" : "Add \(s.label)") + ": \(s.meaning)")
                 }
             }
             HStack(spacing: 6) {
@@ -196,5 +196,49 @@ struct SeatGaugeV1: View {
         if let s = seat.sevenDay { parts.append("7d \(Int(s))%") }
         if seat.stale { parts.append("old data") }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Small coloured pictures for native menus (LAB-257: the right-click menu showed colours and stickers as bare names).
+/// Menus draw SwiftUI shapes as plain text, so these are real images that are not templates and keep their colours.
+enum MenuArt {
+    private static var dark: Bool { NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
+
+    private static func ns(_ c: RGB) -> NSColor { NSColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: c.alpha) }
+
+    /// A round colour swatch; nil draws "no colour" (an empty ring with a slash).
+    static func swatch(_ p: Pastel?) -> NSImage {
+        let img = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in
+            let circle = NSBezierPath(ovalIn: r.insetBy(dx: 1.5, dy: 1.5))
+            if let p {
+                ns(p.fill(dark: dark)).setFill(); circle.fill()
+                ns(p.ink(dark: false)).withAlphaComponent(0.35).setStroke()
+            } else {
+                NSColor.secondaryLabelColor.setStroke()
+                let slash = NSBezierPath(); slash.move(to: NSPoint(x: 4, y: 4)); slash.line(to: NSPoint(x: 12, y: 12))
+                slash.lineWidth = 1.2; slash.stroke()
+            }
+            circle.lineWidth = 1; circle.stroke()
+            return true
+        }
+        img.isTemplate = false
+        return img
+    }
+
+    /// A sticker's icon on its own pastel, like the sticker on a row.
+    static func sticker(_ s: Sticker) -> NSImage {
+        let fill = ns(s.pastel.fill(dark: false)), ink = ns(s.pastel.ink(dark: false))
+        let cfg = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold).applying(.init(paletteColors: [ink]))
+        let sym = NSImage(systemSymbolName: s.symbol, accessibilityDescription: s.label)?.withSymbolConfiguration(cfg)
+        let img = NSImage(size: NSSize(width: 18, height: 16), flipped: false) { r in
+            fill.setFill(); NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4).fill()
+            if let sym {
+                let sz = sym.size
+                sym.draw(in: NSRect(x: (r.width - sz.width) / 2, y: (r.height - sz.height) / 2, width: sz.width, height: sz.height))
+            }
+            return true
+        }
+        img.isTemplate = false
+        return img
     }
 }

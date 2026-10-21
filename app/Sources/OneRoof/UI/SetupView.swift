@@ -78,7 +78,7 @@ struct SetupView: View {
                 }
                 Section("Required tools") {
                     if tools.isEmpty {
-                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Checking herdr and git…").foregroundStyle(.secondary) }
+                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Checking git…").foregroundStyle(.secondary) }
                     }
                     ForEach(tools) { c in
                         HStack(spacing: 8) {
@@ -90,8 +90,8 @@ struct SetupView: View {
                         }
                         .accessibilityElement(children: .combine)
                     }
-                    if tools.contains(where: { $0.id == "tool-herdr" && $0.level != .ok }) {
-                        note("You can start now, but sessions need herdr: install it, then reopen One Roof.", warn: true)
+                    if tools.contains(where: { $0.id == "tool-git" && $0.level != .ok }) {
+                        note("You can start now, but diffs and review need git: install it, then reopen One Roof.", warn: true)
                     }
                 }
                 Section("Agents on this Mac") {

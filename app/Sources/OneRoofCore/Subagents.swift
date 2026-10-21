@@ -2,7 +2,7 @@ import Foundation
 
 // The subagent tracker (v2, ENGINES §4, decision D6). Claude is exact: its transcript JSONL marks subagent entries
 // `isSidechain: true`, tied to the parent's `Task` tool call; the Task input is what was asked, the tool result is the
-// end. Codex, Kimi and Gemini have no such record: their "children" are new herdr panes in the session's workspace,
+// end. Codex, Kimi and Gemini have no such record: their "children" are new processes under the session,
 // labelled inferred.
 
 public struct FileTouch: Codable, Equatable, Sendable {
@@ -183,7 +183,7 @@ public enum ClaudeTranscript {
     }
 }
 
-/// A herdr pane as seen over time (pure input for inferring children of non-Claude agents).
+/// A pane as seen over time (pure input for inferring children of non-Claude agents).
 public struct PaneObservation: Equatable, Sendable {
     public var paneId: String
     public var workspaceId: String?
@@ -191,7 +191,7 @@ public struct PaneObservation: Equatable, Sendable {
     public var title: String?
     public var status: String?
     public var firstSeen: Date
-    /// The pane's process ancestry when known (from `herdr pane process-info`).
+    /// The pane's process ancestry when known (from the runtime's process info).
     public var ancestorPids: [Int32]
 
     public init(paneId: String, workspaceId: String?, agent: String? = nil, title: String? = nil, status: String? = nil,
@@ -214,8 +214,8 @@ public enum InferredSubagents {
         }
         .sorted { $0.firstSeen < $1.firstSeen }
         .map { p in
-            let kind = AgentKind(herdrName: p.agent)
-            let status = SessionStatus.fromHerdr(p.status)
+            let kind = AgentKind(detectedName: p.agent)
+            let status = SessionStatus.fromAgentStatus(p.status)
             return Subagent(id: "pane:" + p.paneId, sessionId: sessionId, name: p.title ?? kind?.displayName ?? "pane \(p.paneId)",
                             model: kind?.displayName ?? (p.agent ?? "shell"), started: p.firstSeen,
                             status: status == .done ? .done : status == .needsYou ? .needsYou : .running, inferred: true)

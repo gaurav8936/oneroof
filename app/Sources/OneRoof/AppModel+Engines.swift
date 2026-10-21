@@ -3,7 +3,7 @@ import OneRoofCore
 
 /// The model's side of the v2 engines (EngineHub): what it feeds them each second and what it shows from them.
 extension AppModel {
-    /// After each herdr poll: every live session, its status and pane revision.
+    /// After each runtime poll: every live session, its status and output seq.
     func feedEngines() {
         let live: [EngineHub.Live] = items.compactMap { i in
             guard i.liveAgent != nil || i.status == .exited else { return nil }
@@ -17,7 +17,7 @@ extension AppModel {
             return EngineHub.Live(id: i.id, name: i.session.name, agent: i.session.agent, account: i.account, status: i.status,
                                   pane: i.paneId, revision: revision(of: i), title: i.title, objective: i.session.objective,
                                   repoPath: i.session.repoPath, launchDirectory: i.session.launchDirectory, ticket: i.session.ticket,
-                                  launchedAt: i.session.launchedAt, added: st?.added, removed: st?.removed, plan: plan)
+                                  launchedAt: i.session.launchedAt, lastActive: lastActiveDate(i), added: st?.added, removed: st?.removed, plan: plan)
         }
         engines.modelAllowed = settings.captionsModel
         engines.tick(live)
@@ -44,9 +44,9 @@ extension AppModel {
         updateDockBadge()
     }
 
-    /// The pane revision herdr reports for a session's agent.
+    /// The output seq the runtime reports for a session.
     private func revision(of i: BoardItem) -> Int? {
-        lastSnapshotAgents[i.liveAgent ?? ""]?.revision
+        lastSnapshotSessions[i.liveAgent ?? ""]?.seq
     }
 
     // MARK: Decisions
@@ -78,11 +78,50 @@ extension AppModel {
     /// Schedule a planned session for tonight / nightly (S04 Tonight, S09 When).
     func schedule(_ item: BoardItem, hour: Int, minute: Int, nightly: Bool) {
         let s: Schedule = nightly ? .nightly(hour: hour, minute: minute) : .tonight(hour: hour, minute: minute)
+        setSchedule(item, s)
+    }
+
+    /// Repeat a session every N minutes (LAB-254): launched if it is not running, its message sent again when it is.
+    func repeatEvery(_ item: BoardItem, minutes: Int) { setSchedule(item, .every(minutes: minutes)) }
+
+    /// What a loop round types: the opening message, else the objective; nil when there is nothing to repeat.
+    func loopMessage(_ item: BoardItem) -> String? {
+        let t = (item.session.openingMessage.isEmpty ? item.session.objective : item.session.openingMessage)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    private func setSchedule(_ item: BoardItem, _ s: Schedule) {
         let r = ScheduleRecord(sessionId: item.id, schedule: s)
         scheduleRecords[item.id] = r
-        schedules[item.id] = s.timeText
+        schedules[item.id] = ScheduleClock.rowLabel(r)
         if !SelfTest.isActive { store?.save(r) }
-        if item.status != .next { setLifecycle(item, .next) }
+        if !item.status.isLive, item.status != .next { setLifecycle(item, .next) }
+    }
+
+    /// The schedule pills from the records (a loop's "next" time moves after every round).
+    func refreshScheduleLabels(now: Date = Date()) {
+        let labels = scheduleRecords.compactMapValues { ScheduleClock.rowLabel($0, now: now) }
+        if labels != schedules { schedules = labels }
+    }
+
+    /// A loop round on a live session while the app runs schedules (roofd does the same when it runs them).
+    private func loopRound(_ item: BoardItem, _ r: ScheduleRecord, now: Date) {
+        guard let agent = item.liveAgent else { return }
+        let snap = lastSnapshotSessions[agent]
+        var rec = r
+        switch ScheduleClock.liveRound(r, status: snap?.status.rawValue, ready: snap?.ready ?? false, now: now) {
+        case .wait: return
+        case .skip: rec.lastResult = "skipped: busy"
+        case .send:
+            guard let text = loopMessage(item) else { rec.lastResult = "skipped: no message"; break }
+            let rt = runtime
+            DispatchQueue.global().async { try? rt.submit(agent, text: text) }
+            rec.lastResult = "sent"
+        }
+        rec.lastRun = now
+        scheduleRecords[item.id] = rec
+        store?.recordScheduledRun(session: item.id, at: now, result: rec.lastResult ?? "")
     }
 
     func unschedule(_ item: BoardItem) {
@@ -140,21 +179,18 @@ extension AppModel {
     /// Interrupt the agent (⌘.): Esc for Claude, Ctrl-C for the others.
     func interrupt(_ item: BoardItem) {
         guard let pane = item.paneId else { return }
-        let h = herdr.herdrPath
-        let isEsc = AnswerKeys.interrupt(item.session.agent) == AnswerKeys.escape
-        DispatchQueue.global().async {
-            if isEsc { _ = Foundations.run(h, ["pane", "send-keys", pane, "esc"], timeout: 5) }
-            else { _ = Foundations.run(h, ["pane", "send-keys", pane, "ctrl-c"], timeout: 5) }
-        }
+        let r = runtime
+        let key: RuntimeKey = AnswerKeys.interrupt(item.session.agent) == AnswerKeys.escape ? .escape : .ctrlC
+        DispatchQueue.global().async { try? r.keys(pane: pane, [key]) }
     }
 
     /// Session › Send Handoff: ask the agent to write its handoff now (between turns only).
     func askForHandoff(_ item: BoardItem) {
         guard let agent = item.liveAgent else { return }
         guard item.status != .running else { lastError = "\(item.session.name) is working; send the handoff request when it is idle."; return }
-        let h = herdr
+        let r = runtime
         DispatchQueue.global().async {
-            try? h.prompt(agent: agent, text: "Write a next-session handoff for this work now (the workspace handoff skill), then stop.")
+            try? r.submit(agent, text: "Write a next-session handoff for this work now (the workspace handoff skill), then stop.")
         }
     }
 }
@@ -171,8 +207,8 @@ extension AppModel {
     func sendSkill(_ skill: String, to item: BoardItem) {
         guard let agent = item.liveAgent else { return }
         guard item.status != .running else { lastError = "\(item.session.name) is working; use the skill when it is idle."; return }
-        let h = herdr
-        DispatchQueue.global().async { try? h.prompt(agent: agent, text: "/" + skill) }
+        let r = runtime
+        DispatchQueue.global().async { try? r.submit(agent, text: "/" + skill) }
         reveal(item)
     }
 }
@@ -182,9 +218,18 @@ extension AppModel {
     /// run, and put "missed · run now?" in the feed when the Mac slept through it. Nothing is merged or committed.
     func tickSchedules(now: Date = Date()) {
         guard !SelfTest.isActive else { return }
+        defer { refreshScheduleLabels(now: now) }
+        if roofdRunsSchedules {                                   // roofd fires them (Q7); read back its last rounds
+            if let rows = store?.schedules() {
+                scheduleRecords = Dictionary(rows.map { ($0.sessionId, $0) }, uniquingKeysWith: { a, _ in a })
+            }
+            return
+        }
         for (id, r) in scheduleRecords {
             guard let item = item(id) else { continue }
             switch ScheduleClock.action(r, now: now) {
+            case .run where r.schedule.interval != nil && item.liveAgent != nil:
+                loopRound(item, r, now: now)
             case .run:
                 var rec = r
                 rec.lastRun = now

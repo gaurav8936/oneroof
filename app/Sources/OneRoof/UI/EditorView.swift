@@ -233,8 +233,8 @@ private struct EditorBody: View {
     private func takeOver(_ c: FileClaim) {
         guard let item = model.item(c.sessionId), let agent = item.liveAgent else { return }
         model.interrupt(item)
-        let h = model.herdr, p = path
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? h.prompt(agent: agent, text: "Pause edits to \(p); the owner is editing it.") }
+        let r = model.runtime, p = path
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? r.submit(agent, text: "Pause edits to \(p); the owner is editing it.") }
         model.fileClaims.endSession(sessionId: c.sessionId)
         model.objectWillChange.send()
         status = "Asked \(item.session.name) to pause edits to this file."
@@ -577,7 +577,7 @@ private struct RunDock: View {
     static func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 }
 
-/// A libghostty terminal running a command (no herdr: runs are the owner's own, not agent sessions).
+/// A libghostty terminal running a command (not roofd: runs are the owner's own, not agent sessions).
 private struct DockTerminal: NSViewRepresentable {
     let command: String
     let cwd: String
@@ -756,8 +756,8 @@ private struct AskAgentSheet: View {
                 RoofButton("Send", .primary) {
                     guard let id = target ?? claimer ?? agents.first?.id, let item = model.item(id), let agent = item.liveAgent else { return }
                     let text = question + "\n@\(request.path):\(request.from)-\(request.to)"
-                    let h = model.herdr
-                    DispatchQueue.global().async { try? h.prompt(agent: agent, text: text) }
+                    let r = model.runtime
+                    DispatchQueue.global().async { try? r.submit(agent, text: text) }
                     close()
                 }
                 .keyboardShortcut(.return, modifiers: .command)

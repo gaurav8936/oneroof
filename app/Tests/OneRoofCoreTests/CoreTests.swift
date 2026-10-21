@@ -26,6 +26,51 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(Workspace.workstream(in: "[WS-API-21] planner"), "WS-API-21")
         XCTAssertEqual(Workspace.workstream(in: "fix ENG-233 · [ws-docs-know-01] x"), "WS-DOCS-KNOW-01")
         XCTAssertNil(Workspace.workstream(in: "no id here"))
+        // Linear project codes (LAB-236): bare upper-case codes and commit tags; issue keys are not projects.
+        XCTAssertEqual(Workspace.workstream(in: "TEAM-ROOFD · roofd"), "TEAM-ROOFD")
+        XCTAssertEqual(Workspace.workstream(in: "ENG-12 · [eng-know-03] subject"), "ENG-KNOW-03")
+        XCTAssertNil(Workspace.workstream(in: "fix ENG-235 today"))
+        XCTAssertEqual(Workspace.projectCode(name: "ENG-KNOW-03 · Knowledge v3"), "ENG-KNOW-03")
+        XCTAssertEqual(Workspace.projectCode(name: "WS-WEB-12 · New checkout"), "WS-WEB-12")
+        XCTAssertNil(Workspace.projectCode(name: "Roadmap"))
+    }
+
+    func testHandoffIsOnlyTheSessionsOwn() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("handoffs-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        for f in ["2026-10-19_0900_eng-roofd-p0_NEXT.txt", "2026-10-20_1000_eng-roofd-fixes_NEXT.txt",
+                  "2026-10-20_1500_other-thing_NEXT.txt", "2026-10-20_1600_eng-roofd2-x.txt", "2026-10-20_1700_eng-247-fix.txt"] {
+            FileManager.default.createFile(atPath: dir + "/" + f, contents: Data())
+        }
+        XCTAssertEqual(Workspace.handoff(in: dir, project: "ENG-ROOFD", ticket: nil), dir + "/2026-10-20_1000_eng-roofd-fixes_NEXT.txt")
+        XCTAssertEqual(Workspace.handoff(in: dir, project: nil, ticket: "ENG-247"), dir + "/2026-10-20_1700_eng-247-fix.txt")
+        XCTAssertNil(Workspace.handoff(in: dir, project: "ENG-DOCLAB-01", ticket: nil), "no other project's handoff")
+        XCTAssertNil(Workspace.handoff(in: dir, project: nil, ticket: "ENG-24"), "ENG-24 is not ENG-247")
+        XCTAssertNil(Workspace.handoff(in: dir, project: nil, ticket: nil))
+    }
+
+    func testTicketOpeningNamesTheIssueNotTheProject() {
+        let o = Intake.ticketOpening(key: "ENG-247", title: "test03", url: "https://x/ENG-247", project: "ENG-ROOFD")
+        XCTAssertTrue(o.hasPrefix("Work on ENG-247 in project ENG-ROOFD: test03."), o)
+        XCTAssertTrue(o.contains("commit as `ENG-247 · [eng-roofd] …`"), o)
+        XCTAssertFalse(o.contains("new ticket"))
+        XCTAssertEqual(Intake.ticketOpening(key: "ENG-9", title: "t", project: nil), "Work on ENG-9: t. Read the ticket first; commit as `ENG-9 …`.")
+        XCTAssertEqual(Intake.sessionName(key: "ENG-247", title: "test03"), "ENG-247 · test03")
+        XCTAssertEqual(Intake.sessionName(key: "ENG-247", title: "ENG-247 · test03"), "ENG-247 · test03")
+    }
+
+    func testWorkKindsMapToLinearTypeLabels() {
+        XCTAssertEqual(WorkKind.defect.labelNames.first, "Bug")
+        XCTAssertEqual(WorkKind.chore.labelNames.first, "Task")
+        XCTAssertEqual(WorkKind.fromLabel("Bug"), .defect)
+        XCTAssertEqual(WorkKind.fromLabel("type:deliverable"), .deliverable)
+        XCTAssertNil(WorkKind.fromLabel("canary"))
+        let old = LinearIssue(id: "1", identifier: "ENG-1", title: "[ws-web-12] Fix it", description: "", state: "", stateType: "",
+                              type: nil, milestoneId: nil, milestone: nil, url: "")
+        XCTAssertEqual(old.shortTitle, "Fix it")
+        var new = old; new.title = "[eng-know-03] Fix it"
+        XCTAssertEqual(new.shortTitle, "Fix it")
     }
 }
 
@@ -75,66 +120,12 @@ final class ProcessProbeTests: XCTestCase {
 }
 
 final class BoardTests: XCTestCase {
-    func snap(_ agents: [HerdrAgent]) -> HerdrSnapshot { HerdrSnapshot(agents: agents) }
-
-    func testHerdrStatusMapping() {
-        XCTAssertEqual(SessionStatus.fromHerdr("working"), .running)
-        XCTAssertEqual(SessionStatus.fromHerdr("blocked"), .needsYou)
-        XCTAssertEqual(SessionStatus.fromHerdr("done"), .done)
-        XCTAssertEqual(SessionStatus.fromHerdr("idle"), .idle)
-        XCTAssertEqual(SessionStatus.fromHerdr(nil), .idle)
-    }
-
-    func testMergeStoredLiveExitedAndAdopted() {
-        let planned = Session(name: "plan it", repoPath: "/p/a/b", lifecycle: .planned)
-        var launched = Session(name: "live one", repoPath: "/p/a/b", lifecycle: .idle)
-        launched.herdrAgent = "roof-1"
-        var gone = Session(name: "gone", repoPath: "/p/a/b", lifecycle: .idle)
-        gone.herdrAgent = "roof-2"
-        var parked = Session(name: "parked", repoPath: "/p/a/b", lifecycle: .doNotUse)
-        parked.herdrAgent = "roof-3"
-
-        let items = Board.merge(
-            stored: [planned, launched, gone, parked],
-            snapshot: snap([
-                HerdrAgent(name: "roof-1", agent: "claude", agent_status: "working", cwd: "/p/a/b", pane_id: "w1:p1"),
-                HerdrAgent(name: "roof-3", agent: "claude", agent_status: "blocked", cwd: "/p/a/b", pane_id: "w3:p1"),
-                HerdrAgent(name: "stray", agent: "codex", agent_status: "blocked", cwd: "/p/x/y", pane_id: "w9:p1",
-                           terminal_title_stripped: "WS-API-21 work"),
-            ]),
-            accounts: ["roof-1": "Claude2"])
-
-        let by = Dictionary(uniqueKeysWithValues: items.map { ($0.session.name, $0) })
-        XCTAssertEqual(by["plan it"]?.status, .planned)
-        XCTAssertEqual(by["live one"]?.status, .running)
-        XCTAssertEqual(by["live one"]?.account, "Claude2")
-        XCTAssertEqual(by["live one"]?.liveAgent, "roof-1")
-        XCTAssertEqual(by["gone"]?.status, .exited)
-        XCTAssertEqual(by["parked"]?.status, .doNotUse)
-        XCTAssertEqual(by["stray"]?.status, .needsYou)
-        XCTAssertEqual(by["stray"]?.adopted, true)
-        XCTAssertEqual(by["stray"]?.session.agent, .codex)
-        XCTAssertEqual(by["stray"]?.session.workstream, "WS-API-21")
-        XCTAssertEqual(items.count, 5)
-    }
-
-    func testGroupingByStatusPutsNeedsYouFirst() {
-        let items = Board.merge(
-            stored: [Session(name: "q", repoPath: "/p", lifecycle: .next)],
-            snapshot: snap([
-                HerdrAgent(name: "a", agent: "claude", agent_status: "idle", cwd: "/p", pane_id: "1"),
-                HerdrAgent(name: "b", agent: "claude", agent_status: "blocked", cwd: "/p", pane_id: "2"),
-            ]))
-        let groups = Board.group(items, by: .status)
-        XCTAssertEqual(groups.map(\.title), ["Needs you", "Idle", "Next"])
-    }
-
     func testGroupingByWorkstreamPutsNoneLast() {
         var a = Session(name: "a", repoPath: "/p", lifecycle: .planned); a.workstream = "WS-B-01"
         let b = Session(name: "b", repoPath: "/p", lifecycle: .planned)
         var c = Session(name: "c", repoPath: "/p", lifecycle: .planned); c.workstream = "WS-A-01"
-        let groups = Board.group(Board.merge(stored: [a, b, c], snapshot: snap([])), by: .workstream)
-        XCTAssertEqual(groups.map(\.title), ["WS-A-01", "WS-B-01", "No workstream"])
+        let groups = Board.group(Board.merge(stored: [a, b, c], snapshot: RuntimeSnapshot()), by: .workstream)
+        XCTAssertEqual(groups.map(\.title), ["WS-A-01", "WS-B-01", "No project"])
     }
 
     func testParseArgs() {
@@ -153,7 +144,7 @@ final class BoardTests: XCTestCase {
     }
 
     func testHerdrNameIsStable() {
-        XCTAssertEqual(Session.herdrName(for: "1A2B3C4D-0000-1111"), "roof-1a2b3c4d")
+        XCTAssertEqual(Session.runtimeName(for: "1A2B3C4D-0000-1111"), "roof-1a2b3c4d")
     }
 
     func testLaunchArgsPutModelFirst() {
@@ -163,37 +154,6 @@ final class BoardTests: XCTestCase {
         XCTAssertEqual(s.launchArgs, ["--resume", "abc"])
         s.agent = .shell
         XCTAssertEqual(s.launchArgs, [], "a plain terminal never gets agent arguments")
-    }
-
-    func testPlainTerminalRowIsLiveWhileItsPaneExists() {
-        let s = Session(name: "Terminal 1", agent: .shell, repoPath: "/p", lifecycle: .idle, herdrAgent: "term:term_1")
-        let pane = HerdrPane(pane_id: "w1:p1", terminal_id: "term_1", workspace_id: "w1", cwd: "/p", foreground_cwd: nil, agent_status: "unknown")
-        let live = Board.merge(stored: [s], snapshot: HerdrSnapshot(panes: [pane]))
-        XCTAssertEqual(live.first?.status, .idle)
-        XCTAssertEqual(live.first?.liveAgent, "term:term_1")
-        let gone = Board.merge(stored: [s], snapshot: HerdrSnapshot())
-        XCTAssertEqual(gone.first?.status, .exited)
-        XCTAssertNil(gone.first?.liveAgent)
-    }
-
-    /// Owner 10-18: typing `claude` in a One Roof terminal shows the row as Claude, with no second "unnamed" row.
-    func testAgentStartedInsideTerminalShowsAsThatAgent() {
-        let s = Session(name: "Terminal 6", agent: .shell, repoPath: "/p", lifecycle: .idle, herdrAgent: "term:term_6")
-        let pane = HerdrPane(pane_id: "w1:p1", terminal_id: "term_6", workspace_id: "w1", cwd: "/p", foreground_cwd: nil, agent_status: "working")
-        let agent = HerdrAgent(name: "term:term_6", agent: "claude", agent_status: "working", cwd: "/p", pane_id: "w1:p1")
-        let items = Board.merge(stored: [s], snapshot: HerdrSnapshot(panes: [pane], agents: [agent]))
-        XCTAssertEqual(items.count, 1)
-        XCTAssertEqual(items.first?.session.agent, .claude)
-        XCTAssertEqual(items.first?.status, .running)
-        XCTAssertEqual(items.first?.liveAgent, "term:term_6")
-        XCTAssertTrue(items.first?.agentInTerminal ?? false)
-        XCTAssertEqual(items.first?.id, s.id)
-    }
-
-    func testTerminalAttachCommand() {
-        let c = HerdrClient()
-        XCTAssertTrue(c.attachCommand(agent: "term:term_9").hasSuffix("terminal attach term_9"))
-        XCTAssertTrue(c.attachCommand(agent: "roof-1").hasSuffix("agent attach roof-1"))
     }
 
     func testSettingsDecodeOldDataWithDefaults() throws {
@@ -280,7 +240,7 @@ final class StickerTests: XCTestCase {
     func testPinnedSessionsGroupFirst() {
         let a = Session(name: "a", repoPath: "/p", lifecycle: .planned, pinned: true)
         let b = Session(name: "b", repoPath: "/p", lifecycle: .planned)
-        let groups = Board.group(Board.merge(stored: [a, b], snapshot: HerdrSnapshot()), by: .status)
+        let groups = Board.group(Board.merge(stored: [a, b], snapshot: RuntimeSnapshot()), by: .status)
         XCTAssertEqual(groups.first?.title, "Pinned")
         XCTAssertEqual(groups.first?.items.map(\.session.name), ["a"])
         XCTAssertEqual(groups.last?.items.map(\.session.name), ["b"])
@@ -396,20 +356,6 @@ final class ObjectiveTests: XCTestCase {
         let missing = "/nonexistent-\(UUID().uuidString)"
         XCTAssertTrue(o.planPath(common: missing).hasPrefix(Workspace.appSupport + "/plans/"))
         XCTAssertTrue(o.runDir(common: missing).hasPrefix(Workspace.appSupport + "/runs/"))
-    }
-}
-
-final class SnapshotDecodingTests: XCTestCase {
-    func testUnnamedAgentDoesNotBreakTheSnapshot() throws {
-        let json = """
-        {"version":"0.9.5","protocol":22,"workspaces":[{"workspace_id":"w1"},{"bad":1}],"panes":[],
-         "agents":[{"name":"roof-1","agent":"claude","pane_id":"w1:p1","agent_status":"idle"},
-                   {"agent":"claude","pane_id":"w2:p1","terminal_id":"term_9","agent_status":"done"},
-                   {"agent":"claude"}]}
-        """
-        let s = try JSONDecoder().decode(HerdrSnapshot.self, from: Data(json.utf8))
-        XCTAssertEqual(s.agents.map(\.name), ["roof-1", "term:term_9"])
-        XCTAssertEqual(s.workspaces.count, 1)
     }
 }
 
