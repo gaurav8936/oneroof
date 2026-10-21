@@ -88,6 +88,23 @@ public struct Sticker: Identifiable, Equatable, Sendable {
     /// Row colours offered in the menu (every pastel except stone).
     public static var rowColors: [Pastel] { Pastel.all.filter { $0.name != "stone" } }
 
+    /// The stickers offered as one-click toggles (LAB-300): every built-in one except the status ones (Next and
+    /// Do not use have their own buttons), then the session's own custom stickers. Labels only; the meaning is a tooltip.
+    public static func pickable(for tags: [String]) -> [Sticker] {
+        var out = catalog.filter { $0.id != "next" && $0.id != "dnu" }
+        for t in tags where !t.trimmingCharacters(in: .whitespaces).isEmpty {
+            let s = resolve(t)
+            if !s.builtIn, !out.contains(where: { $0.id == s.id }) { out.append(s) }
+        }
+        return out
+    }
+
+    /// The sticker the session menu's Highlight button sets (LAB-300: "something like a priority … so highlight").
+    public static let highlightId = "important"
+
+    /// The emoji a session can wear next to its name (the agent logo always stays), offered inline in the session menu.
+    public static let emojiChoices = ["🚀", "🔥", "🐛", "🧪", "📚", "🎨", "🛠️", "💡", "⭐️", "🧠", "🔒", "📦", "💬", "🎯"]
+
     /// The sticker for a stored tag.
     public static func resolve(_ tag: String) -> Sticker {
         let key = tag.trimmingCharacters(in: .whitespaces).lowercased()
@@ -134,5 +151,20 @@ public extension AgentKind {
         case .agy: return "atom"
         case .shell: return "terminal.fill"
         }
+    }
+}
+
+/// The one-click actions at the top of the session menu (LAB-300): compact buttons in a wrapping row. Close is not
+/// one of them (owner: "Do not use close"); it stays on the right-click menu and the row's ✕.
+public enum SessionQuickAction: String, CaseIterable, Sendable {
+    case launch, relaunch, open, next, pin, rename, highlight, doNotUse, delete
+
+    public static func available(for item: BoardItem) -> [SessionQuickAction] {
+        var out: [SessionQuickAction] = []
+        if item.liveAgent == nil && item.status != .doNotUse { out.append(item.status == .exited ? .relaunch : .launch) }
+        else if item.liveAgent != nil { out.append(.open) }
+        out += [.next, .pin, .rename, .highlight, .doNotUse]
+        if item.liveAgent == nil && !item.adopted { out.append(.delete) }
+        return out
     }
 }

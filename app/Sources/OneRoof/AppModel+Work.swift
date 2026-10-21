@@ -68,7 +68,8 @@ extension AppModel {
     /// Create a ticket after the intake filter; calls back on the main thread. The team is the project's, or, with no
     /// project, the one picked (LAB-237: a ticket always has a team; the project is optional).
     func createTicket(kind: WorkKind, title: String, details: String, in w: LinearWorkstream?, team teamKey: String? = nil,
-                      milestone: String?, planSession: Bool, done: @escaping (Result<LinearIssue, Error>) -> Void) {
+                      milestone: String?, planSession: Bool, images: [String] = [],
+                      done: @escaping (Result<LinearIssue, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
@@ -76,8 +77,10 @@ extension AppModel {
                     throw LinearClient.Failure.api("pick a team first")
                 }
                 let t = try self.team(key)
+                // LAB-462: pasted images go up to Linear and into the description (a failed upload keeps its path).
+                let description = ImageAttachments.issueDescription(details, images: self.linear.uploadImages(images))
                 let issue = try self.linear.createIssue(team: t, workstream: w, milestone: milestone, title: title,
-                                                       description: details, type: kind.rawValue)
+                                                       description: description, type: kind.rawValue)
                 DispatchQueue.main.async {
                     if let w {
                         self.issues[w.id, default: []].append(issue)
