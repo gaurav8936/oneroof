@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2 — a one-click session menu, and pasting images (21 Oct 2026)
 
 - **The session menu is one click for everything.** Stickers are labels only, colours are swatches and emoji sit in the menu itself; the colourful menu has a row of buttons (Open, Next, Pin, Rename, Highlight) instead of tiles, and no Close.
 - **Paste or drop screenshots into New session** (LAB-462): ⌘V or a drop attaches them as removable thumbnails; the opening message names them for the agent, and a new Linear issue gets them uploaded into its description.
