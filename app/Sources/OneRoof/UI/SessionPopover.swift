@@ -1,7 +1,8 @@
 import SwiftUI
 import OneRoofCore
 
-/// The colourful session menu (right-click or •••): big coloured actions, stickers, colour and icon pickers.
+/// The colourful session menu (•••, or "Emoji, New Sticker and Rename…" on right-click): big coloured actions, stickers,
+/// colour and emoji. Folder, terminal and window actions live in the right-click menu only (LAB-257).
 struct SessionPopover: View {
     let item: BoardItem
     @ObservedObject var model: AppModel
@@ -29,18 +30,18 @@ struct SessionPopover: View {
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
                 if it.liveAgent == nil && it.status != .doNotUse {
-                    tile(it.status == .exited ? "Relaunch" : "Launch", "play.fill", "mint") { model.launch(it) }
+                    tile(it.status == .exited ? "Relaunch" : "Launch", "play.fill", "mint", help: "Start the agent in this session") { model.launch(it) }
                 } else if it.liveAgent != nil {
-                    tile("Focus", "keyboard", "mint") { model.selectedId = it.id }
+                    tile("Open", "rectangle.and.hand.point.up.left.fill", "mint", help: "Show this session in the main pane") { model.reveal(it); close() }
                 }
-                tile(it.status == .next ? "Not next" : "Next", "arrow.forward.circle.fill", "peach") { model.toggleSticker(it, "next") }
-                tile(it.session.pinned ? "Unpin" : "Pin", "pin.fill", "butter") { model.togglePin(it) }
-                tile("Rename", "pencil", "sky") { rename() }
-                tile(it.status == .doNotUse ? "Use again" : "Do not use", "nosign", "stone") { model.toggleSticker(it, "dnu") }
+                tile(it.status == .next ? "Not next" : "Next", "arrow.forward.circle.fill", "peach", help: "Scheduling: mark it as the one to do next (the Next sticker)") { model.toggleSticker(it, "next") }
+                tile(it.session.pinned ? "Unpin" : "Pin", "pin.fill", "butter", help: "Keep it in the Pinned group at the top") { model.togglePin(it) }
+                tile("Rename", "pencil", "sky", help: "Change the session's name") { rename() }
+                tile(it.status == .doNotUse ? "Use again" : "Do not use", "nosign", "stone", help: "Park it: kept, but struck through") { model.toggleSticker(it, "dnu") }
                 if it.liveAgent != nil {
-                    tile(it.session.agent.isAgent ? "Close" : "Close", "xmark.circle.fill", "coral") { model.confirmClose(it) }
+                    tile("Close", "xmark.circle.fill", "coral", help: "End the agent or shell (asks first)") { model.confirmClose(it) }
                 } else if !it.adopted {
-                    tile("Delete", "trash.fill", "coral") { model.delete(it) }
+                    tile("Delete", "trash.fill", "coral", help: "Remove this session from One Roof") { model.delete(it) }
                 }
             }
 
@@ -53,7 +54,7 @@ struct SessionPopover: View {
                     .buttonStyle(.plain).help("No colour")
                 ForEach(Sticker.rowColors, id: \.name) { p in
                     Button { model.setColor(it, p.name) } label: { ColourSwatch(pastel: p, selected: Pastel.named(it.session.color) == p, size: 20) }
-                        .buttonStyle(.plain).help(p.name.capitalized)
+                        .buttonStyle(.plain).help(p.name.capitalized + " row")
                 }
             }
 
@@ -69,33 +70,13 @@ struct SessionPopover: View {
                     }.buttonStyle(.plain)
                 }
             }
-
-            Divider()
-            FlowLayout(spacing: 12) {
-                link("Open repo", "folder") { NSWorkspace.shared.open(URL(fileURLWithPath: it.session.repoPath)) }
-                link("Terminal here", "terminal") { model.newTerminal(in: it.session.repoPath); close() }
-                link("Copy folder", "doc.on.clipboard") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(it.session.launchDirectory, forType: .string)
-                }
-                if it.liveAgent != nil {
-                    link("New window", "macwindow.on.rectangle") { PopOutWindowController.popOut(it, model: model); close() }
-                    link("Roof window for \(Workspace.repoLabel(for: it.session.repoPath))", "house") { RoofWindowController.show(.repo(it.session.repoPath), model: model); close() }
-                }
-                if let a = it.liveAgent {
-                    link("Copy attach", "doc.on.doc") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
-                    }
-                }
-            }
         }
         .padding(14)
         .frame(width: 330)
         .background(theme.window.color)
     }
 
-    private func tile(_ title: String, _ symbol: String, _ pastel: String, _ action: @escaping () -> Void) -> some View {
+    private func tile(_ title: String, _ symbol: String, _ pastel: String, help: String, _ action: @escaping () -> Void) -> some View {
         let p = Pastel.named(pastel)!
         return Button(action: action) {
             VStack(spacing: 4) {
@@ -108,15 +89,11 @@ struct SessionPopover: View {
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(p.inkColor(scheme).opacity(0.12)))
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
     private func section(_ t: String) -> some View {
         Text(t).font(.system(size: 9.5, weight: .heavy)).tracking(0.8).foregroundStyle(.secondary)
-    }
-
-    private func link(_ t: String, _ symbol: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(t, systemImage: symbol).font(.system(size: 11, weight: .medium)).lineLimit(1).fixedSize() }
-            .buttonStyle(.plain).foregroundStyle(Color.accentColor)
     }
 }
 
