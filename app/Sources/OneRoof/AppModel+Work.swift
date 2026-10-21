@@ -192,3 +192,24 @@ extension AppModel {
         }
     }
 }
+
+extension AppModel {
+    /// Attach a Linear issue to an existing session (LAB-474): the session takes it as its ticket, Linear moves it to
+    /// started once the session has launched, and an idle agent is told about it (a busy one is told nothing; the owner
+    /// is warned instead, never interrupted mid-turn).
+    func attachIssue(_ issue: LinearIssue, team: String?, project: String?, to item: BoardItem, tellAgent: Bool) {
+        update(item) { Intake.attach(issue, team: team, project: project, to: &$0) }
+        if item.session.launchedAt != nil || item.liveAgent != nil, let key = team ?? item.session.ticketTeam {
+            ticketStarted(id: issue.id, team: key)
+        }
+        guard tellAgent, let agent = item.liveAgent, item.session.agent.isAgent else { return }
+        guard item.status != .running else {
+            lastError = "\(issue.identifier) is attached; \(item.session.name) is working, so tell it when it is idle."
+            return
+        }
+        let text = Intake.attachMessage(key: issue.identifier, title: issue.shortTitle, url: issue.url.isEmpty ? nil : issue.url,
+                                        project: project ?? item.session.workstream)
+        let r = runtime
+        DispatchQueue.global().async { try? r.submit(agent, text: text) }
+    }
+}

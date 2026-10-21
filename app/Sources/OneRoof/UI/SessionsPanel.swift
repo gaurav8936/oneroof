@@ -161,6 +161,10 @@ struct SessionsPanel: View {
                         popoverFor = nil
                         win.selectedId = item.id
                         DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.renameSelected(_:)), to: nil, from: nil) }
+                    }, attachIssue: {
+                        popoverFor = nil
+                        win.selectedId = item.id
+                        DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil) }
                     })
                         .themed(model.themes.sidebar)
                 }
@@ -268,6 +272,12 @@ struct SessionContextMenu: View {
         }
         Button(it.status == .doNotUse ? "Use Again" : "Do Not Use") { model.toggleSticker(it, "dnu") }
         Button(it.session.pinned ? "Unpin" : "Pin") { model.togglePin(it) }
+        if it.status != .doNotUse {
+            Button(it.session.ticket == nil ? "Attach Issue…" : "Change Issue…") {
+                win?.selectedId = it.id
+                DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil) }
+            }
+        }
         // Loops (LAB-254): send the session's message again every N minutes while it waits; launch it if it is not running.
         if it.session.agent.isAgent {
             let looping = model.scheduleRecords[it.id]?.schedule.interval != nil
