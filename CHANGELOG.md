@@ -7,6 +7,7 @@
   closes; a stopped one is removed, and File › Reopen Closed Session (⇧⌘T) brings it back.
 - **Exited sessions look stopped.** Their rows are grey and faded until you point at or select them.
 - **A second window no longer blinks** while attaching, and no longer shows the doors dialog on launch.
+- **The session menu is one click for everything.** Stickers are labels only, colours are swatches and emoji sit in the menu itself; the colourful menu has a row of buttons (Open, Next, Pin, Rename, Highlight) instead of tiles, and no Close.
 - **Sessions don't inherit self-test settings**, so One Roof opened from a terminal session starts normally.
 
 ## 0.4.0 — roofd, One Roof's own session manager (20 Oct 2026)

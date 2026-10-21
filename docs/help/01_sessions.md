@@ -72,15 +72,15 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 
 ![The session menu: action tiles, stickers, colour and emoji](img/session-menu.png)
 
-**Right-click a row** for the quick menu: Launch or Relaunch (not running) or Open (running: shows it in the main pane), Mark as Next / Mark as Planned (Next is scheduling: the one to do next), Do Not Use / Use Again, Pin / Unpin, every sticker as a tick box with its picture and what it means, Row Colour (a submenu of colour swatches), **Emoji, New Sticker and Rename…**, Move to Window, Open in New Window, Roof Window for the repo, Review Changes, Terminal Here, Show Folder in Finder, Copy Folder Path, Copy Link to Session, Copy Attach Command (running), Close Agent… (running) and Delete.
+**Right-click a row** for the quick menu: Launch or Relaunch (not running) or Open (running: shows it in the main pane), Mark as Next / Mark as Planned (Next is scheduling: the one to do next), Do Not Use / Use Again, Pin / Unpin, every sticker as a tick box with its picture and name, a row of colour swatches (click one; the chosen one has a ring and a check), two rows of emoji (click one), **Emoji, New Sticker and Rename…**, Move to Window, Open in New Window, Roof Window for the repo, Review Changes, Terminal Here, Show Folder in Finder, Copy Folder Path, Copy Link to Session, Copy Attach Command (running), Close Agent… (running) and Delete.
 
 **••• on hover** opens the larger menu:
 
-- **Action tiles:** Launch or Relaunch (not running) or Open (running: shows it in the main pane), Next / Not next (scheduling: the one to do next), Pin / Unpin, Rename, Do not use / Use again, and Close (running: ends the agent, after asking) or Delete (not running).
-- **Stickers:** Next, WIP, Important, Blocked, Review, Idea, Bug, Research, Shipped, Do not use, or a word of your own (it keeps the same colour every time).
-- **Colour** and **emoji** pickers.
+- **Action buttons** in a row: Launch or Relaunch (not running) or Open (running: shows it in the main pane), Next (scheduling: the one to do next), Pin, Rename, Highlight (marks it Important), Do not use, and Delete (not running). Next, Pin, Highlight and Do not use are filled with a check when on. Close is not here: use the row's ✕ or the right-click menu.
+- **Stickers** as one-click chips: WIP, Important, Blocked, Review, Idea, Bug, Research, Shipped, or a word of your own (it keeps the same colour every time).
+- **Colour** swatches and **emoji**, one click each.
 
-Hover any tile or sticker to see what it does. Folder, terminal and window actions are in the right-click menu, not here.
+Everything is one click; hover any button, sticker or swatch to see what it does or its name. Folder, terminal and window actions are in the right-click menu, not here.
 
 Settings › Appearance switches stickers between Bold and Soft.
 
