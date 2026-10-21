@@ -12,8 +12,8 @@
 - **Tonight and Nightly run with the app closed** when scheduled runs are allowed; roofd sends the opening message once
   the agent is ready.
 - **Steps you can rewind and explain.** The steps list at the top of a pane is capped at six (it scrolls); click a
-  step to scroll the terminal back to it and read on, **Back to current** to return, and the magnifier on a step asks
-  Claude what was asked, what happened, what was decided and the risks.
+  step to scroll the terminal back to it and read on, **Back to current** to return. The right panel's **Step review**
+  has Claude's reading of the latest step (or the one you clicked): what was asked, what happened, decisions and risks.
 - **Loops.** Repeat a session every 15 min to 4 h (right-click › Repeat, or When › Every): roofd launches it, or
   sends its message again when the agent waits, never mid-work, even with the app closed.
 - **Paste images into a terminal.** ⌘V with a screenshot or copied image saves it and types its path, so the agent

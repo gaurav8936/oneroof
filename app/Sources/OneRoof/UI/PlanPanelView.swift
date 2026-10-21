@@ -182,6 +182,7 @@ struct PlanDetail: View {
             .textFieldStyle(.plain).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
             .onSubmit(commit)
         facts(it)
+        if it.session.agent.isAgent, it.liveAgent != nil { StepReviewSection(model: model, item: it) }
         if it.session.ticket != nil { TicketBox(item: it, model: model) }
         field("Project") {
             HStack(spacing: 6) {

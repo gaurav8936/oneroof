@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
     @Published var chapters: [String: [Chapter]] = [:]
     /// "Explain this step" answers, by session · step (LAB-259).
     @Published var stepExplanations: [String: StepExplainState] = [:]
+    /// The step a session's terminal is rewound to, shown in the right panel's Step review (LAB-260); nil = latest.
+    @Published var reviewStep: [String: Int] = [:]
     /// Files the agents are editing right now (S07 claim banner).
     var fileClaims = FileClaims()
     var scheduleRecords: [String: ScheduleRecord] = [:]
