@@ -479,7 +479,14 @@ final class AppModel: ObservableObject {
         busy.insert(item.id)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let r = self.checkFoundationsNow()
+            var r = self.checkFoundationsNow()
+            // LAB-290: doors go stale every time CLAUDE.md is edited (~/Projects/AGENTS.md is generated from it), and the
+            // fix only rewrites generated door files, so repair silently instead of asking on every launch.
+            let silent = r.filter { $0.level == .fail && Foundations.silentFixIds.contains($0.id) }.compactMap(\.fix)
+            if !silent.isEmpty {
+                for fix in silent { _ = Foundations.run("/bin/zsh", ["-lc", fix], cwd: Workspace.projectsRoot, timeout: 120) }
+                r = self.checkFoundationsNow()
+            }
             DispatchQueue.main.async {
                 self.foundations = r
                 self.foundationsCheckedAt = Date()
