@@ -66,6 +66,11 @@ final class RoofWindowController: NSWindowController, NSWindowDelegate {
         update()
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        WindowCloseGuard.shared.shouldClose(sender, what: "this roof window",
+            detail: "Its sessions keep running and go back to the main window.")
+    }
+
     func windowWillClose(_ notification: Notification) {
         bag.removeAll()
         surfaces.values.forEach { $0.removeFromSuperview() }

@@ -140,6 +140,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         if model.activeWindowId != win.id { model.activeWindowId = win.id }
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        WindowCloseGuard.shared.shouldClose(sender, what: "the window \u{201C}\(win.name)\u{201D}",
+            detail: "Its sessions keep running in roofd. Reopen the window from Window \u{25B8} Workspaces.")
+    }
+
     func windowWillClose(_ notification: Notification) {
         Self.all.removeAll { $0 === self }
         // Closing a workspace window keeps its sessions (they wait in the store, roofd keeps the agents);

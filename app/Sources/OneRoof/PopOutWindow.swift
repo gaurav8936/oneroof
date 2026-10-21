@@ -35,6 +35,11 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
         if let s = surface { window?.makeFirstResponder(s) }
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        WindowCloseGuard.shared.shouldClose(sender, what: "this session's window",
+            detail: "The session keeps running and goes back to the main window.")
+    }
+
     func windowWillClose(_ notification: Notification) {
         model.poppedOut.remove(agent)
         PopOutWindowController.open[agent] = nil
