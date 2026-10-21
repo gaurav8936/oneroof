@@ -11,6 +11,8 @@ struct SessionPopover: View {
     @ObservedObject var model: AppModel
     let close: () -> Void
     let rename: () -> Void
+    /// Opens the Attach issue sheet (LAB-474); the hosts close the popover and select the session first.
+    var attachIssue: () -> Void = {}
 
     @Environment(\.colorScheme) private var scheme
     @Environment(\.theme) private var theme
@@ -89,6 +91,9 @@ struct SessionPopover: View {
             chip("Pin", "pin.fill", "butter", on: it.session.pinned, help: "Keep it in the Pinned group at the top") { model.togglePin(it) }
         case .rename:
             chip("Rename", "pencil", "sky", help: "Change the session's name") { rename() }
+        case .issue:
+            chip(it.session.ticket == nil ? "Issue…" : "Change issue…", "link", "lavender",
+                 help: "Attach a Linear issue to this session: an open one, or a new one") { attachIssue() }
         case .highlight:
             chip("Highlight", "star.fill", "coral", on: tagIds.contains(Sticker.highlightId),
                  help: "Priority: mark it Important (the Important sticker)") { model.toggleSticker(it, Sticker.highlightId) }

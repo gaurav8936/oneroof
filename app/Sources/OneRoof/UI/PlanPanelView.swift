@@ -174,6 +174,9 @@ struct PlanDetail: View {
                     SessionPopover(item: it, model: model, close: { showMore = false }, rename: {
                         showMore = false
                         DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.renameSelected(_:)), to: nil, from: nil) }
+                    }, attachIssue: {
+                        showMore = false
+                        DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil) }
                     })
                     .themed(model.themes.plan)
                 }

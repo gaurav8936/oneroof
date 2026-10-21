@@ -401,6 +401,23 @@ public enum Intake {
         return "Work on \(key)\(where_): \(title). \(read)\(project == nil ? "" : " and the project docs") first; commit as `\(key)\(tag) …`."
     }
 
+    /// What a running agent is told when an issue is attached to its session (LAB-474).
+    public static func attachMessage(key: String, title: String, url: String? = nil, project: String?) -> String {
+        let read = url.map { "Read it (\($0))" } ?? "Read it"
+        let tag = project.map { " · [\($0.lowercased())]" } ?? ""
+        return "This session now also works on \(key): \(title). \(read) when you reach a good stopping point; commit that work as `\(key)\(tag) …`."
+    }
+
+    /// Link an issue to an existing session (LAB-474): the issue becomes the session's ticket (close and review act on
+    /// it); a session with no issue yet takes the "KEY · title" name, and one with no project takes the issue's.
+    public static func attach(_ issue: LinearIssue, team: String?, project: String?, to s: inout Session) {
+        if s.ticket == nil { s.name = sessionName(key: issue.identifier, title: s.name) }
+        s.ticket = issue.identifier
+        s.ticketId = issue.id
+        s.ticketTeam = team ?? s.ticketTeam
+        if (s.workstream ?? "").isEmpty, let project, !project.isEmpty { s.workstream = project }
+    }
+
     /// A session on an issue is named after it, Linear's way: "KEY · title" (LAB-248).
     public static func sessionName(key: String, title: String) -> String {
         title.hasPrefix(key) ? title : "\(key) · \(title)"

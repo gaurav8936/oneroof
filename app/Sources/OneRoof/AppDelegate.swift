@@ -226,6 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         a.addButton(withTitle: "Rename"); a.addButton(withTitle: "Cancel")
         if a.runModal() == .alertFirstButtonReturn { model.rename(i, f.stringValue) }
     }
+    @objc func attachIssueToSelected(_ sender: Any?) { if let i = model.selected { main.attachIssue(i) } }
     @objc func scheduleTonight(_ sender: Any?) { if let i = model.selected { model.schedule(i, hour: 2, minute: 0, nightly: false) } }
     @objc func scheduleNightly(_ sender: Any?) { if let i = model.selected { model.schedule(i, hour: 2, minute: 0, nightly: true) } }
     @objc func scheduleOff(_ sender: Any?) { if let i = model.selected { model.unschedule(i) } }
