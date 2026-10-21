@@ -115,6 +115,14 @@ public enum Board {
                 live = a
                 used.insert(name)
                 status = s.lifecycle == .doNotUse ? .doNotUse : SessionStatus(a.status)
+            } else if let name = s.runtimeId, let sh = byShell[name], s.lifecycle != .doNotUse, justLaunched(s) {
+                // LAB-299: roofd has the session but the agent is not in the foreground yet (the login shell's setup
+                // runs first, ~1.5 s, then the CLI starts). Show its terminal now, marked starting, instead of a
+                // placeholder until the agent is seen: the pane was blank for 2-3 s after every launch.
+                live = sh
+                used.insert(name)
+                status = .idle
+                starting = true
             } else if s.runtimeId != nil, s.lifecycle != .doNotUse {
                 if justLaunched(s) { status = .idle; starting = true } else { status = .exited }
             }
@@ -122,7 +130,7 @@ public enum Board {
                 id: s.id, session: s, status: status,
                 liveAgent: live?.id, paneId: live?.pane, workspaceId: live?.groupId,
                 detectedAccount: live.flatMap { accounts[$0.id] },
-                adopted: false, title: live?.title, ready: live?.ready ?? false)
+                adopted: false, title: live?.title, ready: starting ? false : live?.ready ?? false)
             item.starting = starting
             items.append(item)
         }

@@ -59,8 +59,8 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
 - **Stickers, colours and icons ("Apple meets terminal", I5).** Bold stickers with icons (Next, WIP, Important,
   Blocked, Review, Idea, Bug, Research, Shipped, Do not use, or any word of your own, which keeps its colour) that pop
   on a light or dark sidebar; a colour per row; an emoji or the agent's logo; pinned sessions on top; double-click a
-  name to rename; time since last active. Right-click (or •••) opens a colourful menu with big action tiles and the
-  sticker, colour and icon pickers. Settings › Appearance switches stickers between Bold and Soft.
+  name to rename; time since last active. Right-click for the menu with stickers, colour swatches and emoji inline;
+  ••• opens the colourful menu: one row of action buttons, sticker chips, colour swatches and emoji, all one click. Settings › Appearance switches stickers between Bold and Soft.
 - **Objectives with visible planning (⌘⇧O, I7).** Type an objective (what, done when, repo, urgency, budget). A
   planner session (Claude, in a terminal you can watch) uses the `plan-objective` skill from the agentic-engineering folder
   to write a plan file (Markdown + a `oneroof-plan` JSON block) next to the project's docs. The plan shows as step

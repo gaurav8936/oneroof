@@ -362,6 +362,38 @@ struct HintStrip: View {
     }
 }
 
+/// LAB-299: over a just-launched agent's live terminal, until the agent is up (the login shell runs first, then the
+/// CLI draws). The terminal itself is already there and takes typing.
+struct StartingStrip: View {
+    @Environment(\.theme) private var t
+    let item: BoardItem
+
+    /// Starting (roofd has the session, the agent is not in the foreground yet), or seen but not ready in its first 8 s.
+    static func shows(_ item: BoardItem, now: Date = Date()) -> Bool {
+        guard item.session.agent.isAgent else { return false }
+        if item.starting { return true }
+        return !item.ready && item.session.launchedAt.map { now.timeIntervalSince($0) < 8 } == true
+    }
+
+    var body: some View {
+        HStack {
+            Spacer()
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.mini)
+                Text(item.starting ? "Starting \(item.session.agent.displayName)… your login shell runs first"
+                                   : "\(item.session.agent.displayName) is starting…")
+                    .ui(12).foregroundStyle(t.text2.color).lineLimit(1)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Capsule().fill(t.surface.color))
+            .overlay(Capsule().strokeBorder(t.separatorStrong.color))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(item.session.agent.displayName) is starting")
+        }
+        .padding(.horizontal, 16).padding(.bottom, 10)
+    }
+}
+
 /// Placeholder states with no surface (S02 §1.6): Planned/Next, Exited, Scheduled, popped out, empty pane.
 struct PanePlaceholder: View {
     @Environment(\.theme) private var t

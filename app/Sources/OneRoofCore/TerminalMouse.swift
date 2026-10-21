@@ -57,8 +57,15 @@ public enum TerminalMouse {
     /// Save the pasteboard's image as paste-<time>.png; images older than 7 days are cleared first.
     public static func saveImage(from pb: NSPasteboard, in dir: URL) -> String? {
         guard let type = pb.availableType(from: imageTypes), let data = pb.data(forType: type) else { return nil }
+        return saveImage(data: data, isPNG: type == .png, in: dir)
+    }
+
+    /// Save image data (PNG, TIFF, JPEG, …) as paste-<time>.png in `dir`: the same place and name as a terminal paste
+    /// (LAB-462: the New session sheet saves its pasted and dropped images here too).
+    public static func saveImage(data: Data, isPNG: Bool = false, in dir: URL) -> String? {
         let png: Data?
-        if type == .png { png = data } else { png = NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:]) }
+        if isPNG || data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { png = data }
+        else { png = NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:]) }
         guard let png else { return nil }
         let fm = FileManager.default
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)

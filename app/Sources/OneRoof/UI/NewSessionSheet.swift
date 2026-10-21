@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import OneRoofCore
 
 /// New work (⌘N): what it is (intake), what should happen, duplicate check, agent and account with the router's
@@ -46,6 +47,12 @@ struct NewSessionSheet: View {
     @State private var error: String?
     @State private var debounce: DispatchWorkItem?
     @FocusState private var textFocused: Bool
+    /// Images pasted (⌘V) or dropped into the sheet (LAB-462): saved paths, with their thumbnails.
+    @State private var images: [String] = []
+    @State private var thumbs: [String: NSImage] = [:]
+    @State private var dropTargeted = false
+    @State private var pasteMonitor: Any?
+    @StateObject private var sheetWindow = WindowRef()
 
     private let repos = [Workspace.projectsRoot] + Workspace.listRepos()
     private let marks: [AgentMark] = AgentMark.available([.claude1, .claude2, .codex, .kimi, .gemini, .antigravity, .shell])
@@ -79,6 +86,7 @@ struct NewSessionSheet: View {
                             .strokeBorder(textFocused ? t.accent.color : t.separatorStrong.color, lineWidth: textFocused ? 2 : 1))
                         .onChange(of: text) { _, v in textChanged(v) }
                 }
+                attachments
                 if let d = duplicate { duplicateBanner(d) }
                 if kind == .workstream && linked { projectFields }
             }
@@ -142,7 +150,13 @@ struct NewSessionSheet: View {
         }
         .frame(width: 820)
         .background(t.window.color)
+        .background(WindowReader(ref: sheetWindow))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(dropTargeted ? t.accent.color : .clear, lineWidth: 2).allowsHitTesting(false))
+        .onDrop(of: [.fileURL, .image], isTargeted: $dropTargeted, perform: drop)
         .onAppear(perform: appear)
+        .onAppear(perform: installPaste)
+        .onDisappear(perform: removePaste)
         .onChange(of: model.workstreams) { _, _ in defaultWorkstream() }
     }
 
@@ -345,6 +359,98 @@ struct NewSessionSheet: View {
         if linked && needsTeam && teamKey.isEmpty { return kind == .workstream ? "Pick a team (top right) for the project" : "Pick a team (top right) to file the ticket in" }
         if kind == .workstream && !codeOK { return "The code looks like TEAM-TOPIC or TEAM-TOPIC-01" }
         return "Pick a project (top right) to file the ticket in"
+    }
+
+    // MARK: Images (LAB-462)
+
+    /// The attached images as removable chips, or a hint that ⌘V and drops attach them.
+    @ViewBuilder private var attachments: some View {
+        if images.isEmpty {
+            Text("Paste (⌘V) or drop a screenshot to attach it").ui(11.5).foregroundStyle(t.text3.color)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) { ForEach(images, id: \.self) { imageChip($0) } }
+                }
+                Text(attachNote).ui(11.5).foregroundStyle(t.text3.color)
+            }
+        }
+    }
+
+    private var attachNote: String {
+        var parts: [String] = []
+        if mark != .shell { parts.append("The opening message names them for the agent") }
+        if (kind == .ticket || kind == .defect) && useTicket == nil && linked { parts.append("the new issue gets them uploaded") }
+        return parts.isEmpty ? "Saved in \(TerminalMouse.pastedImagesDir.path)" : parts.joined(separator: "; ") + "."
+    }
+
+    private func imageChip(_ path: String) -> some View {
+        HStack(spacing: 6) {
+            Group {
+                if let img = thumbs[path] { Image(nsImage: img).resizable().scaledToFill() }
+                else { Image(systemName: "photo").foregroundStyle(t.text2.color) }
+            }
+            .frame(width: 36, height: 26).clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            Text((path as NSString).lastPathComponent).ui(11.5, mono: true).foregroundStyle(t.text2.color)
+                .lineLimit(1).truncationMode(.middle).frame(maxWidth: 160, alignment: .leading)
+            Button { images.removeAll { $0 == path }; thumbs[path] = nil } label: {
+                Text("✕").ui(11, .semibold).foregroundStyle(t.text2.color).frame(width: 18, height: 18).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove image \((path as NSString).lastPathComponent)")
+        }
+        .padding(.leading, 4).padding(.trailing, 6).padding(.vertical, 3)
+        .background(Capsule().fill(t.card.color))
+        .overlay(Capsule().strokeBorder(t.separator.color))
+        .help(path)
+    }
+
+    private func attach(_ paths: [String]) {
+        for p in paths where !images.contains(p) {
+            images.append(p)
+            if let img = NSImage(contentsOfFile: p) { thumbs[p] = img }
+        }
+    }
+
+    /// ⌘V with an image on the clipboard attaches it (text pastes as usual). The sheet's text views take ⌘V first and
+    /// paste only text, so this looks at the key before them, in this sheet's window only.
+    private func installPaste() {
+        guard pasteMonitor == nil else { return }
+        let ref = sheetWindow
+        pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            guard e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  e.charactersIgnoringModifiers?.lowercased() == "v",
+                  let w = ref.window, e.window === w,
+                  let paths = ImageAttachments.pastedImages(from: .general) else { return e }
+            attach(paths)
+            return nil
+        }
+    }
+
+    private func removePaste() {
+        if let m = pasteMonitor { NSEvent.removeMonitor(m) }
+        pasteMonitor = nil
+    }
+
+    /// Dropped image files keep their path; dropped image data (from a browser, say) is saved like a paste.
+    private func drop(_ providers: [NSItemProvider]) -> Bool {
+        var took = false
+        for p in providers {
+            if p.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                took = true
+                _ = p.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url, ImageAttachments.isImagePath(url.path) else { return }
+                    DispatchQueue.main.async { attach([url.path]) }
+                }
+            } else if p.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                took = true
+                p.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                    guard let data, let path = TerminalMouse.saveImage(data: data, in: TerminalMouse.pastedImagesDir) else { return }
+                    DispatchQueue.main.async { attach([path]) }
+                }
+            }
+        }
+        return took
     }
 
     // MARK: Duplicate check (S09 §1.4)
@@ -688,7 +794,7 @@ struct NewSessionSheet: View {
                             account: a == .claude ? name(mark) : (AccountResolver.choices(for: a).first),
                             repoPath: repo,
                             workstream: w?.wsId ?? (wsText.trimmingCharacters(in: .whitespaces).isEmpty ? Workspace.workstream(in: title) : wsText.trimmingCharacters(in: .whitespaces).uppercased()),
-                            objective: doneWhen, openingMessage: a.isAgent ? opening : "",
+                            objective: doneWhen, openingMessage: a.isAgent ? ImageAttachments.openingMessage(opening, images: images) : "",
                             lifecycle: forcePlanned || when == .onDemand ? .planned : .next,
                             startInRepo: startInRepo,
                             agentArgs: a.isAgent ? (resumeId.isEmpty ? [] : ["--resume", resumeId]) + Session.parseArgs(args) : [],
@@ -706,7 +812,8 @@ struct NewSessionSheet: View {
             busy = true
             let w = currentWorkstream
             let type: WorkKind = kind == .defect ? .defect : ticketType
-            model.createTicket(kind: type, title: title, details: doneWhen, in: w, team: teamKey, milestone: nil, planSession: false) { r in
+            model.createTicket(kind: type, title: title, details: doneWhen, in: w, team: teamKey, milestone: nil, planSession: false,
+                               images: images) { r in
                 busy = false
                 switch r {
                 case .success(let issue): makeSession(ticket: issue, w: w)
@@ -716,5 +823,24 @@ struct NewSessionSheet: View {
             return
         }
         makeSession(ticket: nil, w: currentWorkstream)
+    }
+}
+
+/// The sheet's own window, so its ⌘V monitor ignores keys meant for other windows (LAB-462).
+final class WindowRef: ObservableObject {
+    weak var window: NSWindow?
+}
+
+private struct WindowReader: NSViewRepresentable {
+    let ref: WindowRef
+    func makeNSView(context: Context) -> NSView { Reader(ref: ref) }
+    func updateNSView(_ v: NSView, context: Context) {}
+
+    final class Reader: NSView {
+        let ref: WindowRef
+        init(ref: WindowRef) { self.ref = ref; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { fatalError("not supported") }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); ref.window = window }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
