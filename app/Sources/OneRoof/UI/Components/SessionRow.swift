@@ -58,7 +58,14 @@ struct SessionRow: View {
     var selected = false
     var ring: RGB?
     var onRename: ((String) -> Void)?
+    /// The row's ✕ (LAB-460), shown on hover or when selected: close a live session (asks first) or remove a stopped one.
+    var onClose: (() -> Void)?
+    var closeHelp = "Close"
     @State private var editing = false
+    @State private var hovering = false
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var dimmed: Bool { row.status == .exited && !hovering && !selected }
     @State private var draft = ""
 
     var body: some View {
@@ -69,7 +76,11 @@ struct SessionRow: View {
             case .rail: AgentBadge(row.mark, size: 32, status: row.status, ring: ring).padding(6)
             }
         }
+        // LAB-461: an exited session reads as stopped: no colour, faded, until it is pointed at or selected.
+        .saturation(dimmed ? 0 : 1)
+        .opacity(dimmed ? (contrast == .increased ? 0.8 : 0.55) : 1)
         .contentShape(Rectangle())
+        .onHover { hovering = $0 }
         .hoverHighlight(radius: Radius.row, selected: selected)
         .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
             .fill(row.tint.map { t.sticker($0).fill.color } ?? .clear))
@@ -88,6 +99,7 @@ struct SessionRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(row.name), \(StatusPalette.label(row.status)), \(row.caption.text)")
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityAction(named: closeHelp) { onClose?() }
     }
 
     private var full: some View {
@@ -111,6 +123,18 @@ struct SessionRow: View {
                     if let s = row.scheduled { StatusPill(status: row.status, scheduled: s) }
                     else if [.next, .planned, .doNotUse].contains(row.status) { StatusPill(status: row.status) }
                     Text(row.age).ui(11).foregroundStyle(t.text3.color)
+                    if let onClose {
+                        let show = hovering || selected
+                        Button(action: onClose) {
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(t.text2.color)
+                                .frame(width: 16, height: 16).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(closeHelp)
+                        .opacity(show ? 1 : 0)
+                        .allowsHitTesting(show)
+                        .accessibilityHidden(true)
+                    }
                 }
                 CaptionLine(caption: row.caption)
                 HStack(spacing: 6) {

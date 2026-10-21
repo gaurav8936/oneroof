@@ -141,6 +141,9 @@ public enum Foundations {
                     detail: "skipped: no shared folder at \(p.common.replacingOccurrences(of: p.home, with: "~")) (Settings › Foundations)")
     }
 
+    /// Checks whose fix is idempotent and only writes generated files, so a launch runs it without asking (LAB-290).
+    public static let silentFixIds: Set<String> = ["doors"]
+
     public static func doorsCheck(_ p: FoundationPaths) -> CheckResult {
         guard p.hasShared else { return CheckResult(id: "doors", title: "Doors", level: .ok, detail: "optional: needs a shared folder") }
         let script = p.common + "/scripts/doors/ensure-doors.sh"
