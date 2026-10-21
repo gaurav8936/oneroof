@@ -104,6 +104,8 @@ final class AppModel: ObservableObject {
     let store: SessionStore?
     private var stored: [Session] = []
     private var lastSnapshot = RuntimeSnapshot()
+    /// The rows have been built from a real snapshot once (status changes before that are the app starting up).
+    private var sawSnapshot = false
     /// Live sessions by runtime id from the latest snapshot (output seq for the caption engine).
     var lastSnapshotSessions: [RuntimeID: RuntimeSessionState] {
         Dictionary(lastSnapshot.sessions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -288,12 +290,21 @@ final class AppModel: ObservableObject {
             }
             new = Board.merge(stored: stored, snapshot: lastSnapshot, accounts: accounts)
         }
-        // Last active: any status change, or while an agent is working.
+        // Last active (LAB-258): what roofd says, since its holders outlive the app; for a runtime that does not say,
+        // any status change seen while the app runs, or while an agent is working. Not the first statuses after a
+        // (re)start: those are the app catching up, not the session doing something.
         let now = Date()
+        let runtimeActive = Dictionary(lastSnapshot.sessions.compactMap { s in s.activeAt.map { (s.id, $0) } },
+                                       uniquingKeysWith: { a, _ in a })
         let before = Dictionary(items.map { ($0.id, $0.status) }, uniquingKeysWith: { a, _ in a })
-        for i in new where i.status == .running || (before[i.id] != nil && before[i.id] != i.status) {
-            lastActive[i.id] = now
+        for i in new {
+            if let id = i.liveAgent, let at = runtimeActive[id] {
+                lastActive[i.id] = i.status == .running ? now : at
+            } else if i.status == .running || (sawSnapshot && before[i.id] != nil && before[i.id] != i.status) {
+                lastActive[i.id] = now
+            }
         }
+        sawSnapshot = sawSnapshot || !lastSnapshot.sessions.isEmpty
         let inView = visibleInPanes.union([selectedId].compactMap { $0 })
         for id in inView { lastViewed[id] = now }
         // A finished turn the owner is looking at is no longer news (roofd: done → idle).

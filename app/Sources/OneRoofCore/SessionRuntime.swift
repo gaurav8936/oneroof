@@ -50,12 +50,15 @@ public struct RuntimeSessionState: Sendable, Equatable {
     public var seq: Int?
     /// Where the agent last worked (a file or folder its tools touched), when its hooks report it.
     public var workPath: String?
+    /// When the runtime last saw the session do something (LAB-258); nil from runtimes that do not say.
+    public var activeAt: Date?
 
     public init(id: RuntimeID, isAgent: Bool, agentName: String? = nil, status: RuntimeStatus = .unknown, ready: Bool = false,
                 title: String? = nil, cwd: String? = nil, pane: String, groupId: String? = nil, seq: Int? = nil,
-                workPath: String? = nil) {
+                workPath: String? = nil, activeAt: Date? = nil) {
         self.id = id; self.isAgent = isAgent; self.agentName = agentName; self.status = status; self.ready = ready
         self.title = title; self.cwd = cwd; self.pane = pane; self.groupId = groupId; self.seq = seq; self.workPath = workPath
+        self.activeAt = activeAt
     }
 }
 

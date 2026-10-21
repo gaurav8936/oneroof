@@ -17,7 +17,7 @@ extension AppModel {
             return EngineHub.Live(id: i.id, name: i.session.name, agent: i.session.agent, account: i.account, status: i.status,
                                   pane: i.paneId, revision: revision(of: i), title: i.title, objective: i.session.objective,
                                   repoPath: i.session.repoPath, launchDirectory: i.session.launchDirectory, ticket: i.session.ticket,
-                                  launchedAt: i.session.launchedAt, added: st?.added, removed: st?.removed, plan: plan)
+                                  launchedAt: i.session.launchedAt, lastActive: lastActiveDate(i), added: st?.added, removed: st?.removed, plan: plan)
         }
         engines.modelAllowed = settings.captionsModel
         engines.tick(live)

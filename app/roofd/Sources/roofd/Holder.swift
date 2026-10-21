@@ -474,6 +474,9 @@ final class Holder {
             "x": Int(x), "y": Int(y), "modes": modes,
             "id": spec.id, "label": spec.label, "cwd": spec.cwd, "pid": Int(pid), "seq": seq, "title": title, "pwd": pwd, "work": workPath,
             "alt": alt, "attached": clients.values.contains { $0.attached }, "created": created.timeIntervalSince1970,
+            // When the session last did something (LAB-258): an agent's screen content changing (not a status-bar
+            // repaint), or a shell's output. The holder outlives the app, so a restarted app shows the real age.
+            "active": ((agent != nil ? contentChangedAt : nil) ?? lastOutput ?? created).timeIntervalSince1970,
         ]
         if master >= 0 { out["pgid"] = Int(roof_foreground_pgrp(master)) }
         if let at = exitedAt {
