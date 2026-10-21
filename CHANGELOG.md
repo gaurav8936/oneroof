@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — roofd, One Roof's own session manager (unreleased)
+## 0.4.0 — roofd, One Roof's own session manager (20 Oct 2026)
 
 - **herdr is gone: nothing to install but your agents.** Sessions run in roofd, a small session manager inside the
   app. One terminal emulator end to end: real scrollback, native selection and copy, prompt marks, and keystroke echo
