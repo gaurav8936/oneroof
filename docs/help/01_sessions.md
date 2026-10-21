@@ -103,6 +103,16 @@ With a session selected it has four tabs:
 
 With nothing selected it shows today's counts and a short how-to. The **Appearance** box at the bottom sets the theme of each panel ([Themes and layout](08_themes-layout-viewer-and-find.md)).
 
+## Steps: rewind and explain
+
+The top of a running agent's pane lists its **steps**: each prompt you gave it (and each "Step n" in a plan it follows).
+
+- **Capped:** the list shows six steps; more scroll inside it, and it keeps the current step in view.
+- **Rewind:** click a step to scroll the terminal back to where it started, then scroll on from there. The pane shows **Viewing step n**; **Back to current** (or the **Current** button above the steps, or clicking the same step again) returns to the live bottom.
+- **Explain:** the magnifier at the end of a finished step asks Claude (Haiku, run with no tools and nothing saved, on the session's Claude account) to read that step and tell you, in a small pop-up, **what was asked**, **what happened**, **what was decided** and **the risks**. It takes a few seconds; **Ask again** reruns it. It reads only the terminal text, so check anything that matters.
+
+The steps cover the session's last 5,000 lines; an older step can no longer be rewound to or explained.
+
 ## A session in its own window
 
 Session › Open in New Window (⌥⌘O), or New window in the session menu, moves a running session's terminal into its own window. The centre then says "Open in its own window" with **Show window** and **Bring back here**.

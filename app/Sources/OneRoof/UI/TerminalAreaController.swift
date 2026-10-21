@@ -230,17 +230,21 @@ final class TerminalAreaController: NSViewController {
         }
     }
 
-    /// Expand a finished chapter: scroll the surface to where it starts (a view over the scrollback).
+    /// Rewind to a step (LAB-259): scroll the surface to where the step starts, a view over the scrollback; the owner
+    /// scrolls on from there. The same step again (or Back to current) returns to the live bottom.
     private func toggleChapter(_ pane: String, _ index: Int, _ item: BoardItem?) {
         if openChapter[pane] == index { openChapter[pane] = nil; terminalAction("scroll_to_bottom"); update(); return }
         openChapter[pane] = index
-        let chs = item.flatMap { model.chapters[$0.id] } ?? []
-        if let ch = chs.first(where: { $0.index == index }), let last = chs.last {
-            let fromBottom = max(0, last.scrollbackRange.upperBound - ch.scrollbackRange.lowerBound)
-            terminalAction("scroll_to_bottom")
-            terminalAction("scroll_page_lines:-\(fromBottom)")
-        }
         update()
+        let chs = item.flatMap { model.chapters[$0.id] } ?? []
+        guard let item, let ch = chs.first(where: { $0.index == index }) else { return }
+        // Where the step starts, read fresh from the session (the chapter list only covers its last 300 lines).
+        let fallback = chs.last.map { max(0, $0.scrollbackRange.upperBound - ch.scrollbackRange.lowerBound) }
+        model.stepOffset(item, ch) { [weak self] n in
+            guard let self, self.openChapter[pane] == index, let lines = n ?? fallback else { return }
+            self.terminalAction("scroll_to_bottom")
+            self.terminalAction("scroll_page_lines:-\(lines)")
+        }
     }
 
     private func updateColumn(theme: ThemeName) {

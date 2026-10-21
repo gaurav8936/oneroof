@@ -23,7 +23,7 @@ struct PaneTop: View {
             PaneHeader(model: model, item: item, focused: focused, split: split, onZoom: onZoom, onClose: onClose)
             if let item, item.session.agent.isAgent, item.liveAgent != nil {
                 if expanded {
-                    SummaryCard(model: model, item: item, onCollapse: onToggleSummary)
+                    SummaryCard(model: model, item: item, openChapter: openChapter, onChapter: onChapter, onCollapse: onToggleSummary)
                         .themed(model.themes.centre)
                 } else {
                     SummaryStrip(model: model, item: item, onExpand: onToggleSummary)
@@ -31,7 +31,12 @@ struct PaneTop: View {
                 if !raw {
                     let chs = (model.chapters[item.id] ?? []).filter { $0.ended != nil }
                     ForEach(chs.suffix(expanded ? 3 : 2), id: \.index) { c in
-                        ChapterRow(chapter: c, open: openChapter == c.index) { onChapter(c.index) }
+                        ChapterRow(chapter: c, open: openChapter == c.index,
+                                   explain: AnyView(StepExplainButton(model: model, item: item, chapter: c))) { onChapter(c.index) }
+                    }
+                    // Rewound to a step (LAB-259): one click back to the live bottom of the terminal.
+                    if let open = openChapter, let c = (model.chapters[item.id] ?? []).first(where: { $0.index == open }) {
+                        RewindBar(chapter: c) { onChapter(open) }
                     }
                 }
             }
@@ -127,6 +132,8 @@ struct SummaryCard: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     let item: BoardItem
+    var openChapter: Int? = nil
+    var onChapter: (Int) -> Void = { _ in }
     var onCollapse: () -> Void
 
     var body: some View {
@@ -160,8 +167,26 @@ struct SummaryCard: View {
                 let steps = stepList(c)
                 if !steps.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        MicroLabel("Steps · \(c.step ?? 0) of \(c.steps ?? steps.count)")
-                        StepList(steps: steps)
+                        HStack(spacing: 6) {
+                            MicroLabel("Steps · \(c.step ?? 0) of \(c.steps ?? steps.count)")
+                            Spacer()
+                            if let open = openChapter {
+                                Button { onChapter(open) } label: {
+                                    Label("Current", systemImage: "arrow.down.to.line").ui(11, .medium)
+                                }
+                                .buttonStyle(.plain).foregroundStyle(t.accent.color)
+                                .help("Back to the current step, at the bottom of the terminal")
+                            }
+                        }
+                        if usesChapters {
+                            let chs = model.chapters[item.id] ?? []
+                            StepList(steps: steps, maxVisible: 6, selected: openChapter, onTap: onChapter, accessory: { s in
+                                guard let ch = chs.first(where: { $0.index == s.id }), ch.ended != nil else { return AnyView(EmptyView()) }
+                                return AnyView(StepExplainButton(model: model, item: item, chapter: ch))
+                            })
+                        } else {
+                            StepList(steps: steps, maxVisible: 6)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -171,6 +196,9 @@ struct SummaryCard: View {
         .background(t.surface.color)
         .overlay(alignment: .bottom) { Hairline() }
     }
+
+    /// The steps are the terminal's chapters (not an objective's plan), so they can be rewound to and explained.
+    private var usesChapters: Bool { !model.objectives.contains { $0.stepSessions.values.contains(item.id) && $0.plan != nil } }
 
     private func stepList(_ c: LiveCaption) -> [StepList.Step] {
         if let o = model.objectives.first(where: { $0.stepSessions.values.contains(item.id) }), let p = o.plan {
@@ -190,6 +218,7 @@ struct ChapterRow: View {
     @Environment(\.theme) private var t
     let chapter: Chapter
     let open: Bool
+    var explain: AnyView? = nil
     var onTap: () -> Void
 
     var body: some View {
@@ -201,6 +230,7 @@ struct ChapterRow: View {
                     .ui(13).lineLimit(1)
                 Spacer()
                 Text("\(chapter.toolCalls) calls · \(duration) \(open ? "▾" : "▸")").ui(11.5, mono: true).foregroundStyle(t.text3.color)
+                if let explain { explain }
             }
             .padding(.vertical, 9).padding(.horizontal, 20)
             .background(t.terminal.background.color)
@@ -214,6 +244,28 @@ struct ChapterRow: View {
     private var duration: String {
         guard let e = chapter.ended else { return "" }
         return CaptionEngine.ageText(e.timeIntervalSince(chapter.started))
+    }
+}
+
+/// Shown while the terminal is rewound to a step (LAB-259): which step, and the way back to the live bottom.
+struct RewindBar: View {
+    @Environment(\.theme) private var t
+    let chapter: Chapter
+    var onCurrent: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath").font(.system(size: 12, weight: .semibold)).foregroundStyle(t.accent.color)
+            Text("Viewing step \(chapter.index + 1) · \(chapter.title)").ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
+            Text("scroll to read on from here").ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+            Spacer()
+            Button(action: onCurrent) { Label("Back to current", systemImage: "arrow.down.to.line").ui(12, .medium) }
+                .buttonStyle(.plain).foregroundStyle(t.accent.color)
+                .help("Scroll to the bottom: the step in progress now")
+        }
+        .padding(.vertical, 7).padding(.horizontal, 20)
+        .background(t.terminal.background.color)
+        .overlay(alignment: .bottom) { Hairline() }
     }
 }
 
@@ -463,5 +515,89 @@ extension AppModel {
     func handoffPath(for item: BoardItem) -> String? {
         Workspace.handoff(in: settings.sharedFolder + "/docs/next-session-handoff",
                           project: item.session.workstream, ticket: item.session.ticket)
+    }
+}
+
+/// "Explain" on a step (LAB-259): asks a model what was asked, what happened, what was decided and the risks, and
+/// shows the answer in a small popover.
+struct StepExplainButton: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    let item: BoardItem
+    let chapter: Chapter
+    @State private var shown = false
+
+    var body: some View {
+        Button {
+            if model.stepExplanations[AppModel.stepKey(item, chapter)] == nil { model.explainStep(item, chapter) }
+            shown = true
+        } label: {
+            Image(systemName: "text.magnifyingglass").font(.system(size: 11, weight: .semibold)).foregroundStyle(t.text3.color)
+                .frame(width: 20, height: 18).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Explain this step: what was asked, what happened, decisions and risks")
+        .accessibilityLabel("Explain step \(chapter.index + 1)")
+        .popover(isPresented: $shown, arrowEdge: .bottom) {
+            StepExplainPanel(model: model, item: item, chapter: chapter).themed(model.themes.centre)
+        }
+    }
+}
+
+struct StepExplainPanel: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    let item: BoardItem
+    let chapter: Chapter
+
+    var body: some View {
+        let state = model.stepExplanations[AppModel.stepKey(item, chapter)]
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("Step \(chapter.index + 1)").ui(11.5, .semibold, mono: true).foregroundStyle(t.text3.color)
+                Text(chapter.title).ui(14, .semibold).foregroundStyle(t.text.color).lineLimit(2)
+            }
+            switch state {
+            case .done(let e)?:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        section("Question", e.question)
+                        section("What happened", e.happened)
+                        section("Decisions", e.decisions)
+                        section("Risks", e.risks)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 380)
+                footer("Explained by Claude (\(StepExplainer.model)) from the terminal text; check anything that matters.")
+            case .failed(let why)?:
+                Text(why).ui(12.5).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
+                footer(nil)
+            default:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading the step…").ui(12.5).foregroundStyle(t.text2.color)
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 420)
+        .background(t.surface.color)
+    }
+
+    private func section(_ title: String, _ body: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            MicroLabel(title)
+            Text(.init(body.isEmpty ? "None" : body)).ui(13).foregroundStyle(t.text.color)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        }
+    }
+
+    private func footer(_ note: String?) -> some View {
+        HStack {
+            if let note { Text(note).ui(10.5).foregroundStyle(t.text3.color) }
+            Spacer()
+            Button("Ask again") { model.explainStep(item, chapter) }.controlSize(.small)
+        }
     }
 }
