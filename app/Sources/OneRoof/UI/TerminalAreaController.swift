@@ -11,6 +11,10 @@ final class TerminalAreaController: NSViewController {
     /// The window (workspace) this terminal area belongs to: its selection drives the focused pane.
     let win: WindowState
     private var surfaces: [String: TerminalSurfaceView] = [:]
+    /// LAB-290: roofd lets one terminal show a session. A refused attach exits at once; without these the pane rebuilt
+    /// the surface on every exit and looped (the blinking window, and a frozen one beside it).
+    private var surfaceBorn: [String: Date] = [:]
+    private var refused: [String: Int] = [:]
     private var bag = Set<AnyCancellable>()
     private let body = PaneBody()
     private var shownAgent: String?
@@ -112,6 +116,17 @@ final class TerminalAreaController: NSViewController {
             self.raw.toggle()
             self.update()
         }
+        // Another window is about to show a session: let go of our terminal for it (only a hidden one, unless forced).
+        NotificationCenter.default.addObserver(forName: .releaseSurface, object: nil, queue: .main) { [weak self] n in
+            guard let self, let agent = n.object as? String, (n.userInfo?["win"] as? String) != self.win.id,
+                  let s = self.surfaces[agent], s.isHidden || (n.userInfo?["force"] as? Bool) == true else { return }
+            s.onProcessExit = nil
+            s.removeFromSuperview()
+            self.surfaces[agent] = nil
+            if self.shownAgent == agent { self.shownAgent = nil }
+            // Handed over on purpose: this pane says where it went, instead of attaching again and winning it back.
+            if !s.isHidden { self.refused[agent] = 2; self.update() }
+        }
         // A click in a pane focuses it (the terminal still gets the click).
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in
             guard let self, e.window === self.view.window, self.tree.leaves.count > 1 else { return e }
@@ -188,7 +203,11 @@ final class TerminalAreaController: NSViewController {
             pv.layer?.borderWidth = multi && focused ? 1 : 0
             pv.layer?.borderColor = tokens.accent.nsColor.cgColor
             pv.layer?.backgroundColor = tokens.terminal.background.nsColor.cgColor
-            if let item, let agent = item.liveAgent, !model.poppedOut.contains(agent) {
+            if let item, let agent = item.liveAgent, !model.poppedOut.contains(agent), (refused[agent] ?? 0) >= 2 {
+                pv.setBottom(nil)
+                pv.setOverlay(nil)
+                pv.show(placeholder: AnyView(ShownElsewherePlaceholder(onShowHere: { [weak self] in self?.showHere(agent) }).themed(theme)))
+            } else if let item, let agent = item.liveAgent, !model.poppedOut.contains(agent) {
                 pv.show(surface: surface(agent: agent, cwd: item.session.repoPath, theme: theme))
                 shown.insert(agent)
                 if item.session.agent.isAgent {
@@ -228,6 +247,13 @@ final class TerminalAreaController: NSViewController {
                 }
             }
         }
+    }
+
+    /// "Show here": take the session from the window showing it (LAB-290).
+    private func showHere(_ agent: String) {
+        NotificationCenter.default.post(name: .releaseSurface, object: agent, userInfo: ["win": win.id, "force": true])
+        refused[agent] = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.update() }
     }
 
     /// Rewind to a step (LAB-259): scroll the surface to where the step starts, a view over the scrollback; the owner
@@ -285,6 +311,8 @@ final class TerminalAreaController: NSViewController {
             surfaces[agent] = nil
         }
         surfaceTried[agent] = Date()
+        surfaceBorn[agent] = Date()
+        NotificationCenter.default.post(name: .releaseSurface, object: agent, userInfo: ["win": win.id])
         let dir = Workspace.isInsideProjects(cwd) ? cwd : Workspace.projectsRoot
         let surface = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: theme)
         surface.onSearchTotal = { [weak self] n in self?.find.total = n }
@@ -296,6 +324,15 @@ final class TerminalAreaController: NSViewController {
             self.surfaces[agent]?.removeFromSuperview()
             self.surfaces[agent] = nil
             if self.shownAgent == agent { self.shownAgent = nil }
+            // Refused (another window holds the session): try once more after the other window let go, then stop.
+            if Date().timeIntervalSince(self.surfaceBorn[agent] ?? .distantPast) < 3 {
+                let n = (self.refused[agent] ?? 0) + 1
+                self.refused[agent] = n
+                if n == 1 { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.update() } }
+                else { self.update() }
+                return
+            }
+            self.refused[agent] = nil
             self.update()
         }
         surfaces[agent] = surface
@@ -601,4 +638,26 @@ struct FindBar: View {
         .onChange(of: state.focusToken) { _, _ in focused = true }
         .onAppear { focused = true }
     }
+}
+
+/// A session another window is showing (roofd lets one terminal show it at a time).
+private struct ShownElsewherePlaceholder: View {
+    @Environment(\.theme) private var t
+    let onShowHere: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Text("Showing in another window").ui(18, .semibold).foregroundStyle(t.text.color)
+            Text("A session shows in one window at a time.").ui(13).foregroundStyle(t.text2.color)
+            RoofButton("Show here", .primary, action: onShowHere)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension Notification.Name {
+    /// A window is about to show a session's terminal (object: agent id, userInfo: win, force).
+    static let releaseSurface = Notification.Name("oneroof.releaseSurface")
 }

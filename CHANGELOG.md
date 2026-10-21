@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 — closing things, and fixes (21 Oct 2026)
+
+- **Closing a window works.** Tick "Yes, I'm sure" and press Close, and the window closes (it stayed open before).
+- **An ✕ on every session row.** Point at a row (or select it) and click ✕: a running session asks first, then
+  closes; a stopped one is removed, and File › Reopen Closed Session (⇧⌘T) brings it back.
+- **Exited sessions look stopped.** Their rows are grey and faded until you point at or select them.
+- **A second window no longer blinks** while attaching, and no longer shows the doors dialog on launch.
+- **Sessions don't inherit self-test settings**, so One Roof opened from a terminal session starts normally.
+
 ## 0.4.0 — roofd, One Roof's own session manager (20 Oct 2026)
 
 - **herdr is gone: nothing to install but your agents.** Sessions run in roofd, a small session manager inside the
