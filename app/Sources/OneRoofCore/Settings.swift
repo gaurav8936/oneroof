@@ -52,8 +52,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var captionsModel: Bool
     /// Let One Roof install its launchd agent so Tonight / Nightly sessions start on time.
     public var scheduledRuns: Bool
+    /// Step review (LAB-260): Claude reads each finished step of the session on screen. Off by default: every step it
+    /// reviews is one more model call on the owner's Claude account.
+    public var stepReview: Bool
 
     public init() {
+        stepReview = false
         captionsModel = true
         scheduledRuns = false
         tintRows = true
@@ -93,6 +97,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         menuBarExtra = try c.decodeIfPresent(Bool.self, forKey: .menuBarExtra) ?? fresh.menuBarExtra
         captionsModel = try c.decodeIfPresent(Bool.self, forKey: .captionsModel) ?? fresh.captionsModel
         scheduledRuns = try c.decodeIfPresent(Bool.self, forKey: .scheduledRuns) ?? fresh.scheduledRuns
+        stepReview = try c.decodeIfPresent(Bool.self, forKey: .stepReview) ?? fresh.stepReview
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath

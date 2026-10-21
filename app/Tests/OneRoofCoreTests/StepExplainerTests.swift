@@ -50,4 +50,13 @@ final class StepExplainerTests: XCTestCase {
         XCTAssertTrue(p.contains("## Risks"))
         XCTAssertTrue(StepExplainer.command.contains("--tools \"\""), "the explaining model gets no tools")
     }
+
+    func testStepReviewIsOffUntilTheOwnerTurnsItOn() throws {
+        // LAB-260: every reviewed step is a model call, so a fresh install and older saved settings start with it off.
+        XCTAssertFalse(AppSettings().stepReview)
+        let old = try JSONDecoder().decode(AppSettings.self, from: Data("{\"captionsModel\": true}".utf8))
+        XCTAssertFalse(old.stepReview)
+        var on = AppSettings(); on.stepReview = true
+        XCTAssertTrue(try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(on)).stepReview)
+    }
 }

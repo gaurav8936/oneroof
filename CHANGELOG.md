@@ -14,6 +14,7 @@
 - **Steps you can rewind and explain.** The steps list at the top of a pane is capped at six (it scrolls); click a
   step to scroll the terminal back to it and read on, **Back to current** to return. The right panel's **Step review**
   has Claude's reading of the latest step (or the one you clicked): what was asked, what happened, decisions and risks.
+  It is off until you switch it on in that box, since each reviewed step is one more model call.
 - **Loops.** Repeat a session every 15 min to 4 h (right-click › Repeat, or When › Every): roofd launches it, or
   sends its message again when the agent waits, never mid-work, even with the app closed.
 - **Paste images into a terminal.** ⌘V with a screenshot or copied image saves it and types its path, so the agent
