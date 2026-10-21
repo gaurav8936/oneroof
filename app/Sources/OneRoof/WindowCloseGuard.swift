@@ -4,15 +4,13 @@ import AppKit
 /// Close is enabled. Closing from code (`window.close()`, the self-test, a session's process ending) skips it; only
 /// the close button and File ▸ Close Window (⌃⌘W) (`performClose`) ask.
 final class WindowCloseGuard: NSObject {
-    private var confirmed: Set<ObjectIdentifier> = []
     private var asking: Set<ObjectIdentifier> = []
     static let shared = WindowCloseGuard()
 
-    /// Call from `windowShouldClose`. Returns true when this close was already confirmed; otherwise shows the sheet
-    /// (once) and returns false. A confirmed sheet closes the window.
+    /// Call from `windowShouldClose`. Shows the sheet (once) and returns false; a confirmed sheet closes the window.
     func shouldClose(_ window: NSWindow, what: String, detail: String) -> Bool {
         let id = ObjectIdentifier(window)
-        if SelfTest.isActive || confirmed.remove(id) != nil { return true }
+        if SelfTest.isActive { return true }
         guard !asking.contains(id) else { return false }
         asking.insert(id)
         let a = NSAlert()
@@ -32,8 +30,9 @@ final class WindowCloseGuard: NSObject {
             guard let self, let window else { return }
             self.asking.remove(id)
             guard r == .alertFirstButtonReturn, tick.state == .on else { return }
-            self.confirmed.insert(id)
-            window.performClose(nil)
+            // LAB-298: performClose did nothing here (the sheet is still attached while this handler runs, and
+            // performClose refuses a window with a sheet). Close on the next turn, directly: it is already confirmed.
+            DispatchQueue.main.async { window.close() }
         }
         DispatchQueue.main.async { a.window.makeFirstResponder(tick) }
         return false
