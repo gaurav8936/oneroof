@@ -112,7 +112,7 @@ A timeline of every subagent: who asked it what, the model, tokens, how long it 
 <img src="site/shots/subagents-daylight.png" alt="Subagents timeline" width="960">
 
 ### Say what should happen. It works out who does it. <sub>New session · ⌘N</sub>
-One Roof works out whether this is a session, a ticket, a defect or a workstream, finds similar tickets, and puts the
+One Roof works out whether this is a session, a ticket, a defect or a project, finds similar tickets, and puts the
 router's suggestion on top with its reason. Launch now, queue it next, or schedule it for tonight. The routing is your
 rules plus each seat's remaining usage; an optional on-device model sorts the task into a kind in about 0.2 s.
 
@@ -133,7 +133,7 @@ on a line to send it back to the agent, then commit.
 | <img src="site/shots/editor.png" alt="Editor" width="470"> | <img src="site/shots/review.png" alt="Review changes" width="470"> |
 
 ### Your roadmap and a coach, built in. <sub>Work · Learn</sub>
-Work shows your workstreams and tickets by phase, with the session working on each one. Learn is an
+Work shows your projects and tickets by phase, with the session working on each one. Learn is an
 agentic-engineering coach: a 12-lesson narrated course and 17 starter skills ([`agentic_engineering/`](agentic_engineering/)).
 Listen in the app, or send a skill straight to a session.
 
@@ -167,7 +167,7 @@ Listen in the app, or send a skill straight to a session.
 | Required | git | `xcode-select --install` (Xcode Command Line Tools) |
 | Required | At least one agent CLI, installed and signed in: `claude`, `codex`, `kimi`, `gemini` or `agy` | each agent's own installer |
 | Optional | On-device task classifier and captions | `brew install llama.cpp` + the model file (see [app/README.md](app/README.md)) |
-| Optional | Work view (workstreams and tickets) | a Linear API key, entered at setup or in Settings |
+| Optional | Work view (projects and tickets) | a Linear API key, entered at setup or in Settings |
 | Optional | Seat gauges for Claude | a Claude Code status line that writes usage files (see the help page on seats) |
 
 Xcode, zig and the libghostty build are only needed to build from source.
