@@ -75,13 +75,13 @@ struct StickerPicker: View {
 
     var body: some View {
         let ids = Set(current.map { Sticker.resolve($0).id })
-        let customs = current.map(Sticker.resolve).filter { !$0.builtIn }
         VStack(alignment: .leading, spacing: 8) {
             FlowLayout(spacing: 6) {
-                ForEach(Sticker.catalog.filter { $0.id != "next" && $0.id != "dnu" } + customs) { s in
+                ForEach(Sticker.pickable(for: current)) { s in
                     Button { toggle(s.id) } label: { StickerView(sticker: s, soft: soft, size: 11, selected: ids.contains(s.id)) }
                         .buttonStyle(.plain)
                         .help((ids.contains(s.id) ? "Remove \(s.label)" : "Add \(s.label)") + ": \(s.meaning)")
+                        .accessibilityLabel(s.label + (ids.contains(s.id) ? ", on" : ", off"))
                 }
             }
             HStack(spacing: 6) {
@@ -206,19 +206,54 @@ enum MenuArt {
 
     private static func ns(_ c: RGB) -> NSColor { NSColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: c.alpha) }
 
-    /// A round colour swatch; nil draws "no colour" (an empty ring with a slash).
-    static func swatch(_ p: Pastel?) -> NSImage {
-        let img = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in
-            let circle = NSBezierPath(ovalIn: r.insetBy(dx: 1.5, dy: 1.5))
+    /// A round colour swatch; nil draws "no colour" (an empty ring with a slash). `selected` adds a check and an
+    /// accent ring (LAB-300: the right-click menu shows the colours themselves in one row, so the chosen one must show).
+    static func swatch(_ p: Pastel?, selected: Bool = false) -> NSImage {
+        let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { r in
+            if selected {
+                NSColor.controlAccentColor.setStroke()
+                let ring = NSBezierPath(ovalIn: r.insetBy(dx: 0.75, dy: 0.75)); ring.lineWidth = 1.5; ring.stroke()
+            }
+            let circle = NSBezierPath(ovalIn: r.insetBy(dx: selected ? 3 : 2, dy: selected ? 3 : 2))
             if let p {
                 ns(p.fill(dark: dark)).setFill(); circle.fill()
                 ns(p.ink(dark: false)).withAlphaComponent(0.35).setStroke()
             } else {
                 NSColor.secondaryLabelColor.setStroke()
-                let slash = NSBezierPath(); slash.move(to: NSPoint(x: 4, y: 4)); slash.line(to: NSPoint(x: 12, y: 12))
+                let slash = NSBezierPath(); slash.move(to: NSPoint(x: 5, y: 5)); slash.line(to: NSPoint(x: 13, y: 13))
                 slash.lineWidth = 1.2; slash.stroke()
             }
             circle.lineWidth = 1; circle.stroke()
+            if selected, let p {
+                let c = NSBezierPath(); c.move(to: NSPoint(x: 6.2, y: 9.2)); c.line(to: NSPoint(x: 8.2, y: 7)); c.line(to: NSPoint(x: 12, y: 11.4))
+                c.lineWidth = 1.6; c.lineCapStyle = .round; c.lineJoinStyle = .round
+                ns(p.ink(dark: false)).setStroke(); c.stroke()
+            }
+            return true
+        }
+        img.isTemplate = false
+        return img
+    }
+
+    /// A session emoji for the right-click menu's emoji row (LAB-300); `selected` sits on an accent-ringed tile.
+    /// nil draws "no emoji" (a ring with a slash).
+    static func emoji(_ e: String?, selected: Bool = false) -> NSImage {
+        let img = NSImage(size: NSSize(width: 22, height: 20), flipped: false) { r in
+            if selected {
+                let tile = NSBezierPath(roundedRect: r.insetBy(dx: 1, dy: 1), xRadius: 5, yRadius: 5)
+                NSColor.controlAccentColor.withAlphaComponent(0.22).setFill(); tile.fill()
+                NSColor.controlAccentColor.setStroke(); tile.lineWidth = 1.2; tile.stroke()
+            }
+            if let e {
+                let a = NSAttributedString(string: e, attributes: [.font: NSFont.systemFont(ofSize: 13)])
+                let sz = a.size()
+                a.draw(at: NSPoint(x: (r.width - sz.width) / 2, y: (r.height - sz.height) / 2))
+            } else {
+                NSColor.secondaryLabelColor.setStroke()
+                let ring = NSBezierPath(ovalIn: NSRect(x: 5, y: 4, width: 12, height: 12)); ring.lineWidth = 1.2; ring.stroke()
+                let slash = NSBezierPath(); slash.move(to: NSPoint(x: 7, y: 6)); slash.line(to: NSPoint(x: 15, y: 14))
+                slash.lineWidth = 1.2; slash.stroke()
+            }
             return true
         }
         img.isTemplate = false

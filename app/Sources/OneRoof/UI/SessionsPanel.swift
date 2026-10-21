@@ -286,26 +286,43 @@ struct SessionContextMenu: View {
             }
         }
         Divider()
+        // LAB-300: stickers are labels only (the meaning was noise), and colours and emoji sit in the menu itself as
+        // rows of swatches, one click each, instead of a submenu of colour names or a second panel.
         Section("Stickers") {
             let ids = Set(it.session.tags.map { Sticker.resolve($0).id })
-            let customs = it.session.tags.map(Sticker.resolve).filter { !$0.builtIn }
-            ForEach(Sticker.catalog.filter { $0.id != "next" && $0.id != "dnu" } + customs) { s in
+            ForEach(Sticker.pickable(for: it.session.tags)) { s in
                 Toggle(isOn: Binding(get: { ids.contains(s.id) }, set: { _ in model.toggleSticker(it, s.id) })) {
-                    Label { Text("\(s.label)  ·  \(s.meaning)") } icon: { Image(nsImage: MenuArt.sticker(s)) }
+                    Label { Text(s.label) } icon: { Image(nsImage: MenuArt.sticker(s)) }
                 }
             }
         }
-        Menu {
-            Toggle(isOn: Binding(get: { Pastel.named(it.session.color) == nil }, set: { _ in model.setColor(it, nil) })) {
-                Label { Text("None") } icon: { Image(nsImage: MenuArt.swatch(nil)) }
-            }
-            ForEach(Sticker.rowColors, id: \.name) { p in
-                Toggle(isOn: Binding(get: { Pastel.named(it.session.color) == p }, set: { _ in model.setColor(it, p.name) })) {
-                    Label { Text(p.name.capitalized) } icon: { Image(nsImage: MenuArt.swatch(p)) }
+        Section("Row Colour") {
+            let current = Pastel.named(it.session.color)
+            ControlGroup {
+                Button { model.setColor(it, nil) } label: {
+                    Label { Text("No Colour") } icon: { Image(nsImage: MenuArt.swatch(nil, selected: current == nil)) }
+                }
+                ForEach(Sticker.rowColors, id: \.name) { p in
+                    Button { model.setColor(it, p.name) } label: {
+                        Label { Text(p.name.capitalized) } icon: { Image(nsImage: MenuArt.swatch(p, selected: current == p)) }
+                    }
                 }
             }
-        } label: {
-            Label { Text("Row Colour") } icon: { Image(nsImage: MenuArt.swatch(Pastel.named(it.session.color))) }
+            .controlGroupStyle(.palette)
+        }
+        Section("Emoji") {
+            let choices: [String?] = [nil] + Sticker.emojiChoices.map { Optional($0) }
+            let half = (choices.count + 1) / 2
+            ForEach([Array(choices.prefix(half)), Array(choices.dropFirst(half))], id: \.self) { line in
+                ControlGroup {
+                    ForEach(line, id: \.self) { e in
+                        Button { model.setIcon(it, e) } label: {
+                            Label { Text(e.map { "Emoji " + $0 } ?? "No Emoji") } icon: { Image(nsImage: MenuArt.emoji(e, selected: it.session.icon == e)) }
+                        }
+                    }
+                }
+                .controlGroupStyle(.palette)
+            }
         }
         if let editStickers { Button("Emoji, New Sticker and Rename…") { editStickers() } }
         Divider()
