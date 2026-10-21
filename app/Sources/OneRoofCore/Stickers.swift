@@ -68,6 +68,23 @@ public struct Sticker: Identifiable, Equatable, Sendable {
         Sticker(id: "dnu", label: "Do not use", symbol: "nosign", pastel: p("stone"), builtIn: true),
     ]
 
+    /// One short line on what the sticker says about a session (LAB-257), shown next to it in menus and on hover.
+    public var meaning: String {
+        switch id {
+        case "next": return "up next in your plan"
+        case "wip": return "work in progress"
+        case "important": return "do this before the rest"
+        case "blocked": return "waiting on something else"
+        case "review": return "ready for a look"
+        case "idea": return "worth exploring later"
+        case "bug": return "fixing a defect"
+        case "research": return "reading and finding out"
+        case "shipped": return "done and released"
+        case "dnu": return "parked; kept but not used"
+        default: return "your own sticker"
+        }
+    }
+
     /// Row colours offered in the menu (every pastel except stone).
     public static var rowColors: [Pastel] { Pastel.all.filter { $0.name != "stone" } }
 

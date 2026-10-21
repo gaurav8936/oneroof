@@ -128,6 +128,12 @@ final class BoardMergeTests: XCTestCase {
         XCTAssertEqual(Board.group(items, by: .status).map(\.title), ["Needs you", "Working", "Ready", "Idle", "Next"])
     }
 
+    func testEveryBuiltInStickerSaysWhatItMeans() {
+        // LAB-257: menus show each sticker with a short meaning; custom stickers get a generic one.
+        for s in Sticker.catalog { XCTAssertNotEqual(s.meaning, "your own sticker", s.id) }
+        XCTAssertEqual(Sticker.resolve("deploy-day").meaning, "your own sticker")
+    }
+
     func testPlainTerminalRowIsLiveWhileItsShellExists() {
         let s = Session(name: "Terminal 1", agent: .shell, repoPath: "/p", lifecycle: .idle, runtimeId: "term:term_1")
         let live = Board.merge(stored: [s], snapshot: RuntimeSnapshot(sessions: [shell("term:term_1", pane: "w1:p1", group: "w1")]))

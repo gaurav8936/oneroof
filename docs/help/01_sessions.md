@@ -41,11 +41,11 @@ Every session runs in **roofd**, One Roof's own session manager, which ships ins
 - **History:** each session keeps 8 MB of scrollback in memory. It is never written to disk, because agents print keys and file contents.
 - **Status:** roofd reads each agent's screen (permission prompts, menus, spinners) and, for Claude, its hooks, so Working, Needs you and Ready stay right even with One Roof closed.
 - **Tonight and Nightly** run with One Roof closed when Settings › Allow scheduled runs is on; roofd sends the opening message once the agent is ready.
-- **Copy attach** gives `roofd attach <id>`: paste it into any terminal to see the same session there.
+- **Copy Attach Command** (right-click) gives `roofd attach <id>`: paste it into any terminal to see the same session there.
 
 ## Workspace windows
 
-Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy attach opens a One Roof session from any terminal). Rows started outside One Roof.
+Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy Attach Command opens a One Roof session from any terminal). Rows started outside One Roof.
 
 ## The top of the panel
 
@@ -71,14 +71,15 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 
 ![The session menu: action tiles, stickers, colour and emoji](img/session-menu.png)
 
-**Right-click a row** for the quick menu: Launch or Relaunch, Mark as Next / Mark as Planned, Do Not Use / Use Again, Pin / Unpin, every sticker as a tick box, Colour, **Emoji and New Sticker…**, Move to Window, Open in New Window, Roof Window for the repo, Review Changes, Terminal Here, Copy Link to Session, Close Agent… (running) and Delete.
+**Right-click a row** for the quick menu: Launch or Relaunch (not running) or Open (running: shows it in the main pane), Mark as Next / Mark as Planned (Next is scheduling: the one to do next), Do Not Use / Use Again, Pin / Unpin, every sticker as a tick box with its picture and what it means, Row Colour (a submenu of colour swatches), **Emoji, New Sticker and Rename…**, Move to Window, Open in New Window, Roof Window for the repo, Review Changes, Terminal Here, Show Folder in Finder, Copy Folder Path, Copy Link to Session, Copy Attach Command (running), Close Agent… (running) and Delete.
 
 **••• on hover** opens the larger menu:
 
-- **Action tiles:** Launch or Relaunch (not running) or Focus (running), Next / Not next, Pin / Unpin, Rename, Do not use / Use again, and Close (running: ends the agent, after asking) or Delete (not running).
+- **Action tiles:** Launch or Relaunch (not running) or Open (running: shows it in the main pane), Next / Not next (scheduling: the one to do next), Pin / Unpin, Rename, Do not use / Use again, and Close (running: ends the agent, after asking) or Delete (not running).
 - **Stickers:** Next, WIP, Important, Blocked, Review, Idea, Bug, Research, Shipped, Do not use, or a word of your own (it keeps the same colour every time).
 - **Colour** and **emoji** pickers.
-- **Links:** Open repo (Finder), Terminal here (a plain shell in the repo), Copy folder, New window, Roof window for the repo, and Copy attach (the `roofd attach …` command, to open the same agent from any terminal).
+
+Hover any tile or sticker to see what it does. Folder, terminal and window actions are in the right-click menu, not here.
 
 Settings › Appearance switches stickers between Bold and Soft.
 
