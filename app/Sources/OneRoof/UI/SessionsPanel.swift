@@ -248,9 +248,15 @@ struct SessionContextMenu: View {
         let it = model.item(item.id) ?? item
         if it.liveAgent == nil && it.status != .doNotUse {
             Button(it.status == .exited ? "Relaunch" : "Launch") { model.launch(it) }
+        } else if it.liveAgent != nil {
+            Button("Open") { model.reveal(it) }
         }
+        // Next = scheduling: "do this one next" (LAB-257). A planned session moves to Next; a live one gets the Next sticker.
         if !it.status.isLive {
             Button(it.status == .next ? "Mark as Planned" : "Mark as Next") { model.setLifecycle(it, it.status == .next ? .planned : .next) }
+        } else {
+            let next = it.session.tags.contains { Sticker.resolve($0).id == "next" }
+            Button(next ? "Not Next" : "Mark as Next") { model.toggleSticker(it, "next") }
         }
         Button(it.status == .doNotUse ? "Use Again" : "Do Not Use") { model.toggleSticker(it, "dnu") }
         Button(it.session.pinned ? "Unpin" : "Pin") { model.togglePin(it) }
@@ -259,16 +265,24 @@ struct SessionContextMenu: View {
             let ids = Set(it.session.tags.map { Sticker.resolve($0).id })
             let customs = it.session.tags.map(Sticker.resolve).filter { !$0.builtIn }
             ForEach(Sticker.catalog.filter { $0.id != "next" && $0.id != "dnu" } + customs) { s in
-                Toggle(s.label, isOn: Binding(get: { ids.contains(s.id) }, set: { _ in model.toggleSticker(it, s.id) }))
+                Toggle(isOn: Binding(get: { ids.contains(s.id) }, set: { _ in model.toggleSticker(it, s.id) })) {
+                    Label { Text("\(s.label)  ·  \(s.meaning)") } icon: { Image(nsImage: MenuArt.sticker(s)) }
+                }
             }
         }
-        Menu("Colour") {
-            Button("None") { model.setColor(it, nil) }
+        Menu {
+            Toggle(isOn: Binding(get: { Pastel.named(it.session.color) == nil }, set: { _ in model.setColor(it, nil) })) {
+                Label { Text("None") } icon: { Image(nsImage: MenuArt.swatch(nil)) }
+            }
             ForEach(Sticker.rowColors, id: \.name) { p in
-                Toggle(p.name.capitalized, isOn: Binding(get: { Pastel.named(it.session.color) == p }, set: { _ in model.setColor(it, p.name) }))
+                Toggle(isOn: Binding(get: { Pastel.named(it.session.color) == p }, set: { _ in model.setColor(it, p.name) })) {
+                    Label { Text(p.name.capitalized) } icon: { Image(nsImage: MenuArt.swatch(p)) }
+                }
             }
+        } label: {
+            Label { Text("Row Colour") } icon: { Image(nsImage: MenuArt.swatch(Pastel.named(it.session.color))) }
         }
-        if let editStickers { Button("Emoji and New Sticker…") { editStickers() } }
+        if let editStickers { Button("Emoji, New Sticker and Rename…") { editStickers() } }
         Divider()
         Menu("Move to Window") {
             ForEach(model.windows) { w in
@@ -283,9 +297,20 @@ struct SessionContextMenu: View {
         }
         Button("Review Changes") { model.reveal(it); model.openDiff(it.session.repoPath) }
         Button("Terminal Here") { model.newTerminal(in: it.session.repoPath) }
+        Button("Show Folder in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: it.session.repoPath)) }
+        Button("Copy Folder Path") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(it.session.launchDirectory, forType: .string)
+        }
         Button("Copy Link to Session") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(RoofLink.link(session: it.id), forType: .string)
+        }
+        if let a = it.liveAgent {
+            Button("Copy Attach Command") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
+            }
         }
         Divider()
         if it.liveAgent != nil { Button("Close Agent…") { model.confirmClose(it) } }
