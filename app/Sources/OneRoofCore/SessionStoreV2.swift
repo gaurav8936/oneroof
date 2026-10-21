@@ -301,9 +301,9 @@ extension SessionStore {
     // MARK: Schedules
 
     public func save(_ s: ScheduleRecord) {
-        let time = s.schedule.time
+        let time = s.schedule.stored
         run("INSERT OR REPLACE INTO schedules(session_id,kind,hour,minute,last_run,last_result,armed_at) VALUES(?,?,?,?,?,?,?)",
-            [.text(s.sessionId), .text(s.schedule.kind), .int(time?.hour), .int(time?.minute), Self.t(s.lastRun), .text(s.lastResult), Self.t(s.armedAt)])
+            [.text(s.sessionId), .text(s.schedule.kind), .int(time.hour), .int(time.minute), Self.t(s.lastRun), .text(s.lastResult), Self.t(s.armedAt)])
     }
 
     public func schedules() -> [ScheduleRecord] {

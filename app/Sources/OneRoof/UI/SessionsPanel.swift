@@ -260,6 +260,23 @@ struct SessionContextMenu: View {
         }
         Button(it.status == .doNotUse ? "Use Again" : "Do Not Use") { model.toggleSticker(it, "dnu") }
         Button(it.session.pinned ? "Unpin" : "Pin") { model.togglePin(it) }
+        // Loops (LAB-254): send the session's message again every N minutes while it waits; launch it if it is not running.
+        if it.session.agent.isAgent {
+            let looping = model.scheduleRecords[it.id]?.schedule.interval != nil
+            Menu(looping ? "Repeat (\(model.scheduleRecords[it.id]?.schedule.label ?? ""))" : "Repeat") {
+                if model.loopMessage(it) == nil {
+                    Text("Give it an opening message first (Plan panel)")
+                } else {
+                    ForEach(Schedule.everyChoices, id: \.self) { m in
+                        Button("Every " + Schedule.every(m)) { model.repeatEvery(it, minutes: m) }
+                    }
+                }
+                if looping {
+                    Divider()
+                    Button("Stop Repeating") { model.unschedule(it) }
+                }
+            }
+        }
         Divider()
         Section("Stickers") {
             let ids = Set(it.session.tags.map { Sticker.resolve($0).id })

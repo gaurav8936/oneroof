@@ -8,16 +8,41 @@ public enum Schedule: Codable, Equatable, Hashable, Sendable {
     case tonight(hour: Int, minute: Int)    // one-off
     case nightly(hour: Int, minute: Int)
     case onDemand                            // "Run now" only
+    /// A loop (LAB-254): every N minutes, launch the session, or send its opening message again when it is alive and
+    /// waiting. Never while it is working or needs you.
+    case every(minutes: Int)
+
+    public static let everyChoices = [15, 30, 60, 120, 240]
 
     public var kind: String {
-        switch self { case .tonight: return "tonight"; case .nightly: return "nightly"; case .onDemand: return "onDemand" }
+        switch self {
+        case .tonight: return "tonight"; case .nightly: return "nightly"; case .onDemand: return "onDemand"; case .every: return "every"
+        }
     }
 
     public var time: (hour: Int, minute: Int)? {
         switch self {
         case .tonight(let h, let m), .nightly(let h, let m): return (h, m)
-        case .onDemand: return nil
+        case .onDemand, .every: return nil
         }
+    }
+
+    /// The store's (hour, minute) columns; a loop keeps its interval in minutes.
+    public var stored: (hour: Int?, minute: Int?) {
+        switch self {
+        case .every(let m): return (nil, m)
+        default: return (time?.hour, time?.minute)
+        }
+    }
+
+    public var interval: TimeInterval? {
+        if case .every(let m) = self { return TimeInterval(max(m, 1) * 60) }
+        return nil
+    }
+
+    /// "15 min" · "1 h" · "1 h 30 min".
+    public static func every(_ m: Int) -> String {
+        m < 60 ? "\(m) min" : m % 60 == 0 ? "\(m / 60) h" : "\(m / 60) h \(m % 60) min"
     }
 
     /// From the store's (kind, hour, minute).
@@ -26,6 +51,7 @@ public enum Schedule: Codable, Equatable, Hashable, Sendable {
         case "tonight": guard let h = hour, let m = minute else { return nil }; self = .tonight(hour: h, minute: m)
         case "nightly": guard let h = hour, let m = minute else { return nil }; self = .nightly(hour: h, minute: m)
         case "onDemand": self = .onDemand
+        case "every": guard let m = minute, m > 0 else { return nil }; self = .every(minutes: m)
         default: return nil
         }
     }
@@ -44,6 +70,7 @@ public enum Schedule: Codable, Equatable, Hashable, Sendable {
         case .tonight: return "Tonight " + (timeText ?? "")
         case .nightly: return "Nightly " + (timeText ?? "")
         case .onDemand: return "On demand"
+        case .every(let m): return "Every " + Self.every(m)
         }
     }
 
@@ -52,6 +79,7 @@ public enum Schedule: Codable, Equatable, Hashable, Sendable {
         switch self {
         case .tonight, .nightly: return "Runs at " + (timeText ?? "")
         case .onDemand: return "On demand · run now"
+        case .every(let m): return "Repeats every " + Self.every(m)
         }
     }
 }
@@ -93,7 +121,14 @@ public enum ScheduleClock {
             return due.addingTimeInterval(grace) < now ? nil : due
         case .nightly(let h, let m):
             return occurrence(after: now, hour: h, minute: m, calendar: calendar)
+        case .every:
+            return everyDue(r)
         }
+    }
+
+    /// A loop's next round: an interval after its last round (or after it was set up).
+    static func everyDue(_ r: ScheduleRecord) -> Date? {
+        r.schedule.interval.map { max(r.armedAt, r.lastRun ?? .distantPast).addingTimeInterval($0) }
     }
 
     /// The occurrence that should have run by `now` and has not, if any.
@@ -107,6 +142,9 @@ public enum ScheduleClock {
         case .nightly(let h, let m):
             guard let due = occurrence(atOrBefore: now, hour: h, minute: m, calendar: calendar), due > since else { return nil }
             return due
+        case .every:
+            guard let due = everyDue(r), due <= now else { return nil }
+            return due
         }
     }
 
@@ -115,7 +153,28 @@ public enum ScheduleClock {
     /// What `--run-scheduled` (or the morning check) should do for one record now.
     public static func action(_ r: ScheduleRecord, now: Date, calendar: Calendar = .current) -> Action {
         guard let due = pendingDue(r, now: now, calendar: calendar) else { return .nothing }
+        if case .every = r.schedule { return .run }   // a loop late after sleep just runs its next round
         return now.timeIntervalSince(due) <= grace ? .run : .missed(due)
+    }
+
+    /// What a due loop round does to a session that is already alive (LAB-254): send its message again when the agent
+    /// waits at its prompt; wait while it works or needs you; give the round up once it is a whole interval late.
+    public enum LiveRound: Equatable, Sendable { case send, wait, skip }
+
+    public static func liveRound(_ r: ScheduleRecord, status: String?, ready: Bool, now: Date) -> LiveRound {
+        if ["idle", "done"].contains(status ?? ""), ready { return .send }
+        guard let due = everyDue(r), let i = r.schedule.interval else { return .wait }
+        return now.timeIntervalSince(due) >= i ? .skip : .wait
+    }
+
+    /// The row's schedule pill: "2:00 AM" for a timed run, "3:40 PM · every 1 h" for a loop.
+    public static func rowLabel(_ r: ScheduleRecord, now: Date = Date()) -> String? {
+        if case .every(let m) = r.schedule {
+            let next = max(everyDue(r) ?? now, now)
+            return next.formatted(date: .omitted, time: .shortened) + " · every " + Schedule.every(m)
+        }
+        if case .tonight = r.schedule, r.lastRun != nil { return nil }   // a one-off that has run (or was missed)
+        return r.schedule.timeText
     }
 
     public static func isMissed(_ r: ScheduleRecord, now: Date, calendar: Calendar = .current) -> Bool {
