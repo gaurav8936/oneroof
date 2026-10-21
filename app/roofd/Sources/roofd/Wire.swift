@@ -48,6 +48,14 @@ enum Wire {
         return frames
     }
 
+    /// The frame at the front of `buf` claims more than the payload limit: no well-behaved peer sends that, and
+    /// waiting for it would let one connection grow the buffer without bound (LAB-310).
+    static func oversized(_ buf: [UInt8]) -> Bool {
+        guard buf.count >= 5 else { return false }
+        let n = Int(buf[1]) << 24 | Int(buf[2]) << 16 | Int(buf[3]) << 8 | Int(buf[4])
+        return n > maxPayload
+    }
+
     static func json(_ bytes: [UInt8]) -> [String: Any] {
         (try? JSONSerialization.jsonObject(with: Data(bytes))) as? [String: Any] ?? [:]
     }
@@ -197,5 +205,44 @@ enum Paths {
 
     static func validId(_ id: String) -> Bool {
         !id.isEmpty && id.count <= 40 && id.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    }
+}
+
+/// An exclusive lock on a file in the roofd folder, held until the process exits (the kernel drops it then, even on a
+/// crash or kill -9). `wait` blocks until it is free; otherwise nil when another process holds it.
+enum FileLock {
+    static func acquire(_ path: String, wait: Bool) throws -> Int32? {
+        while true {
+            let fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+            guard fd >= 0 else { throw RoofdError("cannot open the lock file \(path)") }
+            var rc: Int32
+            repeat { rc = flock(fd, LOCK_EX | (wait ? 0 : LOCK_NB)) } while rc != 0 && errno == EINTR
+            if rc != 0 {
+                let e = errno
+                close(fd)
+                if e == EWOULDBLOCK { return nil }
+                throw RoofdError("lock \(path): \(String(cString: strerror(e)))")
+            }
+            // The file may have been replaced while we waited: then the lock is on a file nobody else sees. Retry.
+            var a = stat(), b = stat()
+            if fstat(fd, &a) == 0, stat(path, &b) == 0, a.st_ino == b.st_ino, a.st_dev == b.st_dev { return fd }
+            close(fd)
+        }
+    }
+}
+
+/// roofd-memory.log in the roofd folder: what the memory watchdog saw (LAB-310). Kept small.
+enum MemoryLog {
+    static var path: String { Paths.dir + "/roofd-memory.log" }
+    static let maxBytes = 256 * 1024
+
+    static func append(_ line: String) {
+        if let a = try? FileManager.default.attributesOfItem(atPath: path), (a[.size] as? Int ?? 0) > maxBytes {
+            unlink(path)
+        }
+        let fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return }
+        Sock.writeAll(fd, Array(line.utf8))
+        close(fd)
     }
 }
