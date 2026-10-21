@@ -3,7 +3,7 @@
 # Pages source = "Deploy from a branch: gh-pages / (root)". The branch holds the finished files plus .nojekyll, which
 # Pages serves directly with no Actions build, so this keeps working with GitHub Actions disabled.
 # The only change to the files: index.html gets one HTML comment with the commit it was published from.
-# Repo secret pages_deploy_key = private half of the write deploy key "woodpecker-pages" (access_admin/20261020_oneroof_pages_deploy_key).
+# Repo secret pages_deploy_key = private half of the write deploy key "woodpecker-pages" (the private key is kept outside this repo).
 when:
   - event: [push, manual]
     branch: main
