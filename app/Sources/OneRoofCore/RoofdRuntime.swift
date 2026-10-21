@@ -186,23 +186,28 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         let r = try call("list")
         let list = r["sessions"] as? [[String: Any]] ?? []
         var sessions: [RuntimeSessionState] = []
-        for s in list {
-            guard let id = s["id"] as? String, s["exited"] == nil else { continue }
-            let title = (s["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            let cwd = (s["pwd"] as? String).flatMap { RoofdRuntime.pathFromOSC7($0) } ?? s["cwd"] as? String
-            // roofd's status engine (LAB-14) names the foreground agent and its status; no agent = a plain shell.
-            if let agent = s["agent"] as? String {
-                sessions.append(RuntimeSessionState(
-                    id: id, isAgent: true, agentName: agent, status: RuntimeStatus(s["status"] as? String),
-                    ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int,
-                    workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }))
-            } else {
-                sessions.append(RuntimeSessionState(id: id, isAgent: false, status: .unknown, ready: true, title: title,
-                                                    cwd: cwd, pane: id, seq: s["seq"] as? Int, workPath: cwd))
-            }
-        }
+        for s in list { if let st = Self.sessionState(s) { sessions.append(st) } }
         return RuntimeSnapshot(version: r["version"] as? String ?? "roofd", protocolVersion: r["proto"] as? Int ?? 1,
                                sessions: sessions.filter(\.isAgent) + sessions.filter { !$0.isAgent })
+    }
+
+    /// One entry of roofd's `list` as a session state; nil for an exited session.
+    static func sessionState(_ s: [String: Any]) -> RuntimeSessionState? {
+        guard let id = s["id"] as? String, s["exited"] == nil else { return nil }
+        let title = (s["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let cwd = (s["pwd"] as? String).flatMap { RoofdRuntime.pathFromOSC7($0) } ?? s["cwd"] as? String
+        let active = (s["active"] as? Double).map { Date(timeIntervalSince1970: $0) }
+        // roofd's status engine (LAB-14) names the foreground agent and its status; no agent = a plain shell.
+        if let agent = s["agent"] as? String {
+            return RuntimeSessionState(
+                id: id, isAgent: true, agentName: agent, status: RuntimeStatus(s["status"] as? String),
+                ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int,
+                workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }, activeAt: active)
+        } else {
+            return RuntimeSessionState(
+                id: id, isAgent: false, status: .unknown, ready: true, title: title, cwd: cwd, pane: id,
+                seq: s["seq"] as? Int, workPath: cwd, activeAt: active)
+        }
     }
 
     static func processName(_ pid: Int32) -> String? {

@@ -21,6 +21,7 @@ final class EngineHub {
         var launchDirectory: String
         var ticket: String?
         var launchedAt: Date?
+        var lastActive: Date?
         var added: Int?
         var removed: Int?
         var plan: CaptionPlan?
@@ -123,7 +124,7 @@ final class EngineHub {
     private func caption(_ s: Live, now: Date) {
         let t = text(s)
         let input = CaptionInput(text: t, agent: s.agent, status: s.status, objective: s.objective, plan: s.plan,
-                                 lastActivity: s.launchedAt, now: now)
+                                 lastActivity: s.lastActive ?? s.launchedAt, now: now)
         let heur = CaptionEngine.heuristic(input)
         var reply: String?
         if checkModel(now) { reply = modelClient.reply(for: input, timeout: 6) }
