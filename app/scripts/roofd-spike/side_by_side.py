@@ -5,7 +5,7 @@
 
 Tasks: A = a plain reply, no tools (working → done/idle); B = a shell command that needs permission (blocked), which
 the harness declines with Esc, so nothing runs. Each run happens in its own scratch git folder under
-~/Projects/labs/labs-data/oneroof/side-by-side/ (inside ~/Projects: rule zero). A first-run folder-trust prompt in that
+$ROOFD_SBS_DIR (default ./side-by-side next to where it runs). A first-run folder-trust prompt in that
 scratch folder is accepted with Enter. Writes a Markdown report to stdout; per-sample timelines to the log dir.
 """
 import json, os, socket, subprocess, sys, threading, time
@@ -15,7 +15,7 @@ AGENTS = sys.argv[2:] or ["claude", "codex", "gemini", "kimi", "agy"]
 HERDR = "/opt/homebrew/bin/herdr"
 HERDR_SOCK = os.path.expanduser("~/.config/herdr/herdr.sock")
 RDIR = "/tmp/roofd-sbs"
-SCRATCH = os.path.expanduser("~/Projects/labs/labs-data/oneroof/side-by-side")
+SCRATCH = os.path.abspath(os.environ.get("ROOFD_SBS_DIR", "side-by-side"))
 LOGS = os.path.join(SCRATCH, "logs")
 ACCOUNT_VARS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "KIMI_HOME", "GEMINI_HOME"]
 TASKS = {
