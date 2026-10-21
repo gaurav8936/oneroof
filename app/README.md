@@ -1,14 +1,14 @@
 # One Roof (Mac app)
 
 A native macOS command center for running several CLI coding agents at once (Claude on one or two accounts, Codex, Kimi,
-Antigravity, Gemini). Each session is a real interactive CLI running in [herdr](https://herdr.dev), drawn by
+Antigravity, Gemini). Each session is a real interactive CLI running in roofd, One Roof's own session manager, drawn by
 [libghostty](https://github.com/ghostty-org/ghostty) inside One Roof. The sidebar shows every session's live status,
-agent, account, repo and workstream, grouped automatically. Design docs live in `../docs/` of this repo.
+agent, account, repo and project, grouped automatically. Design docs live in `../docs/` of this repo.
 
 ## One Roof v2 (2026-10-18)
 
 The interface was rebuilt from the UI v2 packet (`ui_mockups/20261018_01_initial_v2/`, shared spec copied to
-`labs/oneroof/docs/architecture/v2-ui/`); the runtime is unchanged (herdr, libghostty, SQLite, no new dependencies). Everything below from v0.1 still
+`labs/oneroof/docs/architecture/v2-ui/`); the runtime then was herdr; since 0.4.0 it is roofd (libghostty, SQLite, no new dependencies). Everything below from v0.1 still
 works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback: tag `v0.3.0-final-v1ui`.
 
 - **Three themes per panel**: Daylight · Graphite · Midnight for Sessions, Files, Terminal, Plan and centre views
@@ -26,7 +26,7 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   terminal, ⌘I asks an agent about the selection, saves wait while an agent's step claims the file.
 - **Review changes** (⌥⌘R): files, diff with "What the agent did", comments sent to the agent, checks from its output,
   Commit (never pushes).
-- **New work** (⌘N): intake (session · ticket · defect · workstream), duplicate check, agent cards with seat usage and the
+- **New work** (⌘N): intake (session · ticket · defect · project), duplicate check, agent cards with seat usage and the
   router's suggestion, start folder, opening message, When (Now · Next · Tonight · On demand).
 - **Menu-bar extra**: needs you / working counts; Allow from the popover.
 
@@ -34,24 +34,24 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
 
 - **Three panels, three themes, each panel themed on its own.** Light / Dark / Dim. Default: light sidebar, dark
   terminal, dark plan panel. Change them at the bottom of the right panel or in View › … Theme.
-- **Live status from herdr**: Needs you (agent is blocked on a question or permission), Done (finished a turn you have
-  not looked at), Running, Idle, plus One Roof's own Planned, Next, Exited and Do not use. The Dock badge counts sessions
+- **Live status from roofd**: Needs you (agent is blocked on a question or permission), Working, Ready (finished a turn
+  you have not looked at), Idle, plus One Roof's own Planned, Next, Exited and Do not use. The Dock badge counts sessions
   that need you.
 - **Account detection from the running process.** One Roof reads `CLAUDE_CONFIG_DIR` / `CODEX_HOME` from the agent's
   own environment (sysctl), so Claude1 vs Claude2 is right however the agent was started.
-- **Automatic grouping** by status, repo, workstream, agent or account (View › Group by, ⌘1–⌘5). No dragging.
-- **Planned sessions (⌘N).** Name, agent, account, repo, workstream, objective, opening message, optional agent
-  arguments. Launch starts it in herdr; the opening message is sent only once the agent is ready and idle.
+- **Automatic grouping** by status, repo, project, agent or account (View › Group by, ⌘1–⌘5). No dragging.
+- **Planned sessions (⌘N).** Name, agent, account, repo, project, objective, opening message, optional agent
+  arguments. Launch starts it in roofd; the opening message is sent only once the agent is ready and idle.
 - **Bring a conversation over from another terminal.** In ⌘N, *Resume* lists your recent Claude conversations by their titles (both
   accounts share one conversation folder). Pick one, launch, and the conversation continues inside One Roof. If it was
   active in the last 15 minutes One Roof warns you: close it in the other terminal first so two Claudes don't write to it.
-- **Agents survive One Roof.** herdr owns the terminals. Quit One Roof and every agent keeps running; reopen it and they
-  are all still there. Agents you start with `herdr` from any terminal show up too ("started outside One Roof").
+- **Agents survive One Roof.** roofd owns the terminals (one small holder process per session, run by a background
+  item). Quit or update One Roof and every agent keeps running; reopen it and they are all still there.
 - **A regular terminal too (⌘T).** File › New Terminal opens a plain shell in the projects folder (⌘⇧T: in the selected
-  session's repo). herdr keeps it like any session, colours are untouched and the prompt follows the output.
+  session's repo). roofd keeps it like any session, colours are untouched and the prompt follows the output.
 - **Agent, account and model per session.** The model goes to the CLI as `--model <name>` (Claude: opus / sonnet /
   haiku; Kimi: its two coding models; any name works). Defaults per agent live in Settings › Agents.
-- **Settings (⌘,):** General (Dock badge, startup check switch for I6, herdr status), Appearance (the three panel
+- **Settings (⌘,):** General (Dock badge, startup check switch for I6, roofd status), Appearance (the three panel
   themes), Agents (default account, model, extra arguments), Foundations (the projects folder, the agentic-engineering and shared
   folders One Roof reads from; it never copies them). The agentic-engineering folder is a setting: `ONEROOF_AE_PATH`
   wins, then the folder chosen here (Choose…), then the copy bundled with the app (`agentic_engineering/`, Use
@@ -63,26 +63,26 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   sticker, colour and icon pickers. Settings › Appearance switches stickers between Bold and Soft.
 - **Objectives with visible planning (⌘⇧O, I7).** Type an objective (what, done when, repo, urgency, budget). A
   planner session (Claude, in a terminal you can watch) uses the `plan-objective` skill from the agentic-engineering folder
-  to write a plan file (Markdown + a `oneroof-plan` JSON block) next to the workstream's docs. The plan shows as step
+  to write a plan file (Markdown + a `oneroof-plan` JSON block) next to the project's docs. The plan shows as step
   cards: change agent, account, model or order, delete steps, then Approve. One Roof runs ready steps as sessions,
   at most 3 at a time, in dependency order; each step writes a `.done` / `.failed` marker and the next steps start.
   Objectives appear on the Launchpad.
 - **Launchpad (⌘⇧L).** One page of all the work: what needs you, what is running, up next, just finished; the
-  workstreams in play with ticket progress and the next ticket; agents at work; the foundations. Covers every One Roof
-  window on this Mac (one store, one herdr).
-- **Board (⌘B).** A Kanban of every session, left to right: Planned → Next → Running → Needs you → Done → Idle →
+  projects in play with ticket progress and the next ticket; agents at work; the foundations. Covers every One Roof
+  window on this Mac (one store, one roofd).
+- **Board (⌘B).** A Kanban of every session, left to right: Planned → Next → Working → Needs you → Ready → Idle →
   Exited → Do not use. Drag between Planned, Next and Do not use.
-- **Work (⌘⇧W): workstreams, roadmap and tickets in one place.** Every workstream from Linear with its phases and
+- **Work (⌘⇧W): projects, roadmap and tickets in one place.** Every project from Linear with its phases and
   tickets (status, type), the sessions working on it, and links to its tracker pane and docs. Plan a session from any
   ticket (launching it moves the ticket to In Progress); the session row shows the ticket key. Change a ticket's state
   from its pill; closing a ticket's session posts a summary comment (run time, newest handoff, notes) and moves it to
   In Review; the plan panel shows the live ticket with In Progress / In Review / Done.
-- **New work item (⌘⇧N): decide what it is before creating it.** One Roof suggests workstream, ticket (deliverable,
-  defect, spike, decision, chore) or just a session, checks the workstream for a similar ticket, then creates the
-  ticket in Linear. A new workstream is opened by a planned Claude session the workspace way (WS id, tracker pane,
-  docs README, linear_sync), so tracker and Linear never drift.
+- **New work item (⌘⇧N): decide what it is before creating it.** One Roof suggests project, ticket (deliverable,
+  defect, spike, decision, chore) or just a session, checks the project for a similar ticket, then creates the
+  ticket in Linear. A new project is created in Linear with its milestones, then a planned Claude session sets up its docs
+  and first tickets.
 - **Foundations (⌘⇧F) and the startup check.** At every launch One Roof runs the workspace's own checks (doors, MCP
-  list, skills links vs `sync-skills --dry-run`, memory pin, launch guard, hooks, logins, herdr). Red problems block
+  list, skills links vs `sync-skills --dry-run`, memory pin, launch guard, hooks, logins, roofd). Red problems block
   starting an agent (with Launch anyway); Fix runs the command in a One Roof terminal. Tabs show the skills in the
   agentic-engineering folder (which agent homes have each), the hooks and rules, and the memory, handoffs (Resume) and
   gotchas. `OneRoof --check` prints the same check in a terminal. Nothing is copied from those repos.
@@ -106,15 +106,15 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   buttons to open or close every panel, the centre included (⌘⌥S / ⌘⌥B / ⌘⌥C / ⌘⌥P). Files, plans and docs open in a
   centre viewer (code with line numbers, Markdown, images, HTML, folders). Session › Open in New Window (⌘⌥O) moves a
   session into its own window. Find in terminal (⌘F, ⌘G). ⌘-clicked links open files in the viewer. Command palette
-  (⌘P) over views, actions, sessions, objectives, workstreams, repo files and skills. Five themes (Light, Paper, Dim,
+  (⌘P) over views, actions, sessions, objectives, projects, repo files and skills. Five themes (Light, Paper, Dim,
   Dark, Blueprint), chosen per panel: sessions, files, terminal, plan.
 
 Not yet (terminal-app parity, see 05_warp-parity.md): split panes, git diff panel, branch/diff on rows, notifications.
 
 ## Install on a new Mac
 
-1. **Required tools.** herdr runs every session: `brew install herdr`. git comes with the Xcode Command Line Tools
-   (`xcode-select --install`). One Roof starts the herdr server itself if it is not running.
+1. **Required tools.** git, from the Xcode Command Line Tools (`xcode-select --install`). Sessions run in roofd, which
+   ships inside the app as a background item (macOS asks once to allow it); nothing else to install.
 2. **Agents.** Install whichever agent CLIs you use (`claude`, `codex`, `kimi`, `gemini`, `agy`); One Roof finds them on
    your PATH. Claude is "Claude1" (`~/.claude`); a second Claude account appears as "Claude2" only when
    `~/.claude-2` exists (start it with `CLAUDE_CONFIG_DIR=~/.claude-2 claude`).
@@ -128,7 +128,7 @@ Not yet (terminal-app parity, see 05_warp-parity.md): split panes, git diff pane
      and plans go to `~/Library/Application Support/One Roof/plans/`.
    - **Agentic engineering:** the skills, routing rules and course bundled with the app, or your own folder with a
      `skills/` tree.
-   - **Required tools and agents:** herdr and git, then claude (with the signed-in email of each account), codex, kimi,
+   - **Required tools and agents:** git, then claude (with the signed-in email of each account), codex, kimi,
      gemini and agy, each found or not. Nothing here blocks Start.
    - **Linear (optional):** paste an API key; it is saved to `~/.config/oneroof/linear-api-key` (mode 0600).
      `LINEAR_API_KEY` in the environment also works. Without a key the Work view says Linear is not connected.
@@ -187,7 +187,7 @@ as done and sets `migratedFromLegacy`.
 ## Build from source
 
 ```bash
-brew install herdr zig@0.15
+brew install zig@0.15
 xcodebuild -downloadComponent MetalToolchain   # Xcode 26 required by Ghostty
 scripts/build-ghosttykit.sh                    # Ghostty v1.3.1 → ~/Library/Caches/oneroof/ghostty (135 MB, not in git; ONEROOF_GHOSTTY_DIR overrides)
 scripts/bundle.sh release                      # → build/One Roof.app (ad-hoc signed; bundles agentic_engineering, docs/help, README, release notes)
@@ -212,11 +212,11 @@ Pages site; update any other launch page that links the zip. Then open each page
 
 | Path | What it is |
 |---|---|
-| `Package.swift` | Swift 6 package: `OneRoofCore` library, `OneRoof` app, tests, `GhosttyKit` binary target |
-| `Sources/OneRoofCore/` | No UI. `Session` (model + statuses), `HerdrClient` (herdr unix-socket JSON API), `ProcessProbe` (argv/env of a PID via sysctl), `Workspace` (repo labels, workstream ids, accounts), `Board` (merge stored sessions with live agents, grouping), `SessionStore` (SQLite), `Theme` (3 themes, contrast-checked) |
+| `Package.swift` | Swift 6 package: `OneRoofCore` library, `OneRoof` app, tests, `GhosttyKit` and `RoofVT` binary targets, `roofd` daemon |
+| `Sources/OneRoofCore/` | No UI. `Session` (model + statuses), `RoofdRuntime` (roofd unix-socket JSON API), `ProcessProbe` (argv/env of a PID via sysctl), `Workspace` (repo labels, project codes, accounts), `Board` (merge stored sessions with live agents, grouping), `SessionStore` (SQLite), `Theme` (3 themes, contrast-checked) |
 | `Sources/OneRoof/Ghostty/` | `GhosttyRuntime` (one libghostty app, one config per theme) and `TerminalSurfaceView` (libghostty surface in an NSView; keyboard/IME/mouse ported from Ghostty's macOS app, MIT) |
 | `Sources/OneRoof/UI/` | SwiftUI sidebar, plan panel, new-session sheet; AppKit terminal area |
-| `Sources/OneRoof/AppModel.swift` | State: polls herdr every second, probes accounts, launches sessions, delivers opening messages |
+| `Sources/OneRoof/AppModel.swift` | State: polls roofd every second, probes accounts, launches sessions, delivers opening messages |
 | `Sources/OneRoof/SelfTest.swift` | In-process test hooks (`ONEROOF_SELFTEST_*` env vars): select, type, snapshot the window to PNG + terminal text + JSON |
 | `scripts/` | `build-ghosttykit.sh`, `bundle.sh`, `install.sh`, `make-icon.py`, `ax-drive.swift` (drive a running One Roof by pid through Accessibility) |
 | `Vendor/GhosttyKit.xcframework` | Symlink to the libghostty build made by `scripts/build-ghosttykit.sh` (gitignored) |
@@ -233,16 +233,16 @@ Pages site; update any other launch page that links the zip. Then open each page
 ## Safety rules built in
 
 - Agents start only inside the projects folder.
-- One Roof never types into a busy or blocked agent; an opening message is retried only while herdr says "not ready".
-- herdr panes inherit the herdr server's environment. If the server carries an account variable (it was started from a
-  Claude2 shell), One Roof restarts it cleanly when no agents run, or refuses to launch and says why.
+- One Roof never types into a busy or blocked agent; roofd sends an opening message only once the agent is ready and
+  idle, and once more if it did not start working.
+- Each session gets a clean environment: account variables, other agents' markers and test settings are removed unless
+  the launch sets them.
 - Claude1 launches never set `CLAUDE_CONFIG_DIR` at all: an empty value makes Claude use the current folder as its
   config folder.
 
 ## Licences
 
-One Roof's code: see the repo `LICENSE`. libghostty (Ghostty) is MIT; herdr is Apache-2.0 and runs as a separate
-process. `TerminalSurfaceView.swift` and `GhosttyRuntime.swift` adapt code from Ghostty's macOS app (MIT,
+One Roof's code: see the repo `LICENSE`. libghostty (Ghostty) is MIT; roofd's terminal core (RoofVT) is built on Ghostty's ghostty-vt (MIT). `TerminalSurfaceView.swift` and `GhosttyRuntime.swift` adapt code from Ghostty's macOS app (MIT,
 © Mitchell Hashimoto and Ghostty contributors).
 
 ## Signing and notarization (removes the "cannot verify" warning)
