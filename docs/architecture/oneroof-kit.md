@@ -56,6 +56,25 @@ Three consequences drive the design:
 | Path comparison | logical **and** physical paths, case-folded on macOS, whole segments | plain string prefix: `~/ProjectsOld` would pass, a symlinked workspace would fail |
 | Installer | idempotent merge, never overwrite, backup first | templated overwrite: destroys user edits |
 
+## The One Roof app: where sessions run
+
+The app's sessions run in **roofd**, One Roof's own session manager (since 0.4.0; it replaced herdr, see
+[the decision](../decisions/20261020_01_roofd-replaces-herdr.md)). It ships inside the app; there is nothing else to install.
+
+- **One daemon, one holder per session.** `roofd daemon` is the control plane (create, list, info, read, input,
+  close over newline-delimited JSON on `roofd.sock`). Each session is its own holder process with its own socket; it
+  owns the PTY and the child. Holders outlive the app and the daemon, so quitting, updating or a crash never ends a session.
+- **RoofVT** (Zig over Ghostty's `ghostty-vt`) is the headless terminal in each holder: it redraws a reattached
+  surface and answers `read`. The app draws the terminal with libghostty, which runs `roofd attach <id>`.
+- **Status** comes from the holder: Claude's hooks (`roofd report claude`), prompts on screen, then output activity,
+  giving Needs you · Working · Ready · Idle · Exited.
+- **Scheduler:** with "Allow scheduled runs" on, the daemon starts Tonight, Nightly and repeating sessions from the
+  session store, app open or closed; the holder sends the opening message once the agent is ready.
+- **Background item:** launchd runs roofd at login (`SMAppService`, label `io.github.gaurav8936.oneroof.roofd`);
+  until it is approved in Login Items, the app starts roofd itself.
+  Sockets live in `~/Library/Application Support/One Roof/roofd/`. Sessions end at logout or restart.
+- **G1 still holds:** a scheduled run uses the same launch plan as the Launch button and is refused outside the workspace.
+
 ## Residual risks
 
 - Agents with neither hooks nor a CLI on `PATH` (some editor-embedded agents) are covered by the shell layer only.

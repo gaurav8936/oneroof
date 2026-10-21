@@ -30,7 +30,7 @@ The planner is an ordinary Claude session named "Plan: " plus your title. It use
 
 - **Watch the planner** jumps to its terminal; answer it there if it asks something.
 - The objective page fills in by itself when the plan file appears (checked every few seconds). **Check for the plan now** reads it at once.
-- **Where the plan file goes:** in the project's docs folder (`docs/projects/<code>/` or `docs/workstreams/<id>/`, in your shared folder, a `*-docs` repo or a repo's `docs/`), under `plans/<date>_<slug>.md`. Without a project it goes to `docs/plans/` in your shared folder. It is Markdown for people plus an `oneroof-plan` block for One Roof.
+- **Where the plan file goes:** in the project's docs folder (`docs/projects/<code>/` (older `docs/workstreams/<id>/` folders still work), in your shared folder, a `*-docs` repo or a repo's `docs/`), under `plans/<date>_<slug>.md`. Without a project it goes to `docs/plans/` in your shared folder. It is Markdown for people plus an `oneroof-plan` block for One Roof.
 
 ## 3. Read and edit the plan
 
