@@ -63,6 +63,9 @@ struct SessionRow: View {
     var closeHelp = "Close"
     @State private var editing = false
     @State private var hovering = false
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var dimmed: Bool { row.status == .exited && !hovering && !selected }
     @State private var draft = ""
 
     var body: some View {
@@ -73,6 +76,9 @@ struct SessionRow: View {
             case .rail: AgentBadge(row.mark, size: 32, status: row.status, ring: ring).padding(6)
             }
         }
+        // LAB-461: an exited session reads as stopped: no colour, faded, until it is pointed at or selected.
+        .saturation(dimmed ? 0 : 1)
+        .opacity(dimmed ? (contrast == .increased ? 0.8 : 0.55) : 1)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .hoverHighlight(radius: Radius.row, selected: selected)
