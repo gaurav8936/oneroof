@@ -83,4 +83,14 @@ final class RoofdRuntimeTests: XCTestCase {
         XCTAssertEqual(r.health().level, .fail)
         XCTAssertThrowsError(try r.snapshot())
     }
+
+    func testListEntryCarriesWhenTheSessionWasLastActive() {
+        // LAB-258: roofd's holders outlive the app, so the age shown after a restart comes from them.
+        let at = Date(timeIntervalSince1970: 1_800_000_000)
+        let agent = RoofdRuntime.sessionState(["id": "a", "agent": "claude", "status": "idle", "active": at.timeIntervalSince1970])
+        XCTAssertEqual(agent?.activeAt, at)
+        XCTAssertEqual(RoofdRuntime.sessionState(["id": "s", "active": at.timeIntervalSince1970])?.activeAt, at)
+        XCTAssertNil(RoofdRuntime.sessionState(["id": "old"])?.activeAt, "an older holder does not say")
+        XCTAssertNil(RoofdRuntime.sessionState(["id": "x", "exited": 1.0]))
+    }
 }
