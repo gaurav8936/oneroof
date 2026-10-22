@@ -196,6 +196,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     /// Messages for the agent that arrived while it was working (an issue added mid-turn, LAB-474): sent together the
     /// next time it is at its prompt, never mid-turn. Saved, so an app restart does not drop them.
     public var pendingMessages: [String] = []
+    /// Files this session's agent wrote or edited (LAB-513), newest first, kept after its turns end: the Artifacts tab.
+    public var writtenFiles: [String] = []
     /// The repo the session was last seen working in (learnt from its agent's hooks or its terminal's folder); sessions
     /// start at the workspace root, so this is what "Group by repo" uses.
     public var lastRepo: String?
@@ -267,7 +269,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
-             moreTickets, reviewedTickets, pendingMessages, lastRepo
+             moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -304,6 +306,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         reviewedTickets = try c.decodeIfPresent([String].self, forKey: .reviewedTickets) ?? []
         pendingMessages = try c.decodeIfPresent([String].self, forKey: .pendingMessages) ?? []
         lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
+        writtenFiles = try c.decodeIfPresent([String].self, forKey: .writtenFiles) ?? []
     }
 
     /// A waiting message can go in now: the agent is at its prompt (not working, not on a permission question).
