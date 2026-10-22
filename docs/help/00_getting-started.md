@@ -40,7 +40,7 @@ One Roof is a Mac app that holds all your coding agents in one window. Each sess
 - **Centre:** the selected session's terminal, split into panes if you like, or one of the full views: Overview, Board, Decisions, Work, Learn, an objective, a file, or the review panel.
 - **Plan panel (right):** the selected session's plan, ticket, notes and artifacts.
 - **File browser:** the selected session's repo as a tree (hidden at first, ⌥⌘B).
-- **Toolbar:** Workspace · Overview · Board · Decisions · Work · Learn, search (⌘K), the panel buttons (Sessions · Files · Plan) and **+ New session**.
+- **Toolbar:** Workspace · Overview · Board · Decisions · Work · Learn, search (⌘K), the panel buttons (Sessions · Files · Terminal · Plan, in the order the panels sit) and **+ New session**.
 
 ## The startup check
 

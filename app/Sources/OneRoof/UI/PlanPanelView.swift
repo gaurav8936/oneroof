@@ -92,6 +92,10 @@ struct PlanDetail: View {
     @State private var addingSticker = false
     @State private var loaded = false
     @State private var showMore = false
+    /// The session's fields as last loaded or saved; Save writes only what differs from it (LAB-487).
+    @State private var base: SessionEdits?
+    @State private var savedAt: Date?
+    @State private var mentioned: [(issue: LinearIssue, team: String, project: String?)] = []
 
     static var tabs: [String: PlanTab] = [:]
 
@@ -124,6 +128,8 @@ struct PlanDetail: View {
         }
         .onDisappear(perform: commit)
         .onChange(of: tab) { _, v in Self.tabs[item.id] = v }
+        // Changed elsewhere (Rename…, the popover, an agent): show it in every field the owner is not editing here.
+        .onChange(of: live.session) { _, s in rebase(onto: s) }
     }
 
     // MARK: Tabs
@@ -339,9 +345,10 @@ struct PlanDetail: View {
         let it = live
         if it.session.ticket != nil {
             ForEach(it.session.allTickets, id: \.key) { i in TicketBox(item: it, issue: i, model: model, removable: true) }
-        } else {
+        } else if mentioned.isEmpty {
             Text("No Linear issue yet.").ui(12.5).foregroundStyle(t.text2.color)
         }
+        mentionedSection(it)
         // LAB-474: a session can resolve several issues; add one at any point before it ships.
         RoofButton(it.session.ticket == nil ? "Attach issue…" : "Add issue…") {
             NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil)
@@ -358,52 +365,105 @@ struct PlanDetail: View {
         }
     }
 
+    // MARK: Issues the session mentions (LAB-511)
+
+    /// Issues the session worked on (named in its name, opening message, objective, notes or terminal) but has not
+    /// attached: each with its Linear title and state and an Attach button.
+    @ViewBuilder private func mentionedSection(_ it: BoardItem) -> some View {
+        let open = mentioned.filter { !it.session.hasTicket($0.issue.identifier) }
+        if !open.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(it.session.ticket == nil ? "Not attached, but this session works on:" : "Also mentioned in this session:")
+                    .ui(12, .semibold).foregroundStyle(t.text2.color)
+                ForEach(open, id: \.issue.id) { m in
+                    HStack(spacing: 8) {
+                        Text(m.issue.identifier).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color)
+                        Text(m.issue.shortTitle).ui(12).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail).help(m.issue.shortTitle)
+                        Spacer(minLength: 4)
+                        Text(m.issue.state).ui(11).foregroundStyle(t.text3.color).fixedSize()
+                        Button("Attach") {
+                            model.attachIssue(m.issue, team: m.team.isEmpty ? nil : m.team, project: m.project, to: live, tellAgent: false)
+                        }.controlSize(.small)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.card.color))
+                }
+            }
+        }
+        Color.clear.frame(height: 0).task(id: it.id) { await findMentions(it) }
+    }
+
+    /// Read the session's own text (and up to 3,000 terminal lines), then look each key up in Linear (at most 12).
+    private func findMentions(_ it: BoardItem) async {
+        guard model.linear.hasKey else { return }
+        let s = it.session, runtime = model.runtime, linear = model.linear
+        let teams = Set(model.linearTeams.map(\.key))
+        let found: [(issue: LinearIssue, team: String, project: String?)] = await Task.detached {
+            let terminal = it.liveAgent.flatMap { try? runtime.read(pane: $0, lines: 3000) }
+            let keys = IssueMentions.keys(in: IssueMentions.texts(s, terminal: terminal), team: IssueMentions.team(of: s),
+                                          teams: teams, excluding: s.allTickets.map(\.key))
+            return keys.prefix(12).compactMap { k in (try? linear.issue(key: k)) ?? nil }
+        }.value
+        mentioned = found
+    }
+
     // MARK: Notes tab
 
     @ViewBuilder private var notesTab: some View {
         field("Notes") { editor($notes, minHeight: 240) }
-        HStack {
-            RoofButton("Save", .primary) { commit() }.keyboardShortcut("s", modifiers: .command)
+        HStack(spacing: 10) {
+            RoofButton("Save", .primary) { commit(explicit: true) }.keyboardShortcut("s", modifiers: .command)
+            // LAB-512: say whether it is saved (notes are kept with the session and come back when you return to it).
+            if let base, local != base {
+                Text("Unsaved changes").ui(12).foregroundStyle(t.text2.color)
+            } else if let savedAt {
+                Label("Saved \(savedAt.formatted(date: .omitted, time: .shortened))", systemImage: "checkmark.circle.fill")
+                    .ui(12).foregroundStyle(t.diffAddText.color)
+                    .accessibilityLabel("Saved")
+            }
             Spacer()
         }
     }
 
     // MARK: Artifacts tab
 
-    private var artifacts: [String] {
+    /// This session's own artifacts (LAB-513): files it wrote, its plan, handoffs naming its project or issues, and the
+    /// screenshots given to it.
+    private var artifacts: [SessionArtifacts.Item] {
         let s = live.session
-        var out: [String] = []
-        if let o = model.objectives.first(where: { $0.stepSessions.values.contains(s.id) }) {
-            let p = o.planPath(common: model.settings.sharedFolder)
-            if FileManager.default.fileExists(atPath: p) { out.append(p) }
-        }
-        // Newest handoffs that name this session's workstream.
-        if let ws = s.workstream?.lowercased() {
-            let dir = model.settings.sharedFolder + "/docs/next-session-handoff"
-            let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-            out += files.filter { $0.lowercased().contains(ws) }.sorted().suffix(3).reversed().map { dir + "/" + $0 }
-        }
-        return out
+        let plan = model.objectives.first(where: { $0.stepSessions.values.contains(s.id) })?.planPath(common: model.settings.sharedFolder)
+        return SessionArtifacts.list(s, plan: plan, handoffDir: model.settings.sharedFolder + "/docs/next-session-handoff")
     }
 
     @ViewBuilder private var artifactsTab: some View {
-        if artifacts.isEmpty {
-            Text("No artifacts yet. Plan files, handoffs and screenshots for this session show here.").ui(12.5).foregroundStyle(t.text2.color)
+        let all = artifacts
+        Text("What this session made or was given: files its agent wrote or edited, its plan, handoffs that name its project or issues, and screenshots in its opening message.")
+            .ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+        if all.isEmpty {
+            Text("Nothing yet. Files show here as the agent edits them.").ui(12.5).foregroundStyle(t.text3.color)
         }
-        ForEach(artifacts, id: \.self) { p in
-            Button { model.openInViewer(p) } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: p.hasSuffix(".png") ? "photo" : "doc.text").foregroundStyle(t.text2.color)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text((p as NSString).lastPathComponent).ui(12.5, .medium).foregroundStyle(t.text.color).lineLimit(1)
-                        Text(((p as NSString).deletingLastPathComponent as NSString).abbreviatingWithTildeInPath).ui(11).foregroundStyle(t.text3.color).lineLimit(1)
-                    }
-                    Spacer()
+        ForEach([SessionArtifacts.Kind.written, .plan, .handoff, .screenshot], id: \.self) { kind in
+            let group = all.filter { $0.kind == kind }
+            if !group.isEmpty {
+                Text("\(kind.rawValue) · \(group.count)").ui(11.5, .semibold).foregroundStyle(t.text3.color).padding(.top, 4)
+                ForEach(group, id: \.path) { a in artifactRow(a.path) }
+            }
+        }
+    }
+
+    private func artifactRow(_ p: String) -> some View {
+        Button { model.openInViewer(p) } label: {
+            HStack(spacing: 8) {
+                Image(nsImage: FileIcons.icon(for: p, size: 16)).resizable().frame(width: 16, height: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text((p as NSString).lastPathComponent).ui(12.5, .medium).foregroundStyle(t.text.color).lineLimit(1)
+                    Text(((p as NSString).deletingLastPathComponent as NSString).abbreviatingWithTildeInPath).ui(11).foregroundStyle(t.text3.color).lineLimit(1)
                 }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.card.color))
-            }.buttonStyle(.plain)
-        }
+                Spacer()
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.card.color))
+        }.buttonStyle(.plain).help(p)
     }
 
     // MARK: Fields
@@ -427,28 +487,45 @@ struct PlanDetail: View {
 
     private func load() {
         guard !loaded else { return }
-        let s = item.session
-        name = s.name; workstream = s.workstream ?? ""; objective = s.objective
-        opening = s.openingMessage; notes = s.notes; args = s.agentArgs.joined(separator: " ")
+        show(SessionEdits(live.session))
+        base = SessionEdits(live.session)
         loaded = true
     }
 
-    private func commit() {
-        guard loaded, let fresh = model.item(item.id) else { return }
-        let s = fresh.session
-        let ws = workstream.trimmingCharacters(in: .whitespaces)
-        let argList = args.split(separator: " ").map(String.init)
-        let changed = s.name != name || (s.workstream ?? "") != ws || s.objective != objective
-            || s.openingMessage != opening || s.notes != notes || s.agentArgs != argList
-        guard changed else { return }
-        model.update(fresh) {
-            $0.name = name.isEmpty ? $0.name : name
-            $0.workstream = ws.isEmpty ? nil : ws.uppercased()
-            $0.objective = objective
-            $0.openingMessage = opening
-            $0.notes = notes
-            $0.agentArgs = argList
-        }
+    /// What the fields hold now.
+    private var local: SessionEdits {
+        SessionEdits(name: name, workstream: workstream, objective: objective, opening: opening, notes: notes,
+                     args: args.split(separator: " ").map(String.init))
+    }
+
+    private func show(_ e: SessionEdits) {
+        name = e.name; workstream = e.workstream; objective = e.objective
+        opening = e.opening; notes = e.notes; args = e.args.joined(separator: " ")
+    }
+
+    private func rebase(onto s: Session) {
+        guard loaded, let b = base else { return }
+        let now = SessionEdits(s)
+        guard now != b else { return }
+        let mine = local
+        let merged = mine.rebased(from: b, onto: now)
+        if merged != mine { show(merged) }
+        base = now
+    }
+
+    /// Save only the fields changed here since they were loaded (LAB-487: never write a stale copy over a rename).
+    private func commit() { commit(explicit: false) }
+
+    private func commit(explicit: Bool) {
+        guard loaded, let b = base, let fresh = model.item(item.id) else { return }
+        let edits = local
+        // Save with nothing new still answers (LAB-512: Save used to give no sign at all).
+        guard edits != b else { if explicit { savedAt = Date() }; return }
+        model.update(fresh) { edits.apply(over: b, to: &$0) }
+        let saved = SessionEdits(model.item(item.id)?.session ?? fresh.session)
+        base = saved
+        if saved != edits { show(saved) }
+        savedAt = Date()
     }
 }
 

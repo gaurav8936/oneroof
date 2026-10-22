@@ -536,11 +536,12 @@ struct SubagentCard: View {
 }
 
 extension AppModel {
-    /// Exited placeholder › Open … handoff: the newest handoff naming one of the session's issues or its project, and the
+    /// Exited placeholder › Open … handoff: the newest handoff written during this session (LAB-510) naming one of its issues or its project, and the
     /// id it named (the button says which), else none.
     func handoffMatch(for item: BoardItem) -> (path: String, key: String)? {
         Workspace.handoffMatch(in: settings.sharedFolder + "/docs/next-session-handoff",
-                               project: item.session.workstream, tickets: item.session.allTickets.map(\.key))
+                               project: item.session.workstream, tickets: item.session.allTickets.map(\.key),
+                               since: item.session.launchedAt ?? item.session.createdAt)
     }
 }
 

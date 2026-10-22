@@ -155,10 +155,13 @@ public enum Workspace {
     /// The handoff and the id its name matched (shown on the button). Every issue of a session on several counts.
     /// Whole id only, on both sides and at every place it appears: "lab-24" is not "lab-247" nor "xlab-24", and
     /// "lab-247_lab-24_…" still names lab-24.
-    public static func handoffMatch(in dir: String, project: String?, tickets: [String]) -> (path: String, key: String)? {
+    /// LAB-510: with `since` (the session's launch), only a handoff written during the session counts: the one it left
+    /// when it ended, not an older one about the same project that it started from.
+    public static func handoffMatch(in dir: String, project: String?, tickets: [String], since: Date? = nil) -> (path: String, key: String)? {
         let keys = (tickets + [project].compactMap { $0 }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard !keys.isEmpty else { return nil }
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+            .filter { f in since.map { writtenSince(dir + "/" + f, $0) } ?? true }
         func names(_ f: String, _ k: String) -> Bool {
             let pattern = "(?<![a-z0-9])" + NSRegularExpression.escapedPattern(for: k.lowercased()) + "(?![a-z0-9])"
             return f.lowercased().range(of: pattern, options: .regularExpression) != nil
@@ -169,13 +172,30 @@ public enum Workspace {
         return nil
     }
 
+    /// Modified at or after `date` (a minute's slack for clocks and coarse timestamps).
+    public static func writtenSince(_ path: String, _ date: Date) -> Bool {
+        guard let m = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date else { return false }
+        return m >= date.addingTimeInterval(-60)
+    }
+
     /// A Linear project's code: the part of "CODE · title" before the dot when it is one id, else any id in the name.
+    /// LAB-519: a version segment may carry dots and keeps its case ("LAB-ONEROOF-v0.50"); the rest is upper case.
     public static func projectCode(name: String) -> String? {
         if let r = name.range(of: " · ") {
             let head = String(name[..<r.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if head.range(of: #"^[A-Za-z][A-Za-z0-9]{1,5}(?:-[A-Za-z0-9]{1,15})+$"#, options: .regularExpression) != nil { return head.uppercased() }
+            if head.range(of: #"^[A-Za-z][A-Za-z0-9]{1,5}(?:-[A-Za-z0-9](?:[A-Za-z0-9.]{0,14}[A-Za-z0-9])?)+$"#, options: .regularExpression) != nil {
+                return head.split(separator: "-").map { seg in
+                    seg.range(of: #"^[vV]\d"#, options: .regularExpression) != nil ? "v" + seg.dropFirst() : seg.uppercased()
+                }.joined(separator: "-")
+            }
         }
         return workstream(in: name)
+    }
+
+    /// The commit tag for a project code (LAB-519): lower case, dots dropped. "LAB-ONEROOF-v0.50" → "lab-oneroof-v050",
+    /// the form the workspace uses in `KEY · [lab-oneroof-v050] …` and worktree names.
+    public static func commitTag(_ code: String) -> String {
+        code.lowercased().replacingOccurrences(of: ".", with: "")
     }
 
     /// Repos under the projects folder (two levels: domain/repo that contain .git), for the "new session" picker.

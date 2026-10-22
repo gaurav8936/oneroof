@@ -86,7 +86,7 @@ extension Intake {
     /// best, post the plan on each issue, then work them in that order and keep each issue up to date through One Roof.
     public static func multiTicketOpening(_ issues: [PickedIssue], project: String?, roofd: String = "\"$ONEROOF_ROOFD_BIN\"") -> String {
         let where_ = project.map { " in project \($0)" } ?? ""
-        let tag = project.map { " · [\($0.lowercased())]" } ?? ""
+        let tag = project.map { " · [\(Workspace.commitTag($0))]" } ?? ""
         var lines = ["This session works on \(issues.count) issues\(where_):"]
         for i in issues {
             lines.append("- \(i.key): \(i.title) (\(i.state))" + (i.url.map { " — \($0)" } ?? ""))
@@ -135,6 +135,27 @@ extension Intake {
         guard !block.isEmpty else { return text }
         let mine = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return mine.isEmpty ? block : mine + "\n\n" + block
+    }
+}
+
+extension Intake {
+    /// LAB-491: every opening message starts by orienting the agent: run Where Are We (no transcript), anchor in the team
+    /// and project, and stay in that team. `body` is what to do next. Left alone when empty or when it already asks for
+    /// Where Are We (an owner's own message often does).
+    public static func anchored(_ body: String, team: String?, project: String?) -> String {
+        let b = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !b.isEmpty, b.range(of: "where are we", options: .caseInsensitive) == nil else { return body }
+        let t = team.flatMap { $0.isEmpty ? nil : $0 }
+        let scope: String
+        switch (project, t) {
+        case let (p?, t?): scope = "project \(p) (team \(t))"
+        case let (p?, nil): scope = "project \(p)"
+        case let (nil, t?): scope = "team \(t)"
+        default: scope = "this repo"
+        }
+        let stay = t == nil ? "" : " and do not switch to another team in this session"
+        return "Invoke the \"Where Are We\" skill from agentic engineering (no transcript needed). Anchor yourself in \(scope)\(stay)."
+            + " Once anchored, this is what I would like you to do next:\n\n" + body
     }
 }
 

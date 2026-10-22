@@ -41,6 +41,12 @@ extension AppModel {
         if subs != subagents { subagents = subs }
         if chs != chapters { chapters = chs }
         fileClaims = claims
+        // LAB-513: keep each session's edited files on the session (claims clear when a turn ends; these stay).
+        for (sid, edits) in claims.editedBy {
+            guard let it = item(sid) else { continue }
+            let merged = SessionArtifacts.merge(it.session.writtenFiles, edits: edits)
+            if merged != it.session.writtenFiles { update(it) { $0.writtenFiles = merged } }
+        }
         updateDockBadge()
     }
 

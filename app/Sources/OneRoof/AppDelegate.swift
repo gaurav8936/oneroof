@@ -300,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Close pane", "⌘⌥W", "xmark.rectangle", "Action") { [weak self] in self?.closePane(nil) }
         add("Maximize pane", "⌘⇧↩", "arrow.up.left.and.arrow.down.right", "Action") { [weak self] in self?.zoomPane(nil) }
         add("Even out panes", "", "equal.square", "Action") { [weak self] in self?.evenOutPanes(nil) }
-        add("Toggle centre panel", "⌘⌥C", "rectangle.center.inset.filled", "Action") { [weak self] in self?.main.toggleCentre() }
+        add("Toggle terminal panel", "⌘⌥C", "rectangle.center.inset.filled", "Action") { [weak self] in self?.main.toggleCentre() }
         add("Toggle plan panel", "⌘⌥P", "sidebar.right", "Action") { [weak self] in self?.main.togglePlanPanel() }
         add("Focus: terminal only", "⌘⌥F", "rectangle.inset.filled", "Action") { [weak self] in self?.main.toggleFocus() }
         add("Run startup check", "Foundations", "arrow.clockwise", "Action") { [weak self] in self?.runCheck(nil) }
@@ -551,7 +551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(.separator())
         view.addItem(item("Toggle Sidebar", #selector(toggleSidebarPanel(_:)), "s", [.command, .option]))
         view.addItem(item("Toggle Plan Panel", #selector(togglePlanPanel(_:)), "p", [.command, .option]))
-        view.addItem(item("Centre Panel", #selector(toggleCentre(_:)), "c", [.command, .option]))
+        view.addItem(item("Terminal Panel", #selector(toggleCentre(_:)), "c", [.command, .option]))
         view.addItem(item("File Browser", #selector(toggleFiles(_:)), "b", [.command, .option]))
         view.addItem(item("Search in Workspace", #selector(searchWorkspace(_:)), ""))
         view.addItem(item("Review Changes", #selector(reviewChanges(_:)), "r", [.command, .option]))

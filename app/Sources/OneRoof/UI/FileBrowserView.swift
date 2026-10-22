@@ -130,7 +130,9 @@ struct FileNodeView: View {
     private var row: some View {
         HStack(spacing: 5) {
             Text(isDir ? (expanded ? "▾" : "▸") : " ").ui(10).foregroundStyle(t.text3.color).frame(width: 10)
-            RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(glyph.color).frame(width: 13, height: 11)
+            // LAB-478: Finder's icons (a Markdown file looks like one), not a coloured block that read as a folder.
+            Image(nsImage: FileIcons.icon(for: path, isDirectory: isDir, size: 16)).resizable().interpolation(.high)
+                .frame(width: 16, height: 16).accessibilityHidden(true)
             Text(name).ui(TypeScale.small).foregroundStyle(t.text.color).lineLimit(1)
             Spacer(minLength: 0)
             if let b = badge {
@@ -178,19 +180,6 @@ struct FileNodeView: View {
         case .added: return t.diffAddText
         case .deleted: return t.diffDelText
         case .untracked: return t.text3
-        }
-    }
-
-    /// Type glyph: folders accent-light; Swift, Python and Markdown tinted with agent colours (tokens).
-    private var glyph: RGB {
-        if isDir { return t.accent.opacity(0.55) }
-        switch (name as NSString).pathExtension.lowercased() {
-        case "swift": return AgentMark.claude1.fill
-        case "py": return AgentMark.gemini.fill.opacity(0.8)
-        case "md", "txt": return t.text3
-        case "json", "yaml", "yml", "toml": return AgentMark.kimi.fill.opacity(0.7)
-        case "ts", "tsx", "js", "svelte": return AgentMark.claude2.fill
-        default: return t.separatorStrong
         }
     }
 

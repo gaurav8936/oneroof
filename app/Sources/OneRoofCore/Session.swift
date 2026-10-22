@@ -125,7 +125,29 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// The Status group a session sits in (LAB-515): Working, Ready and Idle are all "Active" (alive, not waiting on you);
+    /// the row's dot and caption say which. The rest keep their own name.
+    public var groupLabel: String { [.running, .done, .idle].contains(self) ? "Active" : label }
+    public var groupRank: Int {
+        switch self {
+        case .needsYou: return 0
+        case .running, .done, .idle: return 1
+        default: return rank
+        }
+    }
+    public static let activeMeaning = "Alive: working right now, finished a turn you have not looked at (Ready), or resting at its prompt (Idle). The dot and the line under the name say which."
+
     public var isLive: Bool { [.running, .needsYou, .done, .idle].contains(self) }
+
+    /// Why a message typed into this session's agent would land badly, or nil when it can take one (LAB-284). Working:
+    /// it would interrupt or queue behind the turn. Needs you: the text would answer its question or permission prompt.
+    public func typingRefusal(name: String) -> String? {
+        switch self {
+        case .running: return "\(name) is working; send when it is idle."
+        case .needsYou: return "\(name) is waiting on a question or permission; answer it first."
+        default: return nil
+        }
+    }
 
     /// Map an `agent_status` string (idle · working · blocked · done · unknown).
     public static func fromAgentStatus(_ s: String?) -> SessionStatus {
@@ -186,6 +208,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     /// Messages for the agent that arrived while it was working (an issue added mid-turn, LAB-474): sent together the
     /// next time it is at its prompt, never mid-turn. Saved, so an app restart does not drop them.
     public var pendingMessages: [String] = []
+    /// Files this session's agent wrote or edited (LAB-513), newest first, kept after its turns end: the Artifacts tab.
+    public var writtenFiles: [String] = []
     /// The repo the session was last seen working in (learnt from its agent's hooks or its terminal's folder); sessions
     /// start at the workspace root, so this is what "Group by repo" uses.
     public var lastRepo: String?
@@ -257,7 +281,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
-             moreTickets, reviewedTickets, pendingMessages, lastRepo
+             moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -294,6 +318,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         reviewedTickets = try c.decodeIfPresent([String].self, forKey: .reviewedTickets) ?? []
         pendingMessages = try c.decodeIfPresent([String].self, forKey: .pendingMessages) ?? []
         lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
+        writtenFiles = try c.decodeIfPresent([String].self, forKey: .writtenFiles) ?? []
     }
 
     /// A waiting message can go in now: the agent is at its prompt (not working, not on a permission question).
@@ -347,4 +372,50 @@ public struct SessionIssue: Codable, Equatable, Hashable, Sendable {
     public var id: String?
     public var team: String?
     public init(key: String, id: String?, team: String?) { self.key = key; self.id = id; self.team = team }
+}
+
+/// The fields the plan panel edits, as loaded and as typed (LAB-487, LAB-512). Saving writes only the fields the owner
+/// changed since loading: the panel used to write every field back, so a rename made from the menu or popover while the
+/// panel was open was undone by the panel's stale copy of the name.
+public struct SessionEdits: Equatable, Sendable {
+    public var name, workstream, objective, opening, notes: String
+    public var args: [String]
+
+    public init(name: String, workstream: String, objective: String, opening: String, notes: String, args: [String]) {
+        self.name = name; self.workstream = workstream; self.objective = objective
+        self.opening = opening; self.notes = notes; self.args = args
+    }
+
+    public init(_ s: Session) {
+        self.init(name: s.name, workstream: s.workstream ?? "", objective: s.objective, opening: s.openingMessage,
+                  notes: s.notes, args: s.agentArgs)
+    }
+
+    /// Write the fields that differ from `base` into `s`. Returns whether anything was written.
+    @discardableResult
+    public func apply(over base: SessionEdits, to s: inout Session) -> Bool {
+        var wrote = false
+        let n = name.trimmingCharacters(in: .whitespaces)
+        if name != base.name, !n.isEmpty { s.name = n; wrote = true }
+        if workstream != base.workstream {
+            let w = workstream.trimmingCharacters(in: .whitespaces)
+            // Codes are upper case except a version segment (LAB-519: "LAB-ONEROOF-v0.50").
+            s.workstream = w.isEmpty ? nil : (Workspace.projectCode(name: w + " · x") ?? w.uppercased()); wrote = true
+        }
+        if objective != base.objective { s.objective = objective; wrote = true }
+        if opening != base.opening { s.openingMessage = opening; wrote = true }
+        if notes != base.notes { s.notes = notes; wrote = true }
+        if args != base.args { s.agentArgs = args; wrote = true }
+        return wrote
+    }
+
+    /// The session changed elsewhere: take its new values for every field the owner has not touched here.
+    public func rebased(from base: SessionEdits, onto now: SessionEdits) -> SessionEdits {
+        SessionEdits(name: name == base.name ? now.name : name,
+                     workstream: workstream == base.workstream ? now.workstream : workstream,
+                     objective: objective == base.objective ? now.objective : objective,
+                     opening: opening == base.opening ? now.opening : opening,
+                     notes: notes == base.notes ? now.notes : notes,
+                     args: args == base.args ? now.args : args)
+    }
 }

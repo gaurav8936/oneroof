@@ -148,8 +148,39 @@ final class BoardMergeTests: XCTestCase {
             stored: [Session(name: "q", repoPath: "/p", lifecycle: .next)],
             snapshot: RuntimeSnapshot(sessions: [agent("a", "claude", .idle, pane: "1"), agent("b", "claude", .blocked, pane: "2"),
                                                  agent("c", "claude", .done, pane: "3"), agent("d", "claude", .working, pane: "4")]))
-        // LAB-256: Working sits above Ready, the same order as the chips.
-        XCTAssertEqual(Board.group(items, by: .status).map(\.title), ["Needs you", "Working", "Ready", "Idle", "Next"])
+        // LAB-515: Working, Ready and Idle are one Active group (rows in name order); Needs you stays first.
+        let groups = Board.group(items, by: .status)
+        XCTAssertEqual(groups.map(\.title), ["Needs you", "Active", "Next"])
+        XCTAssertEqual(groups[1].items.count, 3)
+    }
+
+    /// LAB-490: a status flicker never moves a row; a real change moves it once it has held.
+    func testRowsDoNotJumpOnStatusFlicker() {
+        func row(_ id: String, _ st: SessionStatus) -> BoardItem {
+            BoardItem(id: id, session: Session(name: id, repoPath: "/p"), status: st, adopted: false)
+        }
+        var sm = StatusSmoother(toNeedsYou: 2, other: 6)
+        let t0 = Date()
+        let a = sm.settle([row("b", .running), row("a", .idle)], now: t0)
+        XCTAssertEqual(Board.group(a, by: .status).first?.items.map(\.id), ["a", "b"], "Active rows in name order, not by Working/Idle")
+        // b flips to Idle and back: same group, same place.
+        let b = sm.settle([row("b", .idle), row("a", .running)], now: t0.addingTimeInterval(1))
+        XCTAssertEqual(Board.group(b, by: .status).first?.items.map(\.id), ["a", "b"])
+        // a asks a question for a moment only: it stays in Active.
+        let c = sm.settle([row("b", .idle), row("a", .needsYou)], now: t0.addingTimeInterval(2))
+        XCTAssertEqual(c.first { $0.id == "a" }?.listStatus, .running)
+        let d = sm.settle([row("b", .idle), row("a", .running)], now: t0.addingTimeInterval(3))
+        XCTAssertEqual(Board.group(d, by: .status).map(\.title), ["Active"])
+        // A question that stays moves it to Needs you after 2 s.
+        _ = sm.settle([row("b", .idle), row("a", .needsYou)], now: t0.addingTimeInterval(10))
+        let e = sm.settle([row("b", .idle), row("a", .needsYou)], now: t0.addingTimeInterval(12.1))
+        XCTAssertEqual(Board.group(e, by: .status).map(\.title), ["Needs you", "Active"])
+        // Exited takes 6 s to show (an agent restarting does not bounce the row).
+        _ = sm.settle([row("b", .exited), row("a", .needsYou)], now: t0.addingTimeInterval(13))
+        let f = sm.settle([row("b", .exited), row("a", .needsYou)], now: t0.addingTimeInterval(16))
+        XCTAssertEqual(f.first { $0.id == "b" }?.listStatus, .idle)
+        let g = sm.settle([row("b", .exited), row("a", .needsYou)], now: t0.addingTimeInterval(19.5))
+        XCTAssertEqual(g.first { $0.id == "b" }?.listStatus, .exited)
     }
 
     func testEveryBuiltInStickerSaysWhatItMeans() {

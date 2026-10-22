@@ -134,6 +134,8 @@ final class AppModel: ObservableObject {
 
     /// When each row last changed status or was working (in memory; falls back to the launch time).
     @Published private(set) var lastActive: [String: Date] = [:]
+    /// LAB-490: settles each row's status before the list moves it.
+    private var statusSmoother = StatusSmoother()
     /// Branch and diff size per session repo path, refreshed every 10 s off the main thread.
     @Published private(set) var repoStats: [String: RepoStat] = [:]
     /// When the owner last had each session in front of them (selected or showing in a pane).
@@ -322,6 +324,8 @@ final class AppModel: ObservableObject {
         // A finished turn the owner is looking at is no longer news (roofd: done → idle).
         let seenDone = new.filter { inView.contains($0.id) && $0.status == .done }.compactMap(\.liveAgent)
         if !seenDone.isEmpty { let r = runtime; queue.async { seenDone.forEach(r.markSeen) } }
+        // LAB-490: list rows by a status that has held for a moment, so they do not jump on every flicker.
+        new = statusSmoother.settle(new, now: now)
         if new != items {
             items = new
             updateDockBadge()
@@ -668,7 +672,7 @@ final class AppModel: ObservableObject {
     /// Send a review comment to the repo's agent when it is between turns. Returns a line for the panel.
     func sendReview(_ text: String, repo: String) -> String {
         guard let target = reviewTarget(repo: repo), let agent = target.liveAgent else { return "No live agent session in this repo." }
-        guard target.status != .running else { return "\(target.session.name) is working; send when it is idle." }
+        if let no = target.status.typingRefusal(name: target.session.name) { return no }
         let r = runtime
         DispatchQueue.global().async { try? r.submit(agent, text: text) }
         return "Comment sent to \(target.session.name)."

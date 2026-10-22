@@ -21,6 +21,10 @@ public struct BoardItem: Identifiable, Equatable, Sendable {
     public var agentInTerminal: Bool = false
     /// Launched a moment ago and not in the runtime's list yet: starting, not exited.
     public var starting: Bool = false
+    /// The status the list groups and orders by (LAB-490): the live status once it has held for a moment, so rows do
+    /// not jump on every flicker. Nil = the live status.
+    public var settledStatus: SessionStatus?
+    public var listStatus: SessionStatus { settledStatus ?? status }
 
     /// The repo seen live this poll (from the agent's hooks or the terminal's folder), resolved to its git root.
     public var workRepo: String?
@@ -164,7 +168,7 @@ public enum Board {
     public static func group(_ items: [BoardItem], by g: Grouping) -> [BoardGroup] {
         func key(_ i: BoardItem) -> String {
             switch g {
-            case .status: return i.status.label
+            case .status: return i.listStatus.groupLabel
             case .repo: return i.repoPath.map { Workspace.repoLabel(for: $0) } ?? Board.noRepo
             case .domain: return i.repoPath.map(Workspace.domainLabel) ?? Board.noRepo
             case .workstream: return i.session.workstream ?? "No project"
@@ -174,8 +178,10 @@ public enum Board {
         }
         var dict: [String: [BoardItem]] = [:]
         for i in items { dict[key(i), default: []].append(i) }
+        // LAB-490: Working, Ready and Idle rank the same, so a row keeps its place while its agent works and rests;
+        // only Needs you comes first. Then by name (stable).
         let rowOrder: (BoardItem, BoardItem) -> Bool = { a, b in
-            if a.status.rank != b.status.rank { return a.status.rank < b.status.rank }
+            if a.listStatus.groupRank != b.listStatus.groupRank { return a.listStatus.groupRank < b.listStatus.groupRank }
             return a.session.name.localizedCaseInsensitiveCompare(b.session.name) == .orderedAscending
         }
         // Pinned sessions leave their group and sit together at the top.
@@ -184,7 +190,7 @@ public enum Board {
         for i in items where !i.session.pinned { dict[key(i), default: []].append(i) }
         var groups = dict.map { BoardGroup(title: $0.key, items: $0.value.sorted(by: rowOrder)) }
         if g == .status {
-            let rank = Dictionary(uniqueKeysWithValues: SessionStatus.allCases.map { ($0.label, $0.rank) })
+            let rank = Dictionary(SessionStatus.allCases.map { ($0.groupLabel, $0.groupRank) }, uniquingKeysWith: { a, _ in a })
             groups.sort { (rank[$0.title] ?? 99) < (rank[$1.title] ?? 99) }
         } else {
             groups.sort { a, b in
@@ -203,5 +209,40 @@ public enum Board {
          items.filter { $0.status == .done }.count,
          items.filter { $0.status == .running }.count,
          items.filter { $0.status == .planned || $0.status == .next }.count)
+    }
+}
+
+/// LAB-490: the sidebar moved rows on every status flicker (Working ↔ Idle every few seconds). A new status takes
+/// effect in the list only once it has held: `toNeedsYou` for Needs you (it wants you, so sooner), `other` for the rest.
+/// A session seen for the first time shows its status at once.
+public struct StatusSmoother: Sendable {
+    public var toNeedsYou: TimeInterval
+    public var other: TimeInterval
+    private var shown: [String: SessionStatus] = [:]
+    private var pending: [String: (status: SessionStatus, since: Date)] = [:]
+
+    public init(toNeedsYou: TimeInterval = 2, other: TimeInterval = 6) { self.toNeedsYou = toNeedsYou; self.other = other }
+
+    /// The status to list each row under now; updates its memory.
+    public mutating func settle(_ items: [BoardItem], now: Date = Date()) -> [BoardItem] {
+        var out = items
+        let ids = Set(items.map(\.id))
+        shown = shown.filter { ids.contains($0.key) }
+        pending = pending.filter { ids.contains($0.key) }
+        for k in out.indices {
+            let id = out[k].id, live = out[k].status
+            guard let was = shown[id] else { shown[id] = live; out[k].settledStatus = live; continue }
+            // Same group already (e.g. Working → Idle, both Active): nothing moves, take it at once.
+            if was == live || was.groupLabel == live.groupLabel { shown[id] = live; pending[id] = nil; out[k].settledStatus = live; continue }
+            if let p = pending[id], p.status == live {
+                if now.timeIntervalSince(p.since) >= (live == .needsYou ? toNeedsYou : other) {
+                    shown[id] = live; pending[id] = nil
+                }
+            } else {
+                pending[id] = (live, now)
+            }
+            out[k].settledStatus = shown[id]
+        }
+        return out
     }
 }

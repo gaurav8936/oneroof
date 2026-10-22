@@ -23,9 +23,9 @@ You should be able to look at the left panel and know, without clicking, which a
 | Exited | One Roof | The agent's process has ended. Relaunch it, or remove it. |
 | Parked (Do not use) | One Roof | Put aside by you. The name is struck through. |
 
-The filter chips and the group headings use the same names: **Needs you · Working · Ready · Idle · Exited**. Hover a chip or a heading to see what it means.
+Working, Ready and Idle are all **Active**: alive and not waiting on you. The list groups them together, so a session that switches between working and resting keeps its place; its dot and the line under its name say which it is right now. Grouped by status the panel shows **Needs you · Active · Next · Planned · Exited**, needs you first, and rows inside a group stay in name order. A row moves to another group only once its new status has held for a moment (2 seconds for Needs you, 6 for the rest), so a quick flicker never moves it. Pinned sessions always sit in a Pinned group on top.
 
-Grouped by status, the panel lists them in that order (needs you first). Pinned sessions always sit in a Pinned group on top.
+The chips use the same names: **All · Needs you · Active · Exited**. Hover a chip or a heading to see what it means.
 
 ## Where sessions live (roofd)
 
@@ -51,7 +51,7 @@ Each main window is a **workspace** with its own sessions. File › New Workspac
 ## The top of the panel
 
 - **Seat bars:** how much of each seat's usage window is used (Claude1, Claude2, Codex). They stay empty when there is no usage data. See [Seats and routing](07_seats-router-and-on-device-model.md).
-- **Count chips:** All, **Needs you**, **Working**, **Ready**, **Idle** and **Exited** (agent sessions whose agent has ended; terminals are not counted), the same names as the group headings. Click one to show only that state; click **All** (or the same chip again) to get the full list back. Under **Exited**, *Remove all exited sessions* clears them. Next and planned sessions are under All.
+- **Count chips:** All, **Needs you**, **Active** (working, ready or idle) and **Exited** (agent sessions whose agent has ended; terminals are not counted), the same names as the group headings. Click one to show only that state; click **All** (or the same chip again) to get the full list back. Under **Exited**, *Remove all exited sessions* clears them. Next and planned sessions are under All.
 - **Group ▾:** Status, Repo, Project, Agent, Account or Folder (also View › Group by, ⌘1 to ⌘6).
   - **Repo** is the git repo a session works in. Sessions start at the workspace root, which is not a repo, so One Roof learns the repo as the agent works: from the files Claude's tools touch and the folders its commands `cd` into, or from a terminal's current folder. It keeps the last one after the session ends. Until then the session is under **Workspace root · no repo yet** (last). Codex, Kimi, Gemini and Antigravity have no hooks, so they show their repo only when started in one.
   - **Folder** is the top-level folder under the workspace (one per product or area), for a coarser view.

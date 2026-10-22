@@ -284,7 +284,7 @@ struct ReviewChangesView: View {
     private func prefillMessage() {
         guard !messageTouched else { return }
         let s = session?.session
-        let ws = s?.workstream.map { "[\($0.lowercased())] " } ?? ""
+        let ws = s?.workstream.map { "[\(Workspace.commitTag($0))] " } ?? ""
         let key = s?.ticket.map { $0 + " · " } ?? ""
         let summary = session.map { model.caption(for: $0).text.replacingOccurrences(of: "Ready · ", with: "") } ?? "changes"
         message = key + ws + summary
@@ -365,6 +365,8 @@ struct ReviewChangesView: View {
 
     private func askToFix(_ c: ReviewCheck) {
         guard let s = session, let agent = s.liveAgent else { return }
+        // LAB-284: the same check as sending a review comment: never type into a working or waiting agent.
+        if let no = s.status.typingRefusal(name: s.session.name) { status = no; return }
         let r = model.runtime
         let text = "The review check \"\(c.title)\" is not passing: \(c.detail). Please fix it."
         DispatchQueue.global().async { try? r.submit(agent, text: text) }
