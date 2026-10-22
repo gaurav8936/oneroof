@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 — roofd memory fix (21 Oct 2026)
+
+- **roofd no longer eats the Mac's memory.** Each session's process kept every answer it gave the app, so a session
+  open for a day grew to several GB and macOS froze. It now stays at a few MB, and as a safety net a session that
+  passes 2 GB ends itself (noted in `roofd-memory.log` in roofd's folder) instead of taking the Mac down.
+
 ## 0.4.2 — a one-click session menu, and pasting images (21 Oct 2026)
 
 - **The session menu is one click for everything.** Stickers are labels only, colours are swatches and emoji sit in the menu itself; the colourful menu has a row of buttons (Open, Next, Pin, Rename, Highlight) instead of tiles, and no Close.

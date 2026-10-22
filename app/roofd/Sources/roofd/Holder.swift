@@ -45,6 +45,9 @@ final class Holder {
 
     static let scrollbackBytes = 8 << 20          // Q9: 8 MB in memory, never on disk
     static let clientQueueLimit = 4 << 20
+    /// Bytes waiting for the program to read its input (LAB-310): a program that stops reading must not make the
+    /// holder buffer every keystroke and query reply forever. Past this, new input is refused.
+    static let inputQueueLimit = 1 << 20
     /// Spike only (M2): measure the forwarding path without the VT parse.
     static let skipVT = ProcessInfo.processInfo.environment["ROOFD_SPIKE_NOVT"] == "1"
     static let lingerSeconds = Double(ProcessInfo.processInfo.environment["ROOFD_LINGER"] ?? "") ?? 600
@@ -97,6 +100,11 @@ final class Holder {
     private var mailReplies: [UInt8] = []
     private var anyAttached = false
     private var wakeR: Int32 = -1, wakeW: Int32 = -1
+    /// The memory guard (LAB-310): warn over 1 GB, end the session over 2 GB (ROOFD_SESSION_MEM_WARN_MB / _LIMIT_MB).
+    var watchdog = MemoryWatchdog.from(env: ProcessInfo.processInfo.environment, prefix: "ROOFD_SESSION",
+                                       warnMB: MemoryWatchdog.holderWarnMB, limitMB: MemoryWatchdog.holderLimitMB)
+    var lastMemoryCheck = Date.distantPast
+    var footprint: UInt64 = 0
 
     init(spec: Spec) throws {
         self.spec = spec
@@ -116,6 +124,11 @@ final class Holder {
         guard pipe(&w) == 0 else { throw RoofdError("pipe failed") }
         (wakeR, wakeW) = (w[0], w[1])
         Sock.setNonBlocking(wakeR); Sock.setNonBlocking(wakeW)
+        // One holder per session id (LAB-310): two creates racing for the same id must not leave a second holder
+        // whose socket replaced the first one's (that one would run on, unreachable, until the Mac ran out of memory).
+        guard try FileLock.acquire(Paths.dir + "/\(spec.id).lock", wait: false) != nil else {
+            throw RoofdError("session \(spec.id) is already running")
+        }
         listenFd = try Sock.listen(socketPath)
         guard let exe = spec.argv.first else { throw RoofdError("empty argv") }
         let path = exe.hasPrefix("/") ? exe : Holder.which(exe, env: spec.env) ?? exe
@@ -144,36 +157,45 @@ final class Holder {
 
     func run() {
         var buf = [UInt8](repeating: 0, count: 256 * 1024)
-        while true {
-            if let at = exitedAt, Date().timeIntervalSince(at) > Holder.lingerSeconds { break }
-            var fds: [pollfd] = [pollfd(fd: listenFd, events: Int16(POLLIN), revents: 0),
-                                 pollfd(fd: wakeR, events: Int16(POLLIN), revents: 0)]
-            if master >= 0 {
-                fds.append(pollfd(fd: master, events: Int16(POLLIN) | (pendingInput.isEmpty ? 0 : Int16(POLLOUT)), revents: 0))
-            }
-            for c in clients.values {
-                fds.append(pollfd(fd: c.fd, events: Int16(POLLIN) | (c.out.isEmpty ? 0 : Int16(POLLOUT)), revents: 0))
-            }
-            let n = poll(&fds, nfds_t(fds.count), 200)
-            if n < 0 && errno != EINTR { break }
-            reapChild()
-            if Date().timeIntervalSince(lastEval) >= 0.25 { evaluateStatus() }
-            for f in fds where f.revents != 0 {
-                if f.fd == listenFd { acceptClients(); continue }
-                if f.fd == wakeR { takeMail(&buf); continue }
-                if f.fd == master {
-                    if f.revents & Int16(POLLOUT) != 0 { flushInput() }
-                    if f.revents & Int16(POLLIN | POLLHUP | POLLERR) != 0 { readMaster(&buf) }
-                    continue
-                }
-                guard let c = clients[f.fd] else { continue }
-                if f.revents & Int16(POLLOUT) != 0 { flush(c) }
-                if f.revents & Int16(POLLIN | POLLHUP | POLLERR) != 0 { readClient(c, &buf) }
-            }
-        }
+        // Every turn in its own autorelease pool (LAB-310). Foundation autoreleases objects (JSONSerialization for
+        // each control request, NSString bridging), and this thread never returns to a run loop that would drain
+        // them: without the pool a holder kept ~5 KB per `info` request forever, several GB per session in a day.
+        while autoreleasepool(invoking: { turn(&buf) }) {}
         for c in clients.values { close(c.fd) }
         close(listenFd)
         unlink(socketPath)
+        unlink(Paths.dir + "/\(spec.id).lock")   // still held: a holder that opens it now retries (FileLock)
+    }
+
+    /// One poll turn; false ends the holder.
+    private func turn(_ buf: inout [UInt8]) -> Bool {
+        if let at = exitedAt, Date().timeIntervalSince(at) > Holder.lingerSeconds { return false }
+        var fds: [pollfd] = [pollfd(fd: listenFd, events: Int16(POLLIN), revents: 0),
+                             pollfd(fd: wakeR, events: Int16(POLLIN), revents: 0)]
+        if master >= 0 {
+            fds.append(pollfd(fd: master, events: Int16(POLLIN) | (pendingInput.isEmpty ? 0 : Int16(POLLOUT)), revents: 0))
+        }
+        for c in clients.values {
+            fds.append(pollfd(fd: c.fd, events: Int16(POLLIN) | (c.out.isEmpty ? 0 : Int16(POLLOUT)), revents: 0))
+        }
+        let n = poll(&fds, nfds_t(fds.count), 200)
+        if n < 0 && errno != EINTR { return false }
+        reapChild()
+        if Date().timeIntervalSince(lastEval) >= 0.25 { evaluateStatus() }
+        if Date().timeIntervalSince(lastMemoryCheck) >= Daemon.watchdogInterval, !checkMemory() { return false }
+        for f in fds where f.revents != 0 {
+            if f.fd == listenFd { acceptClients(); continue }
+            if f.fd == wakeR { takeMail(&buf); continue }
+            if f.fd == master {
+                if f.revents & Int16(POLLOUT) != 0 { flushInput() }
+                if f.revents & Int16(POLLIN | POLLHUP | POLLERR) != 0 { readMaster(&buf) }
+                continue
+            }
+            guard let c = clients[f.fd] else { continue }
+            if f.revents & Int16(POLLOUT) != 0 { flush(c) }
+            if f.revents & Int16(POLLIN | POLLHUP | POLLERR) != 0 { readClient(c, &buf) }
+        }
+        return true
     }
 
     private func readMaster(_ buf: inout [UInt8]) {
@@ -243,13 +265,43 @@ final class Holder {
     static let foreground = "e6e6/e9e9/efef"
     static let background = "1c1c/2020/2828"
 
+    /// LAB-310: false when the holder is over its memory limit and has ended the session.
+    func checkMemory() -> Bool {
+        lastMemoryCheck = Date()
+        guard let f = MemoryWatchdog.footprint() else { return true }
+        footprint = f
+        let action = watchdog.check(footprint: f)
+        guard action != .ok else { return true }
+        MemoryLog.append(MemoryWatchdog.logLine(at: Date(), who: "session \(spec.id)", footprint: f, action: action))
+        guard action == .stop else { return true }
+        // Over the limit: a frozen Mac loses every session, this ends one. Hang up the program (its whole process
+        // group), tell an attached terminal why, and exit; the holder's memory goes back to the system.
+        if pid > 0, exitedAt == nil {
+            kill(-pid, SIGHUP); kill(pid, SIGHUP)
+            usleep(300_000)
+            kill(-pid, SIGKILL); kill(pid, SIGKILL)
+        }
+        let bye = Wire.encode(.exit, json: ["code": exitCode as Any, "signal": exitSignal as Any, "reason": "memory",
+                                            "footprint": Int(f)])
+        for c in clients.values where c.attached { enqueue(c, bye); _ = c.out.write(to: c.fd) }
+        return false
+    }
+
+    /// Queue bytes for the program; false (nothing queued) when it has stopped reading and the queue is full.
+    @discardableResult
+    private func queueInput(_ bytes: [UInt8]) -> Bool {
+        guard pendingInput.count + bytes.count <= Holder.inputQueueLimit else { return false }
+        pendingInput.append(contentsOf: bytes)
+        return true
+    }
+
     private func takeMail(_ buf: inout [UInt8]) {
         _ = read(wakeR, &buf, buf.count)
         mailLock.lock()
         let r = mailReplies
         mailReplies = []
         mailLock.unlock()
-        pendingInput += r
+        queueInput(r)
         Holder.trace("query", r)
         flushInput()
     }
@@ -296,6 +348,7 @@ final class Holder {
             return
         }
         c.inbuf += buf[0..<n]
+        if Wire.oversized(c.inbuf) { drop(c); return }   // LAB-310: never wait for a frame past the limit
         for (type, payload) in Wire.decode(&c.inbuf) {
             guard clients[c.fd] != nil else { return }
             handle(c, type, payload)
@@ -337,7 +390,7 @@ final class Holder {
         case .input:
             guard c.attached else { return }
             engine.input(at: Date())
-            pendingInput += payload
+            queueInput(payload)
             Holder.trace("attach", payload)
             flushInput()
         case .resize:
@@ -419,7 +472,7 @@ final class Holder {
     func deliverOpening(now: Date) {
         if let at = enterAt, now >= at {
             enterAt = nil
-            pendingInput.append(0x0D)
+            queueInput([0x0D])
             Holder.trace("enter", [0x0D])
             flushInput()
         }
@@ -433,7 +486,7 @@ final class Holder {
                 idleSince = nil
             }
             guard let since = idleSince, now.timeIntervalSince(since) >= OpeningGate.settle(kind) else { return }
-            pendingInput += Array(text.utf8)
+            queueInput(Array(text.utf8))
             Holder.trace("opening", Array(text.utf8))
             flushInput()
             enterAt = now.addingTimeInterval(0.15)   // Enter separately: a submit, not a newline inside a paste
@@ -477,6 +530,8 @@ final class Holder {
             // When the session last did something (LAB-258): an agent's screen content changing (not a status-bar
             // repaint), or a shell's output. The holder outlives the app, so a restarted app shows the real age.
             "active": ((agent != nil ? contentChangedAt : nil) ?? lastOutput ?? created).timeIntervalSince1970,
+            // LAB-310: the holder's own memory, and whether it is past the warning line (the app can show it).
+            "footprint": Int(footprint), "memoryWarning": watchdog.warned,
         ]
         if master >= 0 { out["pgid"] = Int(roof_foreground_pgrp(master)) }
         if let at = exitedAt {
@@ -506,8 +561,8 @@ final class Holder {
             if let t = j["text"] as? String { bytes += Array(t.utf8) }
             if let b = j["bytes_b64"] as? String, let d = Data(base64Encoded: b) { bytes += Array(d) }
             if (j["submit"] as? Bool) == true { bytes.append(0x0D) }
+            guard queueInput(bytes) else { return ["error": "the program is not reading its input"] }
             engine.input(at: Date())
-            pendingInput += bytes
             Holder.trace("input-op", bytes)
             flushInput()
             return [:]
