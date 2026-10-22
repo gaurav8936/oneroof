@@ -169,10 +169,15 @@ struct NewSessionSheet: View {
         // Once: the issues are published more than once while they load, and a second pass would untick them.
         guard SelfTest.isActive, !Self.selfTestPicked, let w = currentWorkstream, let list = all[w.id], !list.isEmpty else { return }
         Self.selfTestPicked = true
+        // LAB-528: the owner's own words typed before the picks (they must survive, and the list must follow the picks).
+        if let o = env["ONEROOF_SELFTEST_OPENING"] { opening = o; openingTouched = true }
         for k in (env["ONEROOF_SELFTEST_PICK"] ?? "").split(separator: ",").map(String.init) {
             if let i = list.first(where: { $0.identifier == k }) { toggleIssue(i) }
         }
         if env["ONEROOF_SELFTEST_ISSUES"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { openIssuePicker() } }
+        if let out = env["ONEROOF_SELFTEST_OUT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { try? opening.write(toFile: out + ".opening.txt", atomically: true, encoding: .utf8) }
+        }
     }
 
     // MARK: Bottom row

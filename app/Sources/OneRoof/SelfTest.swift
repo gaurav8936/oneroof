@@ -21,6 +21,7 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
 ///   ONEROOF_SELFTEST_KIND=session|ticket|defect|workstream   ONEROOF_SELFTEST_TEAM=<key>   ONEROOF_SELFTEST_PROJECT=<code>   New session sheet starting state
 ///   ONEROOF_SELFTEST_PICK=KEY,KEY,…   tick those issues (LAB-518)   ONEROOF_SELFTEST_ISSUES=1   open the issue checklist
+///   ONEROOF_SELFTEST_OPENING=<text>             the owner's own opening message, typed before the picks (LAB-528)
 ///   ONEROOF_SELFTEST_ROOF=<n>                   start n plain terminals in One Roof's source checkout (or
 ///                                               ONEROOF_SELFTEST_ROOF_REPO), then open its roof window
 enum SelfTest {
