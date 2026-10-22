@@ -189,6 +189,7 @@ final class AppModel: ObservableObject {
         }
         applyAppearance()
         resources.start(model: self)
+        ResourceMonitor.stopLeftoverLocalModel()
         queue.async { [weak self] in
             guard let self else { return }
             do {
