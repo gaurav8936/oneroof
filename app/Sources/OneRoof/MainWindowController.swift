@@ -333,6 +333,7 @@ final class CentreController: NSViewController {
         switch c {
         case .workspace: return terminalArea.view
         case .overview: v = AnyView(CentreThemed(model: m, win: w) { OverviewView(model: m, win: w) })
+        case .resources: v = AnyView(CentreThemed(model: m, win: w) { ResourcesView(model: m, win: w) })
         case .board: v = AnyView(CentreThemed(model: m, win: w) { BoardView(model: m, win: w) })
         case .decisions: v = AnyView(CentreThemed(model: m, win: w) { DecisionsView(model: m, win: w) })
         case .subagents: v = AnyView(CentreThemed(model: m, win: w) { SubagentTraceView(model: m, win: w) })

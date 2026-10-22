@@ -1,7 +1,7 @@
 import SwiftUI
 import OneRoofCore
 
-/// Plan panel (S06 §1.5): tabs Plan · Ticket · Notes · Artifacts for the selected session, and the v0.1 Appearance
+/// Plan panel (S06 §1.5): tabs Plan · Ticket · Notes · Artifacts · Resources (LAB-493) for the selected session, and the v0.1 Appearance
 /// block at the bottom. Its own theme (default Graphite). With the centre closed it widens to a two-column form.
 struct PlanPanelView: View {
     @ObservedObject var model: AppModel
@@ -73,7 +73,7 @@ struct PlanPanelView: View {
 }
 
 /// Which Plan panel tab is showing, remembered per session.
-enum PlanTab: String, CaseIterable { case plan, ticket, notes, artifacts }
+enum PlanTab: String, CaseIterable { case plan, ticket, notes, artifacts, resources }
 
 struct PlanDetail: View {
     @Environment(\.theme) private var t
@@ -108,6 +108,7 @@ struct PlanDetail: View {
                     case .ticket: ticketTab
                     case .notes: notesTab
                     case .artifacts: artifactsTab
+                    case .resources: SessionResourcesTab(item: live, res: model.resources)
                     }
                     if let err = model.lastError {
                         Text(err).ui(12).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
@@ -152,6 +153,7 @@ struct PlanDetail: View {
         case .ticket: return "Ticket"
         case .notes: return "Notes"
         case .artifacts: return "Artifacts \(artifacts.count)"
+        case .resources: return "Resources"
         }
     }
 
