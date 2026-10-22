@@ -198,6 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: v2 actions
 
     @objc func newWorkspaceWindow(_ sender: Any?) { main.newWorkspace() }
+    @objc func showResources(_ sender: Any?) { model.centre = model.centre == .resources ? .workspace : .resources }
     @objc func showDecisions(_ sender: Any?) { model.centre = model.centre == .decisions ? .workspace : .decisions }
     @objc func showSubagents(_ sender: Any?) { model.centre = model.centre == .subagents ? .workspace : .subagents }
     /// ⌘R: Run in the Editor, Raw stream in a session (SHORTCUTS: context-dependent).
@@ -271,6 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         add("Workspace", "Back to the terminals", "terminal", "View") { m.goTerminals() }
         add("Overview", "Every window, the feed, objectives (⇧⌘L)", "square.grid.2x2", "View") { m.centre = .overview }
+        add("Resources", "Memory and CPU of One Roof, every window and session (⇧⌘U)", "gauge.with.dots.needle.33percent", "View") { m.centre = .resources }
         add("Decisions", "\(m.openDecisionCount) waiting (⌘I)", "hand.raised", "View") { m.centre = .decisions }
         add("Subagents", "Trace of every subagent (⇧⌘A)", "point.3.connected.trianglepath.dotted", "View") { m.centre = .subagents }
         add("New workspace window", "⇧⌘N", "macwindow.badge.plus", "Action") { [weak self] in self?.main.newWorkspace() }
@@ -536,6 +538,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         view.addItem(.separator())
         view.addItem(item("Overview", #selector(toggleLaunchpad(_:)), "l", [.command, .shift]))
+        view.addItem(item("Resources", #selector(showResources(_:)), "u", [.command, .shift]))
         view.addItem(item("Board", #selector(toggleBoard(_:)), "b"))
         view.addItem(item("Decisions", #selector(showDecisions(_:)), "i"))
         view.addItem(item("Subagents", #selector(showSubagents(_:)), "a", [.command, .shift]))
@@ -671,6 +674,8 @@ extension AppDelegate: NSMenuItemValidation {
             item.state = model.workMode ? .on : .off
         case #selector(showDecisions(_:)):
             item.state = model.centre == .decisions ? .on : .off
+        case #selector(showResources(_:)):
+            item.state = model.centre == .resources ? .on : .off
         case #selector(showSubagents(_:)):
             item.state = model.centre == .subagents ? .on : .off
         case #selector(togglePinSelected(_:)):
