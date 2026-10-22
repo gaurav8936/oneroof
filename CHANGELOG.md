@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Start one session on several issues** (LAB-518). In New session, **Issue ▾** is now a checklist: tick several of the
+  project's open issues (active, to do or backlog) and One Roof makes one session for all of them, named with every key
+  (`LAB-1, LAB-2, LAB-3 · title`). Its opening message asks the agent to read them all and write one plan that resolves
+  them in the best order, then work through them in that order.
+- **Agents keep each issue up to date.** Inside a session an agent can run `"$ONEROOF_ROOFD_BIN" issue KEY --state "In
+  Progress"|"In Review" --comment "…"`; One Roof applies it to Linear with your key, only for that session's own issues
+  and never to Done. A session on several issues no longer moves them all to In Progress at launch.
+
 ## 0.4.5 — Resources names every session (21 Oct 2026)
 
 - **Resources names every session correctly** (LAB-517). A session whose agent had finished while its terminal stayed
