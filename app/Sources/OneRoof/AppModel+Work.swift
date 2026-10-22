@@ -181,7 +181,9 @@ extension AppModel {
     /// Move every issue on the session (close, review): each gets the same session summary.
     func moveTickets(of item: BoardItem, keys: Set<String>? = nil, to state: String) {
         let summary = sessionSummary(item)
-        for i in item.session.allTickets where keys?.contains(i.key) ?? true { moveIssue(i, to: state, comment: summary) }
+        let moved = item.session.allTickets.filter { keys?.contains($0.key) ?? true }
+        for i in moved { moveIssue(i, to: state, comment: summary) }
+        if state == "In Review" { update(item) { $0.reviewedTickets += moved.map(\.key) } }
     }
 
     /// Take an issue off a session (LAB-474); it stays in Linear as it is.
@@ -229,5 +231,38 @@ extension AppModel {
                                         project: project ?? item.session.workstream)
         let r = runtime
         DispatchQueue.global().async { try? r.submit(agent, text: text) }
+    }
+}
+
+extension AppModel {
+    /// Every minute (LAB-474): sessions launched in the last 3 days with issues not yet in review are matched against
+    /// new commits in the workspace repos; an issue whose key is in a commit subject moves to In Review once, with the
+    /// commit in the comment. Issues already Done or Canceled are only marked, never moved back.
+    func tickCommitWatch(now: Date = Date()) {
+        guard !SelfTest.isActive, !commitWatchBusy, linear.hasKey else { return }
+        let watched = items.filter { CommitWatch.watches($0.session, now: now) }
+        guard let since = watched.compactMap(\.session.launchedAt).min() else { return }
+        commitWatchBusy = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let commits = Workspace.listRepos().flatMap { repo in
+                CommitWatch.parseLog(Foundations.run(GitDiff.git, CommitWatch.logArgs(repo: repo, since: since.addingTimeInterval(-60)), timeout: 10).1, repo: repo)
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.commitWatchBusy = false
+                for w in watched {
+                    guard let item = self.item(w.id) else { continue }
+                    let found = CommitWatch.matches(item.session, in: commits)
+                    guard !found.isEmpty else { continue }
+                    let finished = Set(self.issues.values.joined().filter { ["completed", "canceled"].contains($0.stateType) }.map(\.id))
+                    for (issue, c) in found where !finished.contains(issue.id ?? "") {
+                        let where_ = Workspace.repoLabel(for: c.repo)
+                        self.moveIssue(issue, to: "In Review",
+                                       comment: "Committed in `\(c.sha)` (\(where_)): \(c.subject)\n\nSession **\(item.session.name)** in One Roof moved this to In Review.")
+                    }
+                    self.update(item) { $0.reviewedTickets += found.map(\.0.key) }
+                }
+            }
+        }
     }
 }

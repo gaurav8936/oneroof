@@ -70,6 +70,8 @@ final class AppModel: ObservableObject {
     /// Objectives typed by the owner, with their plans.
     @Published var objectives: [Objective] = []
     @Published var issues: [String: [LinearIssue]] = [:]     // project id → tickets
+    /// A commit-watch scan is running (LAB-474), so ticks never overlap.
+    var commitWatchBusy = false
     @Published var linearError: String?
     @Published var linearLoading = false
     /// Re-created when a key is saved (Setup…), so Linear connects without a restart.
@@ -197,6 +199,7 @@ final class AppModel: ObservableObject {
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
+            if ticks % 60 == 40 { self?.tickCommitWatch() }
         }
     }
 
