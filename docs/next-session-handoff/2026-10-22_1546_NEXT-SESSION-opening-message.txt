@@ -1,0 +1,103 @@
+NEXT-SESSION OPENING MESSAGE — 2026-10-22 15:46  (supersedes the 2026-10-21 2339 opener)
+
+═══ BLUF ═══
+One Roof 0.4.9 (build 13) is installed in /Applications and downloadable everywhere (verify 6/6). Everything fixed
+in 0.4.7 / 0.4.8 / 0.4.9 is In Review and NOT YET OWNER-TESTED. NEXT ACTION: wait for the owner's hand-test results;
+fix whatever they reopen. NEVER move an issue to Done — Done is the owner's.
+
+⚠ SCOPE — covers ONLY the LAB-ONEROOF-BUGS thread (0.4.7 + 0.4.8 releases). 0.4.9 / LAB-540 was done by another
+session; recorded here for context.
+⚠ SHARED BRANCH — labs/oneroof ganarasi/live carries another session's 2cb5319 (LAB-514 design doc): NEVER lift it.
+Commit by explicit path, never -A.
+
+═══ CONTEXT ═══
+One Roof = macOS SwiftUI/AppKit IDE (labs/oneroof/app) + roofd session daemon. Owner rules: signed + notarized releases
+ONLY on the owner's Mac (no dev builds, no app swaps from app/build, no scripts/install.sh); "release" = release AND
+install after oneroof-release-verify.sh is 6/6; pushes only to github.com/gaurav8936; never re-enable GitHub Actions;
+lift by targeted cherry-pick; Slack milestone DMs via ~/.claude/slack-bot/notify-self.sh.
+
+═══ REPO / BRANCH STATE (live git, 15:46) ═══
+- labs/oneroof · ganarasi/live · HEAD 7618332 · ahead origin/live by 1 (LOCAL-ONLY: the LAB-540 gotcha doc) · clean
+  · origin/main 20d8114 (= 0.4.9 + site) · origin/develop 78a4d1e · only un-lifted live commit besides the gotcha: 2cb5319 (not ours)
+- zibajoon/zibajoon-app · ganarasi/live = develop = main = b1141cb · clean · ✅ PROD (0.4.9 link)
+- zibajoon/zibajoon-docs · ganarasi/live e0565cc · ahead 23 (22 are another session's ZIB knowledge commits; ours =
+  e0565cc cicd-trace reports) · LOCAL-ONLY · dirty 5 (other sessions' trace reports + _INDEX.md)
+
+═══ DONE + SHIPPED ═══
+- 0.4.7 ✅ (LAB-527 picker rows stable + Picked chip, LAB-528 opening follows picks, LAB-529 stale ONEROOF_ROOFD_BIN,
+  LAB-250 handoff whole-id match, LAB-241 caption). Verify: gh release view v0.4.7 -R gaurav8936/oneroof
+- 0.4.8 ✅ build 12 = the real backlog of 17: LAB-522 Terminal toggle · 521 pane header height · 520 no zoom on toolbar
+  double-click · 519 dotted project codes → tag lab-oneroof-v050 · 516 roofd launchd self-repair · 515 Active group ·
+  513 Artifacts = session-own · 512 Save feedback · 511 mentioned issues + Attach · 510 handoff only from this session
+  · 491 Where-Are-We opening · 490 status smoothing · 487 rename persists · 478 macOS file icons · 284 Ask-to-fix
+  refusal · 283 roofd tests in Woodpecker · 223 trace line (not reproduced, 7/7 ok). PRs #67/#68, site #69/#70,
+  zibajoon 8dada6f + release-date 4210922. Installed 13:37 from notarized zip (sha + codesign + spctl + stapler checked).
+- 0.4.8 FROZE the window → LAB-540, fixed in 0.4.9 build 13 by another session (commit 4768e00): Artifacts tab label
+  re-listed ~149 handoff files + compiled a regex per file per key on the MAIN thread on every redraw (ViewThatFits ×4,
+  label ×2, constant AppModel publishes). Fix: @State artifactItems filled by .task(id: live.session) on a detached
+  utility task (session change + every 10 s), assign only if changed; one alternation regex per scan.
+  Gotcha: labs/oneroof/docs/gotchas/20261022_swiftui_tab_label_reading_the_disk_on_every_redraw_froze_the_window.md
+- Verify now: bash ~/Projects/_common/scripts/release/oneroof-release-verify.sh → 6/6 for 0.4.9;
+  defaults read "/Applications/One Roof.app/Contents/Info" CFBundleShortVersionString → 0.4.9
+- Linear: LAB-ONEROOF-BUGS session-close update posted (project-update-a5ca3059).
+
+═══ PICK UP HERE ═══
+1. Owner hand-tests 0.4.9. For each issue they reopen: reproduce, fix on ganarasi/live, ship next 0.4.x via runbook
+   _common/docs/runbooks/20261020_02_one-roof-release-everywhere.md (owner runs the Terminal build step).
+2. LAB-526 version in the title bar (LAB-ONEROOF-v0.50) — still open.
+3. Backlog: LAB-530 compressed panel looks malformed · LAB-544 Resources missing core details (owner assigns first).
+4. Watch side effects of the LAB-540 fix: Artifacts count briefly empty on session open; new handoffs show within 10 s.
+
+═══ BLOCKED ON USER ═══
+- Hand-testing every In Review issue (0.4.7 batch, 0.4.8's 17, LAB-540). Done is the owner's only.
+- Push approval for oneroof 7618332 (gotcha doc) and zibajoon-docs e0565cc (trace reports) — not pushed at close.
+- Stray dev-build roofd daemons: ~27 processes NOT from /Applications (app/build, .worktrees/…/app/build, /tmp/rd*)
+  still running; the classifier blocked killing them. Owner: quit them or reboot.
+- 0.4.9 install moved the old app to labs-data/oneroof/release-0.4.8-installed-backup and the Dock followed it — owner
+  removes it / re-pins the Dock icon.
+
+═══ OUT OF SCOPE / NOT DONE ═══
+- Did NOT move any issue to Done (owner rule). Did NOT lift 2cb5319. Did NOT commit other sessions' dirty files in
+  _common, labs-docs, zibajoon-docs, hypothesys-ai-app, agencium-app, document-lab.
+- LAB-521: exact clip never reproduced — fixed the likely cause (strip heights via fittingSize). LAB-516: dev→release
+  path only logic-tested (would need a dev build on the owner's Mac — forbidden).
+
+═══ VERIFY BEFORE ACTING ═══
+- git -C ~/Projects/labs/oneroof cherry -v origin/main origin/ganarasi/live → any + besides ours = someone else's.
+- zibajoon-app: check .git/cicd-trace.state for another session's in-flight trace (no t_prod_verified) before shipping.
+- Any SwiftUI body/label must not touch the disk or compile regexes per item [[20261022 freeze gotcha]].
+
+═══ RESUME + VERIFY COMMANDS ═══
+cd ~/Projects/labs/oneroof && git fetch -q && git status -sb && git log --oneline -3 origin/main
+bash ~/Projects/_common/scripts/release/oneroof-release-verify.sh
+python3 ~/Projects/_common/scripts/linear/lt.py project LAB-ONEROOF-BUGS
+cd app && swift test 2>&1 | tail -3
+
+═══ ARTIFACTS & LINKS ═══
+- Releases: https://github.com/gaurav8936/oneroof/releases (v0.4.7, v0.4.8, v0.4.9 Latest)
+- Linear: https://linear.app/gaurav8936/project/lab-oneroof-bugs-one-roof-bug-fixes-ced26e27b21e
+- LAB-540: https://linear.app/gaurav8936/issue/LAB-540
+- CI: https://ci.zibajoon.com/repos/6 (oneroof) · release runbook above · verify script _common/scripts/release/oneroof-release-verify.sh
+
+═══ RISKS & ROLLBACK ═══
+- Roll back the Mac: quit One Roof, swap in labs-data/oneroof/release-0.4.8-installed-backup (0.4.8 — has the freeze)
+  or download v0.4.7 from GitHub. Sessions survive app swaps (roofd holds them).
+- Local-only commits: git reset to drop; both are docs/reports only.
+
+═══ ACCESS ═══
+none — Linear key ~/.config/linear-commit-hook/api-key; notarization creds used only by the owner's Terminal build.
+
+═══ RULES / GOTCHAS ═══
+- signed_releases_only_on_owner_mac (never dev builds/app swaps) [[feedback_oneroof_rebuild_myself]]
+- release_means_release_and_install (verify 6/6 first) [[feedback_oneroof_release_is_two_flows]]
+- in_review_stays_until_owner_tests (never Done)
+- swiftui_label_disk_io_freezes_window (cache + background refresh) — gotcha above
+- release_check_rejects_workspace_strings (team keys like CMN, home paths, labs-data in tests/docs → use neutral ENG)
+- zsh_no_word_split (use arrays/xargs for SHA lists)
+
+═══ DEFINITION OF DONE ═══
+Owner has hand-tested and moved every LAB-ONEROOF-BUGS In Review issue to Done (or reopened ones are fixed and
+re-released + installed with verify 6/6).
+
+═══ LIVE TODO ═══
+Linear LAB-ONEROOF-BUGS (open issues) · memory projects/lab_oneroof_v050.md
