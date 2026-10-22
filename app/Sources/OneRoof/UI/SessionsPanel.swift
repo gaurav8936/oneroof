@@ -118,8 +118,8 @@ struct SessionsPanel: View {
 
         private var chips: some View {
             let list = model.items(in: win)
-            // Two rows of three, so every label reads in full at the panel's width.
-            return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
+            // Two rows of two (LAB-515: All · Needs you · Active · Exited), every label in full at the panel's width.
+            return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 2), spacing: 5) {
                 ForEach(StatusChip.allCases, id: \.self) { c in
                     let n = list.filter { c.matches($0) }.count
                     let on = (win.statusFilter ?? .all) == c
@@ -184,7 +184,7 @@ struct SessionsPanel: View {
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(t.surface2.color))
             .padding(.top, 10).padding(.bottom, 4)
             .background(t.sidebar.color)
-            .help(SessionStatus.allCases.first { $0.label == g.title }?.meaning ?? "")
+            .help(g.title == "Active" ? SessionStatus.activeMeaning : SessionStatus.allCases.first { $0.label == g.title }?.meaning ?? "")
         }
 
         private var empty: some View {

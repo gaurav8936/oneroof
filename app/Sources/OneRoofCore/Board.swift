@@ -21,6 +21,8 @@ public struct BoardItem: Identifiable, Equatable, Sendable {
     public var agentInTerminal: Bool = false
     /// Launched a moment ago and not in the runtime's list yet: starting, not exited.
     public var starting: Bool = false
+    /// The status the list groups and counts by.
+    public var listStatus: SessionStatus { status }
 
     /// The repo seen live this poll (from the agent's hooks or the terminal's folder), resolved to its git root.
     public var workRepo: String?
@@ -164,7 +166,7 @@ public enum Board {
     public static func group(_ items: [BoardItem], by g: Grouping) -> [BoardGroup] {
         func key(_ i: BoardItem) -> String {
             switch g {
-            case .status: return i.status.label
+            case .status: return i.listStatus.groupLabel
             case .repo: return i.repoPath.map { Workspace.repoLabel(for: $0) } ?? Board.noRepo
             case .domain: return i.repoPath.map(Workspace.domainLabel) ?? Board.noRepo
             case .workstream: return i.session.workstream ?? "No project"
@@ -184,7 +186,7 @@ public enum Board {
         for i in items where !i.session.pinned { dict[key(i), default: []].append(i) }
         var groups = dict.map { BoardGroup(title: $0.key, items: $0.value.sorted(by: rowOrder)) }
         if g == .status {
-            let rank = Dictionary(uniqueKeysWithValues: SessionStatus.allCases.map { ($0.label, $0.rank) })
+            let rank = Dictionary(SessionStatus.allCases.map { ($0.groupLabel, $0.groupRank) }, uniquingKeysWith: { a, _ in a })
             groups.sort { (rank[$0.title] ?? 99) < (rank[$1.title] ?? 99) }
         } else {
             groups.sort { a, b in
@@ -205,3 +207,4 @@ public enum Board {
          items.filter { $0.status == .planned || $0.status == .next }.count)
     }
 }
+

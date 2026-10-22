@@ -148,8 +148,10 @@ final class BoardMergeTests: XCTestCase {
             stored: [Session(name: "q", repoPath: "/p", lifecycle: .next)],
             snapshot: RuntimeSnapshot(sessions: [agent("a", "claude", .idle, pane: "1"), agent("b", "claude", .blocked, pane: "2"),
                                                  agent("c", "claude", .done, pane: "3"), agent("d", "claude", .working, pane: "4")]))
-        // LAB-256: Working sits above Ready, the same order as the chips.
-        XCTAssertEqual(Board.group(items, by: .status).map(\.title), ["Needs you", "Working", "Ready", "Idle", "Next"])
+        // LAB-515: Working, Ready and Idle are one Active group (rows in name order); Needs you stays first.
+        let groups = Board.group(items, by: .status)
+        XCTAssertEqual(groups.map(\.title), ["Needs you", "Active", "Next"])
+        XCTAssertEqual(groups[1].items.count, 3)
     }
 
     func testEveryBuiltInStickerSaysWhatItMeans() {
