@@ -12,9 +12,9 @@ final class IssueMentionTests: XCTestCase {
 
     func testFullKeysInOrderWithoutDuplicatesOrOwnIssues() {
         let texts = ["LAB-472 · The moment…", "Fixed LAB-474 and LAB-472; see UTF-8 and SHA-256", "[live 1a2b] LAB-490 · [lab-oneroof-bugs] x"]
-        XCTAssertEqual(IssueMentions.keys(in: texts, team: nil, teams: ["LAB", "CMN"], excluding: ["lab-472"]), ["LAB-474", "LAB-490"])
+        XCTAssertEqual(IssueMentions.keys(in: texts, team: nil, teams: ["LAB", "ENG"], excluding: ["lab-472"]), ["LAB-474", "LAB-490"])
         XCTAssertEqual(IssueMentions.keys(in: ["see UTF-8"], team: nil), ["UTF-8"], "with no team list any KEY-n counts")
-        XCTAssertEqual(IssueMentions.keys(in: ["issues 12, 13 & #14; ticket 9 is too short"], team: "cmn"), ["CMN-12", "CMN-13", "CMN-14"])
+        XCTAssertEqual(IssueMentions.keys(in: ["issues 12, 13 & #14; ticket 9 is too short"], team: "eng"), ["ENG-12", "ENG-13", "ENG-14"])
         XCTAssertEqual(IssueMentions.keys(in: ["LAB-ONEROOF-BUGS and LAB-0"], team: nil), [], "project codes and 0 are not issues")
     }
 
