@@ -9,7 +9,7 @@ import OneRoofCore
 ///   wait <seconds>                 terminal [dir]               type <text>        (types text + Return)
 ///   send <text>                    (into the selected session through roofd, + Return)
 ///   plan <name>|<agent>|<repo>|<opening>|<launch 0/1>         select <session name>
-///   rename <name> (the selected session, as Rename… does)
+///   rename <name> (the selected session, as Rename… does)   steps <n> (add finished steps)   checktop (top strip fits?)
 ///   launch · close · delete · reopen · interrupt · popout · quit · newsession (⌘N sheet) · keys <text> (into the sheet)
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
 ///   answer allowOnce|always|deny   snap <name>   dump <name>   screen <name>   (selected session's text)
@@ -73,6 +73,19 @@ enum SelfTestScript {
         case "close": if let it = m.selected { m.closeAgent(it) }; delay = 2
         case "delete": if let it = m.selected { m.delete(it) }
         case "rename": if let it = m.selected { m.rename(it, arg) }   // as Rename… does, with the plan panel open (LAB-487)
+        case "steps":   // add n finished steps to the selected session, as the chapter engine would (LAB-521)
+            if let it = m.selected, let n = Int(arg) {
+                let have = m.chapters[it.id] ?? []
+                let now = Date()
+                m.chapters[it.id] = have + (0..<n).map { k in
+                    Chapter(index: have.count + k + 1, title: "Step \(have.count + k + 1)", summary: "", toolCalls: 1,
+                            started: now, ended: now, scrollbackRange: 0..<1)
+                }
+            }
+        case "checktop":   // each pane's top strip: laid-out height vs the height its content needs (LAB-521)
+            for h in app.main.terminalArea.topHeights() {
+                log(out, "  top \(abs(h.frame - h.needs) < 1 ? "OK" : "CLIPPED") frame=\(Int(h.frame)) needs=\(Int(h.needs))")
+            }
         case "reopen": m.reopenClosed(); delay = 2
         case "interrupt": if let it = m.selected { m.interrupt(it) }
         case "popout": if let it = m.selected { PopOutWindowController.popOut(it, model: m) }; delay = 2

@@ -26,6 +26,9 @@ final class TerminalAreaController: NSViewController {
     private(set) var focusedPane: String { didSet { savePanes() } }
     private(set) var zoomed: String?
     private var paneViews: [String: PaneView] = [:]
+
+    /// Self-test (LAB-521): each pane's top strip height as laid out and as its content needs it.
+    func topHeights() -> [(frame: CGFloat, needs: CGFloat)] { paneViews.values.filter { !$0.isHidden }.compactMap(\.topHeights) }
     private var dividerViews: [PaneDividerView] = []
     private var lastSelected: String?
     private var clickMonitor: Any?
@@ -529,6 +532,18 @@ final class PaneView: NSView {
     }
 
     func setTop(_ view: AnyView?) { top = host(top, view); needsLayout = true }
+    var topHeights: (frame: CGFloat, needs: CGFloat)? {
+        guard let top, !top.isHidden else { return nil }
+        return (top.frame.height, Self.height(of: top, width: top.frame.width))
+    }
+
+    /// The view's fitting height when it is `width` wide.
+    static func height(of v: NSView, width: CGFloat) -> CGFloat {
+        let c = v.widthAnchor.constraint(equalToConstant: max(width, 1))
+        c.isActive = true
+        defer { c.isActive = false }
+        return ceil(v.fittingSize.height)
+    }
     func setBottom(_ view: AnyView?) { bottom = host(bottom, view); needsLayout = true }
     func setOverlay(_ view: AnyView?) {
         overlay = host(overlay, view)
@@ -567,13 +582,16 @@ final class PaneView: NSView {
         let w = bounds.width - 2 * inset
         var y = inset
         if let top, !top.isHidden {
-            let h = top.fittingSize.height
+            // LAB-521: the height the strip needs at this pane's width. `fittingSize` alone measures at the content's
+            // ideal (widest) width; narrower, lines truncate or wrap differently, the box came out shorter than the
+            // content and SwiftUI centred it, cutting the top off the pane header.
+            let h = Self.height(of: top, width: w)
             top.frame = NSRect(x: inset, y: y, width: w, height: h)
             y += h
         }
         var bottomH: CGFloat = 0
         if let bottom, !bottom.isHidden {
-            bottomH = bottom.fittingSize.height
+            bottomH = Self.height(of: bottom, width: w)
             bottom.frame = NSRect(x: inset, y: bounds.height - inset - bottomH, width: w, height: bottomH)
         }
         content.frame = NSRect(x: inset, y: y, width: w, height: max(0, bounds.height - y - bottomH - inset))
