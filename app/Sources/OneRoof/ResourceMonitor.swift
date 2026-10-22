@@ -45,6 +45,6 @@ final class ResourceMonitor: ObservableObject {
         }
     }
 
-    /// The live usage of a board row's session, when it runs.
-    func usage(_ item: BoardItem) -> SessionUsage? { item.liveAgent.flatMap { snapshot.sessions[$0] } }
+    /// The live usage of a board row's session, when it runs (also after its agent exited while the shell lives on).
+    func usage(_ item: BoardItem) -> SessionUsage? { item.resourceKey.flatMap { snapshot.sessions[$0] } }
 }

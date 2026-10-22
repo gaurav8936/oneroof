@@ -231,6 +231,34 @@ final class ResourceTests: XCTestCase {
         XCTAssertEqual(byName[1].rows.map(\.name), ["delta", "eps", "gamma"])
     }
 
+    /// LAB-517: a session whose agent exited while its shell lives on is still that session (its name, its window),
+    /// not "Other · not a One Roof row" under its roofd id; a session roofd runs that no row owns stays in Other.
+    func testExitedAgentWithLiveShellKeepsItsRow() {
+        func item(_ name: String, runtime: String?, live: String?, status: SessionStatus) -> BoardItem {
+            var s = Session(name: name, repoPath: "/p", lifecycle: .idle)
+            s.runtimeId = runtime
+            return BoardItem(id: s.id, session: s, status: status, liveAgent: live, paneId: nil, workspaceId: nil,
+                             detectedAccount: nil, adopted: false, title: nil, ready: false)
+        }
+        let running = item("QA run", runtime: "roof-a", live: "roof-a", status: .running)
+        let exited = item("Bugs 298 and 460", runtime: "roof-b", live: nil, status: .exited)
+        let planned = item("not started", runtime: nil, live: nil, status: .planned)
+        let usage = ["roof-a": row("roof-a", "", nil, 10).usage, "roof-b": row("roof-b", "", nil, 600).usage,
+                     "roof-c": row("roof-c", "", nil, 5).usage]
+        let rows = ResourceBoard.rows(items: [running, exited, planned], sessions: usage,
+                                      window: { _ in "misc" }, title: { $0 == "roof-c" ? "" : nil })
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows.first { $0.usage.runtimeId == "roof-b" }?.name, "Bugs 298 and 460")
+        XCTAssertEqual(rows.first { $0.usage.runtimeId == "roof-b" }?.windowId, "misc")
+        XCTAssertEqual(rows.first { $0.usage.runtimeId == "roof-b" }?.id, exited.id)
+        let stray = rows.first { $0.usage.runtimeId == "roof-c" }
+        XCTAssertEqual(stray?.id, "runtime:roof-c")
+        XCTAssertEqual(stray?.name, "roof-c", "an empty title falls back to the id")
+        XCTAssertNil(stray?.windowId)
+        XCTAssertEqual(exited.resourceKey, "roof-b")
+        XCTAssertNil(planned.resourceKey)
+    }
+
     func testTiesBreakOnCPUThenName() {
         let g = ResourceBoard.group([row("1", "b", "w", 10, cpu: 1), row("2", "a", "w", 10, cpu: 1), row("3", "c", "w", 10, cpu: 9)],
                                     windows: [("w", "W")], sort: .heaviest)
