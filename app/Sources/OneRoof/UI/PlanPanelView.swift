@@ -146,33 +146,68 @@ struct PlanDetail: View {
 
     /// Five tabs since Resources (LAB-493) are wider than a narrow panel: the row tightens its spacing first and only
     /// then shortens Resources (Usage), and Artifacts (Files) last, so no tab is ever clipped off the edge.
+    /// LAB-548: at the panel's narrowest (260 pt, or larger text) even the short labels did not fit, and a row wider
+    /// than the panel pushed the whole panel off both edges (Plan cut on the left, ✕ on the right, the content
+    /// squeezed sideways). Last come tighter margins, then icons with the chosen tab's name, then icons alone, and the
+    /// bar is clipped to the panel's width whatever happens.
     private var tabBar: some View {
         ViewThatFits(in: .horizontal) {
-            tabRow(spacing: 16, short: false)
-            tabRow(spacing: 9, short: false)
-            tabRow(spacing: 9, short: false, shortResources: true)
-            tabRow(spacing: 9, short: true)
+            tabRow(spacing: 16, style: .full)
+            tabRow(spacing: 9, style: .full)
+            tabRow(spacing: 9, style: .shortResources)
+            tabRow(spacing: 9, style: .short)
+            tabRow(spacing: 7, style: .short, margin: 10)
+            tabRow(spacing: 10, style: .iconsWithChosen, margin: 10)
+            tabRow(spacing: 8, style: .icons, margin: 10)
         }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .clipped()
     }
 
-    private func tabRow(spacing: CGFloat, short: Bool, shortResources: Bool = false) -> some View {
+    enum TabStyle { case full, shortResources, short, iconsWithChosen, icons }
+
+    private func tabRow(spacing: CGFloat, style: TabStyle, margin: CGFloat = 16) -> some View {
         HStack(spacing: spacing) {
             ForEach(PlanTab.allCases, id: \.self) { tb in
                 Button { commit(); tab = tb } label: {
                     VStack(spacing: 6) {
-                        Text(label(tb, short: short || (shortResources && tb == .resources))).ui(TypeScale.small, .semibold).foregroundStyle(tab == tb ? t.text.color : t.text2.color)
+                        tabLabel(tb, style: style).foregroundStyle(tab == tb ? t.text.color : t.text2.color)
                         Rectangle().fill(tab == tb ? t.accent.color : .clear).frame(height: 2)
                     }
                     .fixedSize()
                 }
                 .buttonStyle(.plain)
+                .help(label(tb))
                 .accessibilityLabel(label(tb))
                 .accessibilityAddTraits(tab == tb ? .isSelected : [])
             }
-            Spacer()
+            Spacer(minLength: 4)
             PanelCloseButton(title: "Plan panel", action: #selector(AppDelegate.togglePlanPanel(_:))).padding(.bottom, 8)
         }
-        .padding(.horizontal, 16).padding(.top, 12)
+        .padding(.horizontal, margin).padding(.top, 12)
+    }
+
+    @ViewBuilder private func tabLabel(_ tb: PlanTab, style: TabStyle) -> some View {
+        switch style {
+        case .full: Text(label(tb)).ui(TypeScale.small, .semibold)
+        case .shortResources: Text(label(tb, short: tb == .resources)).ui(TypeScale.small, .semibold)
+        case .short: Text(label(tb, short: true)).ui(TypeScale.small, .semibold)
+        case .iconsWithChosen, .icons:
+            HStack(spacing: 4) {
+                Image(systemName: icon(tb)).ui(TypeScale.small, .semibold)
+                if style == .iconsWithChosen && tab == tb { Text(label(tb, short: true)).ui(TypeScale.small, .semibold) }
+            }
+        }
+    }
+
+    private func icon(_ tb: PlanTab) -> String {
+        switch tb {
+        case .plan: return "list.bullet.rectangle"
+        case .ticket: return "ticket"
+        case .notes: return "note.text"
+        case .artifacts: return "doc.on.doc"
+        case .resources: return "gauge.with.dots.needle.33percent"
+        }
     }
 
     private func label(_ tb: PlanTab, short: Bool = false) -> String {
@@ -576,23 +611,12 @@ struct TicketBox: View {
                         .accessibilityLabel("Remove \(issue.key) from this session")
                 }
             }
-            HStack(spacing: 4) {
-                ForEach(["Backlog", "In Progress", "In Review", "Done"], id: \.self) { st in
-                    let on = state == st
-                    Button {
-                        busy = true
-                        model.moveIssue(issue, to: st, comment: ["In Review", "Done"].contains(st) ? model.sessionSummary(item) : nil) { err in
-                            busy = false
-                            if err == nil { state = st }
-                        }
-                    } label: {
-                        Text(st).ui(11.5, .medium).foregroundStyle(on ? t.onAccent.color : t.text.color)
-                            .padding(.vertical, 4).padding(.horizontal, 8)
-                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.accent.color : t.surface2.color))
-                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(t.separator.color))
-                    }
-                    .buttonStyle(.plain).disabled(on || busy)
-                }
+            // LAB-530: in a narrow panel the four buttons wrapped their words letter by letter ("Backl / og"). They
+            // stay one line each; when the row does not fit, tighter buttons, then one "Move to" menu.
+            ViewThatFits(in: .horizontal) {
+                stateButtons(padding: 8)
+                stateButtons(padding: 5)
+                stateMenu
             }
         }
         .padding(12)
@@ -601,6 +625,50 @@ struct TicketBox: View {
         .onReceive(model.$issues) { all in
             if let id = issue.id, let i = all.values.joined().first(where: { $0.id == id }) { state = i.state }
         }
+    }
+
+    private static let states = ["Backlog", "In Progress", "In Review", "Done"]
+
+    private func move(_ st: String) {
+        busy = true
+        model.moveIssue(issue, to: st, comment: ["In Review", "Done"].contains(st) ? model.sessionSummary(item) : nil) { err in
+            busy = false
+            if err == nil { state = st }
+        }
+    }
+
+    private func stateButtons(padding: CGFloat) -> some View {
+        HStack(spacing: 4) {
+            ForEach(Self.states, id: \.self) { st in
+                let on = state == st
+                Button { move(st) } label: {
+                    Text(st).ui(11.5, .medium).foregroundStyle(on ? t.onAccent.color : t.text.color)
+                        .lineLimit(1).fixedSize()
+                        .padding(.vertical, 4).padding(.horizontal, padding)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.accent.color : t.surface2.color))
+                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(t.separator.color))
+                }
+                .buttonStyle(.plain).disabled(on || busy)
+            }
+        }
+    }
+
+    private var stateMenu: some View {
+        Menu {
+            ForEach(Self.states, id: \.self) { st in
+                Button(st) { move(st) }.disabled(state == st || busy)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text("Move to").ui(11.5, .medium).foregroundStyle(t.text.color).lineLimit(1)
+                Text("▾").ui(9).foregroundStyle(t.text2.color)
+            }
+            .padding(.vertical, 4).padding(.horizontal, 8)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(t.surface2.color))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(t.separator.color))
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .accessibilityLabel("Move \(issue.key) to another state")
     }
 
     private func load() {

@@ -70,6 +70,10 @@ final class AppModel: ObservableObject {
     /// Objectives typed by the owner, with their plans.
     @Published var objectives: [Objective] = []
     @Published var issues: [String: [LinearIssue]] = [:]     // project id → tickets
+    /// When each project's issues last came from Linear, and the projects being fetched now (LAB-546: the list was
+    /// fetched once and never again, so issues created after that never showed).
+    var issuesFetchedAt: [String: Date] = [:]
+    @Published var issuesLoading: Set<String> = []
     /// A commit-watch scan is running (LAB-474), so ticks never overlap.
     var commitWatchBusy = false
     /// Agent issue requests being applied ("runtime id:seq"), so a 3 s tick never applies one twice (LAB-518).
@@ -185,6 +189,7 @@ final class AppModel: ObservableObject {
         }
         applyAppearance()
         resources.start(model: self)
+        ResourceMonitor.stopLeftoverLocalModel()
         queue.async { [weak self] in
             guard let self else { return }
             do {

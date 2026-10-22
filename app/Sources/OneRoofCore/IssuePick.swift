@@ -33,6 +33,13 @@ public enum IssuePick {
             .map(\.element)
     }
 
+    /// LAB-547: sort keys behind the picker's sortable columns. `sorted` applies the clicked column, issue number as
+    /// the tie-break; no column clicked keeps `rows`' order.
+    public static func sorted(_ rows: [LinearIssue], by order: [KeyPathComparator<LinearIssue>]) -> [LinearIssue] {
+        guard !order.isEmpty else { return rows }
+        return rows.sorted(using: order + [KeyPathComparator(\LinearIssue.number)])
+    }
+
     /// Filter chips: All, Picked (when any are), then each state present (in rank order) with its count.
     public static func states(_ issues: [LinearIssue], picked: Int = 0) -> [(state: String?, label: String, count: Int)] {
         var seen: [String: (rank: Int, count: Int)] = [:]
@@ -41,4 +48,9 @@ public enum IssuePick {
         let mine = picked > 0 ? [(state: Optional(pickedFilter), label: "Picked", count: picked)] : []
         return [(state: nil, label: "All", count: issues.count)] + mine + states
     }
+}
+
+extension LinearIssue {
+    /// The picker's state order (in progress, to do, backlog, in review), for sorting by State.
+    public var pickRank: Int { IssuePick.rank(self) }
 }
