@@ -88,6 +88,8 @@ struct IssuePickerView: View {
         .frame(minWidth: 520, minHeight: 380)
         .background(t.card.color)
         .onAppear { if selected == nil { selected = pickedNow.first?.id ?? rows.first?.id } }
+        // Nothing left picked while showing only the picked: back to All rather than an empty list.
+        .onChange(of: pickedNow.isEmpty) { _, none in if none && state == IssuePick.pickedFilter { state = nil } }
     }
 
     private var header: some View {
@@ -105,7 +107,7 @@ struct IssuePickerView: View {
     /// All, then each state present with its count (filters reflect real states; there is always an All).
     private var chips: some View {
         HStack(spacing: 6) {
-            ForEach(IssuePick.states(open), id: \.label) { c in
+            ForEach(IssuePick.states(open, picked: pickedNow.count), id: \.label) { c in
                 let on = state == c.state
                 Button { state = c.state } label: {
                     Text("\(c.label) \(c.count)").ui(11.5, .medium).foregroundStyle(on ? t.onAccent.color : t.text.color)
