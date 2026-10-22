@@ -1,6 +1,6 @@
 # Changelog
 
-## Next (unreleased)
+## 0.4.10 — the whole Mac in Resources (22 Oct 2026)
 
 - **Resources covers the whole Mac** (LAB-544). A new **This Mac, by app** card lists every app with its memory and
   CPU; open one to see its processes, with Chrome's (and other Chromium apps') helpers named: tab or site, extension,
