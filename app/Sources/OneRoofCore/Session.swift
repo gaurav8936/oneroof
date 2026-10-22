@@ -125,6 +125,18 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// The Status group a session sits in (LAB-515): Working, Ready and Idle are all "Active" (alive, not waiting on you);
+    /// the row's dot and caption say which. The rest keep their own name.
+    public var groupLabel: String { [.running, .done, .idle].contains(self) ? "Active" : label }
+    public var groupRank: Int {
+        switch self {
+        case .needsYou: return 0
+        case .running, .done, .idle: return 1
+        default: return rank
+        }
+    }
+    public static let activeMeaning = "Alive: working right now, finished a turn you have not looked at (Ready), or resting at its prompt (Idle). The dot and the line under the name say which."
+
     public var isLive: Bool { [.running, .needsYou, .done, .idle].contains(self) }
 
     /// Why a message typed into this session's agent would land badly, or nil when it can take one (LAB-284). Working:

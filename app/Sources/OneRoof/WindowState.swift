@@ -76,19 +76,18 @@ final class WindowState: ObservableObject, Identifiable {
     }
 }
 
-/// The Sessions panel's count chips (S06 §1.2). Owner 10-20: they cover where sessions actually sit (most are idle or
-/// finished, "next" was rarely used), and "All" is always there to get the full list back.
+/// The Sessions panel's count chips (S06 §1.2). Owner 10-20: they cover where sessions actually sit, and "All" is always
+/// there to get the full list back. LAB-515: one Active chip for Working, Ready and Idle (the list's Active group); a
+/// row says which on its own. Chips count the status the list groups by, so a chip's number matches its group.
 enum StatusChip: String, CaseIterable {
-    case all, needs, working, ready, idle, exited
+    case all, needs, active, exited
 
     /// nil: every session.
     var statuses: Set<SessionStatus>? {
         switch self {
         case .all: return nil
         case .needs: return [.needsYou]
-        case .working: return [.running]
-        case .ready: return [.done]
-        case .idle: return [.idle]
+        case .active: return [.running, .done, .idle]
         case .exited: return [.exited]
         }
     }
@@ -97,7 +96,7 @@ enum StatusChip: String, CaseIterable {
     /// terminal that ended is not news.
     func matches(_ i: BoardItem) -> Bool {
         if self == .exited, !i.session.agent.isAgent { return false }
-        return statuses?.contains(i.status) ?? true
+        return statuses?.contains(i.listStatus) ?? true
     }
 
     /// What the chip's sessions are (LAB-241), shown on hover.
@@ -105,9 +104,7 @@ enum StatusChip: String, CaseIterable {
         switch self {
         case .all: return "Every session in this window."
         case .needs: return SessionStatus.needsYou.meaning
-        case .working: return SessionStatus.running.meaning
-        case .ready: return SessionStatus.done.meaning
-        case .idle: return SessionStatus.idle.meaning
+        case .active: return SessionStatus.activeMeaning
         case .exited: return SessionStatus.exited.meaning
         }
     }
@@ -116,9 +113,7 @@ enum StatusChip: String, CaseIterable {
         switch self {
         case .all: return "\(n) all"
         case .needs: return "\(n) need you"
-        case .working: return "\(n) working"
-        case .ready: return "\(n) ready"
-        case .idle: return "\(n) idle"
+        case .active: return "\(n) active"
         case .exited: return "\(n) exited"
         }
     }
