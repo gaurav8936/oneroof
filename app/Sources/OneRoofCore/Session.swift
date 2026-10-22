@@ -358,3 +358,49 @@ public struct SessionIssue: Codable, Equatable, Hashable, Sendable {
     public var team: String?
     public init(key: String, id: String?, team: String?) { self.key = key; self.id = id; self.team = team }
 }
+
+/// The fields the plan panel edits, as loaded and as typed (LAB-487, LAB-512). Saving writes only the fields the owner
+/// changed since loading: the panel used to write every field back, so a rename made from the menu or popover while the
+/// panel was open was undone by the panel's stale copy of the name.
+public struct SessionEdits: Equatable, Sendable {
+    public var name, workstream, objective, opening, notes: String
+    public var args: [String]
+
+    public init(name: String, workstream: String, objective: String, opening: String, notes: String, args: [String]) {
+        self.name = name; self.workstream = workstream; self.objective = objective
+        self.opening = opening; self.notes = notes; self.args = args
+    }
+
+    public init(_ s: Session) {
+        self.init(name: s.name, workstream: s.workstream ?? "", objective: s.objective, opening: s.openingMessage,
+                  notes: s.notes, args: s.agentArgs)
+    }
+
+    /// Write the fields that differ from `base` into `s`. Returns whether anything was written.
+    @discardableResult
+    public func apply(over base: SessionEdits, to s: inout Session) -> Bool {
+        var wrote = false
+        let n = name.trimmingCharacters(in: .whitespaces)
+        if name != base.name, !n.isEmpty { s.name = n; wrote = true }
+        if workstream != base.workstream {
+            let w = workstream.trimmingCharacters(in: .whitespaces)
+            // Codes are upper case except a version segment (LAB-519: "LAB-ONEROOF-v0.50").
+            s.workstream = w.isEmpty ? nil : (Workspace.projectCode(name: w + " · x") ?? w.uppercased()); wrote = true
+        }
+        if objective != base.objective { s.objective = objective; wrote = true }
+        if opening != base.opening { s.openingMessage = opening; wrote = true }
+        if notes != base.notes { s.notes = notes; wrote = true }
+        if args != base.args { s.agentArgs = args; wrote = true }
+        return wrote
+    }
+
+    /// The session changed elsewhere: take its new values for every field the owner has not touched here.
+    public func rebased(from base: SessionEdits, onto now: SessionEdits) -> SessionEdits {
+        SessionEdits(name: name == base.name ? now.name : name,
+                     workstream: workstream == base.workstream ? now.workstream : workstream,
+                     objective: objective == base.objective ? now.objective : objective,
+                     opening: opening == base.opening ? now.opening : opening,
+                     notes: notes == base.notes ? now.notes : notes,
+                     args: args == base.args ? now.args : args)
+    }
+}

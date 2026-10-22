@@ -9,6 +9,7 @@ import OneRoofCore
 ///   wait <seconds>                 terminal [dir]               type <text>        (types text + Return)
 ///   send <text>                    (into the selected session through roofd, + Return)
 ///   plan <name>|<agent>|<repo>|<opening>|<launch 0/1>         select <session name>
+///   rename <name> (the selected session, as Rename… does)
 ///   launch · close · delete · reopen · interrupt · popout · quit · newsession (⌘N sheet) · keys <text> (into the sheet)
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
 ///   answer allowOnce|always|deny   snap <name>   dump <name>   screen <name>   (selected session's text)
@@ -71,6 +72,7 @@ enum SelfTestScript {
         case "launch": if let it = m.selected { m.launch(it) }; delay = 2
         case "close": if let it = m.selected { m.closeAgent(it) }; delay = 2
         case "delete": if let it = m.selected { m.delete(it) }
+        case "rename": if let it = m.selected { m.rename(it, arg) }   // as Rename… does, with the plan panel open (LAB-487)
         case "reopen": m.reopenClosed(); delay = 2
         case "interrupt": if let it = m.selected { m.interrupt(it) }
         case "popout": if let it = m.selected { PopOutWindowController.popOut(it, model: m) }; delay = 2
