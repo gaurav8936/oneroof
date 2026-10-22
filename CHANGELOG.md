@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.4 — Resources: what One Roof uses (21 Oct 2026)
 
 - **Resources: see what One Roof itself uses** (LAB-493). View › Resources (⇧⌘U, or Resources in the toolbar) shows
   One Roof's total memory and CPU with 10-minute charts, the Mac's memory, pressure and swap, the app and the roofd
