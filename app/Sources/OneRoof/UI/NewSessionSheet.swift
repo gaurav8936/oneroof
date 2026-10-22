@@ -24,10 +24,8 @@ struct NewSessionSheet: View {
     @State private var projectCode = ""
     @State private var milestonesText = ""
     @State private var textForIssue = ""
-    @State private var useTicket: LinearIssue?
-    @State private var moreTickets: [LinearIssue] = []
-    @State private var issuesOpen = false
-    @State private var issueFilter = ""
+    /// The picked issues (LAB-518), shared with the issue picker panel (LAB-523): the first is the session's ticket.
+    @StateObject private var selection = IssueSelection()
     @State private var mark: AgentMark = .claude1
     @State private var modelName = ""
     @State private var repo = Workspace.projectsRoot
@@ -154,20 +152,27 @@ struct NewSessionSheet: View {
         .onAppear(perform: appear)
         .onAppear(perform: installPaste)
         .onDisappear(perform: removePaste)
+        .onDisappear { IssuePickerPanel.close() }
         .onChange(of: model.workstreams) { _, _ in defaultWorkstream() }
         .onReceive(model.$issues) { all in selfTestPick(all) }
+        .onReceive(selection.$issues.dropFirst()) { _ in DispatchQueue.main.async { selectionChanged() } }
+        .onReceive(selection.$newKind.compactMap { $0 }) { k in DispatchQueue.main.async { selection.newKind = nil; newIssue(k) } }
     }
 
     /// Self-test (LAB-518): ONEROOF_SELFTEST_PICK=KEY,KEY,… ticks those issues once the project's issues load;
     /// ONEROOF_SELFTEST_ISSUES=1 opens the issue checklist.
+    private static var selfTestPicked = false
+
     private func selfTestPick(_ all: [String: [LinearIssue]]) {
         let env = ProcessInfo.processInfo.environment
         // @Published sends the new value before `model.issues` holds it, so read the value sent.
-        guard SelfTest.isActive, pickedIssues.isEmpty, let w = currentWorkstream, let list = all[w.id], !list.isEmpty else { return }
+        // Once: the issues are published more than once while they load, and a second pass would untick them.
+        guard SelfTest.isActive, !Self.selfTestPicked, let w = currentWorkstream, let list = all[w.id], !list.isEmpty else { return }
+        Self.selfTestPicked = true
         for k in (env["ONEROOF_SELFTEST_PICK"] ?? "").split(separator: ",").map(String.init) {
             if let i = list.first(where: { $0.identifier == k }) { toggleIssue(i) }
         }
-        if env["ONEROOF_SELFTEST_ISSUES"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { issuesOpen = true } }
+        if env["ONEROOF_SELFTEST_ISSUES"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { openIssuePicker() } }
     }
 
     // MARK: Bottom row
@@ -253,11 +258,11 @@ struct NewSessionSheet: View {
 
     private var workstreamPicker: some View {
         Menu {
-            if linked { Button("No project") { wsId = ""; useTicket = nil; moreTickets = []; if kind == .workstream { kind = .session }; refreshOpening() } }
+            if linked { Button("No project") { wsId = ""; selection.issues = []; if kind == .workstream { kind = .session }; refreshOpening() } }
             ForEach(openWorkstreams) { w in Button(Self.short("\(w.wsId ?? "") · \(w.title)")) { pickWorkstream(w) } }
             if linked {
                 Divider()
-                Button("New project…") { wsId = ""; useTicket = nil; moreTickets = []; kind = .workstream; kindTouched = true; refreshOpening() }
+                Button("New project…") { wsId = ""; selection.issues = []; kind = .workstream; kindTouched = true; refreshOpening() }
             }
         } label: {
             pickerLabel("Project", kind == .workstream ? "New project" : currentWorkstream.map { "\($0.wsId ?? "") · \($0.title)" }
@@ -280,7 +285,9 @@ struct NewSessionSheet: View {
     }
 
     /// The issues the session will work on, in the order they were picked (LAB-518): the first is its ticket.
-    private var pickedIssues: [LinearIssue] { (useTicket.map { [$0] } ?? []) + moreTickets }
+    private var pickedIssues: [LinearIssue] { selection.issues }
+    private var useTicket: LinearIssue? { selection.issues.first }
+    private var moreTickets: [LinearIssue] { Array(selection.issues.dropFirst()) }
 
     private var issueLabel: String {
         if pickedIssues.count > 1, let first = pickedIssues.first { return "\(pickedIssues.count) issues · \(first.identifier) +\(pickedIssues.count - 1)" }
@@ -293,116 +300,47 @@ struct NewSessionSheet: View {
     /// Issue: none, one or several existing ones (LAB-518: one session works on all of them), or a new one (LAB-242).
     /// A checklist in a popover, so several can be ticked without the menu closing after each.
     private var issuePicker: some View {
-        Button { issuesOpen.toggle() } label: { pickerLabel("Issue", issueLabel, warn: false) }
+        Button { openIssuePicker() } label: { pickerLabel("Issue", issueLabel, warn: false) }
             .buttonStyle(.plain).frame(maxWidth: 300, alignment: .leading)
             .disabled(kind == .workstream)
             .accessibilityLabel("Issue")
             .accessibilityValue(issueLabel)
-            .popover(isPresented: $issuesOpen, arrowEdge: .bottom) { issueChecklist }
     }
 
-    /// Open issues in groups: active first (In Progress, In Review), then to do, then backlog.
-    private var issueGroups: [(title: String, issues: [LinearIssue])] {
-        let q = issueFilter.trimmingCharacters(in: .whitespaces).lowercased()
-        let shown = openIssues.filter { q.isEmpty || $0.identifier.lowercased().contains(q) || $0.title.lowercased().contains(q) }
-        let picked = Set(pickedIssues.map(\.id))
-        let rest = shown.filter { !picked.contains($0.id) }
-        // Picked first, in pick order (the plan's starting order), so they never scroll out of sight.
-        return [("Picked", pickedIssues.filter { i in shown.contains { $0.id == i.id } }),
-                ("Active", rest.filter { $0.stateType == "started" }),
-                ("To do", rest.filter { $0.stateType == "unstarted" }),
-                ("Backlog", rest.filter { !["started", "unstarted"].contains($0.stateType) })]
-            .filter { !$0.issues.isEmpty }
+    /// LAB-523: a resizable panel beside the sheet (table with resizable columns + a pane to read the issue in full).
+    private func openIssuePicker() {
+        let w = currentWorkstream, sel = selection
+        IssuePickerPanel.show(parent: sheetWindow.window, theme: model.themes.centre, scale: win.textScale, content: IssuePickerView(
+            model: model, workstreamId: w?.id ?? "",
+            title: w.map { "Issues in \($0.wsId ?? $0.title)" } ?? "Pick a project first: its open issues show here",
+            // The panel holds the shared object itself, never a copy of this view (whose StateObject it could not reach).
+            selection: sel, toggle: { sel.toggle($0) },
+            newIssue: { k in sel.newKind = k; IssuePickerPanel.close() }, clear: { sel.issues = [] },
+            done: { IssuePickerPanel.close() }))
     }
 
-    private var issueChecklist: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(currentWorkstream.map { "Issues in \($0.wsId ?? $0.title)" } ?? "Issues").ui(13, .semibold).foregroundStyle(t.text.color)
-                Spacer()
-                Text(pickedIssues.isEmpty ? "Tick one or more" : "\(pickedIssues.count) picked").ui(11.5).foregroundStyle(t.text3.color)
-            }
-            if currentWorkstream == nil {
-                Text("Pick a project first: its open issues show here.").ui(12).foregroundStyle(t.text2.color)
-            } else {
-                TextField("", text: $issueFilter, prompt: Text("Filter by key or title"))
-                    .textFieldStyle(.plain).ui(12.5).padding(.horizontal, 8).frame(height: 28)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.surface.color))
-                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(t.separator.color))
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        if issueGroups.isEmpty {
-                            Text(openIssues.isEmpty ? "No open issues in this project." : "Nothing matches.").ui(12).foregroundStyle(t.text2.color).padding(.vertical, 6)
-                        }
-                        ForEach(issueGroups, id: \.title) { g in
-                            Text(g.title.uppercased()).ui(10.5, .semibold).foregroundStyle(t.text3.color).padding(.top, 6)
-                            ForEach(g.issues) { i in issueRow(i) }
-                        }
-                    }
-                }
-                .frame(height: 300)
-            }
-            Divider()
-            HStack(spacing: 6) {
-                Text("New").ui(11.5).foregroundStyle(t.text3.color)
-                ForEach([WorkKind.deliverable, .defect, .chore, .spike, .decision], id: \.self) { k in
-                    Button((k.labelNames.first ?? k.rawValue).lowercased()) { newIssue(k); issuesOpen = false }
-                        .buttonStyle(.link).ui(11.5)
-                }
-                Spacer()
-                if !pickedIssues.isEmpty { Button("Clear") { clearIssues() }.buttonStyle(.plain).ui(11.5).foregroundStyle(t.text2.color) }
-                Button("Done") { issuesOpen = false }.keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(14).frame(width: 460)
-        // The popover window keeps the system's light material; paint the theme's card so Graphite/Midnight text reads.
-        .background(t.card.color)
-    }
+    /// Tick or untick an issue; the first ticked stays the session's ticket (its name and opening lead with it). Only the
+    /// shared selection changes here (the panel calls this too); the sheet reacts in `selectionChanged`.
+    private func toggleIssue(_ i: LinearIssue) { selection.toggle(i) }
 
-    private func issueRow(_ i: LinearIssue) -> some View {
-        let on = pickedIssues.contains { $0.id == i.id }
-        let n = pickedIssues.firstIndex { $0.id == i.id }.map { $0 + 1 }
-        return Button { toggleIssue(i) } label: {
-            HStack(spacing: 8) {
-                Text(on ? "✓" : " ").ui(11, .bold).foregroundStyle(t.onAccent.color).frame(width: 16, height: 16)
-                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(on ? t.accent.color : Color.clear))
-                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(on ? t.accent.color : t.separatorStrong.color))
-                Text(i.identifier).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 64, alignment: .leading)
-                Text(i.shortTitle).ui(12.5).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 6)
-                if let n, pickedIssues.count > 1 { Text("\(n)").ui(10.5, .semibold, mono: true).foregroundStyle(t.text3.color) }
-                Text(i.state).ui(10.5).foregroundStyle(t.text3.color)
-            }
-            .padding(.horizontal, 6).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(on ? t.selection.color : Color.clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(i.identifier) \(i.shortTitle), \(i.state)")
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-
-    /// Tick or untick an issue; the first ticked stays the session's ticket (its name and opening lead with it).
-    private func toggleIssue(_ i: LinearIssue) {
-        var all = pickedIssues
-        if let n = all.firstIndex(where: { $0.id == i.id }) { all.remove(at: n) } else { all.append(i) }
-        useTicket = all.first; moreTickets = Array(all.dropFirst())
-        kind = .session; kindTouched = true
-        textForIssue = all.count > 1 ? "Optional: a title for these \(all.count) issues" : all.first?.shortTitle ?? ""
-        refreshOpening()
-    }
+    private func clearIssues() { selection.issues = [] }
 
     /// The picked issues as the opening message names them.
     private var picked: [PickedIssue] {
         pickedIssues.map { PickedIssue(key: $0.identifier, title: $0.shortTitle, state: $0.state, url: $0.url.isEmpty ? nil : $0.url) }
     }
 
-    private func clearIssues() {
-        useTicket = nil; moreTickets = []; textForIssue = ""; kind = .session; refreshOpening()
+    /// The picks changed (here or in the panel): the sheet is a plain session on them, with a matching title hint and
+    /// opening message.
+    private func selectionChanged() {
+        let all = selection.issues
+        if !all.isEmpty { kind = .session; kindTouched = true }
+        textForIssue = all.count > 1 ? "Optional: a title for these \(all.count) issues" : all.first?.shortTitle ?? ""
+        refreshOpening()
     }
 
     private func newIssue(_ k: WorkKind) {
-        useTicket = nil; moreTickets = []; kindTouched = true
+        selection.issues = []; kindTouched = true
         if k == .defect { kind = .defect } else { kind = .ticket; ticketType = k }
         if kind == .workstream { wsId = "" }
         refreshOpening()
@@ -411,7 +349,7 @@ struct NewSessionSheet: View {
     private var currentWorkstream: LinearWorkstream? { model.workstreams.first { $0.id == wsId } }
 
     private func pickWorkstream(_ w: LinearWorkstream) {
-        if wsId != w.id { useTicket = nil; moreTickets = [] }
+        if wsId != w.id { selection.issues = []; IssuePickerPanel.close() }
         if kind == .workstream { kind = .session }
         wsId = w.id; model.loadIssues(w)
         if !w.team.isEmpty { teamKey = w.team }
@@ -583,7 +521,7 @@ struct NewSessionSheet: View {
             Text("Similar ticket").ui(12.5, .semibold).foregroundStyle(t.text.color)
             Text("\(d.identifier) · \(d.shortTitle) (\(d.state)\(currentWorkstream?.wsId.map { ", " + $0 } ?? ""))").ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
             Spacer()
-            Button { useTicket = d; moreTickets = []; refreshOpening() } label: {
+            Button { selection.issues = [d] } label: {
                 Text("Plan a session for \(d.identifier) instead").ui(12.5, .semibold).foregroundStyle(t.accentText.color)
             }.buttonStyle(.plain)
         }
