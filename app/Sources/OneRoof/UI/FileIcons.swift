@@ -12,8 +12,11 @@ enum FileIcons {
             return FileManager.default.fileExists(atPath: path, isDirectory: &d) && d.boolValue
         }()
         let img: NSImage
-        if dir || path.hasSuffix(".app") {
+        if path.hasSuffix(".app") {
             img = NSWorkspace.shared.icon(forFile: path)
+        } else if dir {
+            // The plain folder icon, as Finder's list view shows it (cached: trees have many folders).
+            if let f = byType["/folder"] { img = f } else { img = NSWorkspace.shared.icon(for: .folder); byType["/folder"] = img }
         } else {
             let ext = (path as NSString).pathExtension.lowercased()
             if let cached = byType[ext] {
