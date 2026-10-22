@@ -25,8 +25,8 @@ The window should look the way you like and hold only what you need right now: a
 
 ## Opening and closing panels
 
-- **Toolbar:** Workspace · Overview · Board · Decisions · Work · Learn, the workspace menu, search (⌘K), the panel buttons **Sessions · Files · Plan**, and **+ New session**.
-- **Shortcuts:** ⌥⌘S sessions, ⌥⌘B file browser, ⌥⌘C centre (View › Centre Panel), ⌥⌘P plan panel. ⌥⌘F hides both side panels for terminal-only focus; press it again to bring them back.
+- **Toolbar:** Workspace · Overview · Board · Decisions · Work · Learn, the workspace menu, search (⌘K), the panel buttons **Sessions · Files · Terminal · Plan** (left to right, as the panels sit; the last open one cannot be hidden), and **+ New session**.
+- **Shortcuts:** ⌥⌘S sessions, ⌥⌘B file browser, ⌥⌘C terminal (View › Terminal Panel), ⌥⌘P plan panel. ⌥⌘F hides both side panels for terminal-only focus; press it again to bring them back.
 - **Each side panel has an ×** to close it.
 - **The last open panel never closes.** Close the centre and the plan panel takes the width.
 - **Panel widths** are dragged at the dividers and remembered, as is the window size.

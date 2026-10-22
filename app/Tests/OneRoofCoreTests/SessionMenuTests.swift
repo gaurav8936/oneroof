@@ -106,4 +106,35 @@ final class SessionMenuTests: XCTestCase {
         XCTAssertTrue(m.contains("https://l/LAB-474"))
         XCTAssertTrue(m.contains("`LAB-474 · [lab-oneroof-bugs] …`"))
     }
+
+    /// LAB-284: Ask to fix and review comments refuse a working or waiting agent, with the reason.
+    func test_LAB284_typingRefusedWhileWorkingOrWaiting() {
+        XCTAssertEqual(SessionStatus.running.typingRefusal(name: "A"), "A is working; send when it is idle.")
+        XCTAssertNotNil(SessionStatus.needsYou.typingRefusal(name: "A"))
+        for s in [SessionStatus.idle, .done] { XCTAssertNil(s.typingRefusal(name: "A"), s.rawValue) }
+    }
+
+    /// LAB-487: a rename made elsewhere survives the plan panel's save; only fields edited in the panel are written.
+    func test_LAB487_panelSaveWritesOnlyEditedFields() {
+        var s = Session(name: "asds", agent: .shell, repoPath: "/p")
+        let base = SessionEdits(s)
+        s.name = "Renamed"                                   // Rename… while the panel is open
+        var mine = base; mine.notes = "my note"              // the panel edits notes only
+        mine = mine.rebased(from: base, onto: SessionEdits(s))
+        XCTAssertEqual(mine.name, "Renamed", "the untouched name field follows the rename")
+        XCTAssertTrue(mine.apply(over: SessionEdits(s), to: &s))
+        XCTAssertEqual(s.name, "Renamed")
+        XCTAssertEqual(s.notes, "my note")
+        // Even without the rebase, a stale name is never written back.
+        var t = Session(name: "old", agent: .shell, repoPath: "/p")
+        let stale = SessionEdits(t)
+        t.name = "new"
+        var edit = stale; edit.objective = "x"
+        edit.apply(over: stale, to: &t)
+        XCTAssertEqual(t.name, "new")
+        XCTAssertFalse(stale.apply(over: stale, to: &t), "nothing edited, nothing written")
+        var w = stale; w.workstream = "lab-oneroof-v0.50"
+        w.apply(over: stale, to: &t)
+        XCTAssertEqual(t.workstream, "LAB-ONEROOF-v0.50")
+    }
 }

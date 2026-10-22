@@ -243,7 +243,8 @@ final class Holder {
         mailLock.lock()
         let attached = anyAttached
         mailLock.unlock()
-        guard !attached else { return }
+        // Left to the attached terminal (traced: LAB-223 looks for queries nobody answered).
+        guard !attached else { Holder.trace("query-left-to-attached", codes); return }
         var reply = ""
         for c in codes {
             switch c {
