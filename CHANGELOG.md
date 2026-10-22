@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.9 — no more freeze (22 Oct 2026)
+
+- **0.4.8 froze the window** (LAB-540). The Artifacts tab's label worked out its count by rereading the handoff folder
+  on every redraw, several times per redraw, so the window never caught up. The list is now kept and refreshed in the
+  background (when the session changes, and every 10 s for new handoffs), and the folder is matched with one pattern.
+
 ## 0.4.8 — the backlog batch (22 Oct 2026)
 
 - **Sessions list stays put** (LAB-515, LAB-490). Working, Ready and Idle are one **Active** group and chip (the row's
