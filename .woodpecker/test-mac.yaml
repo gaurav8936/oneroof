@@ -29,3 +29,18 @@ steps:
     depends_on: []
     commands:
       - cd app && swift --version && swift test
+
+  # roofd (LAB-283): RoofVT built from Ghostty v1.3.1's ghostty-vt with zig 0.15, its Zig tests, then the Swift suite
+  # with the roofd targets (RoofdTests run a real daemon in a temp folder). Ghostty's source is cached on the Mac
+  # (one clone, reused); the libghostty app build is not needed. Was the GitHub Actions `roofd` job.
+  - name: roofd
+    image: bash
+    depends_on: []
+    commands:
+      - export GHOSTTY_SRC="$${ONEROOF_GHOSTTY_DIR:-$$HOME/Library/Caches/oneroof/ghostty}"
+      - test -f "$$GHOSTTY_SRC/src/lib_vt.zig" || git clone --depth 1 --branch v1.3.1 https://github.com/ghostty-org/ghostty.git "$$GHOSTTY_SRC"
+      - test -x /opt/homebrew/opt/zig@0.15/bin/zig || brew install zig@0.15
+      - cd app
+      - ONEROOF_GHOSTTY_DIR="$$GHOSTTY_SRC" bash roofd/build-roofvt.sh
+      - (cd roofd/RoofVT && /opt/homebrew/opt/zig@0.15/bin/zig build test --summary all)
+      - swift test --filter 'RoofdTests|OneRoofCoreTests'
