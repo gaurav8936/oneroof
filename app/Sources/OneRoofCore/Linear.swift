@@ -397,14 +397,14 @@ public enum Intake {
     public static func ticketOpening(key: String, title: String, url: String? = nil, project: String?) -> String {
         let where_ = project.map { " in project \($0)" } ?? ""
         let read = url.map { "Read the ticket (\($0))" } ?? "Read the ticket"
-        let tag = project.map { " · [\($0.lowercased())]" } ?? ""
+        let tag = project.map { " · [\(Workspace.commitTag($0))]" } ?? ""
         return "Work on \(key)\(where_): \(title). \(read)\(project == nil ? "" : " and the project docs") first; commit as `\(key)\(tag) …`."
     }
 
     /// What a running agent is told when an issue is attached to its session (LAB-474).
     public static func attachMessage(key: String, title: String, url: String? = nil, project: String?) -> String {
         let read = url.map { "Read it (\($0))" } ?? "Read it"
-        let tag = project.map { " · [\($0.lowercased())]" } ?? ""
+        let tag = project.map { " · [\(Workspace.commitTag($0))]" } ?? ""
         return "This session now also works on \(key): \(title). \(read) when you reach a good stopping point; commit that work as `\(key)\(tag) …`."
     }
 

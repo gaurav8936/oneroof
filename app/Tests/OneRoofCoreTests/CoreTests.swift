@@ -33,6 +33,13 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(Workspace.projectCode(name: "ENG-KNOW-03 · Knowledge v3"), "ENG-KNOW-03")
         XCTAssertEqual(Workspace.projectCode(name: "WS-WEB-12 · New checkout"), "WS-WEB-12")
         XCTAssertNil(Workspace.projectCode(name: "Roadmap"))
+        // LAB-519: dotted version codes keep their dot and the version's case; the commit tag drops the dot.
+        XCTAssertEqual(Workspace.projectCode(name: "LAB-ONEROOF-v0.50 · Desktop command-center IDE"), "LAB-ONEROOF-v0.50")
+        XCTAssertEqual(Workspace.projectCode(name: "lab-roofd · x"), "LAB-ROOFD")
+        XCTAssertEqual(Workspace.commitTag("LAB-ONEROOF-v0.50"), "lab-oneroof-v050")
+        XCTAssertEqual(Workspace.commitTag("LAB-ONEROOF-BUGS"), "lab-oneroof-bugs")
+        XCTAssertTrue(Intake.ticketOpening(key: "LAB-1", title: "t", project: "LAB-ONEROOF-v0.50").contains("`LAB-1 · [lab-oneroof-v050] …`"))
+        XCTAssertNil(Workspace.projectCode(name: "LAB-X. · trailing dot").flatMap { $0.contains(".") ? $0 : nil })
     }
 
     func testHandoffIsOnlyTheSessionsOwn() throws {

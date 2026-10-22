@@ -86,7 +86,7 @@ extension Intake {
     /// best, post the plan on each issue, then work them in that order and keep each issue up to date through One Roof.
     public static func multiTicketOpening(_ issues: [PickedIssue], project: String?, roofd: String = "\"$ONEROOF_ROOFD_BIN\"") -> String {
         let where_ = project.map { " in project \($0)" } ?? ""
-        let tag = project.map { " · [\($0.lowercased())]" } ?? ""
+        let tag = project.map { " · [\(Workspace.commitTag($0))]" } ?? ""
         var lines = ["This session works on \(issues.count) issues\(where_):"]
         for i in issues {
             lines.append("- \(i.key): \(i.title) (\(i.state))" + (i.url.map { " — \($0)" } ?? ""))

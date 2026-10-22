@@ -170,12 +170,23 @@ public enum Workspace {
     }
 
     /// A Linear project's code: the part of "CODE · title" before the dot when it is one id, else any id in the name.
+    /// LAB-519: a version segment may carry dots and keeps its case ("LAB-ONEROOF-v0.50"); the rest is upper case.
     public static func projectCode(name: String) -> String? {
         if let r = name.range(of: " · ") {
             let head = String(name[..<r.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if head.range(of: #"^[A-Za-z][A-Za-z0-9]{1,5}(?:-[A-Za-z0-9]{1,15})+$"#, options: .regularExpression) != nil { return head.uppercased() }
+            if head.range(of: #"^[A-Za-z][A-Za-z0-9]{1,5}(?:-[A-Za-z0-9](?:[A-Za-z0-9.]{0,14}[A-Za-z0-9])?)+$"#, options: .regularExpression) != nil {
+                return head.split(separator: "-").map { seg in
+                    seg.range(of: #"^[vV]\d"#, options: .regularExpression) != nil ? "v" + seg.dropFirst() : seg.uppercased()
+                }.joined(separator: "-")
+            }
         }
         return workstream(in: name)
+    }
+
+    /// The commit tag for a project code (LAB-519): lower case, dots dropped. "LAB-ONEROOF-v0.50" → "lab-oneroof-v050",
+    /// the form the workspace uses in `KEY · [lab-oneroof-v050] …` and worktree names.
+    public static func commitTag(_ code: String) -> String {
+        code.lowercased().replacingOccurrences(of: ".", with: "")
     }
 
     /// Repos under the projects folder (two levels: domain/repo that contain .git), for the "new session" picker.
