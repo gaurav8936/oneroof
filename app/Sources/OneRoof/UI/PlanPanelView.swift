@@ -174,6 +174,9 @@ struct PlanDetail: View {
                     SessionPopover(item: it, model: model, close: { showMore = false }, rename: {
                         showMore = false
                         DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.renameSelected(_:)), to: nil, from: nil) }
+                    }, attachIssue: {
+                        showMore = false
+                        DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil) }
                     })
                     .themed(model.themes.plan)
                 }
@@ -183,7 +186,7 @@ struct PlanDetail: View {
             .onSubmit(commit)
         facts(it)
         if it.session.agent.isAgent, it.liveAgent != nil { StepReviewSection(model: model, item: it) }
-        if it.session.ticket != nil { TicketBox(item: it, model: model) }
+        ForEach(it.session.allTickets, id: \.key) { i in TicketBox(item: it, issue: i, model: model) }
         field("Project") {
             HStack(spacing: 6) {
                 TextField("CODE-…", text: $workstream).textFieldStyle(.plain).ui(12.5, mono: true)
@@ -321,10 +324,14 @@ struct PlanDetail: View {
     @ViewBuilder private var ticketTab: some View {
         let it = live
         if it.session.ticket != nil {
-            TicketBox(item: it, model: model)
+            ForEach(it.session.allTickets, id: \.key) { i in TicketBox(item: it, issue: i, model: model, removable: true) }
         } else {
-            Text("No Linear ticket. Plan a session from a ticket in Work (⇧⌘W) to link one.").ui(12.5).foregroundStyle(t.text2.color)
+            Text("No Linear issue yet.").ui(12.5).foregroundStyle(t.text2.color)
         }
+        // LAB-474: a session can resolve several issues; add one at any point before it ships.
+        RoofButton(it.session.ticket == nil ? "Attach issue…" : "Add issue…") {
+            NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil)
+        }.fixedSize()
         if it.session.agent.isAgent {
             field(it.session.launchedAt == nil && !it.adopted ? "Opening message (sent when the agent is ready)" : "Opening message") {
                 editor($opening, minHeight: 90)
@@ -431,11 +438,14 @@ struct PlanDetail: View {
     }
 }
 
-/// The session's Linear ticket (COMPONENTS TicketBox): key, state pill, Linear ↗, state buttons.
+/// One of the session's Linear issues (COMPONENTS TicketBox): key, state pill, Linear ↗, state buttons; ✕ takes it off
+/// the session (LAB-474: a session can carry several).
 struct TicketBox: View {
     @Environment(\.theme) private var t
     let item: BoardItem
+    let issue: SessionIssue
     @ObservedObject var model: AppModel
+    var removable = false
     @State private var state = ""
     @State private var url = ""
     @State private var busy = false
@@ -444,7 +454,7 @@ struct TicketBox: View {
         let s = item.session
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(s.ticket ?? "").ui(12.5, .semibold, mono: true).foregroundStyle(t.text.color)
+                Text(issue.key).ui(12.5, .semibold, mono: true).foregroundStyle(t.text.color)
                 if !state.isEmpty {
                     Text(state).ui(10.5, .semibold).foregroundStyle(t.accentText.color)
                         .padding(.horizontal, 6).padding(.vertical, 1)
@@ -455,13 +465,18 @@ struct TicketBox: View {
                 if let u = URL(string: url), !url.isEmpty {
                     Link(destination: u) { Text("Linear ↗").ui(11.5).foregroundStyle(t.text3.color) }
                 }
+                if removable {
+                    Button { model.detachIssue(issue.key, from: item) } label: { Text("✕").ui(11, .semibold).foregroundStyle(t.text2.color) }
+                        .buttonStyle(.plain).help("Take \(issue.key) off this session (it stays in Linear)")
+                        .accessibilityLabel("Remove \(issue.key) from this session")
+                }
             }
             HStack(spacing: 4) {
                 ForEach(["Backlog", "In Progress", "In Review", "Done"], id: \.self) { st in
                     let on = state == st
                     Button {
                         busy = true
-                        model.moveTicket(of: s, to: st, comment: ["In Review", "Done"].contains(st) ? model.sessionSummary(item) : nil) { err in
+                        model.moveIssue(issue, to: st, comment: ["In Review", "Done"].contains(st) ? model.sessionSummary(item) : nil) { err in
                             busy = false
                             if err == nil { state = st }
                         }
@@ -479,12 +494,12 @@ struct TicketBox: View {
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.card.color))
         .onAppear(perform: load)
         .onReceive(model.$issues) { all in
-            if let id = item.session.ticketId, let i = all.values.joined().first(where: { $0.id == id }) { state = i.state }
+            if let id = issue.id, let i = all.values.joined().first(where: { $0.id == id }) { state = i.state }
         }
     }
 
     private func load() {
-        guard let id = item.session.ticketId else { return }
+        guard let id = issue.id else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             if let r = try? model.linear.issueState(id) { DispatchQueue.main.async { state = r.name; url = r.url } }
         }

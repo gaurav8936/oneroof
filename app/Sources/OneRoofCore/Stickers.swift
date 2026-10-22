@@ -157,13 +157,15 @@ public extension AgentKind {
 /// The one-click actions at the top of the session menu (LAB-300): compact buttons in a wrapping row. Close is not
 /// one of them (owner: "Do not use close"); it stays on the right-click menu and the row's ✕.
 public enum SessionQuickAction: String, CaseIterable, Sendable {
-    case launch, relaunch, open, next, pin, rename, highlight, doNotUse, delete
+    case launch, relaunch, open, next, pin, rename, issue, highlight, doNotUse, delete
 
     public static func available(for item: BoardItem) -> [SessionQuickAction] {
         var out: [SessionQuickAction] = []
         if item.liveAgent == nil && item.status != .doNotUse { out.append(item.status == .exited ? .relaunch : .launch) }
         else if item.liveAgent != nil { out.append(.open) }
-        out += [.next, .pin, .rename, .highlight, .doNotUse]
+        out += [.next, .pin, .rename]
+        if item.status != .doNotUse { out.append(.issue) }        // LAB-474: attach a Linear issue to a session
+        out += [.highlight, .doNotUse]
         if item.liveAgent == nil && !item.adopted { out.append(.delete) }
         return out
     }

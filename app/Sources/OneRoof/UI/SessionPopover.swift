@@ -11,6 +11,8 @@ struct SessionPopover: View {
     @ObservedObject var model: AppModel
     let close: () -> Void
     let rename: () -> Void
+    /// Opens the Attach issue sheet (LAB-474); the hosts close the popover and select the session first.
+    var attachIssue: () -> Void = {}
 
     @Environment(\.colorScheme) private var scheme
     @Environment(\.theme) private var theme
@@ -89,6 +91,9 @@ struct SessionPopover: View {
             chip("Pin", "pin.fill", "butter", on: it.session.pinned, help: "Keep it in the Pinned group at the top") { model.togglePin(it) }
         case .rename:
             chip("Rename", "pencil", "sky", help: "Change the session's name") { rename() }
+        case .issue:
+            chip(it.session.ticket == nil ? "Issue…" : "Add issue…", "link", "lavender",
+                 help: "Add a Linear issue this session works on: an open one, or a new one (a session can resolve several)") { attachIssue() }
         case .highlight:
             chip("Highlight", "star.fill", "coral", on: tagIds.contains(Sticker.highlightId),
                  help: "Priority: mark it Important (the Important sticker)") { model.toggleSticker(it, Sticker.highlightId) }
@@ -138,15 +143,21 @@ extension AppModel {
             : "This ends the shell."
         a.addButton(withTitle: "Close")
         a.addButton(withTitle: "Cancel")
-        var review: NSButton?
-        if let tk = item.session.ticket {
-            let b = NSButton(checkboxWithTitle: "Comment on \(tk) and move it to In Review", target: nil, action: nil)
+        // One box per issue the session worked on (LAB-474): each can go to In Review or stay where it is.
+        let boxes = item.session.allTickets.map { i -> (String, NSButton) in
+            let b = NSButton(checkboxWithTitle: "Comment on \(i.key) and move it to In Review", target: nil, action: nil)
             b.state = .on
-            a.accessoryView = b
-            review = b
+            return (i.key, b)
+        }
+        if !boxes.isEmpty {
+            let stack = NSStackView(views: boxes.map(\.1))
+            stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 6
+            stack.setFrameSize(stack.fittingSize)
+            a.accessoryView = stack
         }
         if a.runModal() == .alertFirstButtonReturn {
-            if review?.state == .on { moveTicket(of: item.session, to: "In Review", comment: sessionSummary(item)) }
+            let keys = Set(boxes.filter { $0.1.state == .on }.map(\.0))
+            if !keys.isEmpty { moveTickets(of: item, keys: keys, to: "In Review") }
             closeAgent(item)
         }
     }

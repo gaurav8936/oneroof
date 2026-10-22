@@ -121,7 +121,7 @@ public enum Attributor {
     /// Committed lines (`git log -L`): the session whose ticket key or workstream tag is in the commit message.
     public static func session(forCommitMessage message: String, sessions: [Session]) -> Session? {
         let upper = message.uppercased()
-        if let s = sessions.first(where: { ($0.ticket.map { upper.contains($0.uppercased()) }) ?? false }) { return s }
+        if let s = sessions.first(where: { $0.allTickets.contains { upper.contains($0.key.uppercased()) } }) { return s }
         guard let ws = Workspace.workstream(in: message) else { return nil }
         return sessions.first { $0.workstream?.uppercased() == ws }
     }

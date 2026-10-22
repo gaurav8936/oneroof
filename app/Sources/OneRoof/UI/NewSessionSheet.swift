@@ -131,20 +131,14 @@ struct NewSessionSheet: View {
                 }
             }
             Hairline()
-            HStack(spacing: 10) {
-                Text("When").ui(12, .semibold).foregroundStyle(t.text.color).fixedSize()
-                whenPicker
-                // Messages wrap inside their own space, so the bottom row never widens the sheet (LAB-243).
-                if let error { Text(error).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
-                else if let why = blockedReason { Text(why).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
-                Spacer()
-                if busy { ProgressView().controlSize(.small) }
-                RoofButton("Cancel") { close() }.fixedSize().keyboardShortcut(.cancelAction)
-                RoofButton("Save as planned") { go(launch: false, forcePlanned: true) }.fixedSize().disabled(!valid)
-                RoofButton(primaryLabel, .primary) { go(launch: when == .now || when == .every) }
-                    .fixedSize()
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!valid || busy)
+            // One row when it fits; otherwise When on top and the buttons below (LAB-472: "Create issue, launch"
+            // made the fixed-size row wider than the sheet, which then overflowed off both edges).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { whenRow; Spacer(); actionButtons }
+                VStack(alignment: .leading, spacing: 12) {
+                    whenRow
+                    HStack(spacing: 10) { Spacer(); actionButtons }
+                }
             }
             .padding(.horizontal, 26).padding(.vertical, 16)
         }
@@ -158,6 +152,28 @@ struct NewSessionSheet: View {
         .onAppear(perform: installPaste)
         .onDisappear(perform: removePaste)
         .onChange(of: model.workstreams) { _, _ in defaultWorkstream() }
+    }
+
+    // MARK: Bottom row
+
+    @ViewBuilder private var whenRow: some View {
+        HStack(spacing: 10) {
+            Text("When").ui(12, .semibold).foregroundStyle(t.text.color).fixedSize()
+            whenPicker
+            // Messages wrap inside their own space, so the bottom row never widens the sheet (LAB-243).
+            if let error { Text(error).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
+            else if let why = blockedReason { Text(why).ui(12).foregroundStyle(t.needsText.color).lineLimit(2).frame(maxWidth: 200, alignment: .leading) }
+        }
+    }
+
+    @ViewBuilder private var actionButtons: some View {
+        if busy { ProgressView().controlSize(.small) }
+        RoofButton("Cancel") { close() }.fixedSize().keyboardShortcut(.cancelAction)
+        RoofButton("Save as planned") { go(launch: false, forcePlanned: true) }.fixedSize().disabled(!valid)
+        RoofButton(primaryLabel, .primary) { go(launch: when == .now || when == .every) }
+            .fixedSize()
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(!valid || busy)
     }
 
     // MARK: Sections
