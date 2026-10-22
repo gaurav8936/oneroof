@@ -41,10 +41,12 @@ public enum SessionArtifacts {
         let keys = (tickets + [project].compactMap { $0 }).map { $0.lowercased() }.filter { !$0.isEmpty }
         guard !keys.isEmpty else { return [] }
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+        // One pattern for every key, compiled once per scan (0.4.8 compiled one per file per key on every redraw).
+        let alts = keys.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        guard let re = try? NSRegularExpression(pattern: "(?<![a-z0-9])(?:" + alts + ")(?![a-z0-9])") else { return [] }
         func names(_ f: String) -> Bool {
-            keys.contains { k in
-                f.lowercased().range(of: "(?<![a-z0-9])" + NSRegularExpression.escapedPattern(for: k) + "(?![a-z0-9])", options: .regularExpression) != nil
-            }
+            let l = f.lowercased()
+            return re.firstMatch(in: l, range: NSRange(l.startIndex..., in: l)) != nil
         }
         // LAB-510: written during the session (after it launched), not the older handoffs it started from.
         return files.reversed().filter(names).map { dir + "/" + $0 }.filter { p in since.map { Workspace.writtenSince(p, $0) } ?? true }
