@@ -5,6 +5,12 @@
 - **roofd no longer eats the Mac's memory.** Each session's process kept every answer it gave the app, so a session
   open for a day grew to several GB and macOS froze. It now stays at a few MB, and as a safety net a session that
   passes 2 GB ends itself (noted in `roofd-memory.log` in roofd's folder) instead of taking the Mac down.
+- **A session can work on several issues** (LAB-474). Add issue… (session menu, right-click, or the Ticket tab) adds
+  an open issue or a new one at any point; the row shows `KEY +N`, the Ticket tab lists each one, and closing asks
+  per issue. A commit that names an issue moves it to In Review on its own, once. If the agent is busy when you add
+  one, the note waits and goes in as soon as it is back at its prompt.
+- **New session no longer slides off the screen** (LAB-472): picking New bug made the bottom row too wide; it now
+  wraps to two lines when it does not fit.
 
 ## 0.4.2 — a one-click session menu, and pasting images (21 Oct 2026)
 
