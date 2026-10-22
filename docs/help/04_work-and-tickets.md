@@ -54,6 +54,16 @@ A session can work on more than one issue, including ones that come in while it 
 - **On commit:** when a commit made after launch names one of the session's issues (`ENG-42 · …`), that issue moves to **In Review** once, with the commit in a comment.
 - **On close:** Close Agent… shows one box per issue, so you choose which ones move to **In Review**.
 
+### Start a session on several issues at once
+
+In the New session sheet (⌘N), pick the team and project, then open **Issue ▾**: it is a checklist of the project's open issues, **Picked** first (in the order you ticked them), then **Active**, **To do** and **Backlog**, with a filter box. Tick as many as you like and press **Done**.
+
+- **One session, all of them.** Creating it makes one session holding every ticked issue. Its name carries each key: `LAB-1, LAB-2, LAB-3 · <your title>` (or `· 3 issues` when you leave the title empty). The first issue you ticked is its main ticket.
+- **The opening message** lists every issue (key, title, state, link) and asks the agent to read them all, look for shared causes and dependencies, and write **one plan** that resolves them in the best order. It shows you the plan and carries on unless an issue needs your decision.
+- **The agent keeps each issue up to date.** It posts the plan on each issue, moves an issue to **In Progress** when it starts on it, commits that issue's work under its own key, and moves it to **In Review** with a short summary when it is done. Launching does not move them all to In Progress at once.
+- **How the agent does it:** inside a One Roof session an agent runs `"$ONEROOF_ROOFD_BIN" issue LAB-1 --state "In Progress"` or `… issue LAB-1 --state "In Review" --comment "what changed"` (`--comment -` reads the text from stdin, `--comment-file <path>` from a file). One Roof applies it with your Linear key and the agent sees `done: …` or the reason it was refused. An agent can only update **its own session's** issues, and only to **In Progress** or **In Review** (or comment); **Done** and **Canceled** stay with you.
+- Sessions started before One Roof 0.4.6 cannot take these updates; relaunch them.
+
 ## New work item: decide what it is first
 
 Press **⌃⌘N** (File › New Work Item…), **New item** in the Work view, or **+ New work item** on the Overview. The New session sheet (⌘N) can also create an issue or a project, as the last item of its **Issue ▾** and **Project ▾** menus, and then starts the session on it ([New session](02_planning-a-session.md#when-the-work-is-not-in-linear-yet)).

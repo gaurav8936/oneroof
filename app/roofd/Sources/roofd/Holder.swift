@@ -83,6 +83,10 @@ final class Holder {
     var contentKey = ""
     /// Where the agent last worked (from its hooks): a file or folder, absolute.
     var workPath = ""
+    /// LAB-518: issue updates the agent asked for (`roofd issue`), until the app answers; answers wait for the asker.
+    var issueQueue: [[String: Any]] = []
+    var issueAnswers: [Int: String] = [:]
+    var issueSeq = 0
     /// Process group leader of the agent last seen in the foreground (kept while it lives).
     var agentLeader: pid_t = 0
     var contentChangedAt: Date?
@@ -532,6 +536,7 @@ final class Holder {
             "active": ((agent != nil ? contentChangedAt : nil) ?? lastOutput ?? created).timeIntervalSince1970,
             // LAB-310: the holder's own memory, and whether it is past the warning line (the app can show it).
             "footprint": Int(footprint), "memoryWarning": watchdog.warned,
+            "issues": issueQueue,
         ]
         if master >= 0 { out["pgid"] = Int(roof_foreground_pgrp(master)) }
         if let at = exitedAt {
@@ -579,6 +584,27 @@ final class Holder {
             guard master >= 0 else { return ["error": "session exited"] }
             let pg = roof_foreground_pgrp(master)
             if pg > 0 { kill(-pg, Int32(j["signal"] as? Int ?? Int(SIGINT))) }
+            return [:]
+        case "issue":
+            // From `roofd issue` inside the session (LAB-518). The app checks the key and state against the session.
+            guard let key = j["key"] as? String, !key.isEmpty else { return ["error": "no issue key"] }
+            issueSeq += 1
+            var r: [String: Any] = ["seq": issueSeq, "key": key]
+            if let st = j["state"] as? String, !st.isEmpty { r["state"] = st }
+            if let c = j["comment"] as? String, !c.isEmpty { r["comment"] = String(c.prefix(20_000)) }
+            issueQueue.append(r)
+            if issueQueue.count > 50 { issueQueue.removeFirst(issueQueue.count - 50) }
+            return ["seq": issueSeq]
+        case "issueStatus":
+            guard let n = j["seq"] as? Int else { return ["error": "no seq"] }
+            // A refusal is "refused", not "error": an "error" reply makes the asker's call throw.
+            if let a = issueAnswers.removeValue(forKey: n) { return a.isEmpty ? ["done": true] : ["done": true, "refused": a] }
+            return ["done": false]
+        case "issueDone":
+            guard let n = j["seq"] as? Int else { return ["error": "no seq"] }
+            issueQueue.removeAll { ($0["seq"] as? Int) == n }
+            issueAnswers[n] = j["error"] as? String ?? ""
+            if issueAnswers.count > 50, let oldest = issueAnswers.keys.min() { issueAnswers[oldest] = nil }
             return [:]
         case "close":
             if pid > 0, exitedAt == nil {

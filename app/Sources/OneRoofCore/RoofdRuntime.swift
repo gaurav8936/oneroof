@@ -200,16 +200,19 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         let active = (s["active"] as? Double).map { Date(timeIntervalSince1970: $0) }
         let pid = (s["pid"] as? Int).flatMap { $0 > 0 ? Int32($0) : nil }
         let warning = s["memoryWarning"] as? Bool ?? false
+        let requests = (s["issues"] as? [[String: Any]] ?? []).compactMap(IssueRequest.init(json:))
         // roofd's status engine (LAB-14) names the foreground agent and its status; no agent = a plain shell.
         if let agent = s["agent"] as? String {
             return RuntimeSessionState(
                 id: id, isAgent: true, agentName: agent, status: RuntimeStatus(s["status"] as? String),
                 ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int,
-                workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }, activeAt: active, pid: pid, memoryWarning: warning)
+                workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }, activeAt: active, pid: pid, memoryWarning: warning,
+                issueRequests: requests)
         } else {
             return RuntimeSessionState(
                 id: id, isAgent: false, status: .unknown, ready: true, title: title, cwd: cwd, pane: id,
-                seq: s["seq"] as? Int, workPath: cwd, activeAt: active, pid: pid, memoryWarning: warning)
+                seq: s["seq"] as? Int, workPath: cwd, activeAt: active, pid: pid, memoryWarning: warning,
+                issueRequests: requests)
         }
     }
 
@@ -319,6 +322,12 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     // MARK: Session I/O (pane = session id)
 
     public func close(_ id: RuntimeID, group: String?) throws { try call("close", ["id": id]) }
+
+    /// Answer an agent's issue request (LAB-518): roofd drops it from the session's list and the waiting
+    /// `roofd issue` prints the result.
+    public func issueDone(_ id: RuntimeID, seq: Int, error: String?) throws {
+        try call("issueDone", ["id": id, "seq": seq, "error": error ?? ""])
+    }
 
     /// Type the text, then press Enter separately, so a TUI sees a submit and not a newline inside a paste.
     public func submit(_ id: RuntimeID, text: String) throws {

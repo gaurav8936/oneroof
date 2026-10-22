@@ -281,3 +281,45 @@ extension AppModel {
         }
     }
 }
+
+extension AppModel {
+    /// Every 3 s (LAB-518): apply what agents asked for with `roofd issue` — a comment and/or In Progress / In Review on
+    /// one of their own session's issues — with the owner's Linear key, then answer the waiting agent. A request for an
+    /// issue that is not on the session, or for another state, is refused with the reason.
+    func applyIssueRequests() {
+        guard let roofd = runtime as? RoofdRuntime else { return }
+        let live = lastSnapshotSessions
+        for item in items {
+            guard let rid = item.resourceKey, let st = live[rid], !st.issueRequests.isEmpty else { continue }
+            for r in st.issueRequests {
+                let tag = "\(rid):\(r.seq)"
+                guard !issueRequestsInFlight.contains(tag) else { continue }
+                issueRequestsInFlight.insert(tag)
+                // Applied at most once: the tag is forgotten only after roofd took the answer (and dropped the request).
+                // If roofd cannot take it (an older daemon), the tag stays, so Linear never gets the same update twice.
+                func answer(_ err: String?) {
+                    DispatchQueue.global(qos: .utility).async { [weak self] in
+                        guard (try? roofd.issueDone(rid, seq: r.seq, error: err)) != nil else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self?.issueRequestsInFlight.remove(tag) }
+                    }
+                }
+                switch r.check(against: item.session) {
+                case .failure(let e): answer(e.description)
+                case .success(let issue):
+                    guard linear.hasKey else { answer("One Roof has no Linear key (Settings › Linear)"); continue }
+                    let comment = r.comment.map { $0 + "\n\n— \(item.session.agent.displayName) in One Roof session **\(item.session.name)**" }
+                    if let state = r.canonicalState {
+                        moveIssue(issue, to: state, comment: comment) { err in answer(err) }
+                        if state == "In Review" { update(item) { if !$0.reviewedTickets.contains(issue.key) { $0.reviewedTickets.append(issue.key) } } }
+                    } else if let comment, let id = issue.id {
+                        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                            var err: String?
+                            do { try self?.linear.comment(issue: id, body: comment) } catch { err = "\(error)" }
+                            answer(err)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

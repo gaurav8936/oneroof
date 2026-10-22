@@ -65,6 +65,52 @@ case "report":
                                          "message": payload["message"] as? String ?? "",
                                          "path": WorkPath.from(hook: payload) ?? ""], timeout: 1)
     exit(0)
+case "issue":
+    // LAB-518: an agent updates one of its session's Linear issues through One Roof:
+    //   roofd issue <KEY> [--state "In Progress"|"In Review"] [--comment <text> | --comment-file <path> | --comment -]
+    // The app applies it with the owner's Linear key; this waits up to 20 s for its answer.
+    let env = ProcessInfo.processInfo.environment
+    guard let id = env["ONEROOF_SESSION"], let control = env["ONEROOF_ROOFD"], Paths.validId(id) else {
+        fail("issue: run this inside a One Roof session")
+    }
+    guard args.count > 1, !args[1].hasPrefix("-") else {
+        fail("usage: roofd issue <KEY> [--state \"In Progress\"|\"In Review\"] [--comment <text> | --comment-file <path> | --comment -]")
+    }
+    var req: [String: Any] = ["op": "issue", "key": args[1].uppercased()]
+    var i = 2
+    while i < args.count {
+        guard i + 1 < args.count else { fail("missing value for \(args[i])") }
+        let v = args[i + 1]
+        switch args[i] {
+        case "--state": req["state"] = v
+        case "--comment": req["comment"] = v == "-" ? String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self) : v
+        case "--comment-file":
+            guard let t = try? String(contentsOfFile: v, encoding: .utf8) else { fail("cannot read \(v)") }
+            req["comment"] = t
+        default: fail("unknown option \(args[i])")
+        }
+        i += 2
+    }
+    guard req["state"] != nil || req["comment"] != nil else { fail("issue: give --state and/or --comment") }
+    let holder = (control as NSString).deletingLastPathComponent + "/\(id).sock"
+    guard let r = try? Sock.holderRequest(holder, req, timeout: 3), let n = r["seq"] as? Int else {
+        fail("issue: this session's roofd does not take issue updates (relaunch the session after updating One Roof)")
+    }
+    let what = [req["state"].map { "move \(args[1].uppercased()) to \($0)" }, req["comment"] == nil ? nil : "comment"]
+        .compactMap { $0 }.joined(separator: " + ")
+    for _ in 0..<80 {
+        usleep(250_000)
+        guard let a = try? Sock.holderRequest(holder, ["op": "issueStatus", "seq": n], timeout: 2), a["done"] as? Bool == true else { continue }
+        if let e = a["refused"] as? String, !e.isEmpty { fail("issue: \(e)") }
+        print("done: \(what)")
+        exit(0)
+    }
+    print("queued: \(what) (One Roof applies it when it is running)")
+    exit(0)
+case "issue-done":
+    // Harness only (LAB-518): answer an issue request the way the app does.
+    guard args.count > 2, let n = Int(args[2]) else { fail("issue-done <id> <seq> [error]") }
+    printJSON(call("issueDone", ["id": args[1], "seq": n, "error": args.count > 3 ? args[3] : ""]))
 case "attach":
     guard args.count > 1 else { fail("attach <id>") }
     exit(Attach.run(args[1]))
