@@ -4,9 +4,17 @@
 
 - **Pick issues in a panel you can resize and read** (LAB-523). Issue ▾ in New session opens a **Pick issues** panel
   beside the sheet instead of a fixed popover: a table with resizable columns (tick · order · key · title · state), the
-  picked issues first in pick order, state filters with counts (In Review last), a filter that also searches the
-  description, and a pane under the table that shows the selected issue in full before you add it. The panel remembers
-  its size.
+  rows in one order (In Progress, To do, Backlog, In Review last), state filters with counts, a filter that also
+  searches the description, and a pane under the table that shows the selected issue in full before you add it. The
+  panel remembers its size.
+- **Ticking an issue no longer moves it** (LAB-527). Picked issues used to jump to the top, so the list scrolled under
+  the pointer. Rows stay put; a **Picked** chip shows just the ones you ticked, in the order you ticked them.
+- **The opening message names every picked issue** (LAB-528). Once you had typed into the opening message it stopped
+  following your picks, so a session started on 20 issues told its agent about the first 3. Your words now stay and
+  only the list of issues in the message changes as you tick.
+- **Agents in a session reach the right roofd** (LAB-529). One Roof opened from a terminal inside one of its own
+  sessions passed that session's roofd path on to every new session, so agents could call an older roofd (their issue
+  updates failed). Each session now gets its own.
 
 ## 0.4.6 — one session on several issues (21 Oct 2026)
 
