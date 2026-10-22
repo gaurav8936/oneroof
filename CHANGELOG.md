@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.7 — pick issues in a panel (21 Oct 2026)
 
 - **Pick issues in a panel you can resize and read** (LAB-523). Issue ▾ in New session opens a **Pick issues** panel
   beside the sheet instead of a fixed popover: a table with resizable columns (tick · order · key · title · state), the
@@ -15,6 +15,9 @@
 - **Agents in a session reach the right roofd** (LAB-529). One Roof opened from a terminal inside one of its own
   sessions passed that session's roofd path on to every new session, so agents could call an older roofd (their issue
   updates failed). Each session now gets its own.
+- **Small fixes.** A finished turn's caption says **Ready**, the same word as its status (it said Done) (LAB-241). The
+  exited pane's **Open … handoff** also finds a handoff named after any of the session's issues and says which one, and
+  no longer matches a longer id that merely contains the key (LAB-250).
 
 ## 0.4.6 — one session on several issues (21 Oct 2026)
 
