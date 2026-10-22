@@ -43,7 +43,57 @@ enum RoofdService {
             do { try s.register() } catch { NSLog("One Roof: roofd background item not registered: \(error)") }
         }
         if s.status == .enabled { Prefs.defaults.set(build, forKey: registeredKey) }
-        return s.status == .enabled
+        // LAB-516: "enabled" is only the Login Items record. Check what launchd actually does; a job stuck on the old
+        // build's code identity (needs LWCR update, exit 78) or missing altogether is repaired once: unregister, boot
+        // the job out, register again (what fixed it by hand).
+        if s.status == .enabled, !repairedThisLaunch, !launchdHealthy(wait: 3) {
+            repairedThisLaunch = true   // once per launch: register() runs every 30 s
+            NSLog("One Roof: roofd's launchd job is \(job().map { "stuck (state \($0.state ?? "?"), last exit \($0.lastExit.map(String.init) ?? "none"))" } ?? "missing"); registering it again")
+            repair()
+        }
+        return s.status == .enabled && launchdHealthy(wait: 0)
+    }
+
+    private static var repairedThisLaunch = false
+
+    static var label: String { (plistName as NSString).deletingPathExtension }
+
+    /// launchd's view of the job, nil when it has none.
+    static func job() -> LaunchdJob? {
+        LaunchdJob.parse(run("/bin/launchctl", ["print", "gui/\(getuid())/\(label)"]))
+    }
+
+    /// Running and not stuck, waiting up to `wait` seconds for a job that is still starting.
+    static func launchdHealthy(wait: TimeInterval) -> Bool {
+        let until = Date().addingTimeInterval(wait)
+        while true {
+            let j = job()
+            if j?.healthy == true { return true }
+            if j?.stuck == true || Date() >= until { return false }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+    }
+
+    private static func repair() {
+        let s = service
+        let done = DispatchSemaphore(value: 0)
+        s.unregister { _ in done.signal() }
+        _ = done.wait(timeout: .now() + 5)
+        _ = run("/bin/launchctl", ["bootout", "gui/\(getuid())/\(label)"])
+        do { try s.register() } catch { NSLog("One Roof: roofd background item not registered again: \(error)") }
+        if s.status == .enabled { Prefs.defaults.set(bundledBuild ?? 0, forKey: registeredKey) }
+        NSLog("One Roof: roofd launchd job after repair: \(launchdHealthy(wait: 3) ? "running" : "still not running; One Roof starts roofd itself")")
+    }
+
+    private static func run(_ exe: String, _ args: [String]) -> String {
+        let p = Process(), pipe = Pipe()
+        p.executableURL = URL(fileURLWithPath: exe)
+        p.arguments = args
+        p.standardOutput = pipe; p.standardError = pipe
+        guard (try? p.run()) != nil else { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     /// The Foundations row: is the background item allowed?
@@ -54,6 +104,11 @@ enum RoofdService {
         }
         switch service.status {
         case .enabled:
+            // LAB-516: enabled in Login Items is not enough; say so when launchd is not actually running it.
+            if let j = job(), j.stuck {
+                return CheckResult(id: "roofd-login", title: "roofd background item", level: .warn,
+                                   detail: "registered, but launchd can't start it (old build's signature); reopen One Roof to repair it")
+            }
             return CheckResult(id: "roofd-login", title: "roofd background item", level: .ok, detail: "on: roofd starts at login")
         case .requiresApproval:
             return CheckResult(id: "roofd-login", title: "roofd background item", level: .warn,
