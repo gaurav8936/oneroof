@@ -284,7 +284,7 @@ struct ReviewChangesView: View {
     private func prefillMessage() {
         guard !messageTouched else { return }
         let s = session?.session
-        let ws = s?.workstream.map { "[\($0.lowercased())] " } ?? ""
+        let ws = s?.workstream.map { "[\(Workspace.commitTag($0))] " } ?? ""
         let key = s?.ticket.map { $0 + " · " } ?? ""
         let summary = session.map { model.caption(for: $0).text.replacingOccurrences(of: "Ready · ", with: "") } ?? "changes"
         message = key + ws + summary
