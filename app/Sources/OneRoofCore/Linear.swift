@@ -310,6 +310,20 @@ public final class LinearClient: @unchecked Sendable {
         _ = try gql("mutation($i: CommentCreateInput!) { commentCreate(input: $i) { success } }", ["i": ["issueId": issue, "body": body]])
     }
 
+    /// One issue by its key ("LAB-298"), with its team key and project code (LAB-511: attach what a session mentions).
+    public func issue(key: String) throws -> (issue: LinearIssue, team: String, project: String?)? {
+        let d = try gql("""
+        query($id: String!) { issue(id: $id) { id identifier title description url state { name type } team { key } project { name } } }
+        """, ["id": key])
+        guard let n = d["issue"] as? [String: Any], let id = n["id"] as? String else { return nil }
+        let st = n["state"] as? [String: Any] ?? [:]
+        let i = LinearIssue(id: id, identifier: n["identifier"] as? String ?? key, title: n["title"] as? String ?? "",
+                            description: n["description"] as? String ?? "", state: st["name"] as? String ?? "",
+                            stateType: st["type"] as? String ?? "", type: nil, milestoneId: nil, milestone: nil, url: n["url"] as? String ?? "")
+        let project = ((n["project"] as? [String: Any])?["name"] as? String).flatMap { Workspace.projectCode(name: $0) }
+        return (i, (n["team"] as? [String: Any])?["key"] as? String ?? "", project)
+    }
+
     /// One ticket's current state (for the plan panel).
     public func issueState(_ id: String) throws -> (name: String, type: String, url: String) {
         let d = try gql("query($id: String!) { issue(id: $id) { url state { name type } } }", ["id": id])
