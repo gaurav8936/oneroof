@@ -138,6 +138,27 @@ extension Intake {
     }
 }
 
+extension Intake {
+    /// LAB-491: every opening message starts by orienting the agent: run Where Are We (no transcript), anchor in the team
+    /// and project, and stay in that team. `body` is what to do next. Left alone when empty or when it already asks for
+    /// Where Are We (an owner's own message often does).
+    public static func anchored(_ body: String, team: String?, project: String?) -> String {
+        let b = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !b.isEmpty, b.range(of: "where are we", options: .caseInsensitive) == nil else { return body }
+        let t = team.flatMap { $0.isEmpty ? nil : $0 }
+        let scope: String
+        switch (project, t) {
+        case let (p?, t?): scope = "project \(p) (team \(t))"
+        case let (p?, nil): scope = "project \(p)"
+        case let (nil, t?): scope = "team \(t)"
+        default: scope = "this repo"
+        }
+        let stay = t == nil ? "" : " and do not switch to another team in this session"
+        return "Invoke the \"Where Are We\" skill from agentic engineering (no transcript needed). Anchor yourself in \(scope)\(stay)."
+            + " Once anchored, this is what I would like you to do next:\n\n" + body
+    }
+}
+
 extension Session {
     /// Issues moved to In Progress when the session launches: its one issue. A session on several issues leaves them
     /// as they are; its agent moves each one when it starts on it (LAB-518).
