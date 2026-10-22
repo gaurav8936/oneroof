@@ -48,6 +48,14 @@ public struct LinearIssue: Identifiable, Equatable, Sendable {
     public var milestoneId: String?
     public var milestone: String?
     public var url: String
+    public var createdAt: Date? = nil
+    public var updatedAt: Date? = nil
+
+    /// The number after the team key (LAB-547: "LAB-90" sorts before "LAB-547").
+    public var number: Int { Int(identifier.split(separator: "-").last ?? "") ?? 0 }
+    /// Sort keys for the picker's columns (a table sorts on Comparable values; a missing date sorts oldest).
+    public var created: Date { createdAt ?? .distantPast }
+    public var updated: Date { updatedAt ?? createdAt ?? .distantPast }
 
     /// The ticket title without a "[code] " prefix (older tickets carry one).
     public var shortTitle: String {
@@ -208,11 +216,21 @@ public final class LinearClient: @unchecked Sendable {
         return out.sorted { $0.name < $1.name }
     }
 
+    /// Linear's ISO 8601 timestamps ("2026-10-22T22:47:26.859Z").
+    static func date(_ v: Any?) -> Date? {
+        guard let s = v as? String else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
+
     /// The tickets of one workstream.
     public func issues(project: String) throws -> [LinearIssue] {
         let d = try gql("""
         query($id: String!) { project(id: $id) { issues(first: 150) { nodes {
-          id identifier title description url state { name type } projectMilestone { id name } labels(first: 6) { nodes { name } } } } } }
+          id identifier title description url createdAt updatedAt state { name type } projectMilestone { id name } labels(first: 6) { nodes { name } } } } } }
         """, ["id": project])
         let nodes = ((d["project"] as? [String: Any])?["issues"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []
         return nodes.map { n in
@@ -223,11 +241,9 @@ public final class LinearClient: @unchecked Sendable {
             return LinearIssue(id: n["id"] as? String ?? "", identifier: n["identifier"] as? String ?? "", title: n["title"] as? String ?? "",
                                description: n["description"] as? String ?? "", state: st["name"] as? String ?? "",
                                stateType: st["type"] as? String ?? "", type: type, milestoneId: ms?["id"] as? String,
-                               milestone: ms?["name"] as? String, url: n["url"] as? String ?? "")
-        }.sorted { a, b in
-            let na = Int(a.identifier.split(separator: "-").last ?? "") ?? 0, nb = Int(b.identifier.split(separator: "-").last ?? "") ?? 0
-            return na < nb
-        }
+                               milestone: ms?["name"] as? String, url: n["url"] as? String ?? "",
+                               createdAt: Self.date(n["createdAt"]), updatedAt: Self.date(n["updatedAt"]))
+        }.sorted { $0.number < $1.number }
     }
 
     public func team(key: String) throws -> LinearTeam {
