@@ -223,12 +223,13 @@ extension AppModel {
             ticketStarted(id: issue.id, team: key)
         }
         guard tellAgent, let agent = item.liveAgent, item.session.agent.isAgent else { return }
-        guard item.status != .running else {
-            lastError = "\(issue.identifier) is attached; \(item.session.name) is working, so tell it when it is idle."
-            return
-        }
         let text = Intake.attachMessage(key: issue.identifier, title: issue.shortTitle, url: issue.url.isEmpty ? nil : issue.url,
                                         project: project ?? item.session.workstream)
+        // A working agent is never interrupted: the message waits and goes in as soon as it is at its prompt.
+        guard Session.canDeliver(item.status) else {
+            if let fresh = self.item(item.id) { update(fresh) { $0.pendingMessages.append(text) } }
+            return
+        }
         let r = runtime
         DispatchQueue.global().async { try? r.submit(agent, text: text) }
     }
@@ -263,6 +264,20 @@ extension AppModel {
                     self.update(item) { $0.reviewedTickets += found.map(\.0.key) }
                 }
             }
+        }
+    }
+}
+
+extension AppModel {
+    /// Every 3 s: send each live session's waiting messages once its agent is at its prompt (LAB-474), as one message.
+    func deliverPendingMessages() {
+        for item in items where !item.session.pendingMessages.isEmpty {
+            guard let agent = item.liveAgent else { continue }
+            guard Session.canDeliver(item.status) else { continue }
+            let text = item.session.pendingMessages.joined(separator: "\n\n")
+            update(item) { $0.pendingMessages = [] }
+            let r = runtime
+            DispatchQueue.global().async { try? r.submit(agent, text: text) }
         }
     }
 }

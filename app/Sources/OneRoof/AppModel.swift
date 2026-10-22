@@ -194,7 +194,7 @@ final class AppModel: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.queue.async { self?.poll() }
             ticks += 1
-            if ticks % 3 == 0 { self?.tickObjectives() }
+            if ticks % 3 == 0 { self?.tickObjectives(); self?.deliverPendingMessages() }
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }

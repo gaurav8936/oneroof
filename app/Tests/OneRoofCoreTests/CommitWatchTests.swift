@@ -54,4 +54,17 @@ final class CommitWatchTests: XCTestCase {
         let c = CommitWatch.parseLog(out, repo: "/r")
         XCTAssertEqual(c, [.init(sha: "abc1234", subject: "LAB-474 · [x] a · b", time: t0.addingTimeInterval(600), repo: "/r")])
     }
+
+    func test_waitingMessagesGoInOnlyAtThePromptAndSurviveSave() throws {
+        XCTAssertTrue(Session.canDeliver(.idle))
+        XCTAssertTrue(Session.canDeliver(.done))
+        XCTAssertFalse(Session.canDeliver(.running))
+        XCTAssertFalse(Session.canDeliver(.needsYou))
+        var s = session()
+        s.pendingMessages = ["This session now also works on LAB-289"]
+        s.reviewedTickets = ["LAB-472"]
+        let back = try JSONDecoder().decode(Session.self, from: JSONEncoder().encode(s))
+        XCTAssertEqual(back.pendingMessages, s.pendingMessages)
+        XCTAssertEqual(back.reviewedTickets, ["LAB-472"])
+    }
 }

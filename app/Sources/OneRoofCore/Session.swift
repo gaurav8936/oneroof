@@ -183,6 +183,9 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     /// Issue keys already moved to In Review for this session (on a commit naming them, on close or review), so the
     /// commit watch moves each one once (LAB-474).
     public var reviewedTickets: [String] = []
+    /// Messages for the agent that arrived while it was working (an issue added mid-turn, LAB-474): sent together the
+    /// next time it is at its prompt, never mid-turn. Saved, so an app restart does not drop them.
+    public var pendingMessages: [String] = []
     /// The repo the session was last seen working in (learnt from its agent's hooks or its terminal's folder); sessions
     /// start at the workspace root, so this is what "Group by repo" uses.
     public var lastRepo: String?
@@ -254,7 +257,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
-             moreTickets, reviewedTickets, lastRepo
+             moreTickets, reviewedTickets, pendingMessages, lastRepo
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -289,8 +292,12 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         ticketTeam = try c.decodeIfPresent(String.self, forKey: .ticketTeam)
         moreTickets = try c.decodeIfPresent([SessionIssue].self, forKey: .moreTickets) ?? []
         reviewedTickets = try c.decodeIfPresent([String].self, forKey: .reviewedTickets) ?? []
+        pendingMessages = try c.decodeIfPresent([String].self, forKey: .pendingMessages) ?? []
         lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
     }
+
+    /// A waiting message can go in now: the agent is at its prompt (not working, not on a permission question).
+    public static func canDeliver(_ status: SessionStatus) -> Bool { status == .idle || status == .done }
 
     /// Every issue this session works on, the first one first (LAB-474).
     public var allTickets: [SessionIssue] {

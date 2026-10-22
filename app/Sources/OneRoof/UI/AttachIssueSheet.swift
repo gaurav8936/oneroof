@@ -72,7 +72,7 @@ struct AttachIssueSheet: View {
                     }
                 }
                 if live.liveAgent != nil && live.session.agent.isAgent {
-                    Toggle(live.status == .running ? "Tell the agent (it is working; you will be reminded instead)" : "Tell the agent now",
+                    Toggle(Session.canDeliver(live.status) ? "Tell the agent now" : "Tell the agent (it is busy; sent as soon as it is at its prompt)",
                            isOn: $tellAgent).ui(12.5)
                 }
                 if live.session.ticket != nil {
