@@ -668,7 +668,7 @@ final class AppModel: ObservableObject {
     /// Send a review comment to the repo's agent when it is between turns. Returns a line for the panel.
     func sendReview(_ text: String, repo: String) -> String {
         guard let target = reviewTarget(repo: repo), let agent = target.liveAgent else { return "No live agent session in this repo." }
-        guard target.status != .running else { return "\(target.session.name) is working; send when it is idle." }
+        if let no = target.status.typingRefusal(name: target.session.name) { return no }
         let r = runtime
         DispatchQueue.global().async { try? r.submit(agent, text: text) }
         return "Comment sent to \(target.session.name)."
