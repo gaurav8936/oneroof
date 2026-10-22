@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 — roofd memory fix (21 Oct 2026)
 
 - **roofd no longer eats the Mac's memory.** Each session's process kept every answer it gave the app, so a session
   open for a day grew to several GB and macOS froze. It now stays at a few MB, and as a safety net a session that
