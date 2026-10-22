@@ -1,8 +1,9 @@
 import SwiftUI
 import OneRoofCore
 
-/// Attach an issue to an existing session (LAB-474): an open issue of a project, or a new one created in Linear, becomes
-/// the session's ticket; a live, idle agent is told about it. Reached from the session menu's "Issue…" button.
+/// Add an issue to an existing session (LAB-474): a session can resolve several, and more come in while it runs. An open
+/// issue of a project, or a new one created in Linear, joins the session's issues; a live, idle agent is told about it.
+/// Reached from the session menu ("Issue…" / "Add issue…"), right-click, and the Plan panel's Ticket tab.
 struct AttachIssueSheet: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -23,7 +24,9 @@ struct AttachIssueSheet: View {
     private var project: LinearWorkstream? { model.workstreams.first { $0.id == wsId } }
     private var openIssues: [LinearIssue] {
         guard let w = project else { return [] }
-        return (model.issues[w.id] ?? []).filter { $0.type != "commit" && !["completed", "canceled"].contains($0.stateType) }.reversed()
+        return (model.issues[w.id] ?? []).filter {
+            $0.type != "commit" && !["completed", "canceled"].contains($0.stateType) && !live.session.hasTicket($0.identifier)
+        }.reversed()
     }
     private var valid: Bool {
         guard linked, project != nil, !busy else { return false }
@@ -34,8 +37,8 @@ struct AttachIssueSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Attach an issue").ui(20, .semibold).foregroundStyle(t.text.color)
-                Text(live.session.name + (live.session.ticket.map { " · now on \($0)" } ?? "")).ui(13).foregroundStyle(t.text3.color).lineLimit(1)
+                Text(live.session.ticket == nil ? "Attach an issue" : "Add an issue").ui(20, .semibold).foregroundStyle(t.text.color)
+                Text(live.session.name + ((live.session.allTickets.isEmpty ? "" : " · on " + live.session.allTickets.map(\.key).joined(separator: ", ")))).ui(13).foregroundStyle(t.text3.color).lineLimit(1)
             }
             if !linked {
                 Text("Connect Linear in Settings to attach issues.").ui(13).foregroundStyle(t.needsText.color)
@@ -72,8 +75,9 @@ struct AttachIssueSheet: View {
                     Toggle(live.status == .running ? "Tell the agent (it is working; you will be reminded instead)" : "Tell the agent now",
                            isOn: $tellAgent).ui(12.5)
                 }
-                if let current = live.session.ticket {
-                    Text("\(current) stays in Linear; close and review will act on the new issue.").ui(11.5).foregroundStyle(t.text3.color)
+                if live.session.ticket != nil {
+                    Text("It joins the session's issues; closing or reviewing the session offers to move each one to In Review.")
+                        .ui(11.5).foregroundStyle(t.text3.color)
                 }
             }
             HStack(spacing: 10) {

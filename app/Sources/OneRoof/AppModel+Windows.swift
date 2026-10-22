@@ -127,7 +127,7 @@ extension AppModel {
         let q = w.filter.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return list }
         return list.filter { i in
-            [i.session.name, i.repoLabel, i.session.workstream ?? "", i.session.tags.joined(separator: " "), i.session.ticket ?? "",
+            [i.session.name, i.repoLabel, i.session.workstream ?? "", i.session.tags.joined(separator: " "), i.session.allTickets.map(\.key).joined(separator: " "),
              caption(for: i).text, i.session.agent.displayName, i.account ?? "", i.status.label]
                 .joined(separator: " ").lowercased().contains(q)
         }

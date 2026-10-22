@@ -739,7 +739,7 @@ final class AppModel: ObservableObject {
             if s.lifecycle != .doNotUse { s.lifecycle = .idle }
             self.save(s)
             self.selectedId = s.id
-            if !adopted, let id = s.ticketId, let team = s.ticketTeam { self.ticketStarted(id: id, team: team) }
+            if !adopted { for i in s.allTickets { if let id = i.id, let team = i.team { self.ticketStarted(id: id, team: team) } } }
             self.queue.async { self.poll() }
         }
     }

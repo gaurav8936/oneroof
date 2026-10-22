@@ -408,14 +408,36 @@ public enum Intake {
         return "This session now also works on \(key): \(title). \(read) when you reach a good stopping point; commit that work as `\(key)\(tag) …`."
     }
 
-    /// Link an issue to an existing session (LAB-474): the issue becomes the session's ticket (close and review act on
-    /// it); a session with no issue yet takes the "KEY · title" name, and one with no project takes the issue's.
-    public static func attach(_ issue: LinearIssue, team: String?, project: String?, to s: inout Session) {
-        if s.ticket == nil { s.name = sessionName(key: issue.identifier, title: s.name) }
-        s.ticket = issue.identifier
-        s.ticketId = issue.id
-        s.ticketTeam = team ?? s.ticketTeam
+    /// Add an issue to an existing session (LAB-474). A session can resolve several: the first becomes its ticket (and
+    /// "KEY · title" its name), later ones join `moreTickets`; one already on the session is left alone. A session with no
+    /// project takes the issue's. Returns false when the issue was already attached.
+    @discardableResult
+    public static func attach(_ issue: LinearIssue, team: String?, project: String?, to s: inout Session) -> Bool {
+        guard !s.hasTicket(issue.identifier) else { return false }
+        if s.ticket == nil {
+            s.name = sessionName(key: issue.identifier, title: s.name)
+            s.ticket = issue.identifier
+            s.ticketId = issue.id
+            s.ticketTeam = team ?? s.ticketTeam
+        } else {
+            s.moreTickets.append(SessionIssue(key: issue.identifier, id: issue.id, team: team ?? s.ticketTeam))
+        }
         if (s.workstream ?? "").isEmpty, let project, !project.isEmpty { s.workstream = project }
+        return true
+    }
+
+    /// Take an issue off a session (it stays in Linear). Removing the first one promotes the next (LAB-474).
+    public static func detach(_ key: String, from s: inout Session) {
+        if s.ticket?.caseInsensitiveCompare(key) == .orderedSame {
+            if s.moreTickets.isEmpty {
+                s.ticket = nil; s.ticketId = nil
+            } else {
+                let next = s.moreTickets.removeFirst()
+                s.ticket = next.key; s.ticketId = next.id; s.ticketTeam = next.team ?? s.ticketTeam
+            }
+        } else {
+            s.moreTickets.removeAll { $0.key.caseInsensitiveCompare(key) == .orderedSame }
+        }
     }
 
     /// A session on an issue is named after it, Linear's way: "KEY · title" (LAB-248).

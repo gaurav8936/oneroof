@@ -273,7 +273,7 @@ struct SessionContextMenu: View {
         Button(it.status == .doNotUse ? "Use Again" : "Do Not Use") { model.toggleSticker(it, "dnu") }
         Button(it.session.pinned ? "Unpin" : "Pin") { model.togglePin(it) }
         if it.status != .doNotUse {
-            Button(it.session.ticket == nil ? "Attach Issue…" : "Change Issue…") {
+            Button(it.session.ticket == nil ? "Attach Issue…" : "Add Issue…") {
                 win?.selectedId = it.id
                 DispatchQueue.main.async { NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil) }
             }
