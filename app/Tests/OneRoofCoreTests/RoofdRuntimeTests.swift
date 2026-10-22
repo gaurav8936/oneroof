@@ -48,6 +48,15 @@ final class RoofdRuntimeTests: XCTestCase {
         XCTAssertFalse(RoofdRuntime.appTestVariable("ONEROOF_ROOFD"))
     }
 
+    /// LAB-529: One Roof opened from a terminal inside a session carries that session's holder variables; a new session
+    /// must not inherit them (its agents called the other session's, older, roofd).
+    func testInheritedHolderVariablesAreDropped() {
+        for k in RoofdRuntime.holderVariables { setenv(k, "/old/\(k)", 1) }
+        defer { for k in RoofdRuntime.holderVariables { unsetenv(k) } }
+        let env = runtime().environment(LaunchSpec(id: "r", label: "r", cwd: "/p", agent: .claude))
+        for k in ["ONEROOF_SESSION", "ONEROOF_ROOFD", "ONEROOF_ROOFD_BIN"] { XCTAssertNil(env[k], k) }
+    }
+
     func testSessionsGetACertificateBundleUnlessOneIsSet() throws {
         var env: [String: String] = [:]
         RoofdRuntime.addCertificateDefault(&env, bundle: "/etc/hosts")

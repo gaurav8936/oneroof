@@ -242,6 +242,10 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
 
     /// LAB-255: a self-test run's own variables (ONEROOF_SELFTEST_*, ONEROOF_STORE, ONEROOF_BUNDLE_OUT) reached the
     /// sessions it started: an agent there that opened One Roof got a self-test app on a scratch store that quit.
+    /// LAB-529: what each session's holder sets for its own session. One Roof opened from a terminal inside a session
+    /// carries that session's values; passed on, they came first and won, so agents called that session's (older) roofd.
+    static let holderVariables = ["ONEROOF_SESSION", "ONEROOF_ROOFD", "ONEROOF_ROOFD_BIN"]
+
     static func appTestVariable(_ k: String) -> Bool {
         k.hasPrefix("ONEROOF_SELFTEST_") || k == "ONEROOF_STORE" || k == "ONEROOF_BUNDLE_OUT"
     }
@@ -257,7 +261,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     func environment(_ spec: LaunchSpec) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }
-        for k in ["GHOSTTY_BIN_DIR", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ROOFD_DIR", "ONEROOF_SESSION"] {
+        for k in ["GHOSTTY_BIN_DIR", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ROOFD_DIR"] + RoofdRuntime.holderVariables {
             env.removeValue(forKey: k)
         }
         // Markers of an agent session the app itself was started from (One Roof opened from a terminal inside Claude
