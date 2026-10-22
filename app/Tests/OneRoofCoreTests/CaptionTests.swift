@@ -59,9 +59,9 @@ final class CaptionHeuristicTests: XCTestCase {
             Case(name: "blocked claude edit", status: .needsYou, text: Fixture.claudeEditPrompt, expected: "Needs you · Do you want to make this edit to Feed.swift?"),
             Case(name: "blocked plain question", status: .needsYou, text: "⏺ Two options fit.\n\nWhich database should I use, Postgres or SQLite?", expected: "Needs you · Which database should I use, Postgres or SQLite?"),
             // Done
-            Case(name: "done claude", status: .done, text: "⏺ Bash(swift test)\n  ⎿  ok\n\n⏺ All 63 tests pass. The caption engine is ready for review.\n\n╭────╮\n│ >  │\n╰────╯\n  ? for shortcuts", expected: "Done · The caption engine is ready for review."),
-            Case(name: "done codex long", agent: .codex, status: .done, text: "• I rewrote the scheduler so that every session gets a fair turn even when one is very chatty and noisy.", expected: "Done · I rewrote the scheduler so that every session gets a fair t…"),
-            Case(name: "done silent", status: .done, text: "", expected: "Done"),
+            Case(name: "done claude", status: .done, text: "⏺ Bash(swift test)\n  ⎿  ok\n\n⏺ All 63 tests pass. The caption engine is ready for review.\n\n╭────╮\n│ >  │\n╰────╯\n  ? for shortcuts", expected: "Ready · The caption engine is ready for review."),
+            Case(name: "done codex long", agent: .codex, status: .done, text: "• I rewrote the scheduler so that every session gets a fair turn even when one is very chatty and noisy.", expected: "Ready · I rewrote the scheduler so that every session gets a fair t…"),
+            Case(name: "done silent", status: .done, text: "", expected: "Ready"),
             // Idle
             Case(name: "idle with command", status: .idle, text: "⏺ Bash(git status)\n  ⎿  clean", idleFor: 12 * 60, expected: "Idle 12m · last: git status"),
             Case(name: "idle no command", status: .idle, text: "", idleFor: 3 * 3600, expected: "Idle 3h"),
