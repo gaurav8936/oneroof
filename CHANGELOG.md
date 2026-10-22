@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.8 — the backlog batch (22 Oct 2026)
+
+- **Sessions list stays put** (LAB-515, LAB-490). Working, Ready and Idle are one **Active** group and chip (the row's
+  dot and caption still say which). Rows keep their place while agents work and rest, and a status moves a row to
+  another group only once it has held (2 s for Needs you, 6 s otherwise). Chips: All · Needs you · Active · Exited.
+- **Rename persists** (LAB-487). The plan panel wrote its own stale copy of every field back when you left a session,
+  undoing a rename made from the menu or popover. It now saves only the fields you edited there. **Notes › Save** says
+  Saved (with the time) or Unsaved changes (LAB-512).
+- **Ticket tab lists the issues a session works on** (LAB-511): keys in its name, opening message, notes and terminal
+  ("LAB-474", "bugs 298 and 460"), with their Linear title and state and one-click Attach.
+- **Artifacts tab is the session's own** (LAB-513): files its agent wrote or edited (kept after each turn), its plan,
+  handoffs it wrote, and screenshots it was given. The exited pane offers only a handoff written during the session
+  (LAB-510).
+- **Opening messages start with Where Are We** (LAB-491), anchored in the session's project and team.
+- **Toolbar toggles in panel order: Sessions · Files · Terminal · Plan** (LAB-522); Terminal is new. A toolbar
+  double-click no longer shrinks a window that fills the screen (LAB-520). The pane header is never cut off (LAB-521).
+- **Finder icons in the Files panel** (LAB-478).
+- **Dotted project codes** like LAB-ONEROOF-v0.50 are read whole; their commit tag drops the dot (LAB-519).
+- **Ask to fix** won't type into a working or waiting agent (LAB-284).
+- **roofd repairs its background item** when launchd's job is stuck after a dev → release switch (LAB-516). CI runs
+  roofd's tests again (LAB-283).
+
 ## 0.4.7 — pick issues in a panel (21 Oct 2026)
 
 - **Pick issues in a panel you can resize and read** (LAB-523). Issue ▾ in New session opens a **Pick issues** panel
