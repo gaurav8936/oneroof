@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Pick issues in a panel you can resize and read** (LAB-523). Issue ▾ in New session opens a **Pick issues** panel
+  beside the sheet instead of a fixed popover: a table with resizable columns (tick · order · key · title · state), the
+  picked issues first in pick order, state filters with counts (In Review last), a filter that also searches the
+  description, and a pane under the table that shows the selected issue in full before you add it. The panel remembers
+  its size.
+
 ## 0.4.6 — one session on several issues (21 Oct 2026)
 
 - **Start one session on several issues** (LAB-518). In New session, **Issue ▾** is now a checklist: tick several of the
