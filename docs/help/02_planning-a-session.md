@@ -27,7 +27,7 @@ When Linear is connected, the row under the title has three pickers: **Team ▾ 
 |---|---|
 | Team ▾ | Limits the Project list to that team's projects. |
 | Project ▾ | The project the session belongs to. Picking a project sets its team. |
-| Issue ▾ | A checklist of the project's open issues (active, to do, backlog). Tick one and the session works on it; tick several and one session works on all of them with a plan-first opening message ([several issues](04_work-and-tickets.md#start-a-session-on-several-issues-at-once)). **Clear** means a plain session. |
+| Issue ▾ | Opens the **Pick issues** panel: the project's open issues in a resizable table, with a pane to read each one in full. Tick one and the session works on it; tick several and one session works on all of them with a plan-first opening message ([several issues](04_work-and-tickets.md#start-a-session-on-several-issues-at-once)). **Clear** means a plain session. |
 
 - **Picking an issue** links the session to it, the same as **Plan a session for…** on a ticket. The opening message names the issue key (for example `ENG-42`) and how to name commits.
 - **What should happen** can be typed after picking an issue; the issue stays picked. Leave it empty and the session takes the issue's title.

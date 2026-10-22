@@ -107,6 +107,37 @@ extension Intake {
     }
 }
 
+extension Intake {
+    /// LAB-528: keep the issue part of an edited opening message in step with the picks. The owner's own words stay; the
+    /// generated block (the multi-issue list and steps, or the one-issue "Work on KEY …" line) is replaced with the one
+    /// for `issues`, appended when there is none, and removed when nothing is picked. Before, editing the message froze
+    /// it: a session picked on 20 issues was told about the first 3.
+    public static func syncIssueBlock(_ text: String, issues: [PickedIssue], project: String?) -> String {
+        let block = issues.count > 1 ? multiTicketOpening(issues, project: project)
+            : issues.first.map { ticketOpening(key: $0.key, title: $0.title, url: $0.url, project: project) } ?? ""
+        var lines = text.components(separatedBy: "\n")
+        var range: Range<Int>?
+        if let a = lines.firstIndex(where: { $0.hasPrefix("This session works on ") }),
+           let b = lines[a...].firstIndex(where: { $0.hasPrefix("Only these ") }) {
+            range = a..<(b + 1)
+        } else if let a = lines.firstIndex(where: { $0.hasPrefix("Work on ") && $0.contains("; commit as `") && !$0.contains(newIssueKey) }) {
+            range = a..<(a + 1)
+        }
+        if let r = range {
+            lines.replaceSubrange(r, with: block.isEmpty ? [] : block.components(separatedBy: "\n"))
+            // A removed block leaves one blank line between the words around it, not two.
+            if block.isEmpty, r.lowerBound > 0, r.lowerBound < lines.count,
+               lines[r.lowerBound - 1].trimmingCharacters(in: .whitespaces).isEmpty, lines[r.lowerBound].trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.remove(at: r.lowerBound)
+            }
+            return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard !block.isEmpty else { return text }
+        let mine = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return mine.isEmpty ? block : mine + "\n\n" + block
+    }
+}
+
 extension Session {
     /// Issues moved to In Progress when the session launches: its one issue. A session on several issues leaves them
     /// as they are; its agent moves each one when it starts on it (LAB-518).

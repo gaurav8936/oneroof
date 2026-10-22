@@ -50,6 +50,23 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertNil(Workspace.handoff(in: dir, project: nil, ticket: nil))
     }
 
+    /// LAB-250 hardening: whole id on both sides, any place in the name, every issue of the session, and which id matched.
+    func testHandoffMatchesWholeIdsAnywhereAndAnyIssue() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("handoffs-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        for f in ["2026-10-20_0900_xeng-24-x.txt", "2026-10-20_1000_eng-247_eng-24_both.txt", "2026-10-20_1100_eng-9-fix.txt"] {
+            FileManager.default.createFile(atPath: dir + "/" + f, contents: Data())
+        }
+        XCTAssertEqual(Workspace.handoff(in: dir, project: nil, ticket: "ENG-24"), dir + "/2026-10-20_1000_eng-247_eng-24_both.txt",
+                       "the second place it appears counts; xeng-24 does not")
+        try FileManager.default.removeItem(atPath: dir + "/2026-10-20_1000_eng-247_eng-24_both.txt")
+        XCTAssertNil(Workspace.handoff(in: dir, project: nil, ticket: "ENG-24"), "xeng-24 is not eng-24")
+        let m = Workspace.handoffMatch(in: dir, project: "ENG-ROOFD", tickets: ["ENG-1", "ENG-9"])
+        XCTAssertEqual(m?.path, dir + "/2026-10-20_1100_eng-9-fix.txt")
+        XCTAssertEqual(m?.key, "ENG-9", "the button names the issue whose handoff it is")
+    }
+
     func testTicketOpeningNamesTheIssueNotTheProject() {
         let o = Intake.ticketOpening(key: "ENG-247", title: "test03", url: "https://x/ENG-247", project: "ENG-ROOFD")
         XCTAssertTrue(o.hasPrefix("Work on ENG-247 in project ENG-ROOFD: test03."), o)

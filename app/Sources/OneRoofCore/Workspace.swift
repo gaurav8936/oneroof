@@ -146,20 +146,27 @@ public enum Workspace {
         return nil
     }
 
-    /// The newest handoff in `dir` written for this session (LAB-250): its file name names the session's ticket key or
-    /// project code ("…_lab-roofd-…", "…lab-247…"). Nil when none does — never some other project's handoff.
+    /// The newest handoff in `dir` written for this session (LAB-250): its file name names one of the session's ticket keys
+    /// or its project code ("…_lab-roofd-…", "…lab-247…"). Nil when none does — never some other project's handoff.
     public static func handoff(in dir: String, project: String?, ticket: String?) -> String? {
-        let keys = [ticket, project].compactMap { $0?.lowercased() }.filter { !$0.isEmpty }
+        handoffMatch(in: dir, project: project, tickets: [ticket].compactMap { $0 })?.path
+    }
+
+    /// The handoff and the id its name matched (shown on the button). Every issue of a session on several counts.
+    /// Whole id only, on both sides and at every place it appears: "lab-24" is not "lab-247" nor "xlab-24", and
+    /// "lab-247_lab-24_…" still names lab-24.
+    public static func handoffMatch(in dir: String, project: String?, tickets: [String]) -> (path: String, key: String)? {
+        let keys = (tickets + [project].compactMap { $0 }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard !keys.isEmpty else { return nil }
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
         func names(_ f: String, _ k: String) -> Bool {
-            let n = f.lowercased()
-            guard let r = n.range(of: k) else { return false }
-            // Whole id only: "lab-roofd" must not match "lab-roofd2", nor "lab-24" match "lab-247".
-            let after = n[r.upperBound...].first
-            return after.map { !$0.isLetter && !$0.isNumber } ?? true
+            let pattern = "(?<![a-z0-9])" + NSRegularExpression.escapedPattern(for: k.lowercased()) + "(?![a-z0-9])"
+            return f.lowercased().range(of: pattern, options: .regularExpression) != nil
         }
-        return files.last { f in keys.contains { names(f, $0) } }.map { dir + "/" + $0 }
+        for f in files.reversed() {
+            if let k = keys.first(where: { names(f, $0) }) { return (dir + "/" + f, k) }
+        }
+        return nil
     }
 
     /// A Linear project's code: the part of "CODE · title" before the dot when it is one id, else any id in the name.

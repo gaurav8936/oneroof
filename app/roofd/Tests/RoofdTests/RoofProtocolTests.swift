@@ -164,6 +164,21 @@ final class RoofProtocolTests: XCTestCase {
         XCTAssertTrue(text.contains("SIZE 40 120"), text)
     }
 
+    /// LAB-529: a session created with another session's ONEROOF_* values (One Roof opened from inside a session) sees
+    /// its own: the holder replaces them instead of listing a second copy after the inherited one.
+    func testHolderVariablesReplaceInheritedOnes() throws {
+        _ = try call("create", ["id": "own", "cwd": "/tmp",
+                                "env": ["PATH": "/usr/bin:/bin", "ONEROOF_ROOFD_BIN": "/old/roofd", "ONEROOF_SESSION": "roof-old",
+                                        "ONEROOF_ROOFD": "/old/roofd.sock"],
+                                "argv": ["/bin/sh", "-c", "env | grep '^ONEROOF_' | sort | sed 's/^/E /'; sleep 20"]])
+        usleep(800_000)
+        let text = try call("read", ["id": "own", "lines": 10])["text"] as? String ?? ""
+        XCTAssertTrue(text.contains("E ONEROOF_SESSION=own"), text)
+        XCTAssertTrue(text.contains("E ONEROOF_ROOFD=\(Paths.control)"), text)
+        XCTAssertFalse(text.contains("/old/"), text)
+        XCTAssertEqual(text.components(separatedBy: "E ONEROOF_ROOFD_BIN=").count, 2, "exactly one copy: \(text)")
+    }
+
     /// Nobody attached: the holder answers a CLI's query batch in the order it was sent.
     func testDetachedQueriesAreAnsweredInOrder() throws {
         let script = "/tmp/roofd-q-\(UUID().uuidString.prefix(6)).py"

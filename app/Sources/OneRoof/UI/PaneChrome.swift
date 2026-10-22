@@ -435,8 +435,8 @@ struct PanePlaceholder: View {
                     HStack {
                         RoofButton("Relaunch", .primary) { model.launch(item) }
                         // Only this session's own handoff, named for what it is (LAB-250); none → no button.
-                        if let h = model.handoffPath(for: item) {
-                            RoofButton("Open \(item.session.workstream ?? item.session.ticket ?? "") handoff") { model.openInViewer(h) }
+                        if let h = model.handoffMatch(for: item) {
+                            RoofButton("Open \(h.key) handoff") { model.openInViewer(h.path) }
                         }
                     }
                 } else if item.status == .doNotUse {
@@ -536,10 +536,11 @@ struct SubagentCard: View {
 }
 
 extension AppModel {
-    /// Exited placeholder › Open … handoff: the newest handoff naming the session's ticket or project, else none.
-    func handoffPath(for item: BoardItem) -> String? {
-        Workspace.handoff(in: settings.sharedFolder + "/docs/next-session-handoff",
-                          project: item.session.workstream, ticket: item.session.ticket)
+    /// Exited placeholder › Open … handoff: the newest handoff naming one of the session's issues or its project, and the
+    /// id it named (the button says which), else none.
+    func handoffMatch(for item: BoardItem) -> (path: String, key: String)? {
+        Workspace.handoffMatch(in: settings.sharedFolder + "/docs/next-session-handoff",
+                               project: item.session.workstream, tickets: item.session.allTickets.map(\.key))
     }
 }
 
