@@ -155,10 +155,13 @@ public enum Workspace {
     /// The handoff and the id its name matched (shown on the button). Every issue of a session on several counts.
     /// Whole id only, on both sides and at every place it appears: "lab-24" is not "lab-247" nor "xlab-24", and
     /// "lab-247_lab-24_…" still names lab-24.
-    public static func handoffMatch(in dir: String, project: String?, tickets: [String]) -> (path: String, key: String)? {
+    /// LAB-510: with `since` (the session's launch), only a handoff written during the session counts: the one it left
+    /// when it ended, not an older one about the same project that it started from.
+    public static func handoffMatch(in dir: String, project: String?, tickets: [String], since: Date? = nil) -> (path: String, key: String)? {
         let keys = (tickets + [project].compactMap { $0 }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard !keys.isEmpty else { return nil }
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+            .filter { f in since.map { writtenSince(dir + "/" + f, $0) } ?? true }
         func names(_ f: String, _ k: String) -> Bool {
             let pattern = "(?<![a-z0-9])" + NSRegularExpression.escapedPattern(for: k.lowercased()) + "(?![a-z0-9])"
             return f.lowercased().range(of: pattern, options: .regularExpression) != nil
@@ -167,6 +170,12 @@ public enum Workspace {
             if let k = keys.first(where: { names(f, $0) }) { return (dir + "/" + f, k) }
         }
         return nil
+    }
+
+    /// Modified at or after `date` (a minute's slack for clocks and coarse timestamps).
+    public static func writtenSince(_ path: String, _ date: Date) -> Bool {
+        guard let m = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date else { return false }
+        return m >= date.addingTimeInterval(-60)
     }
 
     /// A Linear project's code: the part of "CODE · title" before the dot when it is one id, else any id in the name.
