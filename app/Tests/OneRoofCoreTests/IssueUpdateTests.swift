@@ -94,6 +94,23 @@ final class IssueUpdateTests: XCTestCase {
         XCTAssertEqual(Intake.syncIssueBlock(placeholder, issues: [], project: "LAB-X"), placeholder, "a new issue's placeholder line stays for LAB-248")
     }
 
+    /// LAB-491: openings start with Where Are We, anchored in the team and project; never twice, never on nothing.
+    func testOpeningIsAnchoredOnce() {
+        let a = Intake.anchored("Work on LAB-1.", team: "LAB", project: "LAB-ONEROOF-BUGS")
+        XCTAssertTrue(a.hasPrefix("Invoke the \"Where Are We\" skill from agentic engineering (no transcript needed). Anchor yourself in project LAB-ONEROOF-BUGS (team LAB) and do not switch to another team in this session."), a)
+        XCTAssertTrue(a.hasSuffix("this is what I would like you to do next:\n\nWork on LAB-1."))
+        XCTAssertEqual(Intake.anchored(a, team: "LAB", project: "LAB-ONEROOF-BUGS"), a, "not twice")
+        XCTAssertEqual(Intake.anchored("I want you to invoke where are we first.", team: "LAB", project: nil), "I want you to invoke where are we first.")
+        XCTAssertEqual(Intake.anchored("", team: "LAB", project: nil), "")
+        XCTAssertTrue(Intake.anchored("x", team: nil, project: nil).contains("Anchor yourself in this repo. Once"))
+        // The issue block still follows the picks under the anchor (LAB-528).
+        let picks = [PickedIssue(key: "LAB-1", title: "A", state: "Todo"), PickedIssue(key: "LAB-2", title: "B", state: "Todo")]
+        let opening = Intake.anchored(Intake.multiTicketOpening(picks, project: "P-X"), team: "P", project: "P-X")
+        let synced = Intake.syncIssueBlock(opening, issues: picks + [PickedIssue(key: "LAB-3", title: "C", state: "Todo")], project: "P-X")
+        XCTAssertTrue(synced.hasPrefix("Invoke the \"Where Are We\""))
+        XCTAssertTrue(synced.contains("This session works on 3 issues"))
+    }
+
     func testOnlyASingleIssueSessionStartsItsIssueOnLaunch() {
         XCTAssertEqual(session(["LAB-1"]).ticketsToStartOnLaunch.map(\.key), ["LAB-1"])
         XCTAssertEqual(session(["LAB-1", "LAB-2"]).ticketsToStartOnLaunch, [], "the agent moves each when it starts on it")

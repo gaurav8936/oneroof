@@ -246,6 +246,8 @@ struct NewSessionSheet: View {
     }
 
     private var currentTeam: LinearTeamRef? { model.linearTeams.first { $0.key == teamKey } }
+    /// The team the opening message anchors the agent in (LAB-491): the project's team, else the picked one.
+    private var openingTeam: String? { currentWorkstream.flatMap { $0.team.isEmpty ? nil : $0.team } ?? (teamKey.isEmpty ? nil : teamKey) }
 
     /// Team first (LAB-237): a ticket or project always has one; a plain session may have none.
     private var teamPicker: some View {
@@ -802,6 +804,7 @@ struct NewSessionSheet: View {
         } else {
             opening = title
         }
+        opening = Intake.anchored(opening, team: openingTeam, project: currentWorkstream?.wsId)
         DispatchQueue.main.async { openingTouched = false }
     }
 
@@ -851,11 +854,12 @@ struct NewSessionSheet: View {
             let several = ticket != nil && ticket?.id == useTicket?.id && !moreTickets.isEmpty
             if several {
                 opening = openingTouched ? Intake.syncIssueBlock(opening, issues: picked, project: w?.wsId)
-                    : Intake.multiTicketOpening(picked, project: w?.wsId)
+                    : Intake.anchored(Intake.multiTicketOpening(picked, project: w?.wsId), team: openingTeam, project: w?.wsId)
             } else if let tk = ticket {
                 if !openingTouched || opening.contains(Intake.newIssueKey) {
                     opening = openingTouched ? opening.replacingOccurrences(of: Intake.newIssueKey, with: tk.identifier)
-                        : Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url.isEmpty ? nil : tk.url, project: w?.wsId)
+                        : Intake.anchored(Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url.isEmpty ? nil : tk.url, project: w?.wsId),
+                                          team: openingTeam, project: w?.wsId)
                 }
             }
             let sessionName = several ? Intake.sessionName(keys: pickedIssues.map(\.identifier), title: typed)

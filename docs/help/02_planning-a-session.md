@@ -30,6 +30,7 @@ When Linear is connected, the row under the title has three pickers: **Team ▾ 
 | Issue ▾ | Opens the **Pick issues** panel: the project's open issues in a resizable table, with a pane to read each one in full. Tick one and the session works on it; tick several and one session works on all of them with a plan-first opening message ([several issues](04_work-and-tickets.md#start-a-session-on-several-issues-at-once)). **Clear** means a plain session. |
 
 - **Picking an issue** links the session to it, the same as **Plan a session for…** on a ticket. The opening message names the issue key (for example `ENG-42`) and how to name commits.
+- **Every opening message starts by orienting the agent:** it asks it to run the Where Are We skill (no transcript), anchor itself in the session's project and team, and not switch teams, then says what to do next. If your own message already asks for Where Are We, it is left as you wrote it.
 - **What should happen** can be typed after picking an issue; the issue stays picked. Leave it empty and the session takes the issue's title.
 - The last team and project you used are remembered.
 

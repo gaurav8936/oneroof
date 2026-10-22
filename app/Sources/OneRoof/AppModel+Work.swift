@@ -57,7 +57,8 @@ extension AppModel {
         let s = Session(name: Intake.sessionName(key: issue.identifier, title: issue.shortTitle), agent: agent, account: d.account, repoPath: repo,
                         workstream: w.wsId,
                         objective: issue.shortTitle + (issue.description.isEmpty ? "" : "\n\n" + String(issue.description.prefix(600))),
-                        openingMessage: Intake.ticketOpening(key: issue.identifier, title: issue.shortTitle, url: issue.url, project: w.wsId),
+                        openingMessage: Intake.anchored(Intake.ticketOpening(key: issue.identifier, title: issue.shortTitle, url: issue.url, project: w.wsId),
+                                                        team: w.team, project: w.wsId),
                         lifecycle: .next, model: d.model.isEmpty ? nil : d.model,
                         ticket: issue.identifier, ticketId: issue.id, ticketTeam: w.team)
         createPlanned(s, launchNow: false)
