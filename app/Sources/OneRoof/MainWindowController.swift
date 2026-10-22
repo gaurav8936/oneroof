@@ -140,6 +140,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         if model.activeWindowId != win.id { model.activeWindowId = win.id }
     }
 
+    /// LAB-520: a double-click on empty toolbar space is a title-bar double-click, and macOS zooms the window. A window
+    /// already stretched to fill the screen then "zooms" back to its last smaller size, so a stray double-click between the
+    /// toolbar tabs shrank the window. Such a double-click never makes the window smaller; Window › Zoom still toggles.
+    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
+        WindowZoom.allow(current: window.frame, to: newFrame, visible: window.screen?.visibleFrame,
+                         fromTitleBarDoubleClick: Self.isTitleBarDoubleClick(NSApp.currentEvent, in: window))
+    }
+
+    static func isTitleBarDoubleClick(_ e: NSEvent?, in window: NSWindow) -> Bool {
+        guard let e, e.window === window, [.leftMouseDown, .leftMouseUp].contains(e.type), e.clickCount >= 2 else { return false }
+        return true
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         WindowCloseGuard.shared.shouldClose(sender, what: "the window \u{201C}\(win.name)\u{201D}",
             detail: "Its sessions keep running in roofd. Reopen the window from Window \u{25B8} Workspaces.")
