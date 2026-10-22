@@ -180,6 +180,9 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var ticketTeam: String?
     /// More issues the same session works on, attached after it started (LAB-474); `ticket` stays the first one.
     public var moreTickets: [SessionIssue] = []
+    /// Issue keys already moved to In Review for this session (on a commit naming them, on close or review), so the
+    /// commit watch moves each one once (LAB-474).
+    public var reviewedTickets: [String] = []
     /// The repo the session was last seen working in (learnt from its agent's hooks or its terminal's folder); sessions
     /// start at the workspace root, so this is what "Group by repo" uses.
     public var lastRepo: String?
@@ -251,7 +254,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
-             moreTickets, lastRepo
+             moreTickets, reviewedTickets, lastRepo
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -285,6 +288,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         ticketId = try c.decodeIfPresent(String.self, forKey: .ticketId)
         ticketTeam = try c.decodeIfPresent(String.self, forKey: .ticketTeam)
         moreTickets = try c.decodeIfPresent([SessionIssue].self, forKey: .moreTickets) ?? []
+        reviewedTickets = try c.decodeIfPresent([String].self, forKey: .reviewedTickets) ?? []
         lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
     }
 
