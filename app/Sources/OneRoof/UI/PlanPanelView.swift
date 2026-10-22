@@ -427,40 +427,43 @@ struct PlanDetail: View {
 
     // MARK: Artifacts tab
 
-    private var artifacts: [String] {
+    /// This session's own artifacts (LAB-513): files it wrote, its plan, handoffs naming its project or issues, and the
+    /// screenshots given to it.
+    private var artifacts: [SessionArtifacts.Item] {
         let s = live.session
-        var out: [String] = []
-        if let o = model.objectives.first(where: { $0.stepSessions.values.contains(s.id) }) {
-            let p = o.planPath(common: model.settings.sharedFolder)
-            if FileManager.default.fileExists(atPath: p) { out.append(p) }
-        }
-        // Newest handoffs that name this session's workstream.
-        if let ws = s.workstream?.lowercased() {
-            let dir = model.settings.sharedFolder + "/docs/next-session-handoff"
-            let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-            out += files.filter { $0.lowercased().contains(ws) }.sorted().suffix(3).reversed().map { dir + "/" + $0 }
-        }
-        return out
+        let plan = model.objectives.first(where: { $0.stepSessions.values.contains(s.id) })?.planPath(common: model.settings.sharedFolder)
+        return SessionArtifacts.list(s, plan: plan, handoffDir: model.settings.sharedFolder + "/docs/next-session-handoff")
     }
 
     @ViewBuilder private var artifactsTab: some View {
-        if artifacts.isEmpty {
-            Text("No artifacts yet. Plan files, handoffs and screenshots for this session show here.").ui(12.5).foregroundStyle(t.text2.color)
+        let all = artifacts
+        Text("What this session made or was given: files its agent wrote or edited, its plan, handoffs that name its project or issues, and screenshots in its opening message.")
+            .ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+        if all.isEmpty {
+            Text("Nothing yet. Files show here as the agent edits them.").ui(12.5).foregroundStyle(t.text3.color)
         }
-        ForEach(artifacts, id: \.self) { p in
-            Button { model.openInViewer(p) } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: p.hasSuffix(".png") ? "photo" : "doc.text").foregroundStyle(t.text2.color)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text((p as NSString).lastPathComponent).ui(12.5, .medium).foregroundStyle(t.text.color).lineLimit(1)
-                        Text(((p as NSString).deletingLastPathComponent as NSString).abbreviatingWithTildeInPath).ui(11).foregroundStyle(t.text3.color).lineLimit(1)
-                    }
-                    Spacer()
+        ForEach([SessionArtifacts.Kind.written, .plan, .handoff, .screenshot], id: \.self) { kind in
+            let group = all.filter { $0.kind == kind }
+            if !group.isEmpty {
+                Text("\(kind.rawValue) · \(group.count)").ui(11.5, .semibold).foregroundStyle(t.text3.color).padding(.top, 4)
+                ForEach(group, id: \.path) { a in artifactRow(a.path) }
+            }
+        }
+    }
+
+    private func artifactRow(_ p: String) -> some View {
+        Button { model.openInViewer(p) } label: {
+            HStack(spacing: 8) {
+                Image(nsImage: FileIcons.icon(for: p, size: 16)).resizable().frame(width: 16, height: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text((p as NSString).lastPathComponent).ui(12.5, .medium).foregroundStyle(t.text.color).lineLimit(1)
+                    Text(((p as NSString).deletingLastPathComponent as NSString).abbreviatingWithTildeInPath).ui(11).foregroundStyle(t.text3.color).lineLimit(1)
                 }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.card.color))
-            }.buttonStyle(.plain)
-        }
+                Spacer()
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.card.color))
+        }.buttonStyle(.plain).help(p)
     }
 
     // MARK: Fields
