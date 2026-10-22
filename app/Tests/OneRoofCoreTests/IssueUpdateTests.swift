@@ -66,6 +66,34 @@ final class IssueUpdateTests: XCTestCase {
         XCTAssertTrue(o.contains("Done stays with me"))
     }
 
+    /// LAB-528: the owner wrote above the list after picking 3, then picked 17 more; the message still named 3.
+    func testEditedOpeningKeepsTheOwnersWordsAndFollowsThePicks() {
+        let three = (1...3).map { PickedIssue(key: "LAB-\($0)", title: "Fix \($0)", state: "Backlog") }
+        let twenty = (1...20).map { PickedIssue(key: "LAB-\($0)", title: "Fix \($0)", state: "Backlog") }
+        let edited = "Invoke where are we first.\n\n" + Intake.multiTicketOpening(three, project: "LAB-X") + "\n\nNOTE: also LAB-99"
+        let synced = Intake.syncIssueBlock(edited, issues: twenty, project: "LAB-X")
+        XCTAssertTrue(synced.hasPrefix("Invoke where are we first.\n\nThis session works on 20 issues in project LAB-X:"), synced)
+        XCTAssertTrue(synced.contains("- LAB-20: Fix 20 (Backlog)"))
+        XCTAssertTrue(synced.contains("Only these 20 issues can be updated"))
+        XCTAssertFalse(synced.contains("3 issues"))
+        XCTAssertTrue(synced.hasSuffix("NOTE: also LAB-99"), "words after the list stay too")
+        XCTAssertEqual(synced.components(separatedBy: "This session works on").count, 2, "one list, not two")
+
+        let one = Intake.syncIssueBlock(synced, issues: [three[0]], project: "LAB-X")
+        XCTAssertTrue(one.contains("Work on LAB-1 in project LAB-X: Fix 1."), one)
+        XCTAssertFalse(one.contains("This session works on"))
+        XCTAssertEqual(Intake.syncIssueBlock(one, issues: [], project: "LAB-X"), "Invoke where are we first.\n\nNOTE: also LAB-99")
+    }
+
+    func testOwnWordsOnlyGetTheListAppended() {
+        let picks = [PickedIssue(key: "LAB-1", title: "A", state: "Todo"), PickedIssue(key: "LAB-2", title: "B", state: "Todo")]
+        let s = Intake.syncIssueBlock("Please be careful.", issues: picks, project: nil)
+        XCTAssertTrue(s.hasPrefix("Please be careful.\n\nThis session works on 2 issues:"), s)
+        XCTAssertEqual(Intake.syncIssueBlock("Please be careful.", issues: [], project: nil), "Please be careful.")
+        let placeholder = Intake.ticketOpening(key: Intake.newIssueKey, title: "t", project: "LAB-X")
+        XCTAssertEqual(Intake.syncIssueBlock(placeholder, issues: [], project: "LAB-X"), placeholder, "a new issue's placeholder line stays for LAB-248")
+    }
+
     func testOnlyASingleIssueSessionStartsItsIssueOnLaunch() {
         XCTAssertEqual(session(["LAB-1"]).ticketsToStartOnLaunch.map(\.key), ["LAB-1"])
         XCTAssertEqual(session(["LAB-1", "LAB-2"]).ticketsToStartOnLaunch, [], "the agent moves each when it starts on it")
