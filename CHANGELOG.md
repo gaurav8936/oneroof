@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Resources names every session correctly** (LAB-517). A session whose agent had finished while its terminal stayed
+  open showed under Other as `roof-…`, "not a One Roof row". It now stays in its window under its own name (status
+  Exited), and its Resources tab in the plan panel shows the memory that terminal still holds.
+
 ## 0.4.4 — Resources: what One Roof uses (21 Oct 2026)
 
 - **Resources: see what One Roof itself uses** (LAB-493). View › Resources (⇧⌘U, or Resources in the toolbar) shows

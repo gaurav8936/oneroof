@@ -475,6 +475,30 @@ public enum ResourceBoard {
         if !other.isEmpty { out.append(ResourceWindowGroup(id: otherId, name: "Other", rows: ordered(other))) }
         return out
     }
+
+    /// Running sessions as rows. Each board row claims the roofd session it owns (`resourceKey`) and sits in the
+    /// window `window` gives it (nil = Other); roofd sessions no row claims go to Other under `title` or their id.
+    public static func rows(items: [BoardItem], sessions: [RuntimeID: SessionUsage],
+                            window: (BoardItem) -> String?, title: (RuntimeID) -> String?) -> [ResourceRow] {
+        var out: [ResourceRow] = []
+        var claimed = Set<RuntimeID>()
+        for i in items {
+            guard let rid = i.resourceKey, !claimed.contains(rid), let u = sessions[rid] else { continue }
+            claimed.insert(rid)
+            out.append(ResourceRow(id: i.id, name: i.session.name, windowId: window(i), usage: u))
+        }
+        for (rid, u) in sessions where !claimed.contains(rid) {
+            let t = title(rid) ?? ""
+            out.append(ResourceRow(id: "runtime:" + rid, name: t.isEmpty ? rid : t, windowId: nil, usage: u))
+        }
+        return out
+    }
+}
+
+extension BoardItem {
+    /// The roofd session this row owns for Resources: its live agent or, once the agent has exited while its shell
+    /// lives on (LAB-517), the session's own runtime id. That shell still holds memory, and it is still this session.
+    public var resourceKey: RuntimeID? { liveAgent ?? session.runtimeId }
 }
 
 // MARK: Formatting

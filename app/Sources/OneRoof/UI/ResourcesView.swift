@@ -57,20 +57,11 @@ struct ResourcesView: View {
     /// window → Other), and sessions roofd runs that no row claims → Other.
     private func rows(_ snap: ResourceSnapshot) -> [ResourceRow] {
         let open = Set(model.windows.map(\.id))
-        var out: [ResourceRow] = []
-        var claimed = Set<String>()
-        for i in model.items {
-            guard let rid = i.liveAgent, let u = snap.sessions[rid] else { continue }
-            claimed.insert(rid)
-            let assigned = model.sessionWorkspace[i.id]
-            let w = assigned == nil ? model.windows.first?.id : (open.contains(assigned!) ? assigned : nil)
-            out.append(ResourceRow(id: i.id, name: i.session.name, windowId: w, usage: u))
-        }
         let live = model.lastSnapshotSessions
-        for (rid, u) in snap.sessions where !claimed.contains(rid) {
-            out.append(ResourceRow(id: "runtime:" + rid, name: live[rid]?.title ?? rid, windowId: nil, usage: u))
-        }
-        return out
+        return ResourceBoard.rows(items: model.items, sessions: snap.sessions, window: { i in
+            let assigned = model.sessionWorkspace[i.id]
+            return assigned == nil ? model.windows.first?.id : (open.contains(assigned!) ? assigned : nil)
+        }, title: { live[$0]?.title })
     }
 
     // MARK: Summary strip
