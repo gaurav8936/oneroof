@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.5 — Resources names every session (21 Oct 2026)
 
 - **Resources names every session correctly** (LAB-517). A session whose agent had finished while its terminal stayed
   open showed under Other as `roof-…`, "not a One Roof row". It now stays in its window under its own name (status
