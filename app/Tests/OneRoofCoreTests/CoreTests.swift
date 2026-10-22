@@ -74,6 +74,24 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(m?.key, "ENG-9", "the button names the issue whose handoff it is")
     }
 
+    /// LAB-510: only a handoff written during the session (after launch) is offered on its exited pane.
+    func testHandoffMustBeWrittenDuringTheSession() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("handoffs-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let old = dir + "/2026-10-20_eng-roofd_old.txt", new = dir + "/2026-10-21_eng-roofd_new.txt"
+        FileManager.default.createFile(atPath: old, contents: Data())
+        FileManager.default.createFile(atPath: new, contents: Data())
+        let launch = Date()
+        try FileManager.default.setAttributes([.modificationDate: launch.addingTimeInterval(-3600)], ofItemAtPath: old)
+        try FileManager.default.setAttributes([.modificationDate: launch.addingTimeInterval(-7200)], ofItemAtPath: new)
+        XCTAssertNil(Workspace.handoffMatch(in: dir, project: "ENG-ROOFD", tickets: [], since: launch), "both predate the session")
+        try FileManager.default.setAttributes([.modificationDate: launch.addingTimeInterval(600)], ofItemAtPath: old)
+        XCTAssertEqual(Workspace.handoffMatch(in: dir, project: "ENG-ROOFD", tickets: [], since: launch)?.path, old,
+                       "the one written during the session, whatever its name sorts as")
+        XCTAssertEqual(Workspace.handoffMatch(in: dir, project: "ENG-ROOFD", tickets: [])?.path, new, "no launch time: newest by name")
+    }
+
     func testTicketOpeningNamesTheIssueNotTheProject() {
         let o = Intake.ticketOpening(key: "ENG-247", title: "test03", url: "https://x/ENG-247", project: "ENG-ROOFD")
         XCTAssertTrue(o.hasPrefix("Work on ENG-247 in project ENG-ROOFD: test03."), o)
