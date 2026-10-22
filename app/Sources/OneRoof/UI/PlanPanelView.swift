@@ -92,6 +92,9 @@ struct PlanDetail: View {
     @State private var addingSticker = false
     @State private var loaded = false
     @State private var showMore = false
+    /// The session's fields as last loaded or saved; Save writes only what differs from it (LAB-487).
+    @State private var base: SessionEdits?
+    @State private var savedAt: Date?
 
     static var tabs: [String: PlanTab] = [:]
 
@@ -124,6 +127,8 @@ struct PlanDetail: View {
         }
         .onDisappear(perform: commit)
         .onChange(of: tab) { _, v in Self.tabs[item.id] = v }
+        // Changed elsewhere (Rename…, the popover, an agent): show it in every field the owner is not editing here.
+        .onChange(of: live.session) { _, s in rebase(onto: s) }
     }
 
     // MARK: Tabs
@@ -363,7 +368,7 @@ struct PlanDetail: View {
     @ViewBuilder private var notesTab: some View {
         field("Notes") { editor($notes, minHeight: 240) }
         HStack {
-            RoofButton("Save", .primary) { commit() }.keyboardShortcut("s", modifiers: .command)
+            RoofButton("Save", .primary) { commit(explicit: true) }.keyboardShortcut("s", modifiers: .command)
             Spacer()
         }
     }
@@ -427,28 +432,45 @@ struct PlanDetail: View {
 
     private func load() {
         guard !loaded else { return }
-        let s = item.session
-        name = s.name; workstream = s.workstream ?? ""; objective = s.objective
-        opening = s.openingMessage; notes = s.notes; args = s.agentArgs.joined(separator: " ")
+        show(SessionEdits(live.session))
+        base = SessionEdits(live.session)
         loaded = true
     }
 
-    private func commit() {
-        guard loaded, let fresh = model.item(item.id) else { return }
-        let s = fresh.session
-        let ws = workstream.trimmingCharacters(in: .whitespaces)
-        let argList = args.split(separator: " ").map(String.init)
-        let changed = s.name != name || (s.workstream ?? "") != ws || s.objective != objective
-            || s.openingMessage != opening || s.notes != notes || s.agentArgs != argList
-        guard changed else { return }
-        model.update(fresh) {
-            $0.name = name.isEmpty ? $0.name : name
-            $0.workstream = ws.isEmpty ? nil : ws.uppercased()
-            $0.objective = objective
-            $0.openingMessage = opening
-            $0.notes = notes
-            $0.agentArgs = argList
-        }
+    /// What the fields hold now.
+    private var local: SessionEdits {
+        SessionEdits(name: name, workstream: workstream, objective: objective, opening: opening, notes: notes,
+                     args: args.split(separator: " ").map(String.init))
+    }
+
+    private func show(_ e: SessionEdits) {
+        name = e.name; workstream = e.workstream; objective = e.objective
+        opening = e.opening; notes = e.notes; args = e.args.joined(separator: " ")
+    }
+
+    private func rebase(onto s: Session) {
+        guard loaded, let b = base else { return }
+        let now = SessionEdits(s)
+        guard now != b else { return }
+        let mine = local
+        let merged = mine.rebased(from: b, onto: now)
+        if merged != mine { show(merged) }
+        base = now
+    }
+
+    /// Save only the fields changed here since they were loaded (LAB-487: never write a stale copy over a rename).
+    private func commit() { commit(explicit: false) }
+
+    private func commit(explicit: Bool) {
+        guard loaded, let b = base, let fresh = model.item(item.id) else { return }
+        let edits = local
+        // Save with nothing new still answers (LAB-512: Save used to give no sign at all).
+        guard edits != b else { if explicit { savedAt = Date() }; return }
+        model.update(fresh) { edits.apply(over: b, to: &$0) }
+        let saved = SessionEdits(model.item(item.id)?.session ?? fresh.session)
+        base = saved
+        if saved != edits { show(saved) }
+        savedAt = Date()
     }
 }
 
