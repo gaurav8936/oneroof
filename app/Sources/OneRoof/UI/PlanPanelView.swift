@@ -95,6 +95,7 @@ struct PlanDetail: View {
     /// The session's fields as last loaded or saved; Save writes only what differs from it (LAB-487).
     @State private var base: SessionEdits?
     @State private var savedAt: Date?
+    @State private var mentioned: [(issue: LinearIssue, team: String, project: String?)] = []
 
     static var tabs: [String: PlanTab] = [:]
 
@@ -344,9 +345,10 @@ struct PlanDetail: View {
         let it = live
         if it.session.ticket != nil {
             ForEach(it.session.allTickets, id: \.key) { i in TicketBox(item: it, issue: i, model: model, removable: true) }
-        } else {
+        } else if mentioned.isEmpty {
             Text("No Linear issue yet.").ui(12.5).foregroundStyle(t.text2.color)
         }
+        mentionedSection(it)
         // LAB-474: a session can resolve several issues; add one at any point before it ships.
         RoofButton(it.session.ticket == nil ? "Attach issue…" : "Add issue…") {
             NSApp.sendAction(#selector(AppDelegate.attachIssueToSelected(_:)), to: nil, from: nil)
@@ -361,6 +363,48 @@ struct PlanDetail: View {
                     .onSubmit(commit)
             }
         }
+    }
+
+    // MARK: Issues the session mentions (LAB-511)
+
+    /// Issues the session worked on (named in its name, opening message, objective, notes or terminal) but has not
+    /// attached: each with its Linear title and state and an Attach button.
+    @ViewBuilder private func mentionedSection(_ it: BoardItem) -> some View {
+        let open = mentioned.filter { !it.session.hasTicket($0.issue.identifier) }
+        if !open.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(it.session.ticket == nil ? "Not attached, but this session works on:" : "Also mentioned in this session:")
+                    .ui(12, .semibold).foregroundStyle(t.text2.color)
+                ForEach(open, id: \.issue.id) { m in
+                    HStack(spacing: 8) {
+                        Text(m.issue.identifier).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color)
+                        Text(m.issue.shortTitle).ui(12).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail).help(m.issue.shortTitle)
+                        Spacer(minLength: 4)
+                        Text(m.issue.state).ui(11).foregroundStyle(t.text3.color).fixedSize()
+                        Button("Attach") {
+                            model.attachIssue(m.issue, team: m.team.isEmpty ? nil : m.team, project: m.project, to: live, tellAgent: false)
+                        }.controlSize(.small)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.card.color))
+                }
+            }
+        }
+        Color.clear.frame(height: 0).task(id: it.id) { await findMentions(it) }
+    }
+
+    /// Read the session's own text (and up to 3,000 terminal lines), then look each key up in Linear (at most 12).
+    private func findMentions(_ it: BoardItem) async {
+        guard model.linear.hasKey else { return }
+        let s = it.session, runtime = model.runtime, linear = model.linear
+        let teams = Set(model.linearTeams.map(\.key))
+        let found: [(issue: LinearIssue, team: String, project: String?)] = await Task.detached {
+            let terminal = it.liveAgent.flatMap { try? runtime.read(pane: $0, lines: 3000) }
+            let keys = IssueMentions.keys(in: IssueMentions.texts(s, terminal: terminal), team: IssueMentions.team(of: s),
+                                          teams: teams, excluding: s.allTickets.map(\.key))
+            return keys.prefix(12).compactMap { k in (try? linear.issue(key: k)) ?? nil }
+        }.value
+        mentioned = found
     }
 
     // MARK: Notes tab
