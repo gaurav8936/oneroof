@@ -88,7 +88,7 @@ public enum FeedSignals {
         switch (old, new) {
         case (.some(.running), .done), (.some(.needsYou), .done):
             var text = "\(name) finished"
-            if let c = caption, c.text.hasPrefix("Done · ") { text += ": " + c.text.dropFirst("Done · ".count) }
+            if let c = caption, c.text.hasPrefix("Ready · ") { text += ": " + c.text.dropFirst("Ready · ".count) }
             return [FeedEvent(at: at, sessionId: sessionId, kind: .done, text: text, chapter: chapter)]
         case (.some(.running), .exited), (.some(.needsYou), .exited):
             return [FeedEvent(at: at, sessionId: sessionId, kind: .error, text: "\(name) exited while working", chapter: chapter)]

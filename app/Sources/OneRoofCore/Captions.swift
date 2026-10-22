@@ -124,8 +124,9 @@ public enum CaptionEngine {
             if let q = lines.last(where: { $0.hasSuffix("?") }) { return make("Needs you · " + q) }
             return make("Needs you")
         case .done:
-            if let s = lastAssistantSentence(in: lines) { return make("Done · " + clip(s, 60)) }
-            return make("Done")
+            // LAB-241: the same word as the status everywhere else (Ready = finished a turn you haven't looked at).
+            if let s = lastAssistantSentence(in: lines) { return make("Ready · " + clip(s, 60)) }
+            return make("Ready")
         case .idle:
             let age = input.lastActivity.map { " " + ageText(input.now.timeIntervalSince($0)) } ?? ""
             if let last = calls.last(where: { $0.kind == .bash }) {
