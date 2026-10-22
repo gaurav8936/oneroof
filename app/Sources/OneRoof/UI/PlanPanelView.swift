@@ -96,6 +96,9 @@ struct PlanDetail: View {
     @State private var base: SessionEdits?
     @State private var savedAt: Date?
     @State private var mentioned: [(issue: LinearIssue, team: String, project: String?)] = []
+    /// The Artifacts tab's list, kept here and refreshed off the main thread: it reads the handoff folder, so working it
+    /// out in the tab label on every redraw froze the window (0.4.8).
+    @State private var artifactItems: [SessionArtifacts.Item] = []
 
     static var tabs: [String: PlanTab] = [:]
 
@@ -130,6 +133,13 @@ struct PlanDetail: View {
         .onChange(of: tab) { _, v in Self.tabs[item.id] = v }
         // Changed elsewhere (Rename…, the popover, an agent): show it in every field the owner is not editing here.
         .onChange(of: live.session) { _, s in rebase(onto: s) }
+        // Again whenever the session changes, and every 10 s for handoffs the agent writes meanwhile.
+        .task(id: live.session) {
+            while !Task.isCancelled {
+                await refreshArtifacts()
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
     }
 
     // MARK: Tabs
@@ -429,10 +439,14 @@ struct PlanDetail: View {
 
     /// This session's own artifacts (LAB-513): files it wrote, its plan, handoffs naming its project or issues, and the
     /// screenshots given to it.
-    private var artifacts: [SessionArtifacts.Item] {
+    private var artifacts: [SessionArtifacts.Item] { artifactItems }
+
+    private func refreshArtifacts() async {
         let s = live.session
         let plan = model.objectives.first(where: { $0.stepSessions.values.contains(s.id) })?.planPath(common: model.settings.sharedFolder)
-        return SessionArtifacts.list(s, plan: plan, handoffDir: model.settings.sharedFolder + "/docs/next-session-handoff")
+        let dir = model.settings.sharedFolder + "/docs/next-session-handoff"
+        let items = await Task.detached(priority: .utility) { SessionArtifacts.list(s, plan: plan, handoffDir: dir) }.value
+        if items != artifactItems { artifactItems = items }
     }
 
     @ViewBuilder private var artifactsTab: some View {
