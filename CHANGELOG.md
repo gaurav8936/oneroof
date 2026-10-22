@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.6 — one session on several issues (21 Oct 2026)
 
 - **Start one session on several issues** (LAB-518). In New session, **Issue ▾** is now a checklist: tick several of the
   project's open issues (active, to do or backlog) and One Roof makes one session for all of them, named with every key
