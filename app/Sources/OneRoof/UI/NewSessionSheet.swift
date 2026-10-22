@@ -784,7 +784,8 @@ struct NewSessionSheet: View {
 
     /// The opening message template (S09 §1.7), until the owner edits it.
     private func refreshOpening() {
-        guard !openingTouched else { return }
+        // LAB-528: an edited message keeps the owner's words; only its issue list follows the picks.
+        guard !openingTouched else { opening = Intake.syncIssueBlock(opening, issues: picked, project: currentWorkstream?.wsId); return }
         let title = useTicket?.shortTitle ?? text.trimmingCharacters(in: .whitespaces)
         if pickedIssues.count > 1 {
             opening = Intake.multiTicketOpening(picked, project: currentWorkstream?.wsId)
@@ -844,7 +845,8 @@ struct NewSessionSheet: View {
             // LAB-248: a new issue's real key replaces the placeholder (the template is rebuilt unless edited).
             let several = ticket != nil && ticket?.id == useTicket?.id && !moreTickets.isEmpty
             if several {
-                if !openingTouched { opening = Intake.multiTicketOpening(picked, project: w?.wsId) }
+                opening = openingTouched ? Intake.syncIssueBlock(opening, issues: picked, project: w?.wsId)
+                    : Intake.multiTicketOpening(picked, project: w?.wsId)
             } else if let tk = ticket {
                 if !openingTouched || opening.contains(Intake.newIssueKey) {
                     opening = openingTouched ? opening.replacingOccurrences(of: Intake.newIssueKey, with: tk.identifier)
