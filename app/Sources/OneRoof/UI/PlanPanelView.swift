@@ -367,8 +367,16 @@ struct PlanDetail: View {
 
     @ViewBuilder private var notesTab: some View {
         field("Notes") { editor($notes, minHeight: 240) }
-        HStack {
+        HStack(spacing: 10) {
             RoofButton("Save", .primary) { commit(explicit: true) }.keyboardShortcut("s", modifiers: .command)
+            // LAB-512: say whether it is saved (notes are kept with the session and come back when you return to it).
+            if let base, local != base {
+                Text("Unsaved changes").ui(12).foregroundStyle(t.text2.color)
+            } else if let savedAt {
+                Label("Saved \(savedAt.formatted(date: .omitted, time: .shortened))", systemImage: "checkmark.circle.fill")
+                    .ui(12).foregroundStyle(t.diffAddText.color)
+                    .accessibilityLabel("Saved")
+            }
             Spacer()
         }
     }
