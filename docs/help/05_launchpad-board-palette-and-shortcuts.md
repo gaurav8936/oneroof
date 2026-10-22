@@ -92,7 +92,7 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | ⌘+ / ⌘− / ⌘0 | View › Bigger Text / Smaller Text / Actual Size | Text size |
 | ⌥⌘S | View › Toggle Sidebar | Show or hide the sessions panel |
 | ⌥⌘P | View › Toggle Plan Panel | Show or hide the plan panel |
-| ⌥⌘C | View › Centre Panel | Show or hide the centre |
+| ⌥⌘C | View › Terminal Panel | Show or hide the terminal (the middle panel), also the Terminal toggle in the toolbar |
 | ⌥⌘B | View › File Browser | Show or hide the file browser |
 | ⌥⌘R | View › Review Changes | Review the selected session's uncommitted changes |
 | ⌘D | View › Split Right | Split the focused pane, new pane on the right |
