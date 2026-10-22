@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4 — Resources: what One Roof uses (21 Oct 2026)
+
+- **Resources: see what One Roof itself uses** (LAB-493). View › Resources (⇧⌘U, or Resources in the toolbar) shows
+  One Roof's total memory and CPU with 10-minute charts, the Mac's memory, pressure and swap, the app and the roofd
+  daemon, and every running session by window, heaviest first, with a bar against roofd's memory guard (warns at
+  1 GB, ends the session at 2 GB). Click a session to go to it. The plan panel has a **Resources** tab for the
+  selected session: memory and CPU now and over 10 minutes, the guard, and every process under it.
+
 ## 0.4.3 — roofd memory fix (21 Oct 2026)
 
 - **roofd no longer eats the Mac's memory.** Each session's process kept every answer it gave the app, so a session

@@ -14,9 +14,12 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
 - **Three themes per panel**: Daylight · Graphite · Midnight for Sessions, Files, Terminal, Plan and centre views
   (Settings › Appearance grid, View › … Theme). v0.1 choices migrate once (Paper retired, Blueprint terminal-only).
 - **Workspace windows** (⇧⌘N): each main window is a workspace with its own sessions; Move to Window from any row;
-  Window ▸ Workspaces (⌥⌘1–9). Overview, Board, Decisions and Subagents show every window.
-- **Toolbar**: Workspace · Overview · Board · Decisions · Work · Learn, the workspace menu, search (⌘K), panel toggles,
+  Window ▸ Workspaces (⌥⌘1–9). Overview, Resources, Board, Decisions and Subagents show every window.
+- **Toolbar**: Workspace · Overview · Resources · Board · Decisions · Work · Learn, the workspace menu, search (⌘K), panel toggles,
   + New session.
+- **Resources** (⇧⌘U, LAB-493): memory and CPU of One Roof itself (app, roofd daemon, every session's process tree
+  by window, heaviest first) with 10-minute charts, the Mac's memory pressure and swap, and each holder against
+  roofd's memory guard (warn 1 GB, end 2 GB); the plan panel's Resources tab lists the selected session's processes.
 - **Captions** (one line per session: what it is doing now), an **FYI feed**, **chapters** over the terminal, from the
   caption engine (heuristic first; the on-device model when llama-server runs).
 - **Decisions** (⌘I): every agent waiting on you with its reason in its own words, what the command touches, risk,

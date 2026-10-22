@@ -39,7 +39,7 @@ A timeline of the subagents a Claude session started, read from its conversation
 
 Press **⌘K** (⌘P works too), or click the search box in the toolbar, and type a few letters. It searches:
 
-- **Views:** Workspace (back to the terminals), Overview, Decisions, Subagents, Board, Work, Learn, Foundations, Settings.
+- **Views:** Workspace (back to the terminals), Overview, Resources, Decisions, Subagents, Board, Work, Learn, Foundations, Settings.
 - **Windows:** every workspace window, and New workspace window.
 - **Actions:** plan a session, new terminal, new objective, new work item, find in terminal, search in workspace, toggle each panel, review changes, split right or down, close or maximize a pane, even out panes, reopen a closed session, run the startup check, remove exited sessions, open the selected session in a new window, roof windows, How do I…?
 - **Themes:** set all panels to one theme.
@@ -83,6 +83,7 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | ⇧⌘S | Edit › Find in Workspace | Search across your repos |
 | ⌘1 … ⌘5 | View › Group by Status, Repo, Project, Agent, Account | Group the sessions panel |
 | ⇧⌘L | View › Overview | One page of all work |
+| ⇧⌘U | View › Resources | Memory and CPU of One Roof, every window and session ([page 12](12_resources.md)) |
 | ⌘B | View › Board | Kanban of every session |
 | ⌘I | View › Decisions | Every agent waiting on you |
 | ⇧⌘A | View › Subagents | Timeline of Claude subagents |

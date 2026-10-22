@@ -1,7 +1,7 @@
 import SwiftUI
 import OneRoofCore
 
-/// Plan panel (S06 §1.5): tabs Plan · Ticket · Notes · Artifacts for the selected session, and the v0.1 Appearance
+/// Plan panel (S06 §1.5): tabs Plan · Ticket · Notes · Artifacts · Resources (LAB-493) for the selected session, and the v0.1 Appearance
 /// block at the bottom. Its own theme (default Graphite). With the centre closed it widens to a two-column form.
 struct PlanPanelView: View {
     @ObservedObject var model: AppModel
@@ -73,7 +73,7 @@ struct PlanPanelView: View {
 }
 
 /// Which Plan panel tab is showing, remembered per session.
-enum PlanTab: String, CaseIterable { case plan, ticket, notes, artifacts }
+enum PlanTab: String, CaseIterable { case plan, ticket, notes, artifacts, resources }
 
 struct PlanDetail: View {
     @Environment(\.theme) private var t
@@ -108,6 +108,7 @@ struct PlanDetail: View {
                     case .ticket: ticketTab
                     case .notes: notesTab
                     case .artifacts: artifactsTab
+                    case .resources: SessionResourcesTab(item: live, res: model.resources)
                     }
                     if let err = model.lastError {
                         Text(err).ui(12).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
@@ -127,17 +128,29 @@ struct PlanDetail: View {
 
     // MARK: Tabs
 
+    /// Five tabs since Resources (LAB-493) are wider than a narrow panel: the row tightens its spacing first and only
+    /// then shortens Resources (Usage), and Artifacts (Files) last, so no tab is ever clipped off the edge.
     private var tabBar: some View {
-        HStack(spacing: 16) {
+        ViewThatFits(in: .horizontal) {
+            tabRow(spacing: 16, short: false)
+            tabRow(spacing: 9, short: false)
+            tabRow(spacing: 9, short: false, shortResources: true)
+            tabRow(spacing: 9, short: true)
+        }
+    }
+
+    private func tabRow(spacing: CGFloat, short: Bool, shortResources: Bool = false) -> some View {
+        HStack(spacing: spacing) {
             ForEach(PlanTab.allCases, id: \.self) { tb in
                 Button { commit(); tab = tb } label: {
                     VStack(spacing: 6) {
-                        Text(label(tb)).ui(TypeScale.small, .semibold).foregroundStyle(tab == tb ? t.text.color : t.text2.color)
+                        Text(label(tb, short: short || (shortResources && tb == .resources))).ui(TypeScale.small, .semibold).foregroundStyle(tab == tb ? t.text.color : t.text2.color)
                         Rectangle().fill(tab == tb ? t.accent.color : .clear).frame(height: 2)
                     }
                     .fixedSize()
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(label(tb))
                 .accessibilityAddTraits(tab == tb ? .isSelected : [])
             }
             Spacer()
@@ -146,12 +159,13 @@ struct PlanDetail: View {
         .padding(.horizontal, 16).padding(.top, 12)
     }
 
-    private func label(_ tb: PlanTab) -> String {
+    private func label(_ tb: PlanTab, short: Bool = false) -> String {
         switch tb {
         case .plan: return "Plan"
         case .ticket: return "Ticket"
         case .notes: return "Notes"
-        case .artifacts: return "Artifacts \(artifacts.count)"
+        case .artifacts: return short ? "Files \(artifacts.count)" : "Artifacts \(artifacts.count)"
+        case .resources: return short ? "Usage" : "Resources"
         }
     }
 

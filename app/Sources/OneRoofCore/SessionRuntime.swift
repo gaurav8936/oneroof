@@ -52,13 +52,18 @@ public struct RuntimeSessionState: Sendable, Equatable {
     public var workPath: String?
     /// When the runtime last saw the session do something (LAB-258); nil from runtimes that do not say.
     public var activeAt: Date?
+    /// The process the runtime started for the session (roofd: the shell or agent under the holder), for Resources
+    /// (LAB-493); nil from runtimes that do not say.
+    public var pid: Int32?
+    /// roofd's memory guard says the holder is past its warning line (LAB-310).
+    public var memoryWarning: Bool = false
 
     public init(id: RuntimeID, isAgent: Bool, agentName: String? = nil, status: RuntimeStatus = .unknown, ready: Bool = false,
                 title: String? = nil, cwd: String? = nil, pane: String, groupId: String? = nil, seq: Int? = nil,
-                workPath: String? = nil, activeAt: Date? = nil) {
+                workPath: String? = nil, activeAt: Date? = nil, pid: Int32? = nil, memoryWarning: Bool = false) {
         self.id = id; self.isAgent = isAgent; self.agentName = agentName; self.status = status; self.ready = ready
         self.title = title; self.cwd = cwd; self.pane = pane; self.groupId = groupId; self.seq = seq; self.workPath = workPath
-        self.activeAt = activeAt
+        self.activeAt = activeAt; self.pid = pid; self.memoryWarning = memoryWarning
     }
 }
 
