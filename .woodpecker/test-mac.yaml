@@ -37,7 +37,9 @@ steps:
     image: bash
     depends_on: []
     commands:
-      - export GHOSTTY_SRC="$${ONEROOF_GHOSTTY_DIR:-$$HOME/Library/Caches/oneroof/ghostty}"
+      # The local backend gives each run a temporary $$HOME: keep the Ghostty clone in the user's real cache folder.
+      - export REAL_HOME="$$(dscl . -read "/Users/$$(id -un)" NFSHomeDirectory | awk '{print $$2}')"
+      - export GHOSTTY_SRC="$${ONEROOF_GHOSTTY_DIR:-$$REAL_HOME/Library/Caches/oneroof/ghostty}"
       - test -f "$$GHOSTTY_SRC/src/lib_vt.zig" || git clone --depth 1 --branch v1.3.1 https://github.com/ghostty-org/ghostty.git "$$GHOSTTY_SRC"
       - test -x /opt/homebrew/opt/zig@0.15/bin/zig || brew install zig@0.15
       - cd app
