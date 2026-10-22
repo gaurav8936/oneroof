@@ -127,6 +127,16 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
 
     public var isLive: Bool { [.running, .needsYou, .done, .idle].contains(self) }
 
+    /// Why a message typed into this session's agent would land badly, or nil when it can take one (LAB-284). Working:
+    /// it would interrupt or queue behind the turn. Needs you: the text would answer its question or permission prompt.
+    public func typingRefusal(name: String) -> String? {
+        switch self {
+        case .running: return "\(name) is working; send when it is idle."
+        case .needsYou: return "\(name) is waiting on a question or permission; answer it first."
+        default: return nil
+        }
+    }
+
     /// Map an `agent_status` string (idle · working · blocked · done · unknown).
     public static func fromAgentStatus(_ s: String?) -> SessionStatus {
         switch s {

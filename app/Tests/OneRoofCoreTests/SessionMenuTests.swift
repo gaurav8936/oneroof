@@ -106,4 +106,11 @@ final class SessionMenuTests: XCTestCase {
         XCTAssertTrue(m.contains("https://l/LAB-474"))
         XCTAssertTrue(m.contains("`LAB-474 · [lab-oneroof-bugs] …`"))
     }
+
+    /// LAB-284: Ask to fix and review comments refuse a working or waiting agent, with the reason.
+    func test_LAB284_typingRefusedWhileWorkingOrWaiting() {
+        XCTAssertEqual(SessionStatus.running.typingRefusal(name: "A"), "A is working; send when it is idle.")
+        XCTAssertNotNil(SessionStatus.needsYou.typingRefusal(name: "A"))
+        for s in [SessionStatus.idle, .done] { XCTAssertNil(s.typingRefusal(name: "A"), s.rawValue) }
+    }
 }
