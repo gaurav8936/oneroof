@@ -1,7 +1,8 @@
 import SwiftUI
 import OneRoofCore
 
-/// Resources (LAB-493, ⇧⌘U): what One Roof itself costs, across every window and session. A summary strip (One Roof
+/// Resources (LAB-493, ⇧⌘U): what One Roof itself costs, across every window and session; since LAB-544 also every
+/// other app on the Mac (MacAppsCard), with Quit and End. A summary strip (One Roof
 /// total memory and CPU with ten-minute sparklines, process count, the Mac's memory and pressure), One Roof's own
 /// processes (the app and the roofd daemon), then every running session by window, heaviest first, with its holder's
 /// headroom against roofd's memory guard (LAB-310: warn 1 GB, end at 2 GB). Clicking a session reveals it.
@@ -31,6 +32,7 @@ struct ResourcesView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18, pinnedViews: []) {
                     summary(snap)
+                    MacAppsCard(res: res)
                     ownProcesses(snap)
                     if groups.isEmpty {
                         Card(padding: 16) {
@@ -44,10 +46,16 @@ struct ResourcesView: View {
             }
         }
         .onChange(of: sort) { _, v in Self.lastSort = v }
+        .onAppear { res.watchMac(true) }
+        .onDisappear { res.watchMac(false) }
     }
 
     private func subtitle(_ s: ResourceSnapshot) -> String {
         let n = s.sessions.count
+        let left = res.mac?.leftovers.reduce(UInt64(0)) { $0 + $1.footprint } ?? 0
+        if left > 0 {
+            return "One Roof uses \(ResourceFormat.bytes(s.footprint)), plus \(ResourceFormat.bytes(left)) left over from an earlier run · \(n) running session\(n == 1 ? "" : "s") · every 3 s"
+        }
         return "One Roof uses \(ResourceFormat.bytes(s.footprint)) and \(ResourceFormat.cpu(s.cpu)) CPU across \(s.processCount) processes · \(n) running session\(n == 1 ? "" : "s") · every 3 s, last 10 minutes"
     }
 
