@@ -198,17 +198,24 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         let title = (s["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let cwd = (s["pwd"] as? String).flatMap { RoofdRuntime.pathFromOSC7($0) } ?? s["cwd"] as? String
         let active = (s["active"] as? Double).map { Date(timeIntervalSince1970: $0) }
+        let pid = (s["pid"] as? Int).flatMap { $0 > 0 ? Int32($0) : nil }
+        let warning = s["memoryWarning"] as? Bool ?? false
         // roofd's status engine (LAB-14) names the foreground agent and its status; no agent = a plain shell.
         if let agent = s["agent"] as? String {
             return RuntimeSessionState(
                 id: id, isAgent: true, agentName: agent, status: RuntimeStatus(s["status"] as? String),
                 ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int,
-                workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }, activeAt: active)
+                workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }, activeAt: active, pid: pid, memoryWarning: warning)
         } else {
             return RuntimeSessionState(
                 id: id, isAgent: false, status: .unknown, ready: true, title: title, cwd: cwd, pane: id,
-                seq: s["seq"] as? Int, workPath: cwd, activeAt: active)
+                seq: s["seq"] as? Int, workPath: cwd, activeAt: active, pid: pid, memoryWarning: warning)
         }
+    }
+
+    /// The daemon's pid, from `hello` (Resources, LAB-493); nil when it does not answer.
+    public func daemonPid() -> Int32? {
+        (try? call("hello", timeout: 2))?["pid"].flatMap { $0 as? Int }.map { Int32($0) }
     }
 
     static func processName(_ pid: Int32) -> String? {

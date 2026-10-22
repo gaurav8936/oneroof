@@ -81,5 +81,6 @@ Agents start in your projects folder, so they all share one memory and one set o
 | [Learn](09_learn.md) | The course, the skills and your own Learn folders inside One Roof; How do I…?; the player |
 | [Review, split panes and session rows](10_review-split-panes-and-session-rows.md) | Review changes, split panes, branch and diff on rows, the unread dot, reopen a closed session |
 | [Roof windows](11_roof-windows.md) | Every live session of one repo or project in its own window |
+| [Resources](12_resources.md) | Memory and CPU of One Roof itself: overall, per window and per session |
 
 The Help menu inside One Roof opens these pages (One Roof Help), How Do I…?, the keyboard shortcuts, the release notes and the README.

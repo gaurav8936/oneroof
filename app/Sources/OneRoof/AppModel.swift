@@ -138,6 +138,8 @@ final class AppModel: ObservableObject {
     private var lastViewed: [String: Date] = [:]
     private let startedAt = Date()
     private let queue = DispatchQueue(label: "oneroof.runtime", qos: .userInitiated)
+    /// What One Roof itself costs, per session and overall (LAB-493).
+    let resources = ResourceMonitor()
 
     init() {
         grouping = Grouping(rawValue: Prefs.defaults.string(forKey: "grouping") ?? "") ?? .status
@@ -178,6 +180,7 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self?.applyAppearance() }
         }
         applyAppearance()
+        resources.start(model: self)
         queue.async { [weak self] in
             guard let self else { return }
             do {
