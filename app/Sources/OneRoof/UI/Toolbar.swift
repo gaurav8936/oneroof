@@ -174,8 +174,9 @@ struct SearchField: View {
     }
 }
 
-/// Panel toggles, labelled (owner 10-18: four bare icons were unclear): Sessions · Files · Plan. Each panel also has
-/// an × of its own; hiding the centre stays in View ▸ Centre (⌥⌘C).
+/// Panel toggles, labelled (owner 10-18: four bare icons were unclear), in the order the panels sit, left to right:
+/// Sessions · Files · Terminal · Plan (LAB-522: the centre had no toggle, so the row skipped the middle panel). The
+/// last open panel cannot be hidden (the row shakes).
 struct PanelToggles: View {
     @Environment(\.theme) private var t
     @ObservedObject var controller: MainWindowController
@@ -185,6 +186,7 @@ struct PanelToggles: View {
         HStack(spacing: 2) {
             toggle("Sessions", "sidebar.left", controller.panels.sidebar, "Show or hide the Sessions panel ⌥⌘S") { controller.toggleSidebar() }
             toggle("Files", "folder", controller.panels.files, "Show or hide the Files panel ⌥⌘B") { controller.toggleFiles() }
+            toggle("Terminal", "terminal", controller.panels.centre, "Show or hide the terminal (the middle panel: terminals and views) ⌥⌘C") { controller.toggleCentre() }
             toggle("Plan", "sidebar.right", controller.panels.plan, "Show or hide the Plan panel ⌥⌘P") { controller.togglePlanPanel() }
         }
         .padding(3)
