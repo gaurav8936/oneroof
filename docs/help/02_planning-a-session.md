@@ -27,7 +27,7 @@ When Linear is connected, the row under the title has three pickers: **Team ▾ 
 |---|---|
 | Team ▾ | Limits the Project list to that team's projects. |
 | Project ▾ | The project the session belongs to. Picking a project sets its team. |
-| Issue ▾ | The project's open issues, newest first. Pick one and the session works on it. **No issue** means a plain session. |
+| Issue ▾ | A checklist of the project's open issues (active, to do, backlog). Tick one and the session works on it; tick several and one session works on all of them with a plan-first opening message ([several issues](04_work-and-tickets.md#start-a-session-on-several-issues-at-once)). **Clear** means a plain session. |
 
 - **Picking an issue** links the session to it, the same as **Plan a session for…** on a ticket. The opening message names the issue key (for example `ENG-42`) and how to name commits.
 - **What should happen** can be typed after picking an issue; the issue stays picked. Leave it empty and the session takes the issue's title.
@@ -39,7 +39,7 @@ Without Linear connected there is no picker row. A free-text **Project** field t
 
 The last item of each menu creates something, then starts the session on it.
 
-**A new issue:** the bottom of Issue ▾, under **New issue**: **New deliverable…**, **New bug…**, **New task…**, **New spike…** or **New decision…**. Long issue and project titles in the menus end in "…" so the menus stay narrow.
+**A new issue:** the bottom of Issue ▾, after **New**: **deliverable**, **bug**, **task**, **spike** or **decision**. Long project titles in the menus end in "…" so the menus stay narrow.
 
 - The issue is created in the picked project, or in the team only when no project is picked. A team is required.
 - It gets that Type label in Linear. Older workspaces that use `type:*` labels still work. The title is used as you typed it; only projects in the older `WS-…` style also get a `[ws-…]` prefix.
