@@ -178,6 +178,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var ticket: String?
     public var ticketId: String?
     public var ticketTeam: String?
+    /// More issues the same session works on, attached after it started (LAB-474); `ticket` stays the first one.
+    public var moreTickets: [SessionIssue] = []
     /// The repo the session was last seen working in (learnt from its agent's hooks or its terminal's folder); sessions
     /// start at the workspace root, so this is what "Group by repo" uses.
     public var lastRepo: String?
@@ -249,7 +251,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
-             lastRepo
+             moreTickets, lastRepo
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -282,8 +284,19 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         ticket = try c.decodeIfPresent(String.self, forKey: .ticket)
         ticketId = try c.decodeIfPresent(String.self, forKey: .ticketId)
         ticketTeam = try c.decodeIfPresent(String.self, forKey: .ticketTeam)
+        moreTickets = try c.decodeIfPresent([SessionIssue].self, forKey: .moreTickets) ?? []
         lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
     }
+
+    /// Every issue this session works on, the first one first (LAB-474).
+    public var allTickets: [SessionIssue] {
+        (ticket.map { [SessionIssue(key: $0, id: ticketId, team: ticketTeam)] } ?? []) + moreTickets
+    }
+
+    public func hasTicket(_ key: String) -> Bool { allTickets.contains { $0.key.caseInsensitiveCompare(key) == .orderedSame } }
+
+    /// The row chip: "LAB-1", or "LAB-1 +2" when the session carries more.
+    public var ticketChip: String? { ticket.map { moreTickets.isEmpty ? $0 : "\($0) +\(moreTickets.count)" } }
 
     /// Split an arguments string on whitespace, keeping "quoted parts" together.
     public static func parseArgs(_ text: String) -> [String] {
@@ -315,4 +328,12 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public static func runtimeName(for id: String) -> String {
         "roof-" + id.replacingOccurrences(of: "-", with: "").prefix(8).lowercased()
     }
+}
+
+/// One Linear issue a session works on (LAB-474): key (LAB-474), Linear id and team key for state moves.
+public struct SessionIssue: Codable, Equatable, Hashable, Sendable {
+    public var key: String
+    public var id: String?
+    public var team: String?
+    public init(key: String, id: String?, team: String?) { self.key = key; self.id = id; self.team = team }
 }

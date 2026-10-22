@@ -47,7 +47,7 @@ extension AppModel {
         return items.filter { $0.session.workstream == id }
     }
 
-    func sessions(for issue: LinearIssue) -> [BoardItem] { items.filter { $0.session.ticket == issue.identifier } }
+    func sessions(for issue: LinearIssue) -> [BoardItem] { items.filter { $0.session.hasTicket(issue.identifier) } }
 
     /// A planned session for a ticket: name, workstream, objective and opening message filled in.
     @discardableResult
@@ -171,6 +171,22 @@ extension AppModel {
         }
     }
 
+    /// Move one of a session's issues (LAB-474: a session can carry several).
+    func moveIssue(_ i: SessionIssue, to state: String, comment: String? = nil, done: ((String?) -> Void)? = nil) {
+        var s = Session(name: "", repoPath: Workspace.projectsRoot)
+        s.ticketId = i.id; s.ticketTeam = i.team
+        moveTicket(of: s, to: state, comment: comment, done: done)
+    }
+
+    /// Move every issue on the session (close, review): each gets the same session summary.
+    func moveTickets(of item: BoardItem, keys: Set<String>? = nil, to state: String) {
+        let summary = sessionSummary(item)
+        for i in item.session.allTickets where keys?.contains(i.key) ?? true { moveIssue(i, to: state, comment: summary) }
+    }
+
+    /// Take an issue off a session (LAB-474); it stays in Linear as it is.
+    func detachIssue(_ key: String, from item: BoardItem) { update(item) { Intake.detach(key, from: &$0) } }
+
     /// What the session did, for the ticket comment: agent, account, times, and the newest handoff for its workstream.
     func sessionSummary(_ item: BoardItem) -> String {
         let s = item.session
@@ -198,7 +214,9 @@ extension AppModel {
     /// started once the session has launched, and an idle agent is told about it (a busy one is told nothing; the owner
     /// is warned instead, never interrupted mid-turn).
     func attachIssue(_ issue: LinearIssue, team: String?, project: String?, to item: BoardItem, tellAgent: Bool) {
-        update(item) { Intake.attach(issue, team: team, project: project, to: &$0) }
+        var s = item.session
+        guard Intake.attach(issue, team: team, project: project, to: &s) else { lastError = "\(issue.identifier) is already on \(item.session.name)."; return }
+        update(item) { _ = Intake.attach(issue, team: team, project: project, to: &$0) }
         if item.session.launchedAt != nil || item.liveAgent != nil, let key = team ?? item.session.ticketTeam {
             ticketStarted(id: issue.id, team: key)
         }
