@@ -44,7 +44,7 @@ extension AppModel {
                        stickers: Sticker.forSession(i.session, status: i.status).filter { !["next", "dnu"].contains($0.id) },
                        age: ageText(lastActiveDate(i), now: now), unread: isUnread(i), pinned: i.session.pinned,
                        scheduled: scheduleLabel(i), tint: settings.tintRows ? Pastel.named(i.session.color) : nil,
-                       icon: i.session.icon, busy: busy.contains(i.id), ticket: i.session.ticket, workstream: i.session.workstream,
+                       icon: i.session.icon, busy: busy.contains(i.id), ticket: i.session.ticketChip, workstream: i.session.workstream,
                        branchHelp: help)
     }
 }

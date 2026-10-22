@@ -30,7 +30,7 @@ enum Scheduler {
     static func start() {
         Thread.detachNewThread {
             while true {
-                tick()
+                autoreleasepool { tick() }   // this thread never drains a pool on its own (LAB-310)
                 Thread.sleep(forTimeInterval: 30)
             }
         }

@@ -70,6 +70,8 @@ final class AppModel: ObservableObject {
     /// Objectives typed by the owner, with their plans.
     @Published var objectives: [Objective] = []
     @Published var issues: [String: [LinearIssue]] = [:]     // project id → tickets
+    /// A commit-watch scan is running (LAB-474), so ticks never overlap.
+    var commitWatchBusy = false
     @Published var linearError: String?
     @Published var linearLoading = false
     /// Re-created when a key is saved (Setup…), so Linear connects without a restart.
@@ -192,11 +194,12 @@ final class AppModel: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.queue.async { self?.poll() }
             ticks += 1
-            if ticks % 3 == 0 { self?.tickObjectives() }
+            if ticks % 3 == 0 { self?.tickObjectives(); self?.deliverPendingMessages() }
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
+            if ticks % 60 == 40 { self?.tickCommitWatch() }
         }
     }
 
@@ -739,7 +742,7 @@ final class AppModel: ObservableObject {
             if s.lifecycle != .doNotUse { s.lifecycle = .idle }
             self.save(s)
             self.selectedId = s.id
-            if !adopted, let id = s.ticketId, let team = s.ticketTeam { self.ticketStarted(id: id, team: team) }
+            if !adopted { for i in s.allTickets { if let id = i.id, let team = i.team { self.ticketStarted(id: id, team: team) } } }
             self.queue.async { self.poll() }
         }
     }

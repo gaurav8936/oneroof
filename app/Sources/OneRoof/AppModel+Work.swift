@@ -47,7 +47,7 @@ extension AppModel {
         return items.filter { $0.session.workstream == id }
     }
 
-    func sessions(for issue: LinearIssue) -> [BoardItem] { items.filter { $0.session.ticket == issue.identifier } }
+    func sessions(for issue: LinearIssue) -> [BoardItem] { items.filter { $0.session.hasTicket(issue.identifier) } }
 
     /// A planned session for a ticket: name, workstream, objective and opening message filled in.
     @discardableResult
@@ -171,6 +171,24 @@ extension AppModel {
         }
     }
 
+    /// Move one of a session's issues (LAB-474: a session can carry several).
+    func moveIssue(_ i: SessionIssue, to state: String, comment: String? = nil, done: ((String?) -> Void)? = nil) {
+        var s = Session(name: "", repoPath: Workspace.projectsRoot)
+        s.ticketId = i.id; s.ticketTeam = i.team
+        moveTicket(of: s, to: state, comment: comment, done: done)
+    }
+
+    /// Move every issue on the session (close, review): each gets the same session summary.
+    func moveTickets(of item: BoardItem, keys: Set<String>? = nil, to state: String) {
+        let summary = sessionSummary(item)
+        let moved = item.session.allTickets.filter { keys?.contains($0.key) ?? true }
+        for i in moved { moveIssue(i, to: state, comment: summary) }
+        if state == "In Review" { update(item) { $0.reviewedTickets += moved.map(\.key) } }
+    }
+
+    /// Take an issue off a session (LAB-474); it stays in Linear as it is.
+    func detachIssue(_ key: String, from item: BoardItem) { update(item) { Intake.detach(key, from: &$0) } }
+
     /// What the session did, for the ticket comment: agent, account, times, and the newest handoff for its workstream.
     func sessionSummary(_ item: BoardItem) -> String {
         let s = item.session
@@ -189,6 +207,77 @@ extension AppModel {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self, let t = try? self.team(key) else { return }
             try? self.linear.setState(issue: id, team: t, type: "started")
+        }
+    }
+}
+
+extension AppModel {
+    /// Attach a Linear issue to an existing session (LAB-474): the session takes it as its ticket, Linear moves it to
+    /// started once the session has launched, and an idle agent is told about it (a busy one is told nothing; the owner
+    /// is warned instead, never interrupted mid-turn).
+    func attachIssue(_ issue: LinearIssue, team: String?, project: String?, to item: BoardItem, tellAgent: Bool) {
+        var s = item.session
+        guard Intake.attach(issue, team: team, project: project, to: &s) else { lastError = "\(issue.identifier) is already on \(item.session.name)."; return }
+        update(item) { _ = Intake.attach(issue, team: team, project: project, to: &$0) }
+        if item.session.launchedAt != nil || item.liveAgent != nil, let key = team ?? item.session.ticketTeam {
+            ticketStarted(id: issue.id, team: key)
+        }
+        guard tellAgent, let agent = item.liveAgent, item.session.agent.isAgent else { return }
+        let text = Intake.attachMessage(key: issue.identifier, title: issue.shortTitle, url: issue.url.isEmpty ? nil : issue.url,
+                                        project: project ?? item.session.workstream)
+        // A working agent is never interrupted: the message waits and goes in as soon as it is at its prompt.
+        guard Session.canDeliver(item.status) else {
+            if let fresh = self.item(item.id) { update(fresh) { $0.pendingMessages.append(text) } }
+            return
+        }
+        let r = runtime
+        DispatchQueue.global().async { try? r.submit(agent, text: text) }
+    }
+}
+
+extension AppModel {
+    /// Every minute (LAB-474): sessions launched in the last 3 days with issues not yet in review are matched against
+    /// new commits in the workspace repos; an issue whose key is in a commit subject moves to In Review once, with the
+    /// commit in the comment. Issues already Done or Canceled are only marked, never moved back.
+    func tickCommitWatch(now: Date = Date()) {
+        guard !SelfTest.isActive, !commitWatchBusy, linear.hasKey else { return }
+        let watched = items.filter { CommitWatch.watches($0.session, now: now) }
+        guard let since = watched.compactMap(\.session.launchedAt).min() else { return }
+        commitWatchBusy = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let commits = Workspace.listRepos().flatMap { repo in
+                CommitWatch.parseLog(Foundations.run(GitDiff.git, CommitWatch.logArgs(repo: repo, since: since.addingTimeInterval(-60)), timeout: 10).1, repo: repo)
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.commitWatchBusy = false
+                for w in watched {
+                    guard let item = self.item(w.id) else { continue }
+                    let found = CommitWatch.matches(item.session, in: commits)
+                    guard !found.isEmpty else { continue }
+                    let finished = Set(self.issues.values.joined().filter { ["completed", "canceled"].contains($0.stateType) }.map(\.id))
+                    for (issue, c) in found where !finished.contains(issue.id ?? "") {
+                        let where_ = Workspace.repoLabel(for: c.repo)
+                        self.moveIssue(issue, to: "In Review",
+                                       comment: "Committed in `\(c.sha)` (\(where_)): \(c.subject)\n\nSession **\(item.session.name)** in One Roof moved this to In Review.")
+                    }
+                    self.update(item) { $0.reviewedTickets += found.map(\.0.key) }
+                }
+            }
+        }
+    }
+}
+
+extension AppModel {
+    /// Every 3 s: send each live session's waiting messages once its agent is at its prompt (LAB-474), as one message.
+    func deliverPendingMessages() {
+        for item in items where !item.session.pendingMessages.isEmpty {
+            guard let agent = item.liveAgent else { continue }
+            guard Session.canDeliver(item.status) else { continue }
+            let text = item.session.pendingMessages.joined(separator: "\n\n")
+            update(item) { $0.pendingMessages = [] }
+            let r = runtime
+            DispatchQueue.global().async { try? r.submit(agent, text: text) }
         }
     }
 }

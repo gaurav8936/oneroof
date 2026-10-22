@@ -254,6 +254,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         present(NewSessionSheet(model: model, win: win, close: { [weak self] in self?.closeSheet() }))
     }
 
+    func attachIssue(_ item: BoardItem) {
+        present(AttachIssueSheet(model: model, item: item, close: { [weak self] in self?.closeSheet() }))
+    }
+
     func newWorkspace() {
         present(NewWorkspaceSheet(model: model, close: { [weak self] in self?.closeSheet() }))
     }
