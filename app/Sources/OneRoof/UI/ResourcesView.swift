@@ -351,14 +351,17 @@ struct HeadroomBar: View {
         let colour: RGB = level == .nearLimit ? t.needsText : level == .warn ? t.now : t.statusRunning
         VStack(alignment: .leading, spacing: 3) {
             GeometryReader { g in
+                // The bar is 5 pt, centred in a 9 pt row so the warn tick stands out above and below it without
+                // running into the label underneath.
                 ZStack(alignment: .leading) {
-                    Capsule().fill(t.separator.color)
-                    Capsule().fill(colour.color).frame(width: max(3, g.size.width * CGFloat(headroom.fraction(footprint))))
+                    Capsule().fill(t.separator.color).frame(height: 5)
+                    Capsule().fill(colour.color).frame(width: max(3, g.size.width * CGFloat(headroom.fraction(footprint))), height: 5)
                     Rectangle().fill(t.text2.color).frame(width: 1.5, height: 9)
                         .offset(x: g.size.width * CGFloat(headroom.fraction(headroom.warnBytes)) - 0.75)
                 }
+                .frame(height: 9)
             }
-            .frame(height: 5)
+            .frame(height: 9)
             Text("\(ResourceFormat.bytes(footprint)) of \(ResourceFormat.bytes(headroom.limitBytes))")
                 .ui(10.5, mono: true).foregroundStyle((level == .ok ? t.text3 : colour).color).lineLimit(1)
         }
