@@ -237,7 +237,7 @@ final class FeedTests: XCTestCase {
     }
 
     func testStatusChangeEvents() {
-        let cap = Caption(text: "Done · All tests pass.")
+        let cap = Caption(text: "Ready · All tests pass.")
         let done = FeedSignals.statusChange(from: .running, to: .done, sessionId: "s", name: "Engines", caption: cap, at: t)
         XCTAssertEqual(done.map(\.kind), [.done])
         XCTAssertEqual(done.first?.text, "Engines finished: All tests pass.")

@@ -136,10 +136,12 @@ final class Holder {
         listenFd = try Sock.listen(socketPath)
         guard let exe = spec.argv.first else { throw RoofdError("empty argv") }
         let path = exe.hasPrefix("/") ? exe : Holder.which(exe, env: spec.env) ?? exe
-        var envList = spec.env.map { "\($0.key)=\($0.value)" }
-        envList.append("ONEROOF_SESSION=\(spec.id)")
-        envList.append("ONEROOF_ROOFD=\(Paths.control)")
-        envList.append("ONEROOF_ROOFD_BIN=\(Daemon.selfPath())")   // what agent hooks call: `$ONEROOF_ROOFD_BIN report claude`
+        // LAB-529: replace, never append: an inherited copy listed first would win.
+        var env = spec.env
+        env["ONEROOF_SESSION"] = spec.id
+        env["ONEROOF_ROOFD"] = Paths.control
+        env["ONEROOF_ROOFD_BIN"] = Daemon.selfPath()   // what agent hooks call: `$ONEROOF_ROOFD_BIN report claude`
+        let envList = env.map { "\($0.key)=\($0.value)" }
         let args = [path] + spec.argv.dropFirst()
         var m: Int32 = -1
         let p = withCStrings(args) { a in withCStrings(envList) { e in roof_spawn(a, e, spec.cwd, spec.cols, spec.rows, &m) } }
