@@ -28,15 +28,23 @@ steps:
     image: bash
     depends_on: []
     commands:
+      # Stop roofd daemons left by an earlier run that died (its workspace is gone), and this run's own on exit, pass
+      # or fail. Only these two: the push and pull_request pipelines share the Mac at the same time.
+      - bash app/scripts/stop-test-roofd.sh --ci-orphans
+      - export CI_WS="$$PWD" && trap 'bash "$$CI_WS/app/scripts/stop-test-roofd.sh" "$$CI_WS"' EXIT
       - cd app && swift --version && swift test
 
   # roofd (LAB-283): RoofVT built from Ghostty v1.3.1's ghostty-vt with zig 0.15, its Zig tests, then the Swift suite
-  # with the roofd targets (RoofdTests run a real daemon in a temp folder). Ghostty's source is cached on the Mac
+  # with the roofd targets (RoofdTests run a real daemon in a temp folder; stop-test-roofd.sh stops any left over). Ghostty's source is cached on the Mac
   # (one clone, reused); the libghostty app build is not needed. Was the GitHub Actions `roofd` job.
   - name: roofd
     image: bash
     depends_on: []
     commands:
+      # Stop roofd daemons left by an earlier run that died (its workspace is gone), and this run's own on exit, pass
+      # or fail. Only these two: the push and pull_request pipelines share the Mac at the same time.
+      - bash app/scripts/stop-test-roofd.sh --ci-orphans
+      - export CI_WS="$$PWD" && trap 'bash "$$CI_WS/app/scripts/stop-test-roofd.sh" "$$CI_WS"' EXIT
       # The local backend gives each run a temporary $$HOME: keep the Ghostty clone in the user's real cache folder.
       - export REAL_HOME="$$(dscl . -read "/Users/$$(id -un)" NFSHomeDirectory | awk '{print $$2}')"
       - export GHOSTTY_SRC="$${ONEROOF_GHOSTTY_DIR:-$$REAL_HOME/Library/Caches/oneroof/ghostty}"
