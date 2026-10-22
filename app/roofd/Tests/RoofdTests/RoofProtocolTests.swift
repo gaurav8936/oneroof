@@ -104,7 +104,9 @@ final class RoofProtocolTests: XCTestCase {
         Sock.writeAll(fd, Wire.encode(.hello, json: ["cols": 80, "rows": 24, "redraw": true]))
         var types: [Frame] = [], redraw: [UInt8] = [], live: [UInt8] = [], buf: [UInt8] = []
         var chunk = [UInt8](repeating: 0, count: 65536)
-        let deadline = Date().addingTimeInterval(6)
+        // The loop forks a `sleep` per line: on a busy CI Mac 400 lines took over 6 s (LAB-283), so wait up to 30 s;
+        // reading stops as soon as L400 arrives.
+        let deadline = Date().addingTimeInterval(30)
         while Date() < deadline, !String(decoding: live, as: UTF8.self).contains("L400") {
             let n = read(fd, &chunk, chunk.count)
             if n <= 0 { break }
