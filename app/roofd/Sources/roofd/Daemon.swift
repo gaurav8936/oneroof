@@ -131,7 +131,7 @@ enum Daemon {
             }
             let c = Scheduler.config()
             return ["enabled": c?.enabled ?? false, "store": c?.store ?? ""]
-        case "info", "read", "input", "signal", "close", "seen":
+        case "info", "read", "input", "signal", "close", "seen", "issueDone":
             guard let id = p["id"] as? String, Paths.validId(id) else { throw RoofdError("bad id") }
             var r = p
             r["op"] = method

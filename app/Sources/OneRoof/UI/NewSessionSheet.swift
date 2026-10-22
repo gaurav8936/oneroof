@@ -25,6 +25,9 @@ struct NewSessionSheet: View {
     @State private var milestonesText = ""
     @State private var textForIssue = ""
     @State private var useTicket: LinearIssue?
+    @State private var moreTickets: [LinearIssue] = []
+    @State private var issuesOpen = false
+    @State private var issueFilter = ""
     @State private var mark: AgentMark = .claude1
     @State private var modelName = ""
     @State private var repo = Workspace.projectsRoot
@@ -152,6 +155,19 @@ struct NewSessionSheet: View {
         .onAppear(perform: installPaste)
         .onDisappear(perform: removePaste)
         .onChange(of: model.workstreams) { _, _ in defaultWorkstream() }
+        .onReceive(model.$issues) { all in selfTestPick(all) }
+    }
+
+    /// Self-test (LAB-518): ONEROOF_SELFTEST_PICK=KEY,KEY,… ticks those issues once the project's issues load;
+    /// ONEROOF_SELFTEST_ISSUES=1 opens the issue checklist.
+    private func selfTestPick(_ all: [String: [LinearIssue]]) {
+        let env = ProcessInfo.processInfo.environment
+        // @Published sends the new value before `model.issues` holds it, so read the value sent.
+        guard SelfTest.isActive, pickedIssues.isEmpty, let w = currentWorkstream, let list = all[w.id], !list.isEmpty else { return }
+        for k in (env["ONEROOF_SELFTEST_PICK"] ?? "").split(separator: ",").map(String.init) {
+            if let i = list.first(where: { $0.identifier == k }) { toggleIssue(i) }
+        }
+        if env["ONEROOF_SELFTEST_ISSUES"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { issuesOpen = true } }
     }
 
     // MARK: Bottom row
@@ -237,11 +253,11 @@ struct NewSessionSheet: View {
 
     private var workstreamPicker: some View {
         Menu {
-            if linked { Button("No project") { wsId = ""; useTicket = nil; if kind == .workstream { kind = .session }; refreshOpening() } }
+            if linked { Button("No project") { wsId = ""; useTicket = nil; moreTickets = []; if kind == .workstream { kind = .session }; refreshOpening() } }
             ForEach(openWorkstreams) { w in Button(Self.short("\(w.wsId ?? "") · \(w.title)")) { pickWorkstream(w) } }
             if linked {
                 Divider()
-                Button("New project…") { wsId = ""; useTicket = nil; kind = .workstream; kindTouched = true; refreshOpening() }
+                Button("New project…") { wsId = ""; useTicket = nil; moreTickets = []; kind = .workstream; kindTouched = true; refreshOpening() }
             }
         } label: {
             pickerLabel("Project", kind == .workstream ? "New project" : currentWorkstream.map { "\($0.wsId ?? "") · \($0.title)" }
@@ -263,44 +279,130 @@ struct NewSessionSheet: View {
         return (model.issues[w.id] ?? []).filter { !["completed", "canceled"].contains($0.stateType) }.reversed()
     }
 
+    /// The issues the session will work on, in the order they were picked (LAB-518): the first is its ticket.
+    private var pickedIssues: [LinearIssue] { (useTicket.map { [$0] } ?? []) + moreTickets }
+
     private var issueLabel: String {
+        if pickedIssues.count > 1, let first = pickedIssues.first { return "\(pickedIssues.count) issues · \(first.identifier) +\(pickedIssues.count - 1)" }
         if let tk = useTicket { return "\(tk.identifier) · \(tk.shortTitle)" }
         if kind == .defect { return "New bug" }
         if kind == .ticket { return "New " + (ticketType.labelNames.first ?? "issue").lowercased() }
         return "No issue"
     }
 
-    /// Issue: none, an existing one (the session works on it), or a new one as the last item (LAB-242).
+    /// Issue: none, one or several existing ones (LAB-518: one session works on all of them), or a new one (LAB-242).
+    /// A checklist in a popover, so several can be ticked without the menu closing after each.
     private var issuePicker: some View {
-        Menu {
-            Button("No issue") { useTicket = nil; kind = .session; refreshOpening() }
-            if !openIssues.isEmpty {
-                Section("Open issues") {
-                    ForEach(openIssues.prefix(40)) { i in Button(Self.short("\(i.identifier) · \(i.shortTitle)")) { pickIssue(i) } }
-                }
-            }
-            // The types sit in the menu itself, not a submenu (LAB-245: a wide menu pushed the submenu off screen).
-            Section("New issue") {
-                ForEach([WorkKind.deliverable, .defect, .chore, .spike, .decision], id: \.self) { k in
-                    Button("New " + (k.labelNames.first ?? k.rawValue).lowercased() + "…") { newIssue(k) }
-                }
-            }
-        } label: {
-            pickerLabel("Issue", issueLabel, warn: false)
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 300, alignment: .leading)
-        .disabled(kind == .workstream)
-        .accessibilityLabel("Issue")
+        Button { issuesOpen.toggle() } label: { pickerLabel("Issue", issueLabel, warn: false) }
+            .buttonStyle(.plain).frame(maxWidth: 300, alignment: .leading)
+            .disabled(kind == .workstream)
+            .accessibilityLabel("Issue")
+            .accessibilityValue(issueLabel)
+            .popover(isPresented: $issuesOpen, arrowEdge: .bottom) { issueChecklist }
     }
 
-    private func pickIssue(_ i: LinearIssue) {
-        useTicket = i; kind = .session; kindTouched = true
-        if text.trimmingCharacters(in: .whitespaces).isEmpty { textForIssue = i.shortTitle }
+    /// Open issues in groups: active first (In Progress, In Review), then to do, then backlog.
+    private var issueGroups: [(title: String, issues: [LinearIssue])] {
+        let q = issueFilter.trimmingCharacters(in: .whitespaces).lowercased()
+        let shown = openIssues.filter { q.isEmpty || $0.identifier.lowercased().contains(q) || $0.title.lowercased().contains(q) }
+        let picked = Set(pickedIssues.map(\.id))
+        let rest = shown.filter { !picked.contains($0.id) }
+        // Picked first, in pick order (the plan's starting order), so they never scroll out of sight.
+        return [("Picked", pickedIssues.filter { i in shown.contains { $0.id == i.id } }),
+                ("Active", rest.filter { $0.stateType == "started" }),
+                ("To do", rest.filter { $0.stateType == "unstarted" }),
+                ("Backlog", rest.filter { !["started", "unstarted"].contains($0.stateType) })]
+            .filter { !$0.issues.isEmpty }
+    }
+
+    private var issueChecklist: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(currentWorkstream.map { "Issues in \($0.wsId ?? $0.title)" } ?? "Issues").ui(13, .semibold).foregroundStyle(t.text.color)
+                Spacer()
+                Text(pickedIssues.isEmpty ? "Tick one or more" : "\(pickedIssues.count) picked").ui(11.5).foregroundStyle(t.text3.color)
+            }
+            if currentWorkstream == nil {
+                Text("Pick a project first: its open issues show here.").ui(12).foregroundStyle(t.text2.color)
+            } else {
+                TextField("", text: $issueFilter, prompt: Text("Filter by key or title"))
+                    .textFieldStyle(.plain).ui(12.5).padding(.horizontal, 8).frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.surface.color))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(t.separator.color))
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        if issueGroups.isEmpty {
+                            Text(openIssues.isEmpty ? "No open issues in this project." : "Nothing matches.").ui(12).foregroundStyle(t.text2.color).padding(.vertical, 6)
+                        }
+                        ForEach(issueGroups, id: \.title) { g in
+                            Text(g.title.uppercased()).ui(10.5, .semibold).foregroundStyle(t.text3.color).padding(.top, 6)
+                            ForEach(g.issues) { i in issueRow(i) }
+                        }
+                    }
+                }
+                .frame(height: 300)
+            }
+            Divider()
+            HStack(spacing: 6) {
+                Text("New").ui(11.5).foregroundStyle(t.text3.color)
+                ForEach([WorkKind.deliverable, .defect, .chore, .spike, .decision], id: \.self) { k in
+                    Button((k.labelNames.first ?? k.rawValue).lowercased()) { newIssue(k); issuesOpen = false }
+                        .buttonStyle(.link).ui(11.5)
+                }
+                Spacer()
+                if !pickedIssues.isEmpty { Button("Clear") { clearIssues() }.buttonStyle(.plain).ui(11.5).foregroundStyle(t.text2.color) }
+                Button("Done") { issuesOpen = false }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14).frame(width: 460)
+        // The popover window keeps the system's light material; paint the theme's card so Graphite/Midnight text reads.
+        .background(t.card.color)
+    }
+
+    private func issueRow(_ i: LinearIssue) -> some View {
+        let on = pickedIssues.contains { $0.id == i.id }
+        let n = pickedIssues.firstIndex { $0.id == i.id }.map { $0 + 1 }
+        return Button { toggleIssue(i) } label: {
+            HStack(spacing: 8) {
+                Text(on ? "✓" : " ").ui(11, .bold).foregroundStyle(t.onAccent.color).frame(width: 16, height: 16)
+                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(on ? t.accent.color : Color.clear))
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(on ? t.accent.color : t.separatorStrong.color))
+                Text(i.identifier).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 64, alignment: .leading)
+                Text(i.shortTitle).ui(12.5).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 6)
+                if let n, pickedIssues.count > 1 { Text("\(n)").ui(10.5, .semibold, mono: true).foregroundStyle(t.text3.color) }
+                Text(i.state).ui(10.5).foregroundStyle(t.text3.color)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(on ? t.selection.color : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(i.identifier) \(i.shortTitle), \(i.state)")
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// Tick or untick an issue; the first ticked stays the session's ticket (its name and opening lead with it).
+    private func toggleIssue(_ i: LinearIssue) {
+        var all = pickedIssues
+        if let n = all.firstIndex(where: { $0.id == i.id }) { all.remove(at: n) } else { all.append(i) }
+        useTicket = all.first; moreTickets = Array(all.dropFirst())
+        kind = .session; kindTouched = true
+        textForIssue = all.count > 1 ? "Optional: a title for these \(all.count) issues" : all.first?.shortTitle ?? ""
         refreshOpening()
     }
 
+    /// The picked issues as the opening message names them.
+    private var picked: [PickedIssue] {
+        pickedIssues.map { PickedIssue(key: $0.identifier, title: $0.shortTitle, state: $0.state, url: $0.url.isEmpty ? nil : $0.url) }
+    }
+
+    private func clearIssues() {
+        useTicket = nil; moreTickets = []; textForIssue = ""; kind = .session; refreshOpening()
+    }
+
     private func newIssue(_ k: WorkKind) {
-        useTicket = nil; kindTouched = true
+        useTicket = nil; moreTickets = []; kindTouched = true
         if k == .defect { kind = .defect } else { kind = .ticket; ticketType = k }
         if kind == .workstream { wsId = "" }
         refreshOpening()
@@ -309,7 +411,7 @@ struct NewSessionSheet: View {
     private var currentWorkstream: LinearWorkstream? { model.workstreams.first { $0.id == wsId } }
 
     private func pickWorkstream(_ w: LinearWorkstream) {
-        if wsId != w.id { useTicket = nil }
+        if wsId != w.id { useTicket = nil; moreTickets = [] }
         if kind == .workstream { kind = .session }
         wsId = w.id; model.loadIssues(w)
         if !w.team.isEmpty { teamKey = w.team }
@@ -481,7 +583,7 @@ struct NewSessionSheet: View {
             Text("Similar ticket").ui(12.5, .semibold).foregroundStyle(t.text.color)
             Text("\(d.identifier) · \(d.shortTitle) (\(d.state)\(currentWorkstream?.wsId.map { ", " + $0 } ?? ""))").ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
             Spacer()
-            Button { useTicket = d; refreshOpening() } label: {
+            Button { useTicket = d; moreTickets = []; refreshOpening() } label: {
                 Text("Plan a session for \(d.identifier) instead").ui(12.5, .semibold).foregroundStyle(t.accentText.color)
             }.buttonStyle(.plain)
         }
@@ -746,7 +848,9 @@ struct NewSessionSheet: View {
     private func refreshOpening() {
         guard !openingTouched else { return }
         let title = useTicket?.shortTitle ?? text.trimmingCharacters(in: .whitespaces)
-        if let tk = useTicket {
+        if pickedIssues.count > 1 {
+            opening = Intake.multiTicketOpening(picked, project: currentWorkstream?.wsId)
+        } else if let tk = useTicket {
             opening = Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url, project: currentWorkstream?.wsId)
         } else if kind == .ticket || kind == .defect {
             // The key is filled in once Linear creates the issue.
@@ -800,13 +904,18 @@ struct NewSessionSheet: View {
         func makeSession(ticket: LinearIssue?, w: LinearWorkstream?) {
             let a = agent(mark)
             // LAB-248: a new issue's real key replaces the placeholder (the template is rebuilt unless edited).
-            if let tk = ticket {
+            let several = ticket != nil && ticket?.id == useTicket?.id && !moreTickets.isEmpty
+            if several {
+                if !openingTouched { opening = Intake.multiTicketOpening(picked, project: w?.wsId) }
+            } else if let tk = ticket {
                 if !openingTouched || opening.contains(Intake.newIssueKey) {
                     opening = openingTouched ? opening.replacingOccurrences(of: Intake.newIssueKey, with: tk.identifier)
                         : Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url.isEmpty ? nil : tk.url, project: w?.wsId)
                 }
             }
-            var s = Session(name: ticket.map { Intake.sessionName(key: $0.identifier, title: title) } ?? title, agent: a,
+            let sessionName = several ? Intake.sessionName(keys: pickedIssues.map(\.identifier), title: typed)
+                : ticket.map { Intake.sessionName(key: $0.identifier, title: title) } ?? title
+            var s = Session(name: sessionName, agent: a,
                             account: a == .claude ? name(mark) : (AccountResolver.choices(for: a).first),
                             repoPath: repo,
                             workstream: w?.wsId ?? (wsText.trimmingCharacters(in: .whitespaces).isEmpty ? Workspace.workstream(in: title) : wsText.trimmingCharacters(in: .whitespaces).uppercased()),
@@ -817,6 +926,7 @@ struct NewSessionSheet: View {
                             model: modelName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : modelName,
                             ticket: ticket?.identifier, ticketId: ticket?.id,
                             ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
+            if several { s.moreTickets = moreTickets.map { SessionIssue(key: $0.identifier, id: $0.id, team: s.ticketTeam) } }
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
             model.createPlanned(s, launchNow: launch && !forcePlanned)
             if when == .tonight && !forcePlanned, let i = model.item(s.id) { model.schedule(i, hour: 2, minute: 0, nightly: nightly) }

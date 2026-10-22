@@ -57,13 +57,16 @@ public struct RuntimeSessionState: Sendable, Equatable {
     public var pid: Int32?
     /// roofd's memory guard says the holder is past its warning line (LAB-310).
     public var memoryWarning: Bool = false
+    /// Issue updates the session's agent asked for and the app has not answered yet (LAB-518).
+    public var issueRequests: [IssueRequest] = []
 
     public init(id: RuntimeID, isAgent: Bool, agentName: String? = nil, status: RuntimeStatus = .unknown, ready: Bool = false,
                 title: String? = nil, cwd: String? = nil, pane: String, groupId: String? = nil, seq: Int? = nil,
-                workPath: String? = nil, activeAt: Date? = nil, pid: Int32? = nil, memoryWarning: Bool = false) {
+                workPath: String? = nil, activeAt: Date? = nil, pid: Int32? = nil, memoryWarning: Bool = false,
+                issueRequests: [IssueRequest] = []) {
         self.id = id; self.isAgent = isAgent; self.agentName = agentName; self.status = status; self.ready = ready
         self.title = title; self.cwd = cwd; self.pane = pane; self.groupId = groupId; self.seq = seq; self.workPath = workPath
-        self.activeAt = activeAt; self.pid = pid; self.memoryWarning = memoryWarning
+        self.activeAt = activeAt; self.pid = pid; self.memoryWarning = memoryWarning; self.issueRequests = issueRequests
     }
 }
 
