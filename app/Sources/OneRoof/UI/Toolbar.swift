@@ -109,28 +109,17 @@ struct WorkspaceMenu: View {
     var body: some View {
         let accent = WindowAccent(named: win.colour, on: t)
         HStack(spacing: 8) {
-            Menu {
-                Button("Rename Workspace…") { win.promptRename() }
-                Menu("Colour") {
-                    Button("None") { win.setColour(nil) }
-                    ForEach(Sticker.rowColors, id: \.name) { p in Button(p.name.capitalized) { win.setColour(p.name) } }
-                }
-                Divider()
-                Button("New Workspace Window…") { controller.newWorkspace() }
-                if MainWindowController.all.count > 1 {
-                    Divider()
-                    ForEach(MainWindowController.all.filter { $0 !== controller }, id: \.win.id) { c in
-                        Button(c.win.name) { c.window?.makeKeyAndOrderFront(nil) }
-                    }
-                }
-            } label: {
+            // A plain button that pops an AppKit menu: a SwiftUI Menu in .borderlessButton style redraws its label as
+            // plain system text, which dropped the bold name, its colour and the swatch in 0.5.1.
+            Button { showMenu() } label: {
                 HStack(spacing: 5) {
                     if let accent { RoundedRectangle(cornerRadius: 3, style: .continuous).fill(accent.ink.color).frame(width: 10, height: 10) }
                     Text(win.name).ui(16, .bold).foregroundStyle(accent?.ink.color ?? t.text.color).lineLimit(1)
                     Text("▾").ui(10).foregroundStyle(t.text2.color)
                 }
+                .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .buttonStyle(.plain).fixedSize()
             .help("This window is \u{201C}\(win.name)\u{201D}. Click to rename it or give it a colour.")
             .accessibilityLabel("Window \(win.name)")
             let (n, all) = controller.position
@@ -139,6 +128,44 @@ struct WorkspaceMenu: View {
         }
         .padding(.leading, 8)
     }
+
+    /// Rename · Colour ▸ · New Workspace Window… · the other windows, popped under the mouse.
+    private func showMenu() {
+        let m = NSMenu()
+        m.addItem(MenuAction("Rename Workspace…") { win.promptRename() })
+        let colours = NSMenu()
+        let none = MenuAction("None") { win.setColour(nil) }
+        none.state = win.colour == nil ? .on : .off
+        colours.addItem(none)
+        for p in Sticker.rowColors {
+            let i = MenuAction(p.name.capitalized) { win.setColour(p.name) }
+            i.state = win.colour == p.name ? .on : .off
+            colours.addItem(i)
+        }
+        let colour = NSMenuItem(title: "Colour", action: nil, keyEquivalent: "")
+        colour.submenu = colours
+        m.addItem(colour)
+        m.addItem(.separator())
+        m.addItem(MenuAction("New Workspace Window…") { controller.newWorkspace() })
+        let others = MainWindowController.all.filter { $0 !== controller }
+        if !others.isEmpty {
+            m.addItem(.separator())
+            for c in others { m.addItem(MenuAction(c.win.name) { c.window?.makeKeyAndOrderFront(nil) }) }
+        }
+        m.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+}
+
+/// An NSMenuItem that runs a closure (the item keeps itself as its target).
+final class MenuAction: NSMenuItem {
+    private let run: () -> Void
+    init(_ title: String, _ run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+    }
+    required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    @objc private func fire() { run() }
 }
 
 /// "One Roof 0.4.10 (14)" (LAB-526): which build is running, in every window; a click opens the release notes.

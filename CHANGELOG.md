@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1.1 — round 1 fixes (23 Oct 2026)
+
+Two things in 0.5.1 did not work on a real Mac. This fix build makes them work.
+
+- **The window name really is big and bold now** (LAB-590). In 0.5.1 the name at the top showed in plain, regular
+  text with no colour. It is now large and bold, drawn in the window's colour with a small swatch when it has one;
+  click it for Rename, Colour and the other windows.
+- **Subagents show up in Overview and Subagents** (LAB-652, LAB-595). One Roof now finds each Claude session's exact
+  conversation from its running claude process, instead of matching titles that rarely agree, and reads every
+  subagent's own file, so subagents from early in a long session are found too. A subagent started in the background
+  no longer shows as finished the moment it starts.
+
 ## 0.5.1 — window names, formatted files (23 Oct 2026)
 
 The first release of One Roof 0.5 (round 1 of 5). It also carries the two fixes that were waiting for 0.4.11.
