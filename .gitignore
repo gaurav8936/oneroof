@@ -5,8 +5,6 @@ __pycache__/
 app/.build/
 app/build/
 app/Vendor/
-# UI mockups — local + Dropbox backup only, never GitHub (too heavy)
-ui_mockups/
 # parallel worktrees (wt-new.sh)
 .worktrees/
 

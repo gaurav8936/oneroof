@@ -1,6 +1,6 @@
 # One Roof app — agent rules (UI v2)
 
-Copied from the UI v2 packet (`ui_mockups/20261018_01_initial_v2/OneRoof_v2_Transfer/01_handover/AGENT_RULES.md`, local-only). Binding for every agent working in `labs/oneroof/app`. Deviations: `IMPLEMENTATION_NOTES.md`.
+Copied from the UI v2 packet (`labs/oneroof-local/ui_mockups/20261018_01_initial_v2/OneRoof_v2_Transfer/01_handover/AGENT_RULES.md`, local-only). Binding for every agent working in `labs/oneroof/app`. Deviations: `IMPLEMENTATION_NOTES.md`.
 
 
 Binding. Copy into `labs/oneroof/app/CLAUDE.md` and `AGENTS.md`.

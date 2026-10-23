@@ -7,7 +7,7 @@ agent, account, repo and project, grouped automatically. Design docs live in `..
 
 ## One Roof v2 (2026-10-18)
 
-The interface was rebuilt from the UI v2 packet (`ui_mockups/20261018_01_initial_v2/`, shared spec copied to
+The interface was rebuilt from the UI v2 packet (`labs/oneroof-local/ui_mockups/20261018_01_initial_v2/`, local-only; shared spec copied to
 `labs/oneroof/docs/architecture/v2-ui/`); the runtime then was herdr; since 0.4.0 it is roofd (libghostty, SQLite, no new dependencies). Everything below from v0.1 still
 works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback: tag `v0.3.0-final-v1ui`.
 
