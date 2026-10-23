@@ -65,6 +65,16 @@ public enum Foundations {
         return (p.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 
+    /// False when this process ignores SIGCHLD (or set SA_NOCLDWAIT): children are then reaped by the kernel, and
+    /// `Process.terminationStatus` reads 0 for every child, so no exit code can be believed (LAB-677).
+    public static var childExitCodesReadable: Bool {
+        var sa = sigaction()
+        guard sigaction(SIGCHLD, nil, &sa) == 0 else { return true }
+        if sa.sa_flags & SA_NOCLDWAIT != 0 { return false }
+        let handler = unsafeBitCast(sa.__sigaction_u.__sa_handler, to: Int.self)
+        return handler != unsafeBitCast(SIG_IGN, to: Int.self)
+    }
+
     static func lastLine(_ s: String) -> String {
         s.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.last { !$0.isEmpty } ?? ""
     }

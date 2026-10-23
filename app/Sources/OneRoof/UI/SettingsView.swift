@@ -206,11 +206,6 @@ struct SettingsView: View {
                          + (exists ? "" : optional ? " (not found: features that use it stay off)" : " (not found)"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
-                if exists, let warning = LocalModel.licenceWarning(path: inUse) {
-                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption)
-                        .foregroundStyle(Pastel.named("peach")!.lightInk.color).fixedSize(horizontal: false, vertical: true)
-                }
-                ModelDownloadRow(download: model.modelDownload, offer: LocalModel.offerDownload(modelPath: inUse))
             }
         }
     }
@@ -273,6 +268,8 @@ struct SettingsView: View {
                     Label(warning, systemImage: "exclamationmark.triangle").font(.caption)
                         .foregroundStyle(Pastel.named("peach")!.lightInk.color).fixedSize(horizontal: false, vertical: true)
                 }
+                // LAB-675: Get the model belongs to the model row (0.5.2 had it on the shared folder rows instead).
+                ModelDownloadRow(download: model.modelDownload, offer: LocalModel.offerDownload(modelPath: inUse))
             }
         }
     }

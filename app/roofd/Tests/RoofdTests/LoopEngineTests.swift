@@ -91,6 +91,50 @@ final class LoopEngineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: projects + "/acme/web/done.txt"), "never the live checkout")
     }
 
+    /// LAB-677 as it happened: the loop run by the daemon itself (its first scheduler tick), not by this test process.
+    /// In 0.5.2 the daemon ignored SIGCHLD, so git's exit codes all read 0: the worktree was never made, the first
+    /// check said "Folder not found" and round 1 started in a folder that did not exist. Here the check must run in
+    /// the worktree (its real exit code 3 recorded) and the round must start inside it.
+    func testTheDaemonMakesTheWorktreeBeforeTheFirstCheckAndRound() throws {
+        // A daemon configured as the app configures it, with a loop waiting to run.
+        daemon?.terminate()
+        daemon?.waitUntilExit()
+        let repo = projects + "/acme/web"
+        let storePath = dir + "/sessions.sqlite"
+        _ = try SessionStore(path: storePath)
+        try Scheduler.save(Scheduler.Config(enabled: false, store: storePath, projects: projects, shared: projects + "/_common"))
+        let store = LoopStore()
+        var l = Loop(id: "loop-ci", name: "ci", goal: "g", check: "test -e .git || exit 9; exit 3", repoPath: repo, agent: .shell)
+        l.limits = LoopLimits(maxRounds: 1)
+        l = LoopController.runNow(l)
+        try store.save(l)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: roofd)
+        p.arguments = ["daemon"]
+        p.environment = ProcessInfo.processInfo.environment.merging(["ROOFD_DIR": dir, "ROOFD_LINGER": "1"]) { $1 }
+        try p.run()
+        daemon = p
+        var cur = l
+        for _ in 0..<150 {
+            usleep(100_000)
+            cur = store.load("loop-ci") ?? cur
+            if cur.run?.active != nil || !cur.state.isActive { break }
+        }
+        let rounds = store.rounds("loop-ci")
+        let check = try XCTUnwrap(rounds.first { $0.kind == .check }, "the daemon ran the first check")
+        XCTAssertEqual(check.exitCode, 3, "the check ran in the worktree and its real exit code was read: \(check.checkOutput)")
+        XCTAssertFalse(check.checkOutput.contains("Folder not found"))
+        let wt = repo + "/.worktrees/loop-ci"
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wt + "/.git"), "made by roofd, before the check")
+        XCTAssertEqual(Foundations.run("/usr/bin/git", ["-C", wt, "branch", "--show-current"]).1
+            .trimmingCharacters(in: .whitespacesAndNewlines), "loop/ci")
+        XCTAssertEqual(Foundations.run("/usr/bin/git", ["-C", repo, "branch", "--show-current"]).1
+            .trimmingCharacters(in: .whitespacesAndNewlines), "main")
+        let active = try XCTUnwrap(cur.run?.active, "round 1 started: \(cur.stopReason ?? "")")
+        let row = try XCTUnwrap(try SessionStore(path: storePath).all().first { $0.id == active.sessionId })
+        XCTAssertEqual(row.repoPath, wt)
+    }
+
     func testAnUnconfiguredDaemonRunsNoLoops() {
         LoopEngine.tick(config: nil)   // returns at once; nothing to assert beyond not touching the shared folder
         XCTAssertFalse(FileManager.default.fileExists(atPath: projects + "/_common/loops"))

@@ -289,6 +289,85 @@ final class LoopsTests: XCTestCase {
         XCTAssertThrowsError(try LoopWorktree.ensure(repo: try tempDir(), id: "x"))
     }
 
+    func gitRepo() throws -> String {
+        let repo = try tempDir()
+        XCTAssertEqual(Foundations.run("/usr/bin/git", ["-C", repo, "init", "-q", "-b", "main"]).0, 0)
+        _ = Foundations.run("/usr/bin/git", ["-C", repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"])
+        return repo
+    }
+
+    func currentBranch(_ dir: String) -> String {
+        Foundations.run("/usr/bin/git", ["-C", dir, "branch", "--show-current"]).1.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// LAB-677: an id that already starts with "loop-" is not doubled (`loop-loop-smoke`, `loop/loop-smoke`).
+    func testWorktreeNameDoesNotDoubleTheLoopPrefix() throws {
+        let repo = try gitRepo()
+        let wt = try LoopWorktree.ensure(repo: repo, id: "loop-smoke")
+        XCTAssertEqual(wt, repo + "/.worktrees/loop-smoke")
+        XCTAssertEqual(currentBranch(wt), "loop/smoke")
+        let l = Loop(id: "loop-smoke", name: "s", repoPath: repo)
+        XCTAssertEqual(l.worktreePath, wt)
+        XCTAssertEqual(l.branch, "loop/smoke")
+        XCTAssertEqual(LoopWorktree.branch("loop-"), "loop/loop-", "an id that is only the prefix keeps it")
+    }
+
+    /// Worktrees and branches made by 0.5.2 under the doubled name keep being used.
+    func testAnOldDoubledWorktreeOrBranchIsStillUsed() throws {
+        let repo = try gitRepo()
+        let old = repo + "/.worktrees/loop-loop-old"
+        XCTAssertEqual(Foundations.run("/usr/bin/git", ["-C", repo, "worktree", "add", "-b", "loop/loop-old", old, "HEAD"]).0, 0)
+        XCTAssertEqual(try LoopWorktree.ensure(repo: repo, id: "loop-old"), old)
+        let l = Loop(id: "loop-old", name: "o", repoPath: repo)
+        XCTAssertEqual(l.worktreePath, old)
+        XCTAssertEqual(l.branch, "loop/loop-old")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: repo + "/.worktrees/loop-old"))
+        // The old folder removed by hand, its branch kept: the new folder checks out the old branch (its work stays).
+        try FileManager.default.removeItem(atPath: old)
+        let wt = try LoopWorktree.ensure(repo: repo, id: "loop-old")
+        XCTAssertEqual(wt, repo + "/.worktrees/loop-old")
+        XCTAssertEqual(currentBranch(wt), "loop/loop-old")
+    }
+
+    /// When git cannot make the worktree, ensure throws with git's words; it never hands back a folder that is not a
+    /// checkout.
+    func testEnsureThrowsWithGitsOutputWhenTheWorktreeCannotBeMade() throws {
+        let repo = try gitRepo()
+        let wt = repo + "/.worktrees/loop-blocked"
+        try FileManager.default.createDirectory(atPath: wt, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: wt + "/in-the-way.txt", contents: Data("x".utf8))
+        XCTAssertThrowsError(try LoopWorktree.ensure(repo: repo, id: "blocked")) { e in
+            let s = "\(e)"
+            XCTAssertTrue(s.contains("git worktree add failed"), s)
+            XCTAssertTrue(s.contains("already exists"), "git's own words are in the error: \(s)")
+        }
+    }
+
+    /// The real cause of LAB-677: roofd (a launchd daemon) ignored SIGCHLD, so the kernel reaped every child and every
+    /// Process exit code read 0. `rev-parse` "found" a branch that did not exist, the `worktree add` that followed
+    /// failed with "invalid reference", that failure read as success, and round 1 started in a missing folder.
+    /// With SIGCHLD ignored as roofd did: exit codes are known to be unreadable, the worktree is still made (and
+    /// checked to exist), and a check never "passes" on an exit code that cannot be read.
+    func testIgnoredSIGCHLDAsInTheDaemonNeverFakesTheWorktreeOrAPass() throws {
+        let repo = try gitRepo()
+        XCTAssertTrue(Foundations.childExitCodesReadable)
+        signal(SIGCHLD, SIG_IGN)
+        defer { signal(SIGCHLD, SIG_DFL) }
+        XCTAssertEqual(Foundations.run("/bin/sh", ["-c", "exit 3"]).0, 0, "the hazard: a failing child reads as 0")
+        XCTAssertFalse(Foundations.childExitCodesReadable)
+        let wt = try LoopWorktree.ensure(repo: repo, id: "daemonlike")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wt + "/.git"), "the worktree really exists")
+        XCTAssertEqual(currentBranch(wt), "loop/daemonlike")
+        let r = LoopCheck.run("exit 0", in: wt, timeout: 10)
+        XCTAssertFalse(r.passed)
+        XCTAssertEqual(r.exitCode, 125)
+        // And a folder made by hand that is not a checkout is never taken for the worktree.
+        let fake = repo + "/.worktrees/loop-fake"
+        try FileManager.default.createDirectory(atPath: fake + "/sub", withIntermediateDirectories: true)
+        XCTAssertThrowsError(try LoopWorktree.ensure(repo: repo, id: "fake"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fake + "/.git"))
+    }
+
     // MARK: Templates and theme
 
     func testTemplates() {
