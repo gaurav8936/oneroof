@@ -36,7 +36,7 @@ struct OverviewView: View {
         }
         .onAppear {
             model.loadWorkstreams()
-            for w in activeWorkstreams { model.loadIssues(w) }
+            for w in activeWorkstreams { model.loadIssues(w, maxAge: 300) }
         }
     }
 

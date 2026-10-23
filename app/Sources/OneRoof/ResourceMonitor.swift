@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import OneRoofCore
 
@@ -7,6 +8,10 @@ import OneRoofCore
 final class ResourceMonitor: ObservableObject {
     @Published private(set) var snapshot = ResourceSnapshot()
     @Published private(set) var history = ResourceHistory()
+    /// LAB-544: every app on the Mac, sampled only while a Resources page is on screen (about 10 ms a tick).
+    @Published private(set) var mac: MacBreakdown?
+    private let macSampler = MacSampler()
+    private var macWatchers = 0
 
     private let queue = DispatchQueue(label: "oneroof.resources", qos: .utility)
     private let sampler = ResourceSampler()
@@ -31,6 +36,8 @@ final class ResourceMonitor: ObservableObject {
             ResourceTargets.Session(runtimeId: $0.id, pid: $0.pid, memoryWarning: $0.memoryWarning)
         }
         let roofd = model.runtime as? RoofdRuntime
+        let wantsMac = macWatchers > 0
+        let regular = wantsMac ? Set(NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.map(\.processIdentifier)) : []
         queue.async { [weak self] in
             guard let self else { return }
             if let roofd, self.daemonPid == nil || Date().timeIntervalSince(self.daemonAsked) > 30 {
@@ -38,9 +45,55 @@ final class ResourceMonitor: ObservableObject {
                 self.daemonPid = roofd.daemonPid()
             }
             let snap = self.sampler.sample(ResourceTargets(appPid: getpid(), daemonPid: self.daemonPid, sessions: sessions))
+            let mac = wantsMac ? self.macSampler.sample(appPid: getpid(), oneRoofPids: Set(snap.allProcs.map(\.pid)), regularApps: regular) : nil
             DispatchQueue.main.async {
                 self.snapshot = snap
                 self.history.record(snap)
+                if wantsMac { self.mac = mac }
+            }
+        }
+    }
+
+    /// A Resources page appeared or went away: the whole-Mac sample runs while at least one is showing.
+    func watchMac(_ on: Bool) {
+        macWatchers = max(0, macWatchers + (on ? 1 : -1))
+        if on && macWatchers == 1 { tick() }
+        if macWatchers == 0 { mac = nil }
+    }
+
+    // MARK: Quit and end (LAB-544)
+
+    /// Ask an app to quit, as the Dock's Quit does (it may ask to save); `force` = Force Quit. nil = sent.
+    func quit(_ g: MacAppGroup, force: Bool) -> String? {
+        guard g.quittable, let pid = g.mainPid, let app = NSRunningApplication(processIdentifier: pid) else {
+            return "\(g.name) can't be quit from here."
+        }
+        let ok = force ? app.forceTerminate() : app.terminate()
+        soon()
+        return ok ? nil : "\(g.name) did not accept Quit. Try Force quit."
+    }
+
+    /// End one process: SIGTERM (it may tidy up), or SIGKILL with `force`. nil = sent.
+    func end(_ p: MacProc, force: Bool) -> String? {
+        guard p.endable, p.pid > 1, p.pid != getpid() else { return "\(p.name) can't be ended from here." }
+        if kill(p.pid, force ? SIGKILL : SIGTERM) == 0 { soon(); return nil }
+        switch errno {
+        case ESRCH: soon(); return nil
+        case EPERM: return "macOS does not allow One Roof to end \(p.name) (pid \(p.pid))."
+        default: return "Could not end \(p.name): \(String(cString: strerror(errno)))."
+        }
+    }
+
+    /// Show the result of a quit soon, not at the next 3 s tick.
+    private func soon() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.tick() } }
+
+    /// At launch: a local model (llama-server on One Roof's port) that no process owns any more was left by a
+    /// force-quit or crash; it keeps its memory and grows (8.4 GB on 10-22). One Roof starts a fresh one when needed.
+    static func stopLeftoverLocalModel() {
+        DispatchQueue.global(qos: .utility).async {
+            let src = LiveResourceSource()
+            for p in src.processes() where p.ppid == 1 && p.name.hasPrefix("llama-server") {
+                if let argv = src.argv(p.pid), MacResources.isLocalModel(name: p.name, argv: argv) { kill(p.pid, SIGTERM) }
             }
         }
     }

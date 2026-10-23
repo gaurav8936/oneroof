@@ -21,17 +21,31 @@ extension AppModel {
         }
     }
 
-    func loadIssues(_ w: LinearWorkstream, force: Bool = false) {
-        guard force || issues[w.id] == nil else { return }
+    /// A project's issues from Linear: fetched when not loaded yet, when `force`, or when the copy is older than
+    /// `maxAge` seconds (LAB-546: a list fetched once at launch never showed issues created later). One fetch per
+    /// project at a time.
+    func loadIssues(_ w: LinearWorkstream, force: Bool = false, maxAge: TimeInterval = 30) {
+        if !force, issues[w.id] != nil, let at = issuesFetchedAt[w.id], Date().timeIntervalSince(at) < maxAge { return }
+        guard !issuesLoading.contains(w.id) else { return }
+        issuesLoading.insert(w.id)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
                 let list = try self.linear.issues(project: w.id)
-                DispatchQueue.main.async { self.issues[w.id] = list }
+                DispatchQueue.main.async {
+                    self.issuesLoading.remove(w.id)
+                    self.issuesFetchedAt[w.id] = Date()
+                    if self.issues[w.id] != list { self.issues[w.id] = list }
+                }
             } catch {
-                DispatchQueue.main.async { self.linearError = "\(error)" }
+                DispatchQueue.main.async { self.issuesLoading.remove(w.id); self.linearError = "\(error)" }
             }
         }
+    }
+
+    /// `loadIssues` by project id (the issue picker only knows the id).
+    func loadIssues(projectId: String, force: Bool = false, maxAge: TimeInterval = 30) {
+        if let w = workstreams.first(where: { $0.id == projectId }) { loadIssues(w, force: force, maxAge: maxAge) }
     }
 
     func team(_ key: String) throws -> LinearTeam {

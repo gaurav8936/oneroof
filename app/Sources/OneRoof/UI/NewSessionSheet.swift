@@ -778,7 +778,7 @@ struct NewSessionSheet: View {
         debounce?.cancel()
         let work = DispatchWorkItem {
             guard v.count > 6 else { return }
-            if let w = currentWorkstream { model.loadIssues(w) }
+            if let w = currentWorkstream { model.loadIssues(w, maxAge: 120) }
             model.suggestAgent(for: v) { r, _ in
                 suggestion = r
                 let m = AgentMark(agent: r.agent, account: r.account)

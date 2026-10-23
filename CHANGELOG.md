@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.10 — the whole Mac in Resources (22 Oct 2026)
+
+- **Resources covers the whole Mac** (LAB-544). A new **This Mac, by app** card lists every app with its memory and
+  CPU; open one to see its processes, with Chrome's (and other Chromium apps') helpers named: tab or site, extension,
+  GPU, network … **Quit** an app or **End** a process from there, after a confirmation. One Roof's leftovers (a local
+  model a force-quit left running, roofd from older builds) show at the top with **Stop**, and One Roof stops a
+  left-over local model by itself when it starts.
+- **Pick issues refreshes from Linear** (LAB-546): on opening, on every chip click, every minute, and with a ↻ button,
+  so new issues show up without restarting. **Columns sort** (LAB-547): Key (by number), Title, State, and the new
+  Created and Updated columns.
+- **Narrow plan panel fits** (LAB-548): the tab bar tightens, then shows icons, instead of pushing the panel off both
+  edges. The Ticket tab's state buttons no longer wrap letter by letter; when they don't fit they become one
+  **Move to** menu (LAB-530).
+
 ## 0.4.9 — no more freeze (22 Oct 2026)
 
 - **0.4.8 froze the window** (LAB-540). The Artifacts tab's label worked out its count by rereading the handoff folder

@@ -101,6 +101,19 @@ public protocol ResourceSource: AnyObject {
     func startTime(_ pid: Int32) -> Date?
     /// Monotonic clock, nanoseconds.
     func nowNanos() -> UInt64
+    /// The executable's full path (LAB-544: which app a process belongs to).
+    func path(_ pid: Int32) -> String?
+    /// The command line (what a Chrome helper is).
+    func argv(_ pid: Int32) -> [String]?
+    /// The process macOS holds responsible for this one (an app for its helpers and XPC services), as Activity
+    /// Monitor groups them.
+    func responsible(_ pid: Int32) -> Int32?
+}
+
+extension ResourceSource {
+    public func path(_ pid: Int32) -> String? { nil }
+    public func argv(_ pid: Int32) -> [String]? { nil }
+    public func responsible(_ pid: Int32) -> Int32? { nil }
 }
 
 // MARK: CPU
@@ -617,6 +630,27 @@ public final class LiveResourceSource: ResourceSource {
     }
 
     public func nowNanos() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
+
+    public func path(_ pid: Int32) -> String? {
+        var buf = [CChar](repeating: 0, count: 4096)
+        guard proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 else { return nil }
+        return String(cString: buf)
+    }
+
+    public func argv(_ pid: Int32) -> [String]? { ProcessProbe.args(pid: pid)?.argv }
+
+    /// libsystem's `responsibility_get_pid_responsible_for_pid` (what Activity Monitor uses); looked up once, nil if
+    /// a future macOS drops it (then helpers group by their own bundle, which covers Chrome and Electron apps).
+    private static let responsibleFn: (@convention(c) (pid_t) -> pid_t)? = {
+        guard let h = dlopen(nil, RTLD_NOW), let s = dlsym(h, "responsibility_get_pid_responsible_for_pid") else { return nil }
+        return unsafeBitCast(s, to: (@convention(c) (pid_t) -> pid_t).self)
+    }()
+
+    public func responsible(_ pid: Int32) -> Int32? {
+        guard let f = Self.responsibleFn else { return nil }
+        let r = f(pid)
+        return r > 0 ? r : nil
+    }
 
     public func startTime(_ pid: Int32) -> Date? { Self.startTime(pid) }
 
