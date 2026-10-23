@@ -2,6 +2,10 @@
 
 ## 0.4.11 — (unreleased)
 
+- **Browser tabs by name** (LAB-554). In Resources › This Mac, open Chrome (or Brave, Edge, Arc, Vivaldi, Opera,
+  Safari) and press **Show tab names**: its open tabs are listed by site with their titles, and clicking one brings it
+  forward. macOS asks once whether One Roof may control the browser. Memory per tab stays in the browser's Task
+  Manager (⇧Esc), because macOS does not say which process is which tab.
 - **A force-quit no longer leaves the local model running** (LAB-549). The on-device model (llama-server) now runs
   under a small watchdog that stops it within about 2 seconds of One Roof ending, however it ended: Quit, Force Quit,
   a crash. One that an older version left behind counts in One Roof's figures at the top of Resources, and the model
