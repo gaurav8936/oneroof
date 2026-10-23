@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.2.1 — round 2 fixes (23 Oct 2026)
+
+Two things in 0.5.2 did not work on a real Mac. This fix build makes them work.
+
+- **Loops work in their own worktree from the first check** (LAB-677). In 0.5.2 roofd read every command's result as
+  "success", so the loop's worktree was never made, its first check failed with "Folder not found", round 1 started in
+  a folder that did not exist, and a failing check could have counted as a pass. roofd now reads real exit codes, makes
+  and checks the worktree before the first check, and never starts a round outside it. A loop whose id starts with
+  `loop-` no longer gets a doubled `loop-loop-` folder.
+- **Get the model is in Settings › Foundations too** (LAB-675). In 0.5.2 the button showed only on the Foundations
+  check; the Settings model row now has it, and the folder rows no longer do.
+
 ## 0.5.2 — loops, notifications, a model you may use for anything (23 Oct 2026)
 
 Round 2 of One Roof 0.5.
