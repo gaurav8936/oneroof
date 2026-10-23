@@ -76,8 +76,14 @@ struct IssuePickerView: View {
     }
     private var pickedNow: [LinearIssue] { selection.issues }
     private var rows: [LinearIssue] {
-        IssuePick.sorted(IssuePick.rows(open, picked: pickedNow.map(\.id), state: state, query: query), by: sortOrder)
+        // LAB-533: the "Not ready" chip shows every open issue below the quality bar.
+        if state == IssueQuality.notReadyFilter {
+            let all = IssuePick.rows(open, picked: pickedNow.map(\.id), state: nil, query: query)
+            return IssuePick.sorted(all.filter { !IssueQuality.assess($0).ready }, by: sortOrder)
+        }
+        return IssuePick.sorted(IssuePick.rows(open, picked: pickedNow.map(\.id), state: state, query: query), by: sortOrder)
     }
+    private var notReadyCount: Int { open.filter { !IssueQuality.assess($0).ready }.count }
     private var loading: Bool { model.issuesLoading.contains(workstreamId) }
 
     /// LAB-546: fetch again from Linear, so issues created after the window (or session) opened show up.
@@ -145,6 +151,16 @@ struct IssuePickerView: View {
                 }
                 .buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
             }
+            if notReadyCount > 0 {
+                let on = state == IssueQuality.notReadyFilter
+                Button { state = on ? nil : IssueQuality.notReadyFilter } label: {
+                    Text("Not ready \(notReadyCount)").ui(11.5, .medium).foregroundStyle(on ? t.onAccent.color : t.needsText.color)
+                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .background(Capsule().fill(on ? t.accent.color : t.surface2.color))
+                }
+                .buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
+                .help("Issues missing something the quality bar asks for (One Roof Help › Issue quality bar)")
+            }
             Spacer()
             if !sortOrder.isEmpty {
                 Button("Default order") { sortOrder = [] }.buttonStyle(.link).ui(11.5)
@@ -168,7 +184,11 @@ struct IssuePickerView: View {
             TableColumn("Key", value: \.number) { i in Text(i.identifier).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color) }
                 .width(min: 56, ideal: 74, max: 140)
             TableColumn("Title", value: \.shortTitle) { i in
-                Text(i.shortTitle).ui(12.5).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail).help(i.shortTitle)
+                HStack(spacing: 6) {
+                    Text(i.shortTitle).ui(12.5).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail).help(i.shortTitle)
+                    Spacer(minLength: 0)
+                    NotReadyBadge(report: IssueQuality.assess(i))
+                }
             }
             .width(min: 160, ideal: 400)
             TableColumn("State", value: \.pickRank) { i in Text(i.state).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1) }
@@ -202,6 +222,11 @@ struct IssuePickerView: View {
                             .controlSize(.small)
                     }
                     Text(i.shortTitle).ui(14, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+                    let q = IssueQuality.assess(i)
+                    if !q.ready {
+                        Text(q.missingLine).ui(11.5, .medium).foregroundStyle(t.needsText.color)
+                            .fixedSize(horizontal: false, vertical: true).help(q.tooltip)
+                    }
                     Text(describe(i)).ui(12.5).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Select an issue to read it in full before adding it.").ui(12).foregroundStyle(t.text2.color)
@@ -244,6 +269,23 @@ struct IssuePickerView: View {
             Spacer()
             if !pickedNow.isEmpty { Button("Clear") { clear() }.buttonStyle(.plain).ui(11.5).foregroundStyle(t.text2.color) }
             Button("Done") { done() }.keyboardShortcut(.defaultAction)
+        }
+    }
+}
+
+/// LAB-533: "not ready" on an issue below the quality bar; the tooltip lists what is missing.
+struct NotReadyBadge: View {
+    @Environment(\.theme) private var t
+    let report: IssueQuality.Report
+
+    var body: some View {
+        if !report.ready {
+            Text("not ready").ui(10, .semibold).foregroundStyle(t.needsText.color).lineLimit(1).fixedSize()
+                .padding(.horizontal, 6).padding(.vertical, 1)
+                .background(Capsule().fill(t.surface2.color))
+                .overlay(Capsule().strokeBorder(t.separator.color))
+                .help(report.tooltip)
+                .accessibilityLabel("Not ready. " + report.missingLine)
         }
     }
 }

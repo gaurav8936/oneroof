@@ -37,7 +37,10 @@ extension AppModel {
             FeedEntry(id: e.id.uuidString, at: e.at, sessionId: e.sessionId, sessionName: names[e.sessionId] ?? "", kind: e.kind.label, text: e.text)
         }
         if entries != feed { feed = Array(entries) }
-        if ds != decisions { decisions = ds }
+        if ds != decisions {
+            decisions = ds
+            Notifier.shared.decisionsChanged(ds, names: names)   // LAB-197: a new question → "needs you"
+        }
         if subs != subagents { subagents = subs }
         if chs != chapters { chapters = chs }
         fileClaims = claims

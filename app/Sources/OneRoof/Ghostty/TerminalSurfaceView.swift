@@ -24,6 +24,15 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
     var onSearchSelected: ((Int) -> Void)?
     var onOpenURL: ((String) -> Void)?
     var onProcessExit: ((Bool) -> Void)?
+    /// The roofd session this terminal shows (set by `AppModel.wire`), so notifications and Run in Terminal know it.
+    var runtimeId: String?
+    /// A command finished (libghostty COMMAND_FINISHED, from the shell's OSC 133 marks): exit code (nil = not
+    /// reported) and how long it ran, in seconds (LAB-197).
+    var onCommandFinished: ((Int?, TimeInterval) -> Void)?
+    /// A program asked for a desktop notification (OSC 9 / OSC 777): title, body (LAB-197).
+    var onDesktopNotification: ((String, String) -> Void)?
+    /// Right-click › Run in Terminal with the selected text (LAB-598).
+    var onRunSelection: ((String) -> Void)?
 
     init(command: String, workingDirectory: String, env: [String: String] = [:], theme: ThemeName) {
         self.command = command
@@ -230,6 +239,14 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         paste.isEnabled = TerminalMouse.canPaste(.general)
         m.addItem(paste)
         m.addItem(NSMenuItem(title: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "a"))
+        if onRunSelection != nil {
+            // LAB-598: type the selected command into a run terminal, without pressing Return.
+            m.addItem(.separator())
+            let run = NSMenuItem(title: "Run in Terminal", action: #selector(runSelection(_:)), keyEquivalent: "")
+            run.isEnabled = hasSel
+            run.toolTip = "Types the selected command into this session's run terminal. Nothing runs until you press Return there."
+            m.addItem(run)
+        }
         m.addItem(.separator())
         m.addItem(NSMenuItem(title: "Clear", action: #selector(clearScreen(_:)), keyEquivalent: ""))
         for i in m.items { i.target = self }
@@ -237,6 +254,11 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
     }
 
     @objc func clearScreen(_ sender: Any?) { bindingAction("clear_screen") }
+
+    @objc func runSelection(_ sender: Any?) {
+        guard let text = selectionText(), !text.isEmpty else { return }
+        onRunSelection?(text)
+    }
 
     /// The program in the terminal has turned on mouse reporting (many TUIs do).
     var mouseCaptured: Bool { surface.map { ghostty_surface_mouse_captured($0) } ?? false }
@@ -468,6 +490,16 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
         defer { ghostty_surface_free_text(surface, &text) }
         return String(cString: text.text)
+    }
+
+    /// The selected text, or nil when nothing is selected.
+    func selectionText() -> String? {
+        guard let surface, ghostty_surface_has_selection(surface) else { return nil }
+        var text = ghostty_text_s()
+        guard ghostty_surface_read_selection(surface, &text) else { return nil }
+        defer { ghostty_surface_free_text(surface, &text) }
+        guard let p = text.text else { return nil }
+        return String(decoding: Data(bytes: p, count: Int(text.text_len)), as: UTF8.self)
     }
 
     /// Send literal text as if typed (used to deliver nothing by default; kept for future use).
