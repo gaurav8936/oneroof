@@ -1,7 +1,30 @@
 # Changelog
 
-## 0.4.11 — (unreleased)
+## 0.5.1 — window names, formatted files (23 Oct 2026)
 
+The first release of One Roof 0.5 (round 1 of 5). It also carries the two fixes that were waiting for 0.4.11.
+
+- **Each window has a big, bold name and its own colour** (LAB-509, LAB-590). Click the window's name at the top (or
+  use Window › Rename Window… and Window › Window Colour). A coloured window gets a tinted title bar with the name and
+  a stripe in that colour, so several windows are easy to tell apart. Mission Control and the Window menu show the
+  name. A window with no colour looks as before.
+- **Every window shows which One Roof is running** (LAB-526): "One Roof 0.5.1 (15)" next to "window N of M"; click it
+  for these release notes. The sidebar footer shows roofd's real version instead of a stale "roofd 0.4.0", and
+  quietly notes "older than app" while a roofd from an older One Roof is still running.
+- **Four pastel themes** (LAB-601): Mint, Sky, Lavender and Peach, for any panel and the terminal, beside Daylight,
+  Graphite and Midnight (Settings › Appearance or View › Theme). They turn Midnight in Dark Mode when following macOS.
+- **Markdown opens formatted** (LAB-479). A `.md` file shows as a proper page in the centre panel: headings, nested
+  and task lists, tables, coloured code blocks with Copy, quotes and images next to the file. Links to other files
+  open in the viewer, `#links` jump to the heading, web links open in your browser. **Preview | Source** at the top
+  switches to the editor and back; the preview shows unsaved edits.
+- **HTML opens like a browser page** (LAB-480). `.html` files render in the centre panel with their CSS, scripts and
+  images (relative paths across the repo work). Clicked web links open in your browser. **Preview | Source** edits
+  the page, and ↻ reloads it from disk.
+- **Subagents hang under their agent in Overview** (LAB-595). Each session in a window card shows the subagents it
+  started, joined to it by tree lines, with a status dot, what each is doing and how long it has run. Click one to
+  open its trace.
+- **Settings › Allow scheduled runs says what it does** (LAB-285): roofd starts Tonight, Nightly and repeating
+  sessions with One Roof open or closed. Leftover code for an old launchd scheduler that was never used is gone.
 - **Browser tabs by name** (LAB-554). In Resources › This Mac, open Chrome (or Brave, Edge, Arc, Vivaldi, Opera,
   Safari) and press **Show tab names**: its open tabs are listed by site with their titles, and clicking one brings it
   forward. macOS asks once whether One Roof may control the browser. Memory per tab stays in the browser's Task
