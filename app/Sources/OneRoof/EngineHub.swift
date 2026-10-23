@@ -77,6 +77,9 @@ final class EngineHub {
     private func step(_ live: [Live], now: Date) {
         let ids = Set(live.map(\.id))
         for (id, _) in revisions where !ids.contains(id) { scheduler.remove(id); revisions[id] = nil }
+        for id in Set(agentFiles.keys).union(claudeLinks.keys).union(scanSig.keys) where !ids.contains(id) {
+            agentFiles[id] = nil; claudeLinks[id] = nil; lastLinkTry[id] = nil; scanSig[id] = nil
+        }
         var changed = false
         for s in live {
             let old = statuses[s.id]
@@ -222,26 +225,108 @@ final class EngineHub {
 
     // MARK: Subagents (ENGINES §4)
 
-    private func scanSubagents(_ s: Live, now: Date) -> Bool {
-        let config = AccountResolver.launchEnv(agent: .claude, account: s.account)["CLAUDE_CONFIG_DIR"]
-        let folder = ConversationIndex.folder(forLaunchDirectory: s.launchDirectory, configDir: config)
-        let convs = ConversationIndex.recent(in: folder, limit: 30)
-        guard let title = s.title?.trimmingCharacters(in: .whitespaces), !title.isEmpty,
-              let conv = convs.first(where: { $0.title == title }) else { return false }
-        var jsonl = ""
-        let main = folder + "/\(conv.id).jsonl"
-        if let d = Self.tail(main, bytes: 3 << 20) { jsonl = String(decoding: d, as: UTF8.self) }
-        let sub = ClaudeTranscript.subagentsFolder(configDir: config ?? NSHomeDirectory() + "/.claude", cwd: s.launchDirectory, sessionId: conv.id)
-        for f in (try? FileManager.default.contentsOfDirectory(atPath: sub)) ?? [] where f.hasSuffix(".jsonl") {
-            if let d = Self.tail(sub + "/" + f, bytes: 1 << 20) { jsonl += "\n" + String(decoding: d, as: UTF8.self) }
+    /// A session's claude process and the config dir holding its `sessions/<pid>.json` (LAB-652), kept per session so
+    /// the process tree is walked once, not every scan. The small sessions file is re-read each scan, so a /clear or
+    /// /resume inside the same process (a new session id) is followed.
+    private struct ClaudeLink { var pid: Int32; var configDir: String }
+    private var claudeLinks: [String: ClaudeLink] = [:]
+    private var lastLinkTry: [String: Date] = [:]
+    private struct FileSig: Equatable { var size: UInt64; var modified: Date }
+    private var agentFiles: [String: [String: (sig: FileSig, file: SubagentFile)]] = [:]   // session → path → read
+    private var scanSig: [String: (sig: [FileSig], at: Date)] = [:]
+
+    /// The Claude conversation a session shows: exactly, from its claude process's sessions file; else (no process
+    /// found, e.g. an older Claude Code) the conversation whose ai-title is the session's title.
+    private func conversation(_ s: Live, now: Date) -> (id: String, folder: String)? {
+        let account = AccountResolver.launchEnv(agent: .claude, account: s.account)["CLAUDE_CONFIG_DIR"]
+        if claudeLinks[s.id] == nil, now.timeIntervalSince(lastLinkTry[s.id] ?? .distantPast) > 15 {
+            lastLinkTry[s.id] = now
+            claudeLinks[s.id] = findClaude(s, account: account)
         }
-        let list = ClaudeTranscript.subagents(jsonl: jsonl, sessionId: s.id)
+        if let link = claudeLinks[s.id] {
+            let file = ClaudeSessionLocator.sessionFile(configDir: link.configDir, pid: link.pid)
+            if let d = FileManager.default.contents(atPath: file), let live = ClaudeSessionLocator.parseSessionFile(d, pid: link.pid) {
+                for dir in [live.cwd, s.launchDirectory].compactMap({ $0 }) {
+                    let folder = ConversationIndex.folder(forLaunchDirectory: dir, configDir: link.configDir)
+                    if FileManager.default.fileExists(atPath: folder + "/\(live.sessionId).jsonl") { return (live.sessionId, folder) }
+                }
+            } else {
+                claudeLinks[s.id] = nil   // the process ended or was replaced: look again next time
+            }
+        }
+        let folder = ConversationIndex.folder(forLaunchDirectory: s.launchDirectory, configDir: account)
+        guard let conv = ClaudeSessionLocator.byTitle(s.title, in: ConversationIndex.recent(in: folder, limit: 30)) else { return nil }
+        return (conv.id, folder)
+    }
+
+    /// The claude process in the session's pane (the foreground group first, else the shell's process tree) and the
+    /// config dir whose sessions file names it.
+    private func findClaude(_ s: Live, account: String?) -> ClaudeLink? {
+        guard let pane = s.pane, let info = try? runtime.processes(pane: pane) else { return nil }
+        var pid = ClaudeSessionLocator.claudePid(in: info.foreground.map { .init(pid: $0.pid, name: $0.name, argv: $0.argv) })
+        if pid == nil, let shell = info.shellPid {
+            let table = ProcTable(LiveResourceSource().processes())
+            let procs = table.tree(shell).compactMap { node -> ClaudeSessionLocator.Proc? in
+                guard let e = table.byPid[node.pid], ["claude", "node", "bun"].contains(e.name) else { return nil }
+                return .init(pid: e.pid, ppid: e.ppid, name: e.name, argv: ProcessProbe.args(pid: e.pid)?.argv ?? [])
+            }
+            pid = ClaudeSessionLocator.claudePid(in: procs)
+        }
+        guard let pid else { return nil }
+        let dirs = ClaudeSessionLocator.configDirs(processEnv: ProcessProbe.args(pid: pid)?.env, account: account, home: NSHomeDirectory())
+        for dir in dirs where FileManager.default.fileExists(atPath: ClaudeSessionLocator.sessionFile(configDir: dir, pid: pid)) {
+            return ClaudeLink(pid: pid, configDir: dir)
+        }
+        return nil
+    }
+
+    private func scanSubagents(_ s: Live, now: Date) -> Bool {
+        guard let conv = conversation(s, now: now) else { return false }
+        let fm = FileManager.default
+        func sig(_ path: String) -> FileSig? {
+            guard let a = try? fm.attributesOfItem(atPath: path) else { return nil }
+            return FileSig(size: (a[.size] as? NSNumber)?.uint64Value ?? 0, modified: a[.modificationDate] as? Date ?? .distantPast)
+        }
+        let main = conv.folder + "/\(conv.id).jsonl"
+        let sub = conv.folder + "/\(conv.id)/subagents"
+        let names = ((try? fm.contentsOfDirectory(atPath: sub)) ?? []).filter { $0.hasSuffix(".jsonl") }.sorted()
+        var sigs = [sig(main) ?? FileSig(size: 0, modified: .distantPast)]
+        var files: [SubagentFile] = []
+        var cache = agentFiles[s.id] ?? [:]
+        var seen: [String: (sig: FileSig, file: SubagentFile)] = [:]
+        defer { agentFiles[s.id] = seen }
+        for n in names {
+            let path = sub + "/" + n
+            guard let fs = sig(path) else { continue }
+            sigs.append(fs)
+            if let c = cache.removeValue(forKey: path), c.sig == fs { seen[path] = c; files.append(c.file); continue }
+            let meta = fm.contents(atPath: SubagentMeta.metaPath(forTranscript: path)).flatMap(SubagentMeta.parse)
+            let tailBytes = 512 << 10
+            let tail = Self.tail(path, bytes: tailBytes).map { String(decoding: $0, as: UTF8.self) } ?? ""
+            // A long file's tail misses its first line (start time, prompt): read that separately.
+            let head = fs.size > UInt64(tailBytes) ? Self.firstLine(path, bytes: 256 << 10) : ""
+            let file = SubagentFile(meta: meta, head: head, tail: tail, modified: fs.modified)
+            seen[path] = (fs, file)
+            files.append(file)
+        }
+        // Nothing changed on disk and the time-based done rules were checked within the minute: nothing to redo.
+        if let last = scanSig[s.id], last.sig == sigs, now.timeIntervalSince(last.at) < 60 { return false }
+        scanSig[s.id] = (sigs, now)
+        let jsonl = Self.tail(main, bytes: 3 << 20).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        let list = ClaudeTranscript.subagents(main: jsonl, files: files, sessionId: s.id, now: now)
         let before = Set((subagents[s.id] ?? []).map(\.id))
         let started = list.filter { !before.contains($0.id) && $0.ended == nil }.map(\.name)
         if !started.isEmpty, let e = FeedSignals.subagentsStarted(sessionId: s.id, names: started, at: now) { add(e) }
         guard list != subagents[s.id] ?? [] else { return false }
         subagents[s.id] = list
         return true
+    }
+
+    static func firstLine(_ path: String, bytes: Int) -> String {
+        guard let h = FileHandle(forReadingAtPath: path) else { return "" }
+        defer { try? h.close() }
+        guard let d = try? h.read(upToCount: bytes), let nl = d.firstIndex(of: 0x0A) else { return "" }
+        return String(decoding: d[d.startIndex..<nl], as: UTF8.self)
     }
 
     static func tail(_ path: String, bytes: Int) -> Data? {
