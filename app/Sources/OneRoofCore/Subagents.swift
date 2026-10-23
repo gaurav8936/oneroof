@@ -222,3 +222,62 @@ public enum InferredSubagents {
         }
     }
 }
+
+/// One subagent as a row hanging under its session in the Overview (LAB-595), parent → child.
+public struct SubagentBranch: Equatable, Sendable, Identifiable {
+    public var sub: Subagent
+    /// 1 = started by the session, 2 = by a subagent, …
+    public var level: Int
+    /// For each ancestor level (1 ..< level): does that ancestor's line carry on below this row (draw │)?
+    public var rails: [Bool]
+    /// The last child of its parent (└) rather than one of several (├).
+    public var isLast: Bool
+    public var id: String { sub.id }
+}
+
+public enum SubagentTree {
+    /// The rows to hang under a session: every branch with something still running (or needing you), plus the newest
+    /// `keepFinished` finished branches, in start order, depth first, at most `limit` rows. `hidden` counts the
+    /// subagents left out (the Subagents trace shows them all).
+    public static func branches(_ subs: [Subagent], keepFinished: Int = 2, limit: Int = 6) -> (rows: [SubagentBranch], hidden: Int) {
+        let ids = Set(subs.map(\.id))
+        var children: [String: [Subagent]] = [:]
+        var roots: [Subagent] = []
+        for s in subs {
+            if let p = s.parentId, ids.contains(p), p != s.id { children[p, default: []].append(s) } else { roots.append(s) }
+        }
+        func active(_ s: Subagent, _ seen: Set<String> = []) -> Bool {
+            if s.ended == nil || s.status == .needsYou { return true }
+            guard !seen.contains(s.id) else { return false }
+            return (children[s.id] ?? []).contains { active($0, seen.union([s.id])) }
+        }
+        let finished = roots.filter { !active($0) }.sorted { ($0.ended ?? $0.started) > ($1.ended ?? $1.started) }
+        let keep = Set(roots.filter { active($0) }.map(\.id) + finished.prefix(max(0, keepFinished)).map(\.id))
+        let shown = roots.filter { keep.contains($0.id) }
+
+        var rows: [SubagentBranch] = []
+        var visited = Set<String>()
+        func visit(_ list: [Subagent], level: Int, rails: [Bool]) {
+            for (i, s) in list.enumerated() where visited.insert(s.id).inserted {
+                let last = i == list.count - 1
+                rows.append(SubagentBranch(sub: s, level: level, rails: rails, isLast: last))
+                visit(children[s.id] ?? [], level: level + 1, rails: rails + [!last])
+            }
+        }
+        visit(shown, level: 1, rails: [])
+        if rows.count > limit {
+            rows = Array(rows.prefix(limit))
+            if var final = rows.popLast() { final.isLast = true; rows.append(final) }   // the cut row closes its line
+        }
+        return (rows, subs.count - rows.count)
+    }
+
+    /// "2 running · 3 done" for a session's subagents ("1 needs you" first when one does).
+    public static func summary(_ subs: [Subagent]) -> String {
+        let needs = subs.filter { $0.status == .needsYou }.count
+        let running = subs.filter { $0.ended == nil && $0.status != .needsYou }.count
+        let done = subs.count - needs - running
+        return [needs > 0 ? "\(needs) need\(needs == 1 ? "s" : "") you" : nil, running > 0 ? "\(running) running" : nil, done > 0 ? "\(done) done" : nil]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+}

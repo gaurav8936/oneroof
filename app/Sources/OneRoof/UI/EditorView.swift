@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import OneRoofCore
 
-/// Editor: text and code open here (Markdown, images, HTML, folders and search keep the v0.1 viewer). Tabs ·
+/// Editor: text and code open here; Markdown and HTML open formatted in the viewer and here in Source mode (LAB-479,
+/// LAB-480); images, folders and search keep the v0.1 viewer. Tabs ·
 /// claim banner · NSTextView editor with gutter (line numbers, attribution, breakpoints), syntax colours and problem
 /// lines · run dock (a real libghostty terminal) · inspector (Outline · Problems · Git · Plan, On this file).
 /// No LSP. Saving waits while another session's step claims the file.
@@ -22,18 +23,12 @@ struct EditorView: View {
         let path = win.viewerPath ?? ""
         let kind = FileKind.of(path)
         Group {
-            if kind == .text || (kind == .markdown && state.sourceMode.contains(path)) || state.tabs.contains(path) && kind == .text {
+            if DocumentRoute.opensInEditor(kind.core, mode: state.mode(for: path)) {
                 EditorBody(model: model, win: win, state: state, path: path)
             } else {
-                VStack(spacing: 0) {
-                    if kind == .markdown {
-                        HStack {
-                            Spacer()
-                            Button("Edit source") { state.sourceMode.insert(path); state.open(path) }.controlSize(.small).padding(6)
-                        }
-                    }
-                    FileViewer(model: model)
-                }
+                FileViewer(model: model, path: path,
+                           onSource: DocumentRoute.hasPreview(kind.core) ? { state.setMode(.source, for: path) } : nil,
+                           unsaved: state.isDirty(path) ? state.texts[path] : nil)
             }
         }
         .onAppear { if kind == .text { state.open(path) } }
@@ -91,7 +86,15 @@ final class EditorState: ObservableObject {
 
     func isDirty(_ path: String) -> Bool { texts[path] != saved[path] }
 
+    /// Markdown and HTML: Preview (formatted, the default) or Source (this editor).
+    func mode(for path: String) -> ViewerMode { sourceMode.contains(path) ? .source : .preview }
+
+    func setMode(_ m: ViewerMode, for path: String) {
+        if m == .source { sourceMode.insert(path); open(path) } else { sourceMode.remove(path) }
+    }
+
     func close(_ path: String) {
+        sourceMode.remove(path)
         tabs.removeAll { $0 == path }
         if !isDirty(path) { texts[path] = nil; saved[path] = nil }
     }
@@ -180,6 +183,12 @@ private struct EditorBody: View {
                 }
             }
             Spacer()
+            if DocumentRoute.hasPreview(FileKind.of(path).core) {
+                Segmented(options: [(ViewerMode.preview, "Preview"), (.source, "Source")],
+                          selection: Binding(get: { state.mode(for: path) }, set: { state.setMode($0, for: path) }))
+                    .help("Preview shows the page formatted; Source edits it")
+                    .padding(.trailing, 10)
+            }
             Text("Split editor ⌘\\").ui(11.5).foregroundStyle(t.text3.color).padding(.trailing, 12)
         }
         .frame(height: 34)
