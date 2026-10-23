@@ -45,6 +45,9 @@ enum Scheduler {
     }
 
     static func tick(now: Date = Date()) {
+        // Loops (LAB-677) always run here, whatever Allow scheduled runs says: the app never runs them, so they can
+        // never run twice. They run on their own queue (a check can take minutes) and need only a configured roofd.
+        LoopEngine.tick(config: config())
         guard let c = config(), c.enabled, let store = try? SessionStore(path: c.store) else { return }
         if let p = c.projects { Workspace.configure(root: p, shared: c.shared) }
         let records = store.schedules()

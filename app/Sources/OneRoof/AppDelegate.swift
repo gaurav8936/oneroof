@@ -201,6 +201,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showResources(_ sender: Any?) { model.centre = model.centre == .resources ? .workspace : .resources }
     @objc func showDecisions(_ sender: Any?) { model.centre = model.centre == .decisions ? .workspace : .decisions }
     @objc func showSubagents(_ sender: Any?) { model.centre = model.centre == .subagents ? .workspace : .subagents }
+    /// Loops (LAB-678): work that repeats until a check passes, or nightly; run by roofd.
+    @objc func showLoops(_ sender: Any?) { model.centre = model.centre == .loops ? .workspace : .loops }
     /// ⌘R: Run in the Editor, Raw stream in a session (SHORTCUTS: context-dependent).
     @objc func toggleRawStream(_ sender: Any?) {
         if model.centre == .editor { NotificationCenter.default.post(name: .runFile, object: [model.active.id]) }
@@ -281,6 +283,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Resources", "Memory and CPU of One Roof, every window and session (⇧⌘U)", "gauge.with.dots.needle.33percent", "View") { m.centre = .resources }
         add("Decisions", "\(m.openDecisionCount) waiting (⌘I)", "hand.raised", "View") { m.centre = .decisions }
         add("Subagents", "Trace of every subagent (⇧⌘A)", "point.3.connected.trianglepath.dotted", "View") { m.centre = .subagents }
+        add("Loops", "Work that repeats until a check passes, or every night", "arrow.triangle.2.circlepath", "View") { m.centre = .loops }
+        add("New loop", "Goal, check, agent, limits; test the check first", "plus.arrow.triangle.2.circlepath", "Action") {
+            m.centre = .loops
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { NotificationCenter.default.post(name: .newLoop, object: nil) }
+        }
         add("New workspace window", "⇧⌘N", "macwindow.badge.plus", "Action") { [weak self] in self?.main.newWorkspace() }
         for w in m.windows { add("Window: \(w.name)", "\(m.items(in: w).count) sessions", "macwindow", "Window") { [weak self] in self?.openWindow(for: w) } }
         for d in m.openDecisions {
@@ -548,6 +555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(item("Board", #selector(toggleBoard(_:)), "b"))
         view.addItem(item("Decisions", #selector(showDecisions(_:)), "i"))
         view.addItem(item("Subagents", #selector(showSubagents(_:)), "a", [.command, .shift]))
+        view.addItem(item("Loops", #selector(showLoops(_:)), ""))
         view.addItem(item("Learn", #selector(toggleLearn(_:)), "e", [.command, .shift]))
         view.addItem(item("Work: Projects and Roadmap", #selector(toggleWork(_:)), "w", [.command, .shift]))
         view.addItem(.separator())
@@ -694,6 +702,8 @@ extension AppDelegate: NSMenuItemValidation {
             item.state = model.centre == .resources ? .on : .off
         case #selector(showSubagents(_:)):
             item.state = model.centre == .subagents ? .on : .off
+        case #selector(showLoops(_:)):
+            item.state = model.centre == .loops ? .on : .off
         case #selector(togglePinSelected(_:)):
             item.title = model.selected?.session.pinned == true ? "Unpin" : "Pin"
             return model.selected != nil
