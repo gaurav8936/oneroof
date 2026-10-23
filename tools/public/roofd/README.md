@@ -58,7 +58,9 @@ roofd list | info ID | read ID [lines] | input ID TEXT [--submit] | close ID
 roofd hello                                    protocol version and daemon build
 ```
 
-`ROOFD_DIR` sets the socket folder (the default is `~/Library/Application Support/One Roof/roofd`).
+`ROOFD_DIR` sets the socket folder (the default is `~/Library/Application Support/One Roof/roofd`). Keep it short:
+Unix socket paths are limited to 104 bytes. After a session ends, its holder stays up for 10 minutes (`ROOFD_LINGER`
+seconds) so clients can still read how it exited.
 
 ```bash
 export ROOFD_DIR=/tmp/roofd-demo
