@@ -5,7 +5,8 @@ import OneRoofCore
 /// scheduler's 30 s tick. Loops always run here (never in the app, so the two never both run one), and only in the
 /// roofd the app has configured (scheduler.json names the store and folders; a test daemon has none and runs nothing).
 ///
-/// Each loop works in its own worktree `<repo>/.worktrees/loop-<id>` on branch `loop/<id>`, never in the live checkout;
+/// Each loop works in its own worktree `<repo>/.worktrees/loop-<name>` on branch `loop/<name>` (LoopWorktree), made
+/// before the first check and never skipped: no check or round runs before it exists. Never in the live checkout;
 /// nothing is pushed or merged. Each round is a session launched exactly as the scheduler launches one (LaunchPlan +
 /// RoofdRuntime.start) with the round prompt as its opening message. When the round's agent is back at its prompt the
 /// engine runs the check, appends the round to rounds.jsonl and lets LoopController decide: another round, wait, done
@@ -64,6 +65,12 @@ enum LoopEngine {
                 guard let begun = try? store.update(id, { $0 = LoopController.begin($0, now: now) }) else { return }
                 l = begun
             }
+            // A check whose exit code cannot be read would "pass" every time: stop rather than guess.
+            guard Foundations.childExitCodesReadable else {
+                end(id, store: store, outcome: .stop("Stopped: " + LoopCheck.unreadableExitCodes), runId: l.run?.id)
+                return
+            }
+            // The worktree comes first: the check, and every round, run only inside it (never before it exists).
             let wt: String
             do { wt = try LoopWorktree.ensure(repo: l.repoPath, id: l.id) } catch {
                 end(id, store: store, outcome: .stop("Could not make the loop's worktree: \(error)"), runId: l.run?.id)
@@ -106,6 +113,12 @@ enum LoopEngine {
         let wt: String
         do { wt = try LoopWorktree.ensure(repo: fresh.repoPath, id: fresh.id) } catch {
             end(fresh.id, store: store, outcome: .stop("Could not make the loop's worktree: \(error)"), runId: fresh.run?.id)
+            return
+        }
+        // Never a round outside the worktree: if it is not there now (removed a moment ago), stop and say so.
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: wt, isDirectory: &isDir), isDir.boolValue else {
+            end(fresh.id, store: store, outcome: .stop("Stopped before round \(n): the loop's worktree \(wt) is not there"), runId: fresh.run?.id)
             return
         }
         // The last round's session is done with: close it unless someone is looking at it or it asks something.
