@@ -113,7 +113,7 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
     public var goal: String
     /// A shell command (zsh -lc) run in the loop's worktree; exit 0 = done.
     public var check: String
-    /// The repo the loop works on; rounds run in `<repo>/.worktrees/loop-<id>` on branch `loop/<id>`.
+    /// The repo the loop works on; rounds run in `<repo>/.worktrees/loop-<name>` on branch `loop/<name>` (LoopWorktree).
     public var repoPath: String
     public var agent: AgentKind
     public var model: String?
@@ -175,7 +175,7 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
     }
 
     /// The loop's own branch and worktree (never the live checkout).
-    public var branch: String { LoopWorktree.branch(id) }
+    public var branch: String { LoopWorktree.branch(id, repo: repoPath) }
     public var worktreePath: String { LoopWorktree.path(repo: repoPath, id: id) }
 
     /// A file-safe id from a name: "Fix CI (web)" → "fix-ci-web".

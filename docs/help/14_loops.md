@@ -18,7 +18,7 @@ Open **View › Loops** (or type "Loops" in the command palette) and press **+ N
 ## How a run goes
 
 1. One Roof runs the check first. If it already passes, no agent is needed.
-2. Otherwise it starts round 1: a session in the loop's worktree (`<repo>/.worktrees/loop-<id>`, branch `loop/<id>`), opening with the goal, the check and the check's last output.
+2. Otherwise it starts round 1: a session in the loop's worktree (`<repo>/.worktrees/loop-<id>`, branch `loop/<id>`), opening with the goal, the check and the check's last output. One Roof makes the worktree before the first check; if it cannot, the loop stops and says why, and no round starts. (A loop whose id already starts with `loop-` is not doubled: `loop-smoke` works in `.worktrees/loop-smoke` on `loop/smoke`.)
 3. When the agent finishes, One Roof runs the check again.
 4. It stops when the check passes (**Done**) or at a limit (**Stopped at a limit**: too many rounds, too long, or the same failure twice in a row). Every round, and why it stopped, is listed under **Rounds**.
 

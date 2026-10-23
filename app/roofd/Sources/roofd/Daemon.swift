@@ -25,7 +25,11 @@ enum Daemon {
         var noCore = rlimit(rlim_cur: 0, rlim_max: 0)
         setrlimit(RLIMIT_CORE, &noCore)
         signal(SIGPIPE, SIG_IGN)
-        signal(SIGCHLD, SIG_IGN)   // holders are reparented away; never leave zombies
+        // SIGCHLD stays at its default (LAB-677). Ignoring it made the kernel reap every child at once, so each
+        // Process run here (git for a loop's worktree, the loop's check, schedules) read exit code 0 whatever
+        // happened. Holders are reaped by pid instead (HolderReaper), so they still never stay as zombies.
+        signal(SIGCHLD, SIG_DFL)
+        HolderReaper.start()
         try FileManager.default.createDirectory(atPath: Paths.dir, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         // One daemon per folder. A second start waits for the lock instead of exiting: under launchd (KeepAlive) an
@@ -188,6 +192,7 @@ enum Daemon {
         close(pipeFds[0])
         defer { close(pipeFds[1]) }
         guard rc == 0 else { throw RoofdError("spawn holder: \(String(cString: strerror(rc)))") }
+        HolderReaper.track(pid)
         guard Sock.writeAll(pipeFds[1], spec) else { throw RoofdError("could not hand the spec to the holder") }
     }
 
@@ -196,5 +201,38 @@ enum Daemon {
         var buf = [CChar](repeating: 0, count: Int(size))
         guard _NSGetExecutablePath(&buf, &size) == 0 else { return CommandLine.arguments[0] }
         return URL(fileURLWithPath: String(cString: buf)).resolvingSymlinksInPath().path
+    }
+}
+
+/// Reaps the holders this daemon started, by pid only (never waitpid(-1), which would take the exit status of a
+/// Process some other thread is waiting for). A holder that ended is a zombie for at most `interval` seconds.
+enum HolderReaper {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var pids: Set<pid_t> = []
+    static let interval: TimeInterval = 2
+
+    static func track(_ pid: pid_t) {
+        lock.lock(); pids.insert(pid); lock.unlock()
+    }
+
+    /// Reap every tracked holder that has ended; returns how many are still running.
+    @discardableResult
+    static func reap() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        for pid in pids {
+            var status: Int32 = 0
+            let r = waitpid(pid, &status, WNOHANG)
+            if r == pid || (r < 0 && errno == ECHILD) { pids.remove(pid) }
+        }
+        return pids.count
+    }
+
+    static func start() {
+        Thread.detachNewThread {
+            while true {
+                reap()
+                Thread.sleep(forTimeInterval: interval)
+            }
+        }
     }
 }
