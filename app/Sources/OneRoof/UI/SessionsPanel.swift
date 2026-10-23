@@ -209,6 +209,11 @@ struct SessionsPanel: View {
             HStack(spacing: 6) {
                 Circle().fill(t.statusColor(model.runtimeOK ? .done : .needsYou).color).frame(width: 7, height: 7)
                 Text(model.runtimeState).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
+                // LAB-526: a quiet note (not a warning colour) when the running roofd is older than this app.
+                if let note = AppVersion.daemonOlderNote(model.daemonVersion, app: AppVersion.current?.short) {
+                    Text("· older than app").ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).fixedSize()
+                        .help(note).accessibilityLabel(note)
+                }
                 Spacer()
                 Button { NotificationCenter.default.post(name: .openFoundations, object: nil) } label: {
                     let issues = model.foundations.filter { $0.level != .ok }.count

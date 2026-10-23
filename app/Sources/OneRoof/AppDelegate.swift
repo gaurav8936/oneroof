@@ -238,6 +238,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(a, forType: .string)
     }
+    /// Window › Rename Window… (LAB-509): the big name at the top of the window in front.
+    @objc func renameWindow(_ sender: Any?) { model.active.promptRename() }
+    /// Window › Window Colour (LAB-590): tag 0 = none, n = `Sticker.rowColors[n - 1]`.
+    @objc func setWindowColour(_ sender: NSMenuItem) {
+        model.active.setColour(sender.tag == 0 ? nil : Sticker.rowColors[safe: sender.tag - 1]?.name)
+    }
     @objc func goToWorkspace(_ sender: NSMenuItem) {
         guard let w = model.windows[safe: sender.tag - 1] else { return }
         openWindow(for: w)
@@ -620,6 +626,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         win.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         win.addItem(.separator())
         win.addItem(item("All Windows", #selector(toggleLaunchpad(_:)), String(Character(UnicodeScalar(NSUpArrowFunctionKey)!)), [.control]))
+        win.addItem(item("Rename Window…", #selector(renameWindow(_:)), ""))
+        let colours = NSMenu(title: "Window Colour")
+        for (i, name) in (["None"] + Sticker.rowColors.map { $0.name.capitalized }).enumerated() {
+            let mi = item(name, #selector(setWindowColour(_:)), "")
+            mi.tag = i
+            colours.addItem(mi)
+        }
+        let colourItem = NSMenuItem(title: "Window Colour", action: nil, keyEquivalent: "")
+        colourItem.submenu = colours
+        win.addItem(colourItem)
         let wsList = NSMenuItem(title: "Workspaces", action: nil, keyEquivalent: "")
         wsList.submenu = NSMenu(title: "Workspaces")
         wsList.submenu?.delegate = workspaceMenu
@@ -689,6 +705,9 @@ extension AppDelegate: NSMenuItemValidation {
             return GitDiff.repoRoot(for: model.selected?.session.repoPath ?? Workspace.projectsRoot) != nil
         case #selector(debugFile(_:)):
             return model.centre == .editor
+        case #selector(setWindowColour(_:)):
+            let current = model.active.colour.flatMap { c in Sticker.rowColors.firstIndex { $0.name == c }.map { $0 + 1 } } ?? 0
+            item.state = item.tag == current ? .on : .off
         case #selector(goToWorkspace(_:)):
             return model.windows.count >= item.tag
         case #selector(groupBy(_:)):
