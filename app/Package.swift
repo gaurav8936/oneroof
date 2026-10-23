@@ -15,7 +15,7 @@ let package = Package(
     products: (hasGhostty ? [.executable(name: "OneRoof", targets: ["OneRoof"])] : [])
         + (hasRoofVT ? [.executable(name: "roofd", targets: ["roofd"])] : []),
     targets: (hasGhostty ? appTargets : []) + (hasRoofVT ? roofdTargets : []) + [
-        // Pure Swift: sessions, herdr client, account probe, store, grouping, themes. Unit-tested.
+        // Pure Swift: sessions, roofd client, account probe, store, grouping, schedules, themes. Unit-tested.
         .target(
             name: "OneRoofCore",
             swiftSettings: [.swiftLanguageMode(.v5)],

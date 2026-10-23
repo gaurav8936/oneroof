@@ -3,17 +3,31 @@ import SwiftUI
 import OneRoofCore
 
 /// The centre file viewer (owner, 2026-10-17: a file clicked in the navigator, a plan or a doc shows in the middle,
-/// never an external window). Markdown renders, code and text show with line numbers, images and HTML show as such,
-/// folders list their files. Anything else offers to open in its default app.
+/// never an external window). Markdown renders formatted and HTML renders like a browser page (LAB-479, LAB-480), each
+/// with a Preview | Source switch to edit it; code and text show with line numbers, images as images, folders list
+/// their files. Anything else offers to open in its default app.
 struct FileViewer: View {
     @ObservedObject var model: AppModel
+    /// The file to show; nil = the front window's viewer path. The editor passes it so a new file always redraws.
+    var path: String? = nil
+    /// Markdown and HTML: switch to Source (the editor). nil = no switch.
+    var onSource: (() -> Void)? = nil
+    /// The editor's unsaved text for this file: Markdown previews it; HTML says the page shows the saved file.
+    var unsaved: String? = nil
+    @State private var reload = 0
     var t: ThemeTokens { model.themes.terminal.tokens }
 
     var body: some View {
-        let path = model.viewerPath ?? ""
+        let path = self.path ?? model.viewerPath ?? ""
         VStack(spacing: 0) {
             header(path)
             Divider().overlay(t.border.color)
+            if unsaved != nil, FileKind.of(path) == .html {
+                Text("Unsaved edits: the page shows the saved file. Save (⌘S) in Source to see them here.")
+                    .font(.system(size: 11.5)).foregroundStyle(t.secondaryText.color)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.vertical, 5)
+                    .background(t.surface.color)
+            }
             content(path).id(path + "#\(model.viewerLine ?? 0)")
         }
         .background(t.background.color)
@@ -32,6 +46,14 @@ struct FileViewer: View {
             Text(rawPath == FileKind.searchPath ? "" : path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).font(.system(size: 11))
                 .foregroundStyle(t.secondaryText.color).lineLimit(1).truncationMode(.middle)
             Spacer()
+            if let onSource, DocumentRoute.hasPreview(FileKind.of(rawPath).core) {
+                Segmented(options: [(ViewerMode.preview, "Preview"), (.source, "Source")],
+                          selection: Binding(get: { .preview }, set: { if $0 == .source { onSource() } }))
+                    .environment(\.theme, t)
+                    .help("Preview shows the page formatted; Source edits it")
+                Button { reload += 1 } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless).help("Reload from disk")
+            }
             Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) } label: { Image(systemName: "folder") }
                 .buttonStyle(.borderless).help("Reveal in Finder")
             Button { NSWorkspace.shared.open(URL(fileURLWithPath: path)) } label: { Image(systemName: "arrow.up.forward.app") }
@@ -48,8 +70,8 @@ struct FileViewer: View {
         case .search: SearchView(model: model, t: t)
         case .diff: DiffView(model: model, repo: String(path.dropFirst(FileKind.diffPrefix.count)), t: t)
         case .folder: FolderListing(path: path, model: model, t: t)
-        case .markdown: MarkdownPage(path: path).foregroundStyle(t.text.color)
-        case .html: WebPage(path: path, root: (path as NSString).deletingLastPathComponent)
+        case .markdown: MarkdownPage(path: path, text: unsaved, tokens: t) { model.openInViewer($0) }.id(reload)
+        case .html: WebPage(path: path, root: DocumentRoute.webReadRoot(page: path, repoRoot: DocumentRoute.enclosingRepo(of: path)), reload: reload)
         case .image:
             ScrollView([.horizontal, .vertical]) {
                 if let img = NSImage(contentsOfFile: path) { Image(nsImage: img).resizable().scaledToFit().padding(20) }
@@ -80,13 +102,22 @@ enum FileKind {
         if path == searchPath { return .search }
         var dir: ObjCBool = false
         if FileManager.default.fileExists(atPath: path, isDirectory: &dir), dir.boolValue { return .folder }
-        switch (path as NSString).pathExtension.lowercased() {
-        case "md", "markdown": return .markdown
-        case "html", "htm": return .html
-        case "png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp", "svg": return .image
-        case "swift", "ts", "tsx", "js", "jsx", "mjs", "py", "go", "rs", "rb", "java", "kt", "c", "h", "cpp", "m", "sh", "zsh", "bash",
-             "json", "yaml", "yml", "toml", "xml", "css", "scss", "sql", "txt", "log", "csv", "env", "ini", "conf", "svelte", "vue",
-             "dockerfile", "makefile", "gitignore", "lock", "plist", "tf", "hcl", "graphql", "proto", "": return .text
+        switch DocumentRoute.kind(path: path) {
+        case .markdown: return .markdown
+        case .html: return .html
+        case .image: return .image
+        case .text: return .text
+        case .other: return .other
+        }
+    }
+
+    /// The kind as OneRoofCore routes it (folders, diffs and search are not files: .other).
+    var core: ViewerFileKind {
+        switch self {
+        case .markdown: return .markdown
+        case .html: return .html
+        case .image: return .image
+        case .text: return .text
         default: return .other
         }
     }

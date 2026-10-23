@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Hardened runtime with no exceptions: One Roof loads no third-party libraries at run time and uses no JIT. -->
+<!-- Hardened runtime: One Roof loads no third-party libraries at run time and uses no JIT. The one exception is
+     Apple Events (LAB-554): Resources asks a browser for its open tab names when the owner presses "Show tab names";
+     macOS asks the owner once per browser. -->
 <plist version="1.0">
-<dict/>
+<dict>
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
 </plist>

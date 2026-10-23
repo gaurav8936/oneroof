@@ -10,6 +10,7 @@ final class ResourceTests: XCTestCase {
         var procs: [ProcEntry] = []
         var use: [Int32: RawUsage] = [:]
         var env: [Int32: [String: String]] = [:]
+        var args: [Int32: [String]] = [:]
         var clock: UInt64 = 1_000_000_000
         var mem = MacMemory(total: 16 << 30, used: 10 << 30, swapUsed: 1 << 30, pressure: .normal)
         func processes() -> [ProcEntry] { procs }
@@ -20,6 +21,7 @@ final class ResourceTests: XCTestCase {
         func startTime(_ pid: Int32) -> Date? { Date(timeIntervalSince1970: 1000) }
         func nowNanos() -> UInt64 { clock }
         func tick() { clock += 3_000_000_000 }
+        func argv(_ pid: Int32) -> [String]? { args[pid] }
     }
 
     /// app 100 → attach 101 (roofd); daemon 200 → holders 300 (session a) and 400 (session b) and 500 (unclaimed);
@@ -94,6 +96,21 @@ final class ResourceTests: XCTestCase {
         XCTAssertTrue(a.memoryWarning)
         XCTAssertEqual(snap.sessions["b"]?.procs.map(\.pid), [400, 401])
         XCTAssertEqual(snap.sessions["b"]?.level, .ok)
+    }
+
+    /// LAB-549: a local model an earlier One Roof left (parent launchd) counts in the One Roof figures; another
+    /// llama-server on another port is somebody else's.
+    func testLeftoverLocalModelCountsAsOneRoofsButOtherLlamaServersDoNot() {
+        let s = makeSource()
+        s.procs += [ProcEntry(pid: 600, ppid: 1, name: "llama-server"), ProcEntry(pid: 601, ppid: 1, name: "llama-server")]
+        s.args[600] = ["/opt/homebrew/bin/llama-server", "-m", "/m.gguf", "--port", "\(LocalModel.port)"]
+        s.args[601] = ["/opt/homebrew/bin/llama-server", "--port", "8080"]
+        s.use[600] = RawUsage(footprint: 8400 * mb, cpuNanos: 0)
+        s.use[601] = RawUsage(footprint: 2000 * mb, cpuNanos: 0)
+        let snap = ResourceSampler(source: s).sample(targets())
+        XCTAssertEqual(snap.app.map(\.pid), [100, 101, 600])
+        XCTAssertEqual(snap.appFootprint, (300 + 5 + 8400) * mb)
+        XCTAssertFalse(snap.allProcs.contains { $0.pid == 601 })
     }
 
     func testAppDaemonAndUnclaimedAreCountedOnceAndStrangersNever() {

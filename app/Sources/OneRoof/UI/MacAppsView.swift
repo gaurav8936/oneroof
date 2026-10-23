@@ -192,7 +192,9 @@ struct MacAppsCard: View {
                 Text(kinds).ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 6)
             }
-            if g.procs.contains(where: { $0.kind == "Tab or site" }) {
+            if let family = BrowserTabs.family(appName: g.name) {
+                BrowserTabsSection(app: g.name, family: family, mainPid: g.mainPid).padding(.bottom, 8)
+            } else if g.procs.contains(where: { $0.kind == "Tab or site" }) {
                 HStack(spacing: 6) {
                     Text("Tab names: \(g.name) lists each tab with its memory in its own Task Manager (⇧Esc in \(g.name), or Window › Task Manager), and can end a tab there. Ending a \"Tab or site\" here shows that tab as crashed until reloaded.")
                         .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
@@ -292,6 +294,143 @@ struct MacAppsCard: View {
         switch p {
         case .quit(let g, let f): message = res.quit(g, force: f)
         case .end(let proc, let f): message = res.end(proc, force: f)
+        }
+    }
+}
+
+/// LAB-554: a browser's open tabs, by site, read from the browser over Apple Events when the owner asks ("Show tab
+/// names"; macOS asks once whether One Roof may control the browser). After the first success they are read again each
+/// time the browser is opened here. Clicking a tab brings it forward in the browser. Memory per tab stays in the
+/// browser's Task Manager: macOS does not say which renderer process is which tab.
+struct BrowserTabsSection: View {
+    @Environment(\.theme) private var t
+    let app: String
+    let family: BrowserTabs.Family
+    let mainPid: Int32?
+    @State private var state: Load = .idle
+    @State private var showAllSites = false
+    /// Set after the first successful read: later opens read the tabs straight away.
+    @AppStorage("resources.browserTabs.on") private var on = false
+
+    static let firstSites = 8
+
+    enum Load {
+        case idle, loading
+        case loaded([BrowserTab], Date)
+        case failed(BrowserTabs.Failure)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Open tabs").ui(12, .semibold).foregroundStyle(t.text.color)
+                Text(summary).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 8)
+                switch state {
+                case .loading: ProgressView().controlSize(.small)
+                case .idle: Button("Show tab names") { load() }.controlSize(.small)
+                        .help("Asks \(app) for its open tabs. The first time, macOS asks whether One Roof may control \(app).")
+                default: Button("Refresh") { load() }.buttonStyle(.link).ui(11.5)
+                }
+            }
+            content
+            HStack(spacing: 6) {
+                Text("Memory per tab: \(app)'s own Task Manager (⇧Esc in \(app), or Window › Task Manager) lists each tab with its memory and can end it. macOS does not tell other apps which process is which tab, so the rows below stay \"Tab or site\". Ending one here shows that tab as crashed until reloaded.")
+                    .ui(11).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                if let pid = mainPid {
+                    Button("Show \(app)") { NSRunningApplication(processIdentifier: pid)?.activate() }
+                        .buttonStyle(.link).ui(11).fixedSize()
+                }
+            }
+        }
+        .onAppear { if on, case .idle = state { load() } }
+    }
+
+    private var summary: String {
+        switch state {
+        case .idle: return "names and sites of every tab, read from \(app)"
+        case .loading: return "asking \(app)…"
+        case .failed: return ""
+        case .loaded(let tabs, let at):
+            let windows = Set(tabs.map(\.windowId)).count
+            let sites = Set(tabs.map(\.site)).count
+            return "\(tabs.count) tab\(tabs.count == 1 ? "" : "s") in \(windows) window\(windows == 1 ? "" : "s") · \(sites) site\(sites == 1 ? "" : "s") · read \(at.formatted(date: .omitted, time: .shortened))"
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch state {
+        case .failed(.notAllowed):
+            HStack(spacing: 6) {
+                Text("macOS did not let One Roof read \(app)'s tabs. Allow it in System Settings › Privacy & Security › Automation › One Roof › \(app), then Refresh.")
+                    .ui(11.5).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
+                Button("Open Automation settings") {
+                    if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") { NSWorkspace.shared.open(u) }
+                }
+                .buttonStyle(.link).ui(11.5).fixedSize()
+            }
+        case .failed(.failed(let why)):
+            Text("Could not read \(app)'s tabs: \(why)").ui(11.5).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
+        case .loaded(let tabs, _):
+            let sites = BrowserTabs.sites(tabs)
+            let shown = showAllSites ? sites : Array(sites.prefix(Self.firstSites))
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(shown) { site in siteBlock(site) }
+                if sites.count > Self.firstSites {
+                    Button(showAllSites ? "Show the top \(Self.firstSites) sites" : "Show all \(sites.count) sites") { showAllSites.toggle() }
+                        .buttonStyle(.link).ui(11.5)
+                }
+            }
+        default: EmptyView()
+        }
+    }
+
+    private func siteBlock(_ site: BrowserSite) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                Text(site.site).ui(12, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                Text("\(site.tabs.count) tab\(site.tabs.count == 1 ? "" : "s")").ui(11).foregroundStyle(t.text3.color)
+            }
+            .accessibilityAddTraits(.isHeader)
+            ForEach(site.tabs) { tab in
+                Button { show(tab) } label: {
+                    HStack(spacing: 6) {
+                        Text(tab.active ? "●" : " ").ui(9).foregroundStyle(t.accent.color).frame(width: 10)
+                        Text(tab.title.isEmpty ? tab.url : tab.title).ui(11.5).foregroundStyle(t.text2.color)
+                            .lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight()
+                .help(tab.url)
+                .accessibilityLabel("\(tab.title), \(site.site)\(tab.active ? ", front tab of its window" : "")")
+                .accessibilityHint("Brings this tab forward in \(app)")
+            }
+        }
+    }
+
+    private func load() {
+        state = .loading
+        let app = app, family = family
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = BrowserTabs.list(app: app, family: family)
+            DispatchQueue.main.async {
+                switch r {
+                case .success(let tabs): state = .loaded(tabs, Date()); on = true
+                case .failure(let f): state = .failed(f)
+                }
+            }
+        }
+    }
+
+    private func show(_ tab: BrowserTab) {
+        let app = app, family = family
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let f = BrowserTabs.show(app: app, family: family, tab: tab) {
+                DispatchQueue.main.async { state = .failed(f) }
+            }
         }
     }
 }

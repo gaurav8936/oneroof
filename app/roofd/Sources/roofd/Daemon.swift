@@ -7,7 +7,9 @@ import OneRoofCore
 /// daemon crash or upgrade never ends a session (Q1), and a restarted daemon finds the holders by their sockets.
 enum Daemon {
     static let proto = 1
-    static let version = "0.4.0"
+    /// The One Roof version this roofd shipped in (LAB-526): read from the bundle's Info.plist next to it
+    /// (One Roof.app/Contents/MacOS/roofd → Contents/Info.plist), so it is never stale. "dev" outside a bundle.
+    static let version: String = AppVersion.forExecutable(selfPath())?.short ?? "dev"
     /// Each holder's last info answer, for a list taken while it is briefly busy.
     nonisolated(unsafe) static var lastInfo: [String: [String: Any]] = [:]
     static let cacheLock = NSLock()

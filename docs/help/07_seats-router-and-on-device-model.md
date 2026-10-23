@@ -58,7 +58,7 @@ You see it as **Suggested:** in the New session sheet and on each step card in a
 - **What:** an optional add-on. One Roof works fully without it: task kinds come from the plan or from you, and captions from the built-in rules. With it, a small model sorts a task into a kind in about 0.2 s and can write the one-line captions. It runs only on this Mac, through `llama-server` from llama.cpp on `127.0.0.1:8749`.
 - **Install it yourself (for now):** `brew install llama.cpp`, then download `Arch-Router-1.5B-Q4_K_M.gguf` from the `katanemo/Arch-Router-1.5B.gguf` repository on Hugging Face into `~/Library/Application Support/One Roof/models/` (or choose the file in Settings › Foundations). That model has its own licence (the DigitalOcean Community License, which restricts commercial use); read it before you download.
 - **Coming:** a one-click download of a freely licensed model, with `llama-server` built into the app.
-- **When:** started on first use (the first call waits for it to load), stopped when One Roof quits. About 0.2 seconds per question once loaded.
+- **When:** started on first use (the first call waits for it to load), stopped when One Roof quits, and also when One Roof is force-quit or crashes (a watchdog ends it within about 2 seconds). Restarted if it grows past 3 GB. About 0.2 seconds per question once loaded.
 - **What it answers:** one word, the kind. Anything else is ignored.
 - **Try it:** `OneRoof --route "add a dark mode toggle to settings"` prints the kind and the router's choice.
 - **Missing:** the startup check shows amber. Suggestions still work, from the rules alone.

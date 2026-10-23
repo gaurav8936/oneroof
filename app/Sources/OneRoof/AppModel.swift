@@ -50,6 +50,8 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var runtimeState: String = "Connecting…"
     @Published private(set) var runtimeOK = false
+    /// The version the running roofd reports (LAB-526), for the footer's "older than the app" note.
+    @Published private(set) var daemonVersion: String?
     @Published var lastError: String?
     @Published var busy: Set<String> = []
     /// A Learn page to open (e.g. a skill's page from Foundations › Skills).
@@ -261,6 +263,7 @@ final class AppModel: ObservableObject {
                 self.lastSnapshot = snap
                 self.runtimeOK = true
                 self.runtimeState = state
+                if self.daemonVersion != snap.version { self.daemonVersion = snap.version }
                 self.rebuild()
             }
         } catch {
@@ -612,6 +615,8 @@ final class AppModel: ObservableObject {
         if FileManager.default.fileExists(atPath: p, isDirectory: &dir), dir.boolValue {
             for readme in ["README.md", "readme.md", "Readme.md"] where FileManager.default.fileExists(atPath: p + "/" + readme) { p += "/" + readme; break }
         }
+        // A search hit (a line) in Markdown or HTML opens the source at that line; otherwise the formatted page.
+        if line != nil, DocumentRoute.hasPreview(FileKind.of(p).core) { EditorState.of(active.id).setMode(.source, for: p) }
         viewerPath = p
         NSApp.mainWindow?.makeKeyAndOrderFront(nil)
     }

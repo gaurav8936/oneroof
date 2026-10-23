@@ -62,6 +62,36 @@ final class WindowState: ObservableObject, Identifiable {
         textScale = SelfTest.isActive ? 1 : (Prefs.defaults.object(forKey: "textScale." + id) as? Double ?? 1)
     }
 
+    /// Rename the window (LAB-509): the big name in its toolbar, its NSWindow title (Mission Control, Window menu) and
+    /// Window › Workspaces. Saved with the workspace. False when the name is empty (the old one stays).
+    @discardableResult
+    func rename(_ raw: String) -> Bool {
+        guard let n = WindowName.clean(raw) else { return false }
+        name = n
+        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == id }) { r.name = n; WorkspaceStore.shared.update(r) }
+        return true
+    }
+
+    /// The window's colour (LAB-590), a `Sticker.rowColors` name; nil = no accent (the look before 0.5.1).
+    func setColour(_ c: String?) {
+        colour = c
+        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == id }) { r.colour = c; WorkspaceStore.shared.update(r) }
+    }
+
+    /// Ask for a new name (toolbar name menu, Window › Rename Window…).
+    func promptRename() {
+        let a = NSAlert()
+        a.messageText = "Name this window"
+        a.informativeText = "Shown big at the top of the window and in Mission Control, so you can tell windows apart."
+        let f = NSTextField(string: name)
+        f.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+        a.accessoryView = f
+        a.window.initialFirstResponder = f
+        a.addButton(withTitle: "Rename"); a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        rename(f.stringValue)
+    }
+
     func setTextScale(_ s: Double) {
         textScale = min(1.3, max(0.85, (s * 20).rounded() / 20))
         if !SelfTest.isActive { Prefs.defaults.set(textScale, forKey: "textScale." + id) }

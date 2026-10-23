@@ -2,17 +2,23 @@ import Foundation
 
 /// One Roof v2 themes (UI v2 packet, theme/tokens.json): Daylight · Graphite · Midnight, chosen per panel, so a light
 /// sessions panel can sit next to a dark terminal ("Apple meets terminal"). Paper is retired (owner, 2026-10-18: "no
-/// off-white paper"); Blueprint stays as a hidden terminal-only theme.
+/// off-white paper"); Blueprint stays as a hidden terminal-only theme. LAB-601: four pastel light themes (Mint, Sky,
+/// Lavender, Peach) are Daylight with softly tinted backgrounds; new cases go at the end (menu tags index `allCases`).
 public enum ThemeName: String, CaseIterable, Identifiable, Codable, Sendable {
     case daylight, graphite, midnight, blueprint
+    case mint, sky, lavender, peach
     public var id: String { rawValue }
     public var label: String { rawValue.capitalized }
-    public var isDark: Bool { self != .daylight }
+    public var isDark: Bool { self == .graphite || self == .midnight || self == .blueprint }
+    /// The pastel light themes (LAB-601), each named after the `Pastel` it is tinted with.
+    public static let pastels: [ThemeName] = [.mint, .sky, .lavender, .peach]
+    /// The pastel a pastel theme is tinted with (nil for Daylight and the dark themes).
+    public var pastel: Pastel? { Self.pastels.contains(self) ? Pastel.named(rawValue) : nil }
     /// The themes offered for panels and centre views; Blueprint only for the terminal.
-    public static let panelChoices: [ThemeName] = [.daylight, .graphite, .midnight]
-    public static let terminalChoices: [ThemeName] = [.daylight, .graphite, .midnight, .blueprint]
+    public static let panelChoices: [ThemeName] = [.daylight, .graphite, .midnight] + pastels
+    public static let terminalChoices: [ThemeName] = [.daylight, .graphite, .midnight] + pastels + [.blueprint]
     /// What a light theme turns into while the panels follow macOS Dark Mode.
-    public var darkTwin: ThemeName { self == .daylight ? .midnight : self }
+    public var darkTwin: ThemeName { isDark ? self : .midnight }
 
     /// v0.1 names map onto v2: Light and Paper → Daylight, Dim → Graphite, Dark → Midnight.
     public init?(stored: String) {
@@ -118,7 +124,7 @@ public struct ThemeTokens: Sendable {
     /// The desk gradient behind fleet views (Overview, Board, Decisions, Subagents), top → bottom.
     public var desk: (top: RGB, bottom: RGB) {
         switch name {
-        case .daylight: return (RGB(0xDCE3EE), RGB(0xC3CCDA))
+        case _ where !isDark: return (RGB(0xDCE3EE), RGB(0xC3CCDA))
         case .graphite: return (RGB(0x4A4E5A), RGB(0x2E3038))
         default: return (RGB(0x1E2030), RGB(0x0B0C10))
         }
@@ -214,7 +220,7 @@ public enum StatusPalette {
     }
 
     public static func dot(_ s: SessionStatus, theme: ThemeName) -> RGB {
-        guard theme == .daylight else { return dot(s) }
+        guard !theme.isDark else { return dot(s) }
         switch s {
         case .done: return RGB(0x1F9D55)
         case .idle: return RGB(0x7C7C80)
@@ -241,7 +247,7 @@ public enum StatusPalette {
 
     public static func scheduledPill(theme: ThemeName) -> PillStyle {
         switch theme {
-        case .daylight: return PillStyle(fill: RGB(0xE6EFFC), text: RGB(0x2B63C0), edge: .none)
+        case _ where !theme.isDark: return PillStyle(fill: RGB(0xE6EFFC), text: RGB(0x2B63C0), edge: .none)
         case .graphite: return PillStyle(fill: RGB(rgba: 0x0A84FF29).over(RGB(0x3A3A3C)), text: RGB(0xA9D1FF), edge: .none)
         default: return PillStyle(fill: RGB(rgba: 0x0A84FF1F).over(RGB(0x1C1C1E)), text: RGB(0x9CCBFF), edge: .none)
         }
@@ -249,8 +255,8 @@ public enum StatusPalette {
 
     /// Pill colours per theme. Translucent fills are composited over the theme's surface so contrast is testable.
     public static func pill(_ s: SessionStatus, theme: ThemeName) -> PillStyle {
-        let light = theme == .daylight
-        let surface: RGB = theme == .graphite ? RGB(0x3A3A3C) : (light ? RGB(0xFFFFFF) : RGB(0x1C1C1E))
+        let light = !theme.isDark
+        let surface: RGB = theme == .graphite ? RGB(0x3A3A3C) : (light ? theme.tokens.surface : RGB(0x1C1C1E))
         switch s {
         case .needsYou:
             return light ? PillStyle(fill: RGB(0xFFE5E3), text: RGB(0xC4261D), edge: .solid(RGB(0xF5B5AE)))
@@ -260,7 +266,7 @@ public enum StatusPalette {
                          : PillStyle(fill: RGB(rgba: 0xFFFFFF14).over(surface), text: theme == .graphite ? RGB(0xF2F2F7) : RGB(0xE5E5EA), edge: .none)
         case .done:
             switch theme {
-            case .daylight: return PillStyle(fill: RGB(0xDDF6E5), text: RGB(0x1F7A3D), edge: .none)
+            case _ where light: return PillStyle(fill: RGB(0xDDF6E5), text: RGB(0x1F7A3D), edge: .none)
             case .graphite: return PillStyle(fill: RGB(rgba: 0x30D15829).over(surface), text: RGB(0x7FE0A0), edge: .none)
             default: return PillStyle(fill: RGB(rgba: 0x30D15824).over(surface), text: RGB(0x30D158), edge: .none)
             }
@@ -268,13 +274,13 @@ public enum StatusPalette {
             return PillStyle(fill: nil, text: light ? RGB(0x6E6E73) : (theme == .graphite ? RGB(0xAEAEB2) : RGB(0x8E8E93)), edge: .none)
         case .next:
             switch theme {
-            case .daylight: return PillStyle(fill: nil, text: RGB(0x48484A), edge: .dashed(RGB(0xB8B9C0)))
+            case _ where light: return PillStyle(fill: nil, text: RGB(0x48484A), edge: .dashed(RGB(0xB8B9C0)))
             case .graphite: return PillStyle(fill: nil, text: RGB(0xE5E5EA), edge: .dashed(RGB(0x8E8E93)))
             default: return PillStyle(fill: nil, text: RGB(0xE5E5EA), edge: .dashed(RGB(0x636366)))
             }
         case .planned:
             switch theme {
-            case .daylight: return PillStyle(fill: nil, text: RGB(0x6E6E73), edge: .dashed(RGB(0xC7C8D0)))
+            case _ where light: return PillStyle(fill: nil, text: RGB(0x6E6E73), edge: .dashed(RGB(0xC7C8D0)))
             case .graphite: return PillStyle(fill: nil, text: RGB(0xAEAEB2), edge: .dashed(RGB(0x636366)))
             default: return PillStyle(fill: nil, text: RGB(0xAEAEB2), edge: .dashed(RGB(0x48484A)))
             }
@@ -391,7 +397,33 @@ public extension ThemeName {
                 ansi: [0x103571, 0xFF9A9A, 0x7EF0C8, 0xFFD84D, 0x9CC3FF, 0xE2B4FF, 0x8AE8F0, 0xD8E3F7,
                        0x5679B0, 0xFFB8B8, 0xA4F5DA, 0xFFE68A, 0xC0D9FF, 0xEDCCFF, 0xB0F0F5, 0xFFFFFF].map { RGB($0) })
             return t
+        case .mint:
+            return pastelTheme(window: 0xF3FAF6, toolbar: 0xEEF7F2, sidebar: 0xEBF6F0, surface: 0xFBFEFC, surface2: 0xE8F4ED,
+                               control: 0xD9ECE1, separator: 0xD7E9DE, separatorStrong: 0xB4CEBF, selection: 0xCDEBDB)
+        case .sky:
+            return pastelTheme(window: 0xF3F7FE, toolbar: 0xEEF3FC, sidebar: 0xEBF1FC, surface: 0xFBFCFF, surface2: 0xE7EEFA,
+                               control: 0xD8E3F6, separator: 0xD6E0F2, separatorStrong: 0xB3C3DF, selection: 0xD2E2FF)
+        case .lavender:
+            return pastelTheme(window: 0xF8F5FE, toolbar: 0xF3EFFC, sidebar: 0xF4F0FC, surface: 0xFDFCFF, surface2: 0xEEE8F9,
+                               control: 0xE2D9F4, separator: 0xDED6F0, separatorStrong: 0xC2B6DC, selection: 0xE3D6FA)
+        case .peach:
+            return pastelTheme(window: 0xFFF8F1, toolbar: 0xFCF3EA, sidebar: 0xFCF1E6, surface: 0xFFFDFA, surface2: 0xF9EEE3,
+                               control: 0xF0E0CF, separator: 0xEDDFCF, separatorStrong: 0xD6C1AA, selection: 0xFBE2C8)
         }
+    }
+
+    /// A pastel light theme (LAB-601): Daylight's text, accent, status and terminal palette on tinted backgrounds.
+    /// The tints are pale enough that Daylight's text, status dots and pills keep their contrast (ThemeV2Tests).
+    private func pastelTheme(window: UInt32, toolbar: UInt32, sidebar: UInt32, surface: UInt32, surface2: UInt32,
+                             control: UInt32, separator: UInt32, separatorStrong: UInt32, selection: UInt32) -> ThemeTokens {
+        var t = ThemeName.daylight.tokens
+        t.name = self
+        t.window = RGB(window); t.toolbar = RGB(toolbar); t.sidebar = RGB(sidebar); t.surface = RGB(surface)
+        t.surface2 = RGB(surface2); t.control = RGB(control); t.separator = RGB(separator)
+        t.separatorStrong = RGB(separatorStrong); t.selection = RGB(selection)
+        t.text3 = RGB(0x7A7A80)   // Daylight's #86868B, a step darker so it keeps 3:1 on the tinted sidebar
+        t.terminal.background = RGB(surface); t.terminal.paneHeader = RGB(toolbar); t.terminal.summaryStrip = RGB(sidebar)
+        return t
     }
 }
 
