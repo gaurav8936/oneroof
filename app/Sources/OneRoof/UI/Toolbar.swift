@@ -96,7 +96,10 @@ struct ViewSwitcher: View {
     }
 }
 
-/// "One Roof ▾" + "window 2 of 6": rename, colour, new workspace, the other workspaces.
+/// "One Roof ▾" + "window 2 of 6" + the app version: rename, colour, new workspace, the other workspaces. LAB-509 /
+/// LAB-590: the window name is big and bold, and a window with a colour draws its name in that colour's ink (the
+/// toolbar band is tinted too, see MainWindowController). LAB-526: the One Roof version sits after "window N of M";
+/// a click opens the release notes.
 struct WorkspaceMenu: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -104,12 +107,13 @@ struct WorkspaceMenu: View {
     let controller: MainWindowController
 
     var body: some View {
+        let accent = WindowAccent(named: win.colour, on: t)
         HStack(spacing: 8) {
             Menu {
-                Button("Rename Workspace…") { renameWorkspace() }
+                Button("Rename Workspace…") { win.promptRename() }
                 Menu("Colour") {
-                    Button("None") { setColour(nil) }
-                    ForEach(Sticker.rowColors, id: \.name) { p in Button(p.name.capitalized) { setColour(p.name) } }
+                    Button("None") { win.setColour(nil) }
+                    ForEach(Sticker.rowColors, id: \.name) { p in Button(p.name.capitalized) { win.setColour(p.name) } }
                 }
                 Divider()
                 Button("New Workspace Window…") { controller.newWorkspace() }
@@ -120,37 +124,35 @@ struct WorkspaceMenu: View {
                     }
                 }
             } label: {
-                HStack(spacing: 3) {
-                    if let c = Pastel.named(win.colour) { Circle().fill(c.lightInk.color).frame(width: 8, height: 8) }
-                    Text(win.name).ui(13, .semibold).foregroundStyle(t.text.color)
+                HStack(spacing: 5) {
+                    if let accent { RoundedRectangle(cornerRadius: 3, style: .continuous).fill(accent.ink.color).frame(width: 10, height: 10) }
+                    Text(win.name).ui(16, .bold).foregroundStyle(accent?.ink.color ?? t.text.color).lineLimit(1)
                     Text("▾").ui(10).foregroundStyle(t.text2.color)
                 }
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .accessibilityLabel("Workspace \(win.name)")
+            .help("This window is \u{201C}\(win.name)\u{201D}. Click to rename it or give it a colour.")
+            .accessibilityLabel("Window \(win.name)")
             let (n, all) = controller.position
             Text("window \(n) of \(all)").ui(12).foregroundStyle(t.text3.color)
+            AppVersionLabel()
         }
         .padding(.leading, 8)
     }
+}
 
-    private func renameWorkspace() {
-        let a = NSAlert()
-        a.messageText = "Rename workspace"
-        let f = NSTextField(string: win.name)
-        f.frame = NSRect(x: 0, y: 0, width: 240, height: 24)
-        a.accessoryView = f
-        a.addButton(withTitle: "Rename"); a.addButton(withTitle: "Cancel")
-        guard a.runModal() == .alertFirstButtonReturn else { return }
-        let n = f.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !n.isEmpty else { return }
-        win.name = n
-        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == win.id }) { r.name = n; WorkspaceStore.shared.update(r) }
-    }
+/// "One Roof 0.4.10 (14)" (LAB-526): which build is running, in every window; a click opens the release notes.
+struct AppVersionLabel: View {
+    @Environment(\.theme) private var t
+    private let label = AppVersion.current?.label ?? "One Roof dev build"
 
-    private func setColour(_ c: String?) {
-        win.colour = c
-        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == win.id }) { r.colour = c; WorkspaceStore.shared.update(r) }
+    var body: some View {
+        Button { NSApp.sendAction(#selector(AppDelegate.openReleaseNotes(_:)), to: nil, from: nil) } label: {
+            Text(label).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+        }
+        .buttonStyle(.plain)
+        .help("\(label). Click for the release notes (Help › Release Notes).")
+        .accessibilityLabel("\(label), open the release notes")
     }
 }
 

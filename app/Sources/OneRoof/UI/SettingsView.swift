@@ -38,11 +38,12 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    /// Appearance: a 5 × 3 grid — Sessions · Files · Terminal · Plan · Centre views × Daylight · Graphite · Midnight.
+    /// Appearance: a grid — Sessions · Files · Terminal · Plan · Centre views × Daylight · Graphite · Midnight and the
+    /// pastel light themes Mint · Sky · Lavender · Peach (LAB-601).
     private var appearance: some View {
         Form {
             Section {
-                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                     GridRow {
                         Text("")
                         ForEach(ThemeName.panelChoices) { Text($0.label).font(.system(size: 12, weight: .semibold)) }
@@ -57,7 +58,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Toggle("Follow macOS light and dark", isOn: $model.settings.followSystemAppearance)
-            Text("In Dark Mode, Daylight panels turn Midnight; your choices above stay as they are.").font(.caption).foregroundStyle(.secondary)
+            Text("In Dark Mode, Daylight and pastel panels turn Midnight; your choices above stay as they are.").font(.caption).foregroundStyle(.secondary)
             LabeledContent("Text size") {
                 HStack {
                     Slider(value: Binding(get: { model.active.textScale }, set: { model.active.setTextScale($0) }), in: 0.85...1.3, step: 0.05)
@@ -86,7 +87,7 @@ struct SettingsView: View {
                         .fill(th.tokens.window.color)
                         .overlay(RoundedRectangle(cornerRadius: 6).fill(th.tokens.sidebar.color).frame(width: 18).frame(maxWidth: .infinity, alignment: .leading))
                         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(on ? th.tokens.accent.color : Color.secondary.opacity(0.3), lineWidth: on ? 2.5 : 1))
-                        .frame(width: 64, height: 30)
+                        .frame(width: 52, height: 30)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(title) \(th.label)\(on ? ", selected" : "")")

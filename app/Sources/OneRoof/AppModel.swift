@@ -50,6 +50,8 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var runtimeState: String = "Connecting…"
     @Published private(set) var runtimeOK = false
+    /// The version the running roofd reports (LAB-526), for the footer's "older than the app" note.
+    @Published private(set) var daemonVersion: String?
     @Published var lastError: String?
     @Published var busy: Set<String> = []
     /// A Learn page to open (e.g. a skill's page from Foundations › Skills).
@@ -261,6 +263,7 @@ final class AppModel: ObservableObject {
                 self.lastSnapshot = snap
                 self.runtimeOK = true
                 self.runtimeState = state
+                if self.daemonVersion != snap.version { self.daemonVersion = snap.version }
                 self.rebuild()
             }
         } catch {
