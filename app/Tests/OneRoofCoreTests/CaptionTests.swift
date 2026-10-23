@@ -174,6 +174,15 @@ final class CaptionModelTests: XCTestCase {
         let messages = body?["messages"] as? [[String: String]]
         XCTAssertEqual(messages?.first?["content"], CaptionEngine.systemPrompt)
         XCTAssertEqual(body?["temperature"] as? Int, 0)
+        // LAB-674: the reply is held to ModelReply's shape, and Qwen3's thinking is off.
+        let rf = body?["response_format"] as? [String: Any]
+        XCTAssertEqual(rf?["type"] as? String, "json_schema")
+        let schema = (rf?["json_schema"] as? [String: Any])?["schema"] as? [String: Any]
+        let props = schema?["properties"] as? [String: Any]
+        XCTAssertEqual(Set(props?.keys.map { $0 } ?? []), ["caption", "step", "steps", "now", "events"])
+        XCTAssertEqual((props?["steps"] as? [String: String])?["type"], "integer")
+        XCTAssertEqual(schema?["required"] as? [String], ["caption"])
+        XCTAssertEqual((body?["chat_template_kwargs"] as? [String: Bool])?["enable_thinking"], false)
     }
 }
 

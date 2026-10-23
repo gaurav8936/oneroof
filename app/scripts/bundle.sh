@@ -49,6 +49,9 @@ rsync -a --delete --exclude '.DS_Store' --exclude '.hashes.json' ../agentic_engi
 rsync -a --delete --exclude '.DS_Store' ../docs/help/ "$APP/Contents/Resources/help/"
 cp README.md "$APP/Contents/Resources/app-README.md"
 cp ../CHANGELOG.md "$APP/Contents/Resources/RELEASE-NOTES.md"
+# Third-party notices, and the on-device model's licence (copied next to the model when Get the model downloads it).
+cp ../THIRD-PARTY-NOTICES.md "$APP/Contents/Resources/THIRD-PARTY-NOTICES.md"
+rsync -a --delete --exclude '.DS_Store' Resources/licenses/ "$APP/Contents/Resources/licenses/"
 
 # libghostty resources: shell integration, themes, terminfo (TERM=xterm-ghostty).
 if [ -d "$GHOSTTY/zig-out/share/ghostty" ]; then

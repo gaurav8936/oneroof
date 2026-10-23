@@ -36,7 +36,7 @@ Launching an agent while a check is red shows a choice: **Open Foundations**, **
 | MCP servers | One MCP server list for all agents. | Uses `scripts/mcp/sync-mcp.py` in your shared folder. Red: its check fails. Amber: the script, or a recent enough Python, is not there. | Fix runs the script, or `brew install python@3.12`. Without the script, ignore it. |
 | Agents | Each agent CLI (`claude`, `codex`, `kimi`, `gemini`, `agy`) is installed and signed in. Claude2 is checked only if you have a second Claude config. | Amber: not on your PATH, or no login found. | Install or sign in to that CLI from a terminal. |
 | Agentic engineering | Skills, roles, routing rules and the course are read from this folder. | Red: the folder is missing. | Choose another folder, or **Use bundled**, in Settings › Foundations. |
-| On-device router model | Suggestions use it to sort a task into a kind. | Amber: `llama-server` or the model file is missing. | Fix runs `brew install llama.cpp`; download the model in Settings ([Seats and routing](07_seats-router-and-on-device-model.md)). Without it, routing uses the rules alone. |
+| On-device router model | Suggestions use it to sort a task into a kind. | Amber: `llama-server` or the model file is missing, or the model is still Arch-Router (its licence restricts commercial use). | Fix runs `brew install llama.cpp`; **Get the model** on the row downloads and checks the model (also in Settings; [Seats and routing](07_seats-router-and-on-device-model.md)). Without it, routing uses the rules alone. |
 
 **Fix** buttons open a plain One Roof terminal in your projects folder and run the command there, so you see what it does. One Roof never fixes anything silently.
 

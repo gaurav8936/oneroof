@@ -55,11 +55,13 @@ You see it as **Suggested:** in the New session sheet and on each step card in a
 
 ## The on-device model
 
-- **What:** an optional add-on. One Roof works fully without it: task kinds come from the plan or from you, and captions from the built-in rules. With it, a small model sorts a task into a kind in about 0.2 s and can write the one-line captions. It runs only on this Mac, through `llama-server` from llama.cpp on `127.0.0.1:8749`.
-- **Install it yourself (for now):** `brew install llama.cpp`, then download `Arch-Router-1.5B-Q4_K_M.gguf` from the `katanemo/Arch-Router-1.5B.gguf` repository on Hugging Face into `~/Library/Application Support/One Roof/models/` (or choose the file in Settings › Foundations). That model has its own licence (the DigitalOcean Community License, which restricts commercial use); read it before you download.
-- **Coming:** a one-click download of a freely licensed model, with `llama-server` built into the app.
-- **When:** started on first use (the first call waits for it to load), stopped when One Roof quits, and also when One Roof is force-quit or crashes (a watchdog ends it within about 2 seconds). Restarted if it grows past 3 GB. About 0.2 seconds per question once loaded.
-- **What it answers:** one word, the kind. Anything else is ignored.
+- **What:** an optional add-on. One Roof works fully without it: task kinds come from the plan or from you, and captions from the built-in rules. With it, a small model sorts a task into a kind in about 0.15 s and can write the one-line captions. It runs only on this Mac, through `llama-server` from llama.cpp on `127.0.0.1:8749`.
+- **Which model:** Qwen3 1.7B (`Qwen3-1.7B-Q4_K_M.gguf`, 1.1 GB on disk, about 1.6 GB of memory while it runs), under the Apache-2.0 licence, so you may use it for any purpose. On a fixed set of 38 task sentences it picked the right kind 37 times; Arch-Router, the model up to 0.5.1, 32 times.
+- **Install it:** `brew install llama.cpp`, then press **Get the model (1.1 GB)** in Settings › Foundations (on-device model row) or on the On-device router model row of Window › Foundations. One Roof downloads the file from Hugging Face (a fixed revision), shows progress, checks its size and SHA-256, and only then puts it in `~/Library/Application Support/One Roof/models/`, with its licence next to it (`Qwen3-1.7B-LICENSE.txt`). It checks there is enough free disk space first. **Stop** keeps what has arrived; **Get the model again** continues from there. If the file does not match, it is deleted and nothing changes. You can also put the file there yourself, or choose another file in Settings.
+- **Still on Arch-Router?** If Settings points at `Arch-Router-1.5B-Q4_K_M.gguf`, it keeps working, and Settings and the startup check show an amber note: its licence (the DigitalOcean Community License) needs a separate licence for commercial use. **Get the model** downloads Qwen3 1.7B and switches Settings to it (your Arch-Router file is left where it is). If you chose some other model of your own, Settings keeps it.
+- **Coming:** `llama-server` built into the app, so no Homebrew step.
+- **When:** started on first use (the first call waits for it to load), stopped when One Roof quits, and also when One Roof is force-quit or crashes (a watchdog ends it within about 2 seconds). Restarted if it grows past 3 GB. About 0.15 seconds per question once loaded.
+- **What it answers:** one word, the kind, held to the seven kinds. Anything else is ignored.
 - **Try it:** `OneRoof --route "add a dark mode toggle to settings"` prints the kind and the router's choice.
 - **Missing:** the startup check shows amber. Suggestions still work, from the rules alone.
 

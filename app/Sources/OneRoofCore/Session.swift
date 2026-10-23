@@ -213,6 +213,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     /// The repo the session was last seen working in (learnt from its agent's hooks or its terminal's folder); sessions
     /// start at the workspace root, so this is what "Group by repo" uses.
     public var lastRepo: String?
+    /// A run terminal's agent session (LAB-598): Right-click › Run in Terminal made this shell for that session.
+    public var parentSessionId: String?
 
     /// Everything after the agent command: the model flag, then any extra arguments.
     public var launchArgs: [String] {
@@ -281,7 +283,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
-             moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles
+             moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles, parentSessionId
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -319,6 +321,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         pendingMessages = try c.decodeIfPresent([String].self, forKey: .pendingMessages) ?? []
         lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
         writtenFiles = try c.decodeIfPresent([String].self, forKey: .writtenFiles) ?? []
+        parentSessionId = try c.decodeIfPresent(String.self, forKey: .parentSessionId)
     }
 
     /// A waiting message can go in now: the agent is at its prompt (not working, not on a permission question).

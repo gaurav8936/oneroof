@@ -6,6 +6,8 @@ import OneRoofCore
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State var tab = Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0
+    /// What macOS says about One Roof's notifications (LAB-197).
+    @State private var noteStatus = ""
 
     var body: some View {
         TabView(selection: $tab) {
@@ -28,6 +30,7 @@ struct SettingsView: View {
             Text("Agents start in this folder (change it in Foundations). A session can start in its repo instead (Plan a session).")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Show sessions that need you on the Dock icon", isOn: $model.settings.dockBadge)
+            notifications
             Toggle("Check the foundations every time One Roof starts", isOn: $model.settings.startupCheck)
             Text("Checks roofd (the session manager), agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -36,6 +39,29 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Desktop notifications (LAB-197): what is worth a banner, and whether macOS lets One Roof show them.
+    @ViewBuilder private var notifications: some View {
+        Toggle("Notify me when an agent needs me", isOn: $model.settings.notifyNeedsYou)
+        Toggle("Notify me when an agent finishes its turn", isOn: $model.settings.notifyDone)
+        Toggle("Notify me when a long command finishes in a terminal", isOn: $model.settings.notifyLongCommands)
+        Stepper(value: $model.settings.longCommandSeconds, in: 5...3600, step: 5) {
+            Text("Long means at least \(model.settings.longCommandSeconds) seconds")
+        }
+        .disabled(!model.settings.notifyLongCommands)
+        Text("No banner for the session you are looking at. Click a banner to open its session. Long commands need a shell that marks its commands (OSC 133); programs' own notifications (OSC 9 and 777) come through with the same switch.")
+            .font(.caption).foregroundStyle(.secondary)
+        LabeledContent("macOS") {
+            HStack {
+                Text(noteStatus.isEmpty ? "…" : noteStatus).font(.caption).foregroundStyle(.secondary)
+                Button("Allow notifications…") {
+                    Notifier.shared.requestAuthorization { _ in Notifier.shared.status { noteStatus = $0 } }
+                }
+                .disabled(!Notifier.available)
+            }
+        }
+        .onAppear { Notifier.shared.status { noteStatus = $0 } }
     }
 
     /// Appearance: a grid — Sessions · Files · Terminal · Plan · Centre views × Daylight · Graphite · Midnight and the
@@ -180,6 +206,11 @@ struct SettingsView: View {
                          + (exists ? "" : optional ? " (not found: features that use it stay off)" : " (not found)"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
+                if exists, let warning = LocalModel.licenceWarning(path: inUse) {
+                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption)
+                        .foregroundStyle(Pastel.named("peach")!.lightInk.color).fixedSize(horizontal: false, vertical: true)
+                }
+                ModelDownloadRow(download: model.modelDownload, offer: LocalModel.offerDownload(modelPath: inUse))
             }
         }
     }
@@ -237,6 +268,10 @@ struct SettingsView: View {
                     Text(exists ? "In use: \(inUse.replacingOccurrences(of: NSHomeDirectory(), with: "~"))"
                          : "Optional add-on, not installed: captions and task sorting use the built-in rules. See Help › Seats and routing.")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                if exists, let warning = LocalModel.licenceWarning(path: inUse) {
+                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption)
+                        .foregroundStyle(Pastel.named("peach")!.lightInk.color).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

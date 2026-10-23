@@ -23,6 +23,10 @@ public enum AppResources {
         return candidates.first { FileManager.default.fileExists(atPath: $0) }
     }
 
+    /// The on-device model's licence text, copied next to it by Get the model (LAB-675).
+    public static var modelLicence: String? { path(bundled: "licenses/Qwen3-LICENSE.txt", checkout: "app/Resources/licenses/Qwen3-LICENSE.txt") }
+    /// Third-party notices (Resources/THIRD-PARTY-NOTICES.md, or the file at the checkout root).
+    public static var thirdPartyNotices: String? { path(bundled: "THIRD-PARTY-NOTICES.md", checkout: "THIRD-PARTY-NOTICES.md") }
     /// The Help pages folder (Resources/help, or docs/help in the checkout).
     public static var helpFolder: String? { path(bundled: "help", checkout: "docs/help") }
     /// The app README (Resources/app-README.md, or app/README.md).

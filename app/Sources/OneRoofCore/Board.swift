@@ -176,8 +176,12 @@ public enum Board {
             case .account: return i.account ?? i.session.agent.displayName
             }
         }
+        // LAB-598: a run terminal sits with its parent agent session (same group, right under it).
+        let byId = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func parent(_ i: BoardItem) -> BoardItem? { i.session.parentSessionId.flatMap { byId[$0] } }
+        func groupKey(_ i: BoardItem) -> String { parent(i).map(key) ?? key(i) }
+        func isPinned(_ i: BoardItem) -> Bool { parent(i)?.session.pinned ?? i.session.pinned }
         var dict: [String: [BoardItem]] = [:]
-        for i in items { dict[key(i), default: []].append(i) }
         // LAB-490: Working, Ready and Idle rank the same, so a row keeps its place while its agent works and rests;
         // only Needs you comes first. Then by name (stable).
         let rowOrder: (BoardItem, BoardItem) -> Bool = { a, b in
@@ -185,10 +189,10 @@ public enum Board {
             return a.session.name.localizedCaseInsensitiveCompare(b.session.name) == .orderedAscending
         }
         // Pinned sessions leave their group and sit together at the top.
-        let pinned = items.filter(\.session.pinned)
+        let pinned = items.filter(isPinned)
         dict = [:]
-        for i in items where !i.session.pinned { dict[key(i), default: []].append(i) }
-        var groups = dict.map { BoardGroup(title: $0.key, items: $0.value.sorted(by: rowOrder)) }
+        for i in items where !isPinned(i) { dict[groupKey(i), default: []].append(i) }
+        var groups = dict.map { BoardGroup(title: $0.key, items: RunTerminal.nest($0.value.sorted(by: rowOrder))) }
         if g == .status {
             let rank = Dictionary(SessionStatus.allCases.map { ($0.groupLabel, $0.groupRank) }, uniquingKeysWith: { a, _ in a })
             groups.sort { (rank[$0.title] ?? 99) < (rank[$1.title] ?? 99) }
@@ -199,7 +203,7 @@ public enum Board {
                 return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
             }
         }
-        if !pinned.isEmpty { groups.insert(BoardGroup(title: "Pinned", items: pinned.sorted(by: rowOrder)), at: 0) }
+        if !pinned.isEmpty { groups.insert(BoardGroup(title: "Pinned", items: RunTerminal.nest(pinned.sorted(by: rowOrder))), at: 0) }
         return groups
     }
 

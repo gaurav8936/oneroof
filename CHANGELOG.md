@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.2 — loops, notifications, a model you may use for anything (23 Oct 2026)
+
+Round 2 of One Roof 0.5.
+
+- **Loops** (LAB-86). A new Loops screen (View › Loops, or "Loops" in the command palette) for work that repeats
+  until a check passes, or runs every night. Give a loop a goal, a check command (exit 0 = done), an agent and limits
+  (default 8 rounds, 3 hours, stop when the same failure repeats twice). One Roof runs the check and decides whether
+  another round starts; the agent works in the loop's own worktree (`<repo>/.worktrees/loop-<id>`), never in your
+  checkout, and nothing is pushed or merged. Loops run with One Roof open or closed. A round that asks permission shows
+  in Decisions. **Test the check** before you save; start from **Fix until green** or **Nightly tidy**. Help › Loops.
+- **Desktop notifications** (LAB-197). One Roof tells you when an agent needs you, when one finishes its turn, and
+  when a command that ran longer than 30 s finishes in a terminal you are not looking at; programs' own notifications
+  (OSC 9 and 777) come through too. Click one to jump to the session. Turn each kind on or off in Settings › General.
+- **Run in Terminal** (LAB-598). Select a command in a terminal, right-click › Run in Terminal: One Roof types it into
+  the agent's own run terminal (a shell in the same repo, in a small floating window) and you press Return to run it.
+  One run terminal per agent, listed under it; **Back to agent** returns you.
+- **Issue quality bar** (LAB-533). Pick issues marks issues that are missing what their type needs (for a bug: steps
+  to reproduce, expected vs actual, where seen) as **not ready**, with a filter chip; the Ticket tab shows what is
+  missing. Help › Issue quality bar.
+- **The on-device model is now Qwen3 1.7B (Apache-2.0)** (LAB-673, LAB-674), replacing Arch-Router 1.5B, whose licence
+  did not allow commercial use. On 38 test sentences it picks the right task kind 37 times (Arch-Router: 32), in about
+  0.15 s. If Settings still points at Arch-Router it keeps working, with a note about its licence.
+- **Get the model** (LAB-675). One click in Settings › Foundations, or on the Foundations check, downloads the model
+  (1.1 GB), checks its size and SHA-256, and installs it with its licence. Stop and continue later; a file that does
+  not match is thrown away.
+- Captions ask the model for a fixed reply shape, so fewer are rejected. Resources names the model a leftover
+  llama-server is running. Third-party notices now ship in the app.
+
 ## 0.5.1.1 — round 1 fixes (23 Oct 2026)
 
 Two things in 0.5.1 did not work on a real Mac. This fix build makes them work.
