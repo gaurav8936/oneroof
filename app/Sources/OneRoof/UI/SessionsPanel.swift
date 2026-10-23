@@ -154,6 +154,7 @@ struct SessionsPanel: View {
             SessionRow(row: model.rowData(item, now: now), density: .full, selected: win.selectedId == item.id, ring: t.sidebar,
                        onRename: { model.rename(item, $0) }, onClose: closeAction(item),
                        closeHelp: item.liveAgent != nil ? "Close session (asks first)" : "Remove session (⇧⌘T reopens it)")
+                .modifier(RunTerminalIndent(isRun: item.session.parentSessionId != nil, colour: t.text2.color))
                 .onTapGesture { win.selectedId = item.id; model.show(.workspace, in: win) }
                 .contextMenu { SessionContextMenu(model: model, item: item, win: win, editStickers: { popoverFor = item.id }) }
                 .popover(isPresented: Binding(get: { popoverFor == item.id }, set: { if !$0 { popoverFor = nil } }), arrowEdge: .trailing) {
@@ -372,5 +373,23 @@ struct SessionContextMenu: View {
         Divider()
         if it.liveAgent != nil { Button("Close Agent…") { model.confirmClose(it) } }
         if !it.adopted { Button("Delete") { model.delete(it) } }
+    }
+}
+
+/// LAB-598: a run terminal's row sits under its agent's row, indented, with ↳.
+private struct RunTerminalIndent: ViewModifier {
+    let isRun: Bool
+    let colour: Color
+    func body(content: Content) -> some View {
+        if isRun {
+            HStack(spacing: 2) {
+                Text("↳").ui(12).foregroundStyle(colour).accessibilityHidden(true)
+                content
+            }
+            .padding(.leading, 8)
+            .help("Run terminal: commands you send here with Right-click › Run in Terminal wait for your Return")
+        } else {
+            content
+        }
     }
 }

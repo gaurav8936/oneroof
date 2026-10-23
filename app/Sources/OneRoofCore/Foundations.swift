@@ -81,8 +81,12 @@ public enum Foundations {
         out.append(contentsOf: agentChecks(p))
         out.append(agenticEngineeringCheck(p))
         let lm = LocalModel.shared
-        out.append(CheckResult(id: "localmodel", title: "On-device router model (optional)", level: lm.installed() ? .ok : .warn,
-                               detail: lm.status(), fix: lm.serverBinary == nil ? "brew install llama.cpp" : nil))
+        // LAB-674: still on Arch-Router (a custom path from before 0.5.2) is a warning, for its licence.
+        let licence = LocalModel.licenceWarning(path: LocalModel.modelPath)
+        out.append(CheckResult(id: "localmodel", title: "On-device router model (optional)",
+                               level: lm.installed() && licence == nil ? .ok : .warn,
+                               detail: lm.status() + (licence.map { " · " + $0 } ?? ""),
+                               fix: lm.serverBinary == nil ? "brew install llama.cpp" : nil))
         return p.hasShared ? out : softenWithoutShared(out)
     }
 

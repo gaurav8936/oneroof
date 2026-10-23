@@ -16,7 +16,7 @@
 You also need:
 
 - **At least one agent CLI, installed and signed in:** `claude` (Claude Code), `codex`, `kimi`, `gemini` (Gemini CLI) or `agy` (Antigravity). Sign in once from any terminal before you start.
-- **Optional:** `brew install llama.cpp` for the small on-device routing model ([Seats and routing](07_seats-router-and-on-device-model.md)).
+- **Optional:** `brew install llama.cpp` for the small on-device routing model, then **Get the model** in Settings › Foundations (1.1 GB, Qwen3 1.7B, Apache-2.0; [Seats and routing](07_seats-router-and-on-device-model.md)).
 
 ## First-run setup
 

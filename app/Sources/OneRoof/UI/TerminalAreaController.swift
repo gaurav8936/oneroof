@@ -324,6 +324,7 @@ final class TerminalAreaController: NSViewController {
         surface.onSearchTotal = { [weak self] n in self?.find.total = n }
         surface.onSearchSelected = { [weak self] n in self?.find.selected = n }
         surface.onOpenURL = { [weak self] url in self?.openLink(url) }
+        model.wire(surface, agent: agent)
         surface.onProcessExit = { [weak self] _ in
             // The attach client ended (agent closed or detached): forget it; reselecting reattaches.
             guard let self else { return }

@@ -118,6 +118,12 @@ public enum MacResources {
         return argv[i + 1] == String(LocalModel.port)
     }
 
+    /// The model a llama-server runs, from its `-m` / `--model` argument; nil without one.
+    public static func modelName(_ argv: [String]) -> String? {
+        guard let i = argv.firstIndex(where: { $0 == "-m" || $0 == "--model" }), i + 1 < argv.count else { return nil }
+        return LocalModel.name(forPath: argv[i + 1])
+    }
+
     /// Paths whose processes the page never offers to end: the system's own.
     static let systemPrefixes = ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/Library/Apple/", "/usr/bin/login"]
     /// Apps that keep the Mac usable; quitting them from here is never offered.
@@ -132,7 +138,11 @@ public final class MacSampler {
     let source: ResourceSource
     private var cpu = CPUMeter()
     /// Per pid, read once: path, argv-derived kind, the responsible pid, whether it is One Roof's local model.
-    private struct Static { var path: String; var name: String; var kind: String?; var responsible: Int32; var localModel: Bool }
+    private struct Static {
+        var path: String; var name: String; var kind: String?; var responsible: Int32; var localModel: Bool
+        /// The local model's name, from its `-m` argument (Qwen3 1.7B, Arch-Router, …).
+        var modelName: String?
+    }
     private var statics: [Int32: Static] = [:]
 
     public init(source: ResourceSource = LiveResourceSource()) { self.source = source }
@@ -159,7 +169,7 @@ public final class MacSampler {
                 let wantsArgv = name.contains("Helper") || name.hasPrefix("llama-server") || path.contains("Helper")
                 let argv = wantsArgv ? (source.argv(pid) ?? []) : []
                 let s = Static(path: path, name: source.name(pid) ?? name, kind: MacResources.helperKind(argv), responsible: source.responsible(pid) ?? pid,
-                               localModel: MacResources.isLocalModel(name: name, argv: argv))
+                               localModel: MacResources.isLocalModel(name: name, argv: argv), modelName: MacResources.modelName(argv))
                 statics[pid] = s
                 return s
             }()
@@ -189,7 +199,7 @@ public final class MacSampler {
             // One Roof's own but not this app's: a local model or roofd left by an earlier run.
             let leftover = isOneRoof && !oneRoofPids.contains(pid) && pid != appPid
                 && (st.localModel || ResourceSampler.isRoofd(e.name))
-            let kind: String? = st.localModel ? "Local model (Arch-Router)" + (leftover ? ", left over from an earlier run" : "")
+            let kind: String? = st.localModel ? "Local model (\(st.modelName ?? LocalModel.displayName))" + (leftover ? ", left over from an earlier run" : "")
                 : ResourceSampler.isRoofd(e.name) && leftover ? "roofd not used by this One Roof" : st.kind
             let endable = pid != appPid && pid > 1 && !MacResources.isSystem(st.path)
                 && (!isOneRoof || leftover || st.localModel)

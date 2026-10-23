@@ -19,6 +19,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var agents: [String: AgentDefaults]
     /// Count of sessions that need you on the Dock icon.
     public var dockBadge: Bool
+    /// Desktop notifications (LAB-197): an agent needs you · an agent finished its turn · a long command finished
+    /// (or a program asked for one, OSC 9 / 777), and how long counts as long.
+    public var notifyNeedsYou: Bool
+    public var notifyDone: Bool
+    public var notifyLongCommands: Bool
+    public var longCommandSeconds: Int
     /// Run the foundations check at every launch.
     public var startupCheck: Bool
     /// The agentic-engineering folder chosen in Settings; "" = the copy bundled with the app. Read it through
@@ -69,6 +75,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         stickerStyle = "bold"
         agents = ["claude": AgentDefaults(account: "Claude1")]
         dockBadge = true
+        notifyNeedsYou = true
+        notifyDone = true
+        notifyLongCommands = true
+        longCommandSeconds = 30
         startupCheck = true
         agenticEngineeringPath = ""
         commonPath = ""
@@ -87,6 +97,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let c = try d.container(keyedBy: CodingKeys.self)
         agents = try c.decodeIfPresent([String: AgentDefaults].self, forKey: .agents) ?? fresh.agents
         dockBadge = try c.decodeIfPresent(Bool.self, forKey: .dockBadge) ?? fresh.dockBadge
+        notifyNeedsYou = try c.decodeIfPresent(Bool.self, forKey: .notifyNeedsYou) ?? fresh.notifyNeedsYou
+        notifyDone = try c.decodeIfPresent(Bool.self, forKey: .notifyDone) ?? fresh.notifyDone
+        notifyLongCommands = try c.decodeIfPresent(Bool.self, forKey: .notifyLongCommands) ?? fresh.notifyLongCommands
+        longCommandSeconds = try c.decodeIfPresent(Int.self, forKey: .longCommandSeconds) ?? fresh.longCommandSeconds
         startupCheck = try c.decodeIfPresent(Bool.self, forKey: .startupCheck) ?? fresh.startupCheck
         agenticEngineeringPath = try c.decodeIfPresent(String.self, forKey: .agenticEngineeringPath) ?? fresh.agenticEngineeringPath
         commonPath = try c.decodeIfPresent(String.self, forKey: .commonPath) ?? fresh.commonPath

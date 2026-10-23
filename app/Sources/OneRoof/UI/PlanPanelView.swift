@@ -589,6 +589,8 @@ struct TicketBox: View {
     @State private var state = ""
     @State private var url = ""
     @State private var busy = false
+    /// LAB-533: the issue measured against the quality bar (nil until its description is loaded).
+    @State private var quality: IssueQuality.Report?
 
     var body: some View {
         let s = item.session
@@ -618,12 +620,21 @@ struct TicketBox: View {
                 stateButtons(padding: 5)
                 stateMenu
             }
+            if let q = quality, !q.ready {
+                Text(q.missingLine).ui(11.5, .medium).foregroundStyle(t.needsText.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(q.tooltip + "\nAdd it in Linear; the bar is in One Roof Help › Issue quality bar.")
+                    .accessibilityLabel("Issue not ready. " + q.missingLine)
+            }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.card.color))
         .onAppear(perform: load)
         .onReceive(model.$issues) { all in
-            if let id = issue.id, let i = all.values.joined().first(where: { $0.id == id }) { state = i.state }
+            if let id = issue.id, let i = all.values.joined().first(where: { $0.id == id }) {
+                state = i.state
+                quality = IssueQuality.assess(i)
+            }
         }
     }
 
@@ -672,9 +683,17 @@ struct TicketBox: View {
     }
 
     private func load() {
+        let key = issue.key
+        let loaded = issue.id.flatMap { id in model.issues.values.joined().first { $0.id == id } }
+        if let loaded { quality = IssueQuality.assess(loaded) }
         guard let id = issue.id else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             if let r = try? model.linear.issueState(id) { DispatchQueue.main.async { state = r.name; url = r.url } }
+            // Not in a loaded project list: read it once for its description and Type.
+            if loaded == nil, let r = (try? model.linear.issue(key: key)) ?? nil {
+                let q = IssueQuality.assess(r.issue)
+                DispatchQueue.main.async { quality = q }
+            }
         }
     }
 }

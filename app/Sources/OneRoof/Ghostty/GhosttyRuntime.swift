@@ -100,6 +100,9 @@ final class GhosttyRuntime {
         macos-option-as-alt = left
         clipboard-read = deny
         clipboard-write = allow
+        notify-on-command-finish = always
+        notify-on-command-finish-action = no-bell,notify
+        notify-on-command-finish-after = 1s
         """ + "\n" + theme.tokens.ghosttyConfig
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("oneroof-ghostty", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -152,6 +155,20 @@ final class GhosttyRuntime {
                 let url = String(decoding: data, as: UTF8.self)
                 DispatchQueue.main.async { if let f = view.onOpenURL { f(url) } else if let x = URL(string: url) { NSWorkspace.shared.open(x) } }
             }
+            return true
+        case GHOSTTY_ACTION_COMMAND_FINISHED:
+            // LAB-197: a command ended (the shell marks commands with OSC 133); the app decides whether to notify.
+            let f = action.action.command_finished
+            let code: Int? = f.exit_code < 0 ? nil : Int(f.exit_code)
+            let seconds = TimeInterval(f.duration) / 1_000_000_000
+            DispatchQueue.main.async { view.onCommandFinished?(code, seconds) }
+            return true
+        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+            // OSC 9 / OSC 777 from a program in the terminal: passed through as a One Roof notification.
+            let n = action.action.desktop_notification
+            let title = n.title.map { String(cString: $0) } ?? ""
+            let body = n.body.map { String(cString: $0) } ?? ""
+            DispatchQueue.main.async { view.onDesktopNotification?(title, body) }
             return true
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
             DispatchQueue.main.async { view.onProcessExit?(false) }
