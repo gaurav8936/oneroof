@@ -1,0 +1,6 @@
+.build/
+Vendor/
+RoofVT/ghostty
+RoofVT/.zig-cache/
+RoofVT/zig-out/
+.DS_Store
