@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.model.activeWindowId = id
             if !SelfTest.isActive { MainWindowController.forWorkspace(id)?.window?.makeKeyAndOrderFront(nil) }
         }
+        Notifier.shared.attach(model)
         model.start()
         statusItem = StatusItemController(model: model)
         launched = true

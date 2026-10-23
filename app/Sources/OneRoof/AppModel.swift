@@ -326,6 +326,7 @@ final class AppModel: ObservableObject {
                 lastActive[i.id] = now
             }
         }
+        let wasWatching = sawSnapshot
         sawSnapshot = sawSnapshot || !lastSnapshot.sessions.isEmpty
         let inView = visibleInPanes.union([selectedId].compactMap { $0 })
         for id in inView { lastViewed[id] = now }
@@ -334,6 +335,8 @@ final class AppModel: ObservableObject {
         if !seenDone.isEmpty { let r = runtime; queue.async { seenDone.forEach(r.markSeen) } }
         // LAB-490: list rows by a status that has held for a moment, so they do not jump on every flicker.
         new = statusSmoother.settle(new, now: now)
+        // LAB-197: a finished turn → a desktop notification (not the statuses seen while the app catches up).
+        if wasWatching { notifyStatusChanges(before: Dictionary(items.map { ($0.id, $0.status) }, uniquingKeysWith: { a, _ in a }), after: new) }
         if new != items {
             items = new
             updateDockBadge()
@@ -465,6 +468,7 @@ final class AppModel: ObservableObject {
         }
         stored.removeAll { $0.id == item.id }
         store?.delete(id: item.id)
+        Notifier.shared.clear(session: item.id)
         if selectedId == item.id { selectedId = nil }
         rebuild()
     }
