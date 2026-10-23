@@ -10,9 +10,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     weak var model: AppModel?
     private var gate = NoteGate()
-    /// nil = not asked yet this run; macOS remembers the answer between runs.
-    private var authorized: Bool?
-    private var asking = false
+    /// LAB-718: macOS's own answer is read every time (it is cheap); nothing is cached, so allowing One Roof in
+    /// System Settings works at once, and the prompt is shown at most once per launch, only when macOS was never asked.
+    private var askedThisLaunch = false
+    private var checking = false
     private var waiting: [Note] = []
     /// Decisions already announced (a decision is announced once, when it opens).
     private var announced = Set<UUID>()
@@ -32,14 +33,13 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: Permission
 
-    /// Ask macOS once (lazily, on the first note, or from Settings). `done` gets the answer on the main thread.
+    /// Ask macOS (from Settings, or lazily on the first note when macOS was never asked). `done` gets the answer on
+    /// the main thread.
     func requestAuthorization(_ done: ((Bool) -> Void)? = nil) {
         guard let center else { done?(false); return }
-        asking = true
+        askedThisLaunch = true
         center.requestAuthorization(options: [.alert, .sound, .badge]) { ok, _ in
             DispatchQueue.main.async {
-                self.asking = false
-                self.authorized = ok
                 if ok { self.waiting.forEach(self.deliver) }
                 self.waiting = []
                 done?(ok)
@@ -47,18 +47,23 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// What macOS says right now.
+    func permission(_ done: @escaping (NotePermissionStatus) -> Void) {
+        guard let center else { done(.unavailable); return }
+        center.getNotificationSettings { s in
+            let st: NotePermissionStatus
+            switch s.authorizationStatus {
+            case .authorized, .provisional, .ephemeral: st = .allowed
+            case .denied: st = .denied
+            default: st = .notAsked
+            }
+            DispatchQueue.main.async { done(st) }
+        }
+    }
+
     /// What Settings shows: "On", "Off in System Settings", "Not asked yet", or "Not available" (no app bundle).
     func status(_ done: @escaping (String) -> Void) {
-        guard let center else { done("Not available in this build"); return }
-        center.getNotificationSettings { s in
-            let text: String
-            switch s.authorizationStatus {
-            case .authorized, .provisional, .ephemeral: text = "Allowed"
-            case .denied: text = "Turned off in System Settings › Notifications › One Roof"
-            default: text = "Not asked yet: One Roof asks the first time it has something to tell you"
-            }
-            DispatchQueue.main.async { done(text) }
-        }
+        permission { done(NotePermission.settings($0).text) }
     }
 
     // MARK: Events
@@ -67,12 +72,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         guard center != nil, let model else { return }
         guard let note = gate.decide(e, prefs: NotePrefs(model.settings), appActive: NSApp.isActive,
                                      focusedSession: focusedSession()) else { return }
-        switch authorized {
-        case .some(true): deliver(note)
-        case .some(false): return
-        case .none:
-            waiting.append(note)
-            if !asking { requestAuthorization() }
+        waiting.append(note)
+        guard !checking else { return }
+        checking = true
+        permission { st in
+            self.checking = false
+            let notes = self.waiting
+            switch NotePermission.action(st, askedThisLaunch: self.askedThisLaunch) {
+            case .deliver: self.waiting = []; notes.forEach(self.deliver)
+            case .drop: self.waiting = []
+            case .ask: self.requestAuthorization()
+            }
         }
     }
 
