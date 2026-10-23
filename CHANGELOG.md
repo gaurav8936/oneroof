@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.11 — (unreleased)
+
+- **A force-quit no longer leaves the local model running** (LAB-549). The on-device model (llama-server) now runs
+  under a small watchdog that stops it within about 2 seconds of One Roof ending, however it ended: Quit, Force Quit,
+  a crash. One that an older version left behind counts in One Roof's figures at the top of Resources, and the model
+  is restarted if it ever grows past 3 GB (one grew to 8.4 GB over a day on 22 Oct).
+
 ## 0.4.10 — the whole Mac in Resources (22 Oct 2026)
 
 - **Resources covers the whole Mac** (LAB-544). A new **This Mac, by app** card lists every app with its memory and

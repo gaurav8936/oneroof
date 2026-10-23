@@ -2,7 +2,8 @@ import Foundation
 
 /// The small on-device model (owner, 2026-10-17: required): Arch-Router 1.5B run by llama.cpp's `llama-server` on
 /// 127.0.0.1. It only sorts a task into a kind (research, design, code, review, test, docs, chore); the router's rules
-/// then pick the agent. ~0.2 s per call, offline, free. One Roof starts the server on first use and stops it on quit.
+/// then pick the agent. ~0.2 s per call, offline, free. One Roof starts the server on first use and stops it on quit; a
+/// watchdog stops it when One Roof ends any other way (LAB-549).
 public final class LocalModel: @unchecked Sendable {
     public static let shared = LocalModel()
     public static let port = 8749
@@ -67,8 +68,9 @@ public final class LocalModel: @unchecked Sendable {
         guard let bin = serverBinary, FileManager.default.fileExists(atPath: modelPath) else { return false }
         if process?.isRunning != true {
             let p = Process()
-            p.executableURL = URL(fileURLWithPath: bin)
-            p.arguments = ["-m", modelPath, "--port", "\(Self.port)", "--host", "127.0.0.1", "-c", "4096", "--log-disable"]
+            p.executableURL = URL(fileURLWithPath: "/bin/sh")
+            p.arguments = Self.watchedArguments(parent: getpid(), command: [bin, "-m", modelPath, "--port", "\(Self.port)",
+                                                                           "--host", "127.0.0.1", "-c", "4096", "--log-disable"])
             p.standardOutput = FileHandle.nullDevice
             p.standardError = FileHandle.nullDevice
             do { try p.run() } catch { return false }
@@ -86,6 +88,26 @@ public final class LocalModel: @unchecked Sendable {
         process?.terminate()
         process = nil
     }
+
+    /// LAB-549: a force-quit or crash skips `stop()`, and on 10-22 the server it left grew to 8.4 GB over a day. So the
+    /// server runs under a small /bin/sh watchdog: it checks every second that `parent` (this One Roof) is alive and
+    /// ends the server when it is not, however the app ended. SIGTERM to the watchdog (`stop()`) ends the server at once.
+    /// Arguments for `/bin/sh`: `-c <script> oneroof-local-model <parent> <command…>`.
+    public static func watchedArguments(parent: Int32, command: [String], interval: Int = 1) -> [String] {
+        let script = """
+        parent=$1; shift
+        "$@" &
+        child=$!
+        trap 'kill $child 2>/dev/null; wait $child 2>/dev/null; exit 0' TERM INT HUP
+        while kill -0 "$parent" 2>/dev/null && kill -0 "$child" 2>/dev/null; do sleep \(interval) & wait $!; done
+        kill $child 2>/dev/null; wait $child 2>/dev/null
+        """
+        return ["-c", script, "oneroof-local-model", String(parent)] + command
+    }
+
+    /// LAB-549: past this footprint the server One Roof started is restarted (the next request starts a fresh one).
+    /// Arch-Router 1.5B Q4 needs about 1.2 GB with a 4096 context; 8.4 GB was seen after a day.
+    public static let restartAbove: UInt64 = 3 << 30
 
     static let task = """
 
