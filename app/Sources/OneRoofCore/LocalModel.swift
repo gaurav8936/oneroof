@@ -1,13 +1,31 @@
 import Foundation
 
-/// The small on-device model (owner, 2026-10-17: required): Arch-Router 1.5B run by llama.cpp's `llama-server` on
-/// 127.0.0.1. It only sorts a task into a kind (research, design, code, review, test, docs, chore); the router's rules
-/// then pick the agent. ~0.2 s per call, offline, free. One Roof starts the server on first use and stops it on quit; a
-/// watchdog stops it when One Roof ends any other way (LAB-549).
+/// The small on-device model (owner, 2026-10-17: required): Qwen3-1.7B (Apache-2.0, LAB-674; Arch-Router 1.5B up to
+/// 0.5.1) run by llama.cpp's `llama-server` on 127.0.0.1. It only sorts a task into a kind (research, design, code,
+/// review, test, docs, chore); the router's rules then pick the agent. ~0.13 s per call, offline, free. One Roof starts
+/// the server on first use and stops it on quit; a watchdog stops it when One Roof ends any other way (LAB-549).
+/// Why this model: docs/decisions/20261023_01_on-device-model-qwen3.md (test set: app/scripts/route-eval).
 public final class LocalModel: @unchecked Sendable {
     public static let shared = LocalModel()
     public static let port = 8749
-    public static let modelFileName = "Arch-Router-1.5B-Q4_K_M.gguf"
+    public static let modelFileName = "Qwen3-1.7B-Q4_K_M.gguf"
+    /// LAB-675 · Get the model: the pinned file (Hugging Face revision, size, SHA-256) that was tested (LAB-673). Qwen
+    /// publishes Qwen3-1.7B as GGUF only in Q8_0 (1.8 GB, same accuracy); this Q4_K_M is Unsloth's quantisation of the
+    /// same weights, Apache-2.0. To switch file, change these three and `modelFileName`, and re-run app/scripts/route-eval.py.
+    public static let downloadURL = "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/d7f544eead698dbd1f15126ef60b45a1e1933222/Qwen3-1.7B-Q4_K_M.gguf"
+    public static let downloadSHA256 = "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897"
+    public static let downloadBytes: Int64 = 1_107_409_472
+    /// The licence text put next to the downloaded model (bundled as Resources/licenses/Qwen3-LICENSE.txt).
+    public static let licenceFileName = "Qwen3-1.7B-LICENSE.txt"
+    public static var download: ModelDownload.Spec {
+        ModelDownload.Spec(url: URL(string: downloadURL)!, sha256: downloadSHA256, bytes: downloadBytes,
+                           fileName: modelFileName, licenceFileName: licenceFileName)
+    }
+    /// The name people see (Settings, Foundations, Resources).
+    public static let displayName = "Qwen3 1.7B"
+    /// The model One Roof used up to 0.5.1. Still works if a user points Settings at it, but its licence (DigitalOcean
+    /// Community License §4) needs a separate licence for commercial use, so Settings says so.
+    public static let legacyFileName = "Arch-Router-1.5B-Q4_K_M.gguf"
     /// Where a downloaded model goes by default: ~/Library/Application Support/One Roof/models/.
     public static var defaultModelPath: String { Workspace.appSupport + "/models/" + modelFileName }
 
@@ -27,6 +45,34 @@ public final class LocalModel: @unchecked Sendable {
         return defaultModelPath
     }
 
+    /// The name to show for a model file: `displayName` for the default file, else the file name without `.gguf`.
+    public static func name(forPath path: String) -> String {
+        let file = (path as NSString).lastPathComponent
+        if file == modelFileName { return displayName }
+        if file.lowercased().hasPrefix("arch-router") { return "Arch-Router" }
+        return file.lowercased().hasSuffix(".gguf") ? String(file.dropLast(5)) : file
+    }
+
+    /// A note for Settings when the model path still points at Arch-Router (its licence), else nil.
+    public static func licenceWarning(path: String) -> String? {
+        guard (path as NSString).lastPathComponent.lowercased().hasPrefix("arch-router") else { return nil }
+        return "Arch-Router (One Roof's model up to 0.5.1) needs a separate licence from DigitalOcean for commercial use. Get the model downloads \(displayName) (Apache-2.0) and switches to it."
+    }
+
+    /// LAB-675: offer Get the model when the model in use is missing or is Arch-Router. (When the pinned file is
+    /// already in place, Get the model only checks it and switches to it.)
+    public static func offerDownload(modelPath: String, exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> Bool {
+        !exists(modelPath) || licenceWarning(path: modelPath) != nil
+    }
+
+    /// The Settings value after Get the model finished: "" (use the downloaded default) when the current one is empty,
+    /// missing or Arch-Router; your own other model stays chosen.
+    public static func settingAfterDownload(_ setting: String, exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> String {
+        guard !setting.isEmpty else { return "" }
+        let p = (setting as NSString).expandingTildeInPath
+        return !exists(p) || licenceWarning(path: p) != nil ? "" : setting
+    }
+
     private var process: Process?
     private let lock = NSLock()
 
@@ -44,7 +90,8 @@ public final class LocalModel: @unchecked Sendable {
         if !FileManager.default.fileExists(atPath: modelPath) {
             return "optional model not found at \(modelPath.replacingOccurrences(of: NSHomeDirectory(), with: "~")) (heuristics are used)"
         }
-        return healthy() ? "Arch-Router 1.5B running on 127.0.0.1:\(Self.port)" : "Arch-Router 1.5B ready (starts on first use)"
+        let name = Self.name(forPath: modelPath)
+        return healthy() ? "\(name) running on 127.0.0.1:\(Self.port)" : "\(name) ready (starts on first use)"
     }
 
     public func healthy() -> Bool {
@@ -106,45 +153,54 @@ public final class LocalModel: @unchecked Sendable {
     }
 
     /// LAB-549: past this footprint the server One Roof started is restarted (the next request starts a fresh one).
-    /// Arch-Router 1.5B Q4 needs about 1.2 GB with a 4096 context; 8.4 GB was seen after a day.
+    /// Qwen3-1.7B Q4_K_M needs about 1.6 GB with a 4096 context (Arch-Router 1.5B about 1.2 GB); 8.4 GB was seen after a
+    /// day.
     public static let restartAbove: UInt64 = 3 << 30
 
-    static let task = """
-
-    You are a helpful assistant designed to find the best suited route.
-    You are provided with route description within <routes></routes> XML tags:
-    <routes>
-    {routes}
-    </routes>
-    <conversation>
-    {conversation}
-    </conversation>
-
-    """
-    static let format = """
-
-    Your task is to decide which route is best suit with user intent on the conversation in <conversation></conversation> XML tags.  Follow the instruction:
-    1. If the latest intent from user is irrelevant or user intent is full filled, response with other route {"route": "other"}.
-    2. You must analyze the route descriptions and find the best match route for user latest intent.
-    3. You only response the name of the route that best matches the user's request, use the exact name in the <routes></routes>.
-    Based on your analysis, provide your response in the following JSON formats if you decide to match any route:
-    {"route": "route_name"}
-
+    /// Eight one-line examples for the classifier; none is in the test set (app/scripts/route-eval/tasks.json).
+    static let examples = """
+    Examples:
+    "Add dark mode to the settings window" -> code
+    "Fix the login error when the token expires" -> code
+    "Figure out how Stripe webhooks retry" -> research
+    "Choose a schema for storing invoices before we build it" -> design
+    "Review Bob's change to the parser" -> review
+    "Write tests for the date formatter" -> test
+    "Write a getting-started guide" -> docs
+    "Upgrade Node and remove unused packages" -> chore
     """
 
-    /// The kind of a task, or nil if the model is unavailable or answers "other". Call off the main thread.
+    /// The classifier's system message: the kinds with their descriptions (from routing.json), three rules and the
+    /// examples. Mirrored by app/scripts/route-eval.py; change both together and re-run it.
+    public static func systemPrompt(kinds: [String: String]) -> String {
+        "Classify a software task by the main work it asks for. Kinds:\n"
+            + kinds.sorted { $0.key < $1.key }.map { "- \($0.key): \($0.value)" }.joined(separator: "\n")
+            + "\nNew features, UI changes and bug fixes are code. Only pick test when the task is about tests or reproducing a failure. "
+            + "Only pick chore for maintenance that changes no behaviour.\n" + examples
+            + "\nReply with JSON only: {\"route\": \"<kind>\"}."
+    }
+
+    /// A llama-server `/v1/chat/completions` body: the answer is held to `{"route": <one of the kinds>}` by a JSON
+    /// schema, and Qwen3's thinking is off (without it the reply is empty within 20 tokens; other models ignore it).
+    public static func requestBody(text: String, kinds: [String: String]) -> Data {
+        let schema: [String: Any] = ["type": "object", "properties": ["route": ["type": "string", "enum": kinds.keys.sorted()]],
+                                     "required": ["route"], "additionalProperties": false]
+        let body: [String: Any] = [
+            "messages": [["role": "system", "content": systemPrompt(kinds: kinds)], ["role": "user", "content": "Task: " + text]],
+            "temperature": 0, "max_tokens": 20,
+            "response_format": ["type": "json_schema", "json_schema": ["name": "route", "schema": schema]],
+            "chat_template_kwargs": ["enable_thinking": false],
+        ]
+        return (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
+    }
+
+    /// The kind of a task, or nil if the model is unavailable or answers something that is not a kind. Call off the main thread.
     public func classify(_ text: String, kinds: [String: String], modelPath: String = LocalModel.modelPath) -> String? {
         guard ensureRunning(modelPath: modelPath) else { return nil }
-        let routes = kinds.sorted { $0.key < $1.key }.map { ["name": $0.key, "description": $0.value] }
-        guard let routesJSON = try? JSONSerialization.data(withJSONObject: routes),
-              let convJSON = try? JSONSerialization.data(withJSONObject: [["role": "user", "content": text]]) else { return nil }
-        let prompt = Self.task.replacingOccurrences(of: "{routes}", with: String(decoding: routesJSON, as: UTF8.self))
-            .replacingOccurrences(of: "{conversation}", with: String(decoding: convJSON, as: UTF8.self)) + Self.format
-        let body: [String: Any] = ["messages": [["role": "user", "content": prompt]], "temperature": 0, "max_tokens": 20]
         var req = URLRequest(url: URL(string: "http://127.0.0.1:\(Self.port)/v1/chat/completions")!, timeoutInterval: 15)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        req.httpBody = Self.requestBody(text: text, kinds: kinds)
         let sem = DispatchSemaphore(value: 0)
         var answer: String?
         URLSession.shared.dataTask(with: req) { d, _, _ in

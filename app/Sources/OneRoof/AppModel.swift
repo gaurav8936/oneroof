@@ -150,6 +150,8 @@ final class AppModel: ObservableObject {
     private let queue = DispatchQueue(label: "oneroof.runtime", qos: .userInitiated)
     /// What One Roof itself costs, per session and overall (LAB-493).
     let resources = ResourceMonitor()
+    /// LAB-675 · Get the model (Settings and the Foundations check).
+    let modelDownload = ModelDownloadController()
 
     init() {
         grouping = Grouping(rawValue: Prefs.defaults.string(forKey: "grouping") ?? "") ?? .status
@@ -183,6 +185,7 @@ final class AppModel: ObservableObject {
     }
 
     func start() {
+        modelDownload.onDone = { [weak self] _ in self?.modelDownloaded() }
         if settings.startupCheck { runFoundations() }
         // macOS light/dark switches.
         DistributedNotificationCenter.default().addObserver(forName: Notification.Name("AppleInterfaceThemeChangedNotification"),

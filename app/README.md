@@ -96,8 +96,9 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   the sidebar. A router reads `routing.json` and `roles.json` in place from the agentic-engineering folder
   (`skills/*/agent-routing/`, or `harness-routing/` in older skill libraries):
   kind → agent and model, budget, skip seats near their limit, the emptier Claude seat, reviews off the author.
-  Suggest / Route all in the plan view; Suggest agent and Role in Plan a session. An on-device model (Arch-Router
-  1.5B via llama.cpp, `brew install llama.cpp`, model file set in Settings › Foundations) classifies a task's kind in ~0.2 s. Rotation: a
+  Suggest / Route all in the plan view; Suggest agent and Role in Plan a session. An on-device model (Qwen3
+  1.7B, Apache-2.0, via llama.cpp, `brew install llama.cpp`, model file set in Settings › Foundations; Arch-Router 1.5B
+  up to 0.5.1) classifies a task's kind in ~0.15 s. Rotation: a
   step whose seat is near its limit writes a handoff and continues on the next agent.
 
 - **Learn (⌘⇧E, I9).** The course (`course/NN-*.md`, narrated from `course/audio/<lesson>/`), the field manual and
@@ -135,10 +136,14 @@ Not yet (terminal-app parity, see 05_warp-parity.md): split panes, git diff pane
      gemini and agy, each found or not. Nothing here blocks Start.
    - **Linear (optional):** paste an API key; it is saved to `~/.config/oneroof/linear-api-key` (mode 0600).
      `LINEAR_API_KEY` in the environment also works. Without a key the Work view says Linear is not connected.
-5. **On-device model (optional).** For one-line captions and task routing, `brew install llama.cpp` and download
-   the Arch-Router-1.5B GGUF (Q4_K_M quantisation, published on Hugging Face) to
-   `~/Library/Application Support/One Roof/models/Arch-Router-1.5B-Q4_K_M.gguf` (or choose another path in
-   Settings › Foundations). Without it, captions and routing use heuristics.
+5. **On-device model (optional).** For one-line captions and task routing, `brew install llama.cpp`, then press
+   **Get the model** in Settings › Foundations (or on the Foundations check's model row): it downloads, checks
+   (size, SHA-256) and installs `Qwen3-1.7B-Q4_K_M.gguf` (Qwen3-1.7B, Apache-2.0, 1.1 GB; the pinned file is in
+   [docs/decisions/20261023_01_on-device-model-qwen3.md](../docs/decisions/20261023_01_on-device-model-qwen3.md)) at
+   `~/Library/Application Support/One Roof/models/Qwen3-1.7B-Q4_K_M.gguf` (or put a file there yourself, or choose another path in
+   Settings › Foundations). Without it, captions and routing use heuristics. Arch-Router-1.5B, the model up to 0.5.1,
+   still works if you choose it, but its licence restricts commercial use; Settings says so. Licences:
+   [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 
 ```bash
 open "/Applications/One Roof.app"          # installed build
@@ -166,7 +171,7 @@ terminal.
 | Shared rules and docs (`commonPath`) | `<projects>/_common` | `ONEROOF_SHARED` |
 | Agentic engineering (`agenticEngineeringPath`) | the copy bundled in the app | `ONEROOF_AE_PATH` |
 | Learn folders (`learnFolders`) | none. Each folder's `.md` files become pages; each sub-folder of `.mp3` files a narration list | |
-| On-device model (`localModelPath`) | `~/Library/Application Support/One Roof/models/Arch-Router-1.5B-Q4_K_M.gguf` | `ONEROOF_MODEL` |
+| On-device model (`localModelPath`) | `~/Library/Application Support/One Roof/models/Qwen3-1.7B-Q4_K_M.gguf` | `ONEROOF_MODEL` |
 | Linear key | `~/.config/oneroof/linear-api-key` | `LINEAR_API_KEY` |
 
 The other tabs: General (Dock badge, startup check), Appearance (theme per panel, text size, stickers), Agents (default

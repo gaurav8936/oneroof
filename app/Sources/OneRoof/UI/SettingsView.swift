@@ -206,6 +206,11 @@ struct SettingsView: View {
                          + (exists ? "" : optional ? " (not found: features that use it stay off)" : " (not found)"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
+                if exists, let warning = LocalModel.licenceWarning(path: inUse) {
+                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption)
+                        .foregroundStyle(Pastel.named("peach")!.lightInk.color).fixedSize(horizontal: false, vertical: true)
+                }
+                ModelDownloadRow(download: model.modelDownload, offer: LocalModel.offerDownload(modelPath: inUse))
             }
         }
     }
@@ -263,6 +268,10 @@ struct SettingsView: View {
                     Text(exists ? "In use: \(inUse.replacingOccurrences(of: NSHomeDirectory(), with: "~"))"
                          : "Optional add-on, not installed: captions and task sorting use the built-in rules. See Help › Seats and routing.")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                if exists, let warning = LocalModel.licenceWarning(path: inUse) {
+                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption)
+                        .foregroundStyle(Pastel.named("peach")!.lightInk.color).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

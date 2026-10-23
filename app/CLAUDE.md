@@ -17,7 +17,7 @@ Ship the v2 interface on top of the existing v0.1 app. **Nothing that works toda
 ## 3. Stack (unchanged)
 - SwiftPM, `swift-tools-version:6.0`, macOS 14+, Swift 5 language mode on every target.
 - AppKit owns app, menus (built in code), window, `NSSplitViewController`, sheets, terminal `NSView`s. SwiftUI draws every panel and centre view inside `NSHostingController` / `NSHostingView` with `sizingOptions = []`.
-- libghostty (GhosttyKit.xcframework, Ghostty v1.3.1) is the only linked third-party library. herdr 0.9.5 is the only runtime. llama-server is optional.
+- libghostty (GhosttyKit.xcframework, Ghostty v1.3.1) is the only linked third-party library. herdr 0.9.5 is the only runtime. llama-server (Homebrew llama.cpp, MIT) and the on-device model (Qwen3-1.7B, Apache-2.0, since 0.5.2; Arch-Router before) are optional and never linked; third-party licences are listed in `THIRD-PARTY-NOTICES.md`.
 - **No new dependencies.** The editor is built on `NSTextView` (TextKit 2) with a small in-house tokenizer; diffs come from `git diff --numstat` / `git diff -U3` run through `Foundations.run`-style process calls; no SwiftTerm, no tree-sitter, no Sparkle, no web framework.
 - New pure logic goes in `OneRoofCore` (no AppKit/SwiftUI): `Captions.swift`, `Feed.swift`, `Decisions.swift`, `Subagents.swift`, `FileClaims.swift`, `Schedules.swift`, `ThemeV2.swift`.
 - New views go in `Sources/OneRoof/UI/` with the names in README §3.

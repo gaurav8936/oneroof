@@ -1,0 +1,49 @@
+{
+  "about": "LAB-673: task sentences for the on-device task classifier, each with the kind a person would pick. 'accept' lists other kinds that are fair for an ambiguous sentence (lenient score). Kinds and descriptions come from agentic_engineering/skills/fleet/agent-routing/routing.json. Run: app/scripts/route-eval.py --model <file.gguf>.",
+  "tasks": [
+    {"text": "Find out how the Linear API paginates issues and whether it has a rate limit", "kind": "research"},
+    {"text": "Compare SQLite FTS5 and a plain LIKE query for searching session names", "kind": "research", "accept": ["design"]},
+    {"text": "Read the libghostty docs and work out how it reports the terminal title", "kind": "research"},
+    {"text": "Investigate why llama-server grows to 8 GB after a day of use", "kind": "research", "accept": ["test"]},
+    {"text": "Look at three other agent dashboards and note what they show per session", "kind": "research"},
+    {"text": "Which Apache-licensed small models can classify short task sentences on a Mac?", "kind": "research"},
+
+    {"text": "Sketch the data model for loops: schedule, runs, and their results", "kind": "design"},
+    {"text": "Plan how the Resources page should group processes before we build it", "kind": "design"},
+    {"text": "Decide on the interface between roofd and the app for attaching to a session", "kind": "design"},
+    {"text": "Propose an approach for syncing settings between two Macs", "kind": "design", "accept": ["research"]},
+    {"text": "Design the sheet that lets the owner pick an agent and an account for a step", "kind": "design"},
+
+    {"text": "Add a Stop button to each leftover process row in Resources", "kind": "code"},
+    {"text": "Fix the crash when a session is closed while its caption is updating", "kind": "code"},
+    {"text": "Implement the download of the on-device model with a progress bar", "kind": "code"},
+    {"text": "Make the sidebar remember which groups were collapsed", "kind": "code"},
+    {"text": "The Run button does nothing when the file has unsaved changes; fix it", "kind": "code"},
+    {"text": "Wire the Linear comment action so a handoff posts to the issue", "kind": "code"},
+
+    {"text": "Review the pull request that moves sessions from herdr to roofd", "kind": "review"},
+    {"text": "Check the changes Codex made to the router before we merge them", "kind": "review"},
+    {"text": "Look over yesterday's commits on the release branch for anything risky", "kind": "review"},
+    {"text": "Go through the diff in Captions.swift and say if it invents numbers", "kind": "review", "accept": ["test"]},
+    {"text": "Second opinion on Claude's refactor of the store layer", "kind": "review"},
+
+    {"text": "Write unit tests for the schedule parser, including daylight saving changes", "kind": "test"},
+    {"text": "Reproduce the bug where the board shows a session twice", "kind": "test", "accept": ["research", "code"]},
+    {"text": "Run the full test suite and report which tests fail", "kind": "test"},
+    {"text": "Add a regression test for the empty window title", "kind": "test"},
+    {"text": "Run the self-test captures in all three themes and compare them with the artboards", "kind": "test", "accept": ["review"]},
+
+    {"text": "Write the help page for the Resources view", "kind": "docs"},
+    {"text": "Update the README with the new install steps", "kind": "docs"},
+    {"text": "Draft the release notes for 0.5.2", "kind": "docs"},
+    {"text": "Explain in the architecture doc how the memory watchdog works", "kind": "docs"},
+    {"text": "Add a guide for writing a new loop to the docs folder", "kind": "docs"},
+
+    {"text": "Bump llama.cpp and Ghostty to their latest versions", "kind": "chore"},
+    {"text": "Rename OneRoofCore's Store to SessionStore everywhere", "kind": "chore", "accept": ["code"]},
+    {"text": "Delete the old Paper theme assets that nothing uses", "kind": "chore"},
+    {"text": "Clean up the scratchpad folder and stale worktrees", "kind": "chore"},
+    {"text": "Move the CI build to the newer macOS runner image", "kind": "chore", "accept": ["code"]},
+    {"text": "Tidy the imports and fix the compiler warnings in the app target", "kind": "chore", "accept": ["code"]}
+  ]
+}

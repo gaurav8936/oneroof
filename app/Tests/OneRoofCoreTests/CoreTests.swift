@@ -492,6 +492,40 @@ final class LocalModelTests: XCTestCase {
         XCTAssertEqual(LocalModel.parseRoute("{'route': 'docs'}", allowed: ok), "docs")
         XCTAssertNil(LocalModel.parseRoute(#"{"route": "other"}"#, allowed: ok))
         XCTAssertNil(LocalModel.parseRoute("no idea", allowed: ok))
+        XCTAssertEqual(LocalModel.parseRoute("{\n  \"route\": \"code\"\n}", allowed: ok), "code", "pretty-printed")
+        XCTAssertNil(LocalModel.parseRoute("", allowed: ok), "Qwen3 with thinking on answers nothing")
+    }
+
+    /// LAB-674: the classifier asks with the kinds as a JSON-schema enum, thinking off, the app's prompt.
+    func testRouteRequestBody() throws {
+        let kinds = ["code": "Writing code", "docs": "Writing documentation"]
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: LocalModel.requestBody(text: "Fix the crash", kinds: kinds)) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
+        XCTAssertEqual(messages.map { $0["role"] }, ["system", "user"])
+        XCTAssertEqual(messages[1]["content"], "Task: Fix the crash")
+        let sys = try XCTUnwrap(messages[0]["content"])
+        XCTAssertTrue(sys.contains("- code: Writing code\n- docs: Writing documentation"), "kinds sorted, with descriptions")
+        XCTAssertTrue(sys.contains("Examples:"))
+        XCTAssertEqual(body["temperature"] as? Int, 0)
+        XCTAssertEqual(body["max_tokens"] as? Int, 20)
+        XCTAssertEqual((body["chat_template_kwargs"] as? [String: Bool])?["enable_thinking"], false)
+        let rf = try XCTUnwrap(body["response_format"] as? [String: Any])
+        XCTAssertEqual(rf["type"] as? String, "json_schema")
+        let schema = try XCTUnwrap((rf["json_schema"] as? [String: Any])?["schema"] as? [String: Any])
+        let route = try XCTUnwrap((schema["properties"] as? [String: Any])?["route"] as? [String: Any])
+        XCTAssertEqual(route["enum"] as? [String], ["code", "docs"])
+    }
+
+    func testModelNamesAndLicenceWarning() {
+        XCTAssertEqual(LocalModel.name(forPath: LocalModel.defaultModelPath), "Qwen3 1.7B")
+        XCTAssertEqual(LocalModel.name(forPath: "/m/Arch-Router-1.5B-Q4_K_M.gguf"), "Arch-Router")
+        XCTAssertEqual(LocalModel.name(forPath: "/m/other-model.gguf"), "other-model")
+        XCTAssertNotNil(LocalModel.licenceWarning(path: "/x/labs/models/Arch-Router-1.5B-Q4_K_M.gguf"))
+        XCTAssertNotNil(LocalModel.licenceWarning(path: "/x/arch-router-1.5b.Q8_0.gguf"))
+        XCTAssertNil(LocalModel.licenceWarning(path: LocalModel.defaultModelPath))
+        XCTAssertNil(LocalModel.licenceWarning(path: "/x/arch/Qwen3-1.7B-Q4_K_M.gguf"), "only the file name counts")
+        XCTAssertEqual(MacResources.modelName(["llama-server", "--model", "/m/Qwen3-1.7B-Q4_K_M.gguf"]), "Qwen3 1.7B")
+        XCTAssertNil(MacResources.modelName(["llama-server", "--port", "8749"]))
     }
 }
 

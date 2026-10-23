@@ -68,6 +68,10 @@ struct CheckTab: View {
                                 Text(r.title).font(.system(size: 13, weight: .semibold))
                                 Text(r.detail).font(.system(size: 11.5)).foregroundStyle(.secondary).textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
+                                if r.id == "localmodel" {
+                                    // LAB-675: the model file is fixed here, not by a terminal command.
+                                    ModelDownloadRow(download: model.modelDownload, offer: LocalModel.offerDownload(modelPath: LocalModel.modelPath))
+                                }
                             }
                             Spacer()
                             if let fix = r.fix {
