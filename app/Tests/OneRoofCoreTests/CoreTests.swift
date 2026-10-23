@@ -442,6 +442,50 @@ final class RouterTests: XCTestCase {
 }
 
 final class LocalModelTests: XCTestCase {
+    /// LAB-549: the watchdog ends the server when One Roof dies without `stop()` (force-quit, crash, SIGKILL).
+    func testWatchdogEndsTheServerWhenTheParentDies() throws {
+        let parent = Process()
+        parent.executableURL = URL(fileURLWithPath: "/bin/sleep"); parent.arguments = ["30"]
+        try parent.run()
+        let dog = Process()
+        dog.executableURL = URL(fileURLWithPath: "/bin/sh")
+        dog.arguments = LocalModel.watchedArguments(parent: parent.processIdentifier, command: ["/bin/sleep", "60"])
+        try dog.run()
+        let server = try XCTUnwrap(Self.child(of: dog.processIdentifier))
+        XCTAssertEqual(kill(server, 0), 0)
+        kill(parent.processIdentifier, SIGKILL)
+        XCTAssertTrue(Self.gone(dog, server, within: 5))
+    }
+
+    /// `stop()` terminates the watchdog, which ends the server at once.
+    func testWatchdogEndsTheServerOnTerminate() throws {
+        let dog = Process()
+        dog.executableURL = URL(fileURLWithPath: "/bin/sh")
+        dog.arguments = LocalModel.watchedArguments(parent: getpid(), command: ["/bin/sleep", "60"])
+        try dog.run()
+        let server = try XCTUnwrap(Self.child(of: dog.processIdentifier))
+        dog.terminate()
+        XCTAssertTrue(Self.gone(dog, server, within: 3))
+    }
+
+    static func child(of pid: Int32) -> Int32? {
+        for _ in 0..<40 {
+            if let c = ProcTable(LiveResourceSource().processes()).children[pid]?.first { return c }
+            usleep(50_000)
+        }
+        return nil
+    }
+
+    static func gone(_ dog: Process, _ server: Int32, within seconds: Double) -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if !dog.isRunning && kill(server, 0) != 0 { return true }
+            usleep(100_000)
+        }
+        kill(server, SIGKILL)
+        return false
+    }
+
     func testParseRoute() {
         let ok: Set<String> = ["code", "docs"]
         XCTAssertEqual(LocalModel.parseRoute(#"{"route": "code"}"#, allowed: ok), "code")
