@@ -225,7 +225,8 @@ public struct SessionUsage: Equatable, Sendable {
 /// One tick of everything One Roof runs.
 public struct ResourceSnapshot: Equatable, Sendable {
     public var at: Date
-    /// The app and what it started (terminal `roofd attach` processes, the local model …), daemon and holders excluded.
+    /// The app and what it started (terminal `roofd attach` processes, the local model …), daemon and holders excluded;
+    /// also a local model an earlier run left behind (LAB-549).
     public var app: [ProcUsage]
     public var daemon: ProcUsage?
     public var daemonHeadroom: Headroom
@@ -352,6 +353,12 @@ public final class ResourceSampler {
 
         var snap = ResourceSnapshot(at: date)
         snap.app = group(targets.appPid, rootRole: .app, excluding: allHolders.union(daemonPid.map { [$0] } ?? []))
+        // LAB-549: a local model an earlier One Roof left (re-parented to launchd) still counts as One Roof's.
+        for e in table.byPid.values where e.ppid == 1 && e.name.hasPrefix("llama-server") && !seen.contains(e.pid) {
+            if MacResources.isLocalModel(name: e.name, argv: source.argv(e.pid) ?? []), let u = usage(e.pid, depth: 1, role: .child) {
+                snap.app.append(u)
+            }
+        }
         if let d = daemonPid {
             snap.daemon = usage(d, depth: 0, role: .daemon)
             if daemonLimits?.pid != d { daemonLimits = (d, Headroom.daemon(env: source.environment(d))) }

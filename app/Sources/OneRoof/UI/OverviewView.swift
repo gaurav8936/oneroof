@@ -80,10 +80,17 @@ struct OverviewView: View {
                 Hairline()
                 VStack(spacing: 0) {
                     ForEach(list.prefix(6)) { item in
+                        let subs = model.subagents[item.id] ?? []
                         SessionRow(row: model.rowData(item), density: .compact, selected: false)
+                            .overlay(alignment: .topLeading) { if !subs.isEmpty { SubagentTrunk() } }
                             .onTapGesture { model.reveal(item) }
                             .contextMenu { SessionContextMenu(model: model, item: item, win: w) }
                             .onDrag { NSItemProvider(object: ("oneroof-session:" + item.id) as NSString) }
+                        // LAB-595: its subagents hang under it, joined by tree lines, instead of living only in Subagents.
+                        SubagentBranches(subs: subs, parent: item.session.name) { sub in
+                            win.traceFocus = item.id + (sub.map { "/" + $0.id } ?? "")
+                            model.show(.subagents, in: win)
+                        }
                     }
                     if list.isEmpty {
                         Text("No sessions").ui(12).foregroundStyle(t.text3.color).frame(maxWidth: .infinity, alignment: .leading)
@@ -350,5 +357,102 @@ struct FeedRow: View {
         case "error": return t.needsText
         default: return t.text2
         }
+    }
+}
+
+/// LAB-595: a session's subagents under its row in the Overview: tree lines from the session's badge to each
+/// subagent (and from a subagent to the ones it started), a status dot, the name, what it is doing and its age.
+/// A row opens the Subagents trace on that subagent.
+struct SubagentBranches: View {
+    @Environment(\.theme) private var t
+    let subs: [Subagent]
+    let parent: String
+    var onOpen: (Subagent?) -> Void
+
+    var body: some View {
+        let (rows, hidden) = SubagentTree.branches(subs)
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(rows) { b in row(b) }
+                if hidden > 0 {
+                    Button { onOpen(nil) } label: {
+                        Text("+ \(hidden) more · \(SubagentTree.summary(subs)) ▸").ui(11.5).foregroundStyle(t.text3.color)
+                            .padding(.leading, SubagentTreeLines.trunkX + 6).frame(height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(hidden) more subagents of \(parent). Open the trace")
+                }
+            }
+            .padding(.bottom, 4)
+        }
+    }
+
+    private func row(_ b: SubagentBranch) -> some View {
+        let s = b.sub
+        return Button { onOpen(s) } label: {
+            HStack(spacing: 6) {
+                SubagentTreeLines(level: b.level, rails: b.rails, isLast: b.isLast)
+                    .stroke(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: s.inferred ? [3, 3] : []))
+                    .frame(width: SubagentTreeLines.width(level: b.level), height: 26)
+                StatusDot(status: s.status == .needsYou ? .needsYou : s.ended == nil ? .running : .done, size: 7)
+                Text(s.name).ui(12, .medium, mono: true).foregroundStyle(t.text.color).lineLimit(1).layoutPriority(1)
+                Text(caption(s)).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 4)
+                Text(s.ended == nil ? ageText(s.started) : "done").ui(11, mono: true).foregroundStyle(t.text3.color)
+            }
+            .padding(.trailing, 10)
+            .frame(height: 26)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(s.asked.isEmpty ? s.name : "Asked: " + s.asked)
+        .accessibilityLabel("Subagent \(s.name) of \(parent), \(s.ended == nil ? (s.status == .needsYou ? "needs you" : "running") : "finished"). Open the trace")
+    }
+
+    private func caption(_ s: Subagent) -> String {
+        if !s.caption.isEmpty { return s.caption }
+        if let last = s.lastText?.split(separator: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) { return String(last) }
+        return s.ended == nil ? "no caption yet" : ""
+    }
+}
+
+/// The tree lines left of a subagent row: a rail for each ancestor that carries on below, then ├ or └ to this row.
+struct SubagentTreeLines: Shape {
+    /// The x of the session badge's centre in a compact row (10 pt padding + half of 20 pt).
+    static let trunkX: CGFloat = 20
+    static let step: CGFloat = 16
+    static func width(level: Int) -> CGFloat { trunkX + CGFloat(level - 1) * step + step - 2 }
+
+    let level: Int
+    let rails: [Bool]
+    let isLast: Bool
+
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        for (i, carries) in rails.enumerated() where carries {
+            let x = Self.trunkX + CGFloat(i) * Self.step
+            p.move(to: CGPoint(x: x, y: r.minY)); p.addLine(to: CGPoint(x: x, y: r.maxY))
+        }
+        let x = Self.trunkX + CGFloat(level - 1) * Self.step
+        p.move(to: CGPoint(x: x, y: r.minY)); p.addLine(to: CGPoint(x: x, y: isLast ? r.midY : r.maxY))
+        p.move(to: CGPoint(x: x, y: r.midY)); p.addLine(to: CGPoint(x: x + Self.step - 6, y: r.midY))
+        return p
+    }
+}
+
+/// The line from a session's badge down to its first subagent row.
+struct SubagentTrunk: View {
+    @Environment(\.theme) private var t
+    var body: some View {
+        GeometryReader { g in
+            Path { p in
+                p.move(to: CGPoint(x: SubagentTreeLines.trunkX, y: 29))
+                p.addLine(to: CGPoint(x: SubagentTreeLines.trunkX, y: g.size.height))
+            }
+            .stroke(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

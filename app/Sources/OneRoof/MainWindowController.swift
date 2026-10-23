@@ -129,6 +129,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         model.$themes.receive(on: DispatchQueue.main).sink { [weak self] t in self?.applyThemes(t) }.store(in: &bag)
         win.$centre.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] c in self?.centreChanged(c) }.store(in: &bag)
         win.$name.receive(on: DispatchQueue.main).sink { [weak window] n in window?.title = n }.store(in: &bag)
+        // LAB-590: the window's colour tints its toolbar band.
+        win.$colour.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            guard let self else { return }
+            self.applyThemes(self.model.themes)
+        }.store(in: &bag)
         syncPanels()
     }
 
@@ -176,8 +181,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     }
 
     private func applyThemes(_ t: PanelThemes) {
-        backdrop.fill = t.sidebar.tokens.toolbar
-        backdrop.line = t.sidebar.tokens.separator
+        let k = t.sidebar.tokens
+        // LAB-590: a window with a colour gets a tinted band and a 2 pt stripe in the colour's ink; without one, as before.
+        let accent = WindowAccent(named: win.colour, on: k)
+        backdrop.fill = accent?.band ?? k.toolbar
+        backdrop.line = accent?.ink ?? k.separator
+        backdrop.lineWidth = accent == nil ? 1 : 2
         window?.appearance = t.sidebar.appearance
         sideItem.viewController.view.appearance = t.sidebar.appearance
         filesItem.viewController.view.appearance = t.files.appearance
@@ -300,10 +309,11 @@ struct PanelState: Equatable {
 final class ToolbarBackdrop: NSView {
     var fill = ThemeName.daylight.tokens.toolbar { didSet { needsDisplay = true } }
     var line = ThemeName.daylight.tokens.separator { didSet { needsDisplay = true } }
+    var lineWidth: CGFloat = 1 { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         fill.nsColor.setFill(); bounds.fill()
-        line.nsColor.setFill(); NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
+        line.nsColor.setFill(); NSRect(x: 0, y: bounds.height - lineWidth, width: bounds.width, height: lineWidth).fill()
     }
 }
 

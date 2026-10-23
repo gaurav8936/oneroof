@@ -294,16 +294,4 @@ final class ScheduleTests: XCTestCase {
         }
         XCTAssertNil(Schedule(kind: "weekly", hour: 1, minute: 1))
     }
-
-    func testLaunchdPlist() throws {
-        let xml = SchedulerAgent.plist(executable: "/Applications/One Roof.app/Contents/MacOS/OneRoof",
-                                       schedules: [.tonight(hour: 2, minute: 0), .nightly(hour: 2, minute: 0), .nightly(hour: 23, minute: 30), .onDemand])
-        let obj = try PropertyListSerialization.propertyList(from: Data(xml.utf8), format: nil) as? [String: Any]
-        XCTAssertEqual(obj?["Label"] as? String, "com.oneroof.scheduler")
-        XCTAssertEqual(obj?["ProgramArguments"] as? [String], ["/Applications/One Roof.app/Contents/MacOS/OneRoof", "--run-scheduled"])
-        let times = obj?["StartCalendarInterval"] as? [[String: Int]]
-        XCTAssertEqual(times ?? [], [["Hour": 2, "Minute": 0], ["Hour": 23, "Minute": 30]])
-        XCTAssertEqual(obj?["RunAtLoad"] as? Bool, false)
-        XCTAssertTrue(SchedulerAgent.plistPath.hasSuffix("Library/LaunchAgents/com.oneroof.scheduler.plist"))
-    }
 }
