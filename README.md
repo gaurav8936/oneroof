@@ -114,7 +114,7 @@ A timeline of every subagent: who asked it what, the model, tokens, how long it 
 ### Say what should happen. It works out who does it. <sub>New session · ⌘N</sub>
 One Roof works out whether this is a session, a ticket, a defect or a project, finds similar tickets, and puts the
 router's suggestion on top with its reason. Launch now, queue it next, or schedule it for tonight. The routing is your
-rules plus each seat's remaining usage; an optional on-device model sorts the task into a kind in about 0.2 s.
+rules plus each seat's remaining usage; an optional on-device model (Qwen3 1.7B, Apache-2.0) sorts the task into a kind in about 0.15 s.
 
 <img src="site/shots/newsession.png" alt="New work sheet with the suggested agent and account" width="960">
 
@@ -155,7 +155,7 @@ Listen in the app, or send a skill straight to a session.
 > **Early release (0.5.1.1).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
 > especially in first-run setup and agent detection on machines unlike ours. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with what you find; see [CONTRIBUTING.md](CONTRIBUTING.md).
-> Known limits: Apple silicon only; the optional on-device model is a manual install for now.
+> Known limits: Apple silicon only; the optional on-device model needs `brew install llama.cpp` (the model itself is one click: **Get the model**).
 
 ## Install the app
 
@@ -166,7 +166,7 @@ Listen in the app, or send a skill straight to a session.
 | Required | A Mac with Apple silicon, macOS 14 or later | |
 | Required | git | `xcode-select --install` (Xcode Command Line Tools) |
 | Required | At least one agent CLI, installed and signed in: `claude`, `codex`, `kimi`, `gemini` or `agy` | each agent's own installer |
-| Optional | On-device task classifier and captions | `brew install llama.cpp` + the model file (see [app/README.md](app/README.md)) |
+| Optional | On-device task classifier and captions | `brew install llama.cpp`, then **Get the model** in Settings › Foundations (Qwen3 1.7B, Apache-2.0, 1.1 GB) |
 | Optional | Work view (projects and tickets) | a Linear API key, entered at setup or in Settings |
 | Optional | Seat gauges for Claude | a Claude Code status line that writes usage files (see the help page on seats) |
 

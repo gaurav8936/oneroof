@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Hardened runtime: One Roof loads no third-party libraries at run time and uses no JIT. The one exception is
-     Apple Events (LAB-554): Resources asks a browser for its open tab names when the owner presses "Show tab names";
-     macOS asks the owner once per browser. -->
+<!-- Hardened runtime: libghostty is linked in at build time; One Roof loads no third-party library at run time and
+     uses no JIT. The optional on-device model runs in Homebrew's llama-server, a separate process on 127.0.0.1, not
+     inside the app, so it needs no entitlement. The one exception is Apple Events (LAB-554): Resources asks a browser
+     for its open tab names when the owner presses "Show tab names"; macOS asks the owner once per browser. -->
 <plist version="1.0">
 <dict>
 	<key>com.apple.security.automation.apple-events</key>

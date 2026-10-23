@@ -40,7 +40,8 @@ final class MacResourceTests: XCTestCase {
             if !argv.isEmpty { s.args[pid] = argv }
             if let resp { s.resp[pid] = resp }
         }
-        let model = ["/opt/homebrew/bin/llama-server", "-m", "/models/Arch-Router-1.5B-Q4_K_M.gguf", "--port", "\(LocalModel.port)"]
+        let model = ["/opt/homebrew/bin/llama-server", "-m", "/models/Qwen3-1.7B-Q4_K_M.gguf", "--port", "\(LocalModel.port)"]
+        let oldModel = ["/opt/homebrew/bin/llama-server", "-m", "/models/Arch-Router-1.5B-Q4_K_M.gguf", "--port", "\(LocalModel.port)"]
         add(100, 1, "OneRoof", Self.oneRoof + "/Contents/MacOS/OneRoof", 300)
         add(110, 100, "llama-server", "/opt/homebrew/bin/llama-server", 900, argv: model, resp: 100)
         add(200, 1, "Google Chrome", Self.chrome + "/Contents/MacOS/Google Chrome", 400)
@@ -55,7 +56,7 @@ final class MacResourceTests: XCTestCase {
         add(300, 1, "OrbStack", "/Applications/OrbStack.app/Contents/MacOS/OrbStack", 200)
         add(301, 1, "com.apple.Virtua", "/System/Library/Frameworks/Virtualization.framework/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/VM",
             2600, resp: 300)
-        add(400, 1, "llama-server", "/opt/homebrew/bin/llama-server", 8400, argv: model)
+        add(400, 1, "llama-server", "/opt/homebrew/bin/llama-server", 8400, argv: oldModel)
         add(401, 1, "roofd", "/Users/someone/oneroof/app/build/roofd", 34)
         s.procs.append(ProcEntry(pid: 500, ppid: 1, name: "kernel_task"))   // no usage: unreadable
         add(600, 1, "WindowServer", "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer", 700)
@@ -100,8 +101,8 @@ final class MacResourceTests: XCTestCase {
         let or = try XCTUnwrap(b.groups.first { $0.isOneRoof })
         XCTAssertEqual(Set(or.procs.map(\.pid)), [100, 110, 400, 401])
         XCTAssertEqual(or.leftovers.map(\.pid), [400, 401], "the orphaned model and the stray roofd; not the app's own model")
-        XCTAssertEqual(or.leftovers.first?.kind, "Local model (Arch-Router), left over from an earlier run")
-        XCTAssertEqual(or.procs.first { $0.pid == 110 }?.kind, "Local model (Arch-Router)")
+        XCTAssertEqual(or.leftovers.first?.kind, "Local model (Arch-Router), left over from an earlier run", "named by its -m file")
+        XCTAssertEqual(or.procs.first { $0.pid == 110 }?.kind, "Local model (Qwen3 1.7B)")
         XCTAssertEqual(b.leftovers.reduce(0) { $0 + $1.footprint }, (8400 + 34) * mb)
         XCTAssertTrue(or.leftovers.allSatisfy(\.endable))
         XCTAssertFalse(or.procs.first { $0.pid == 100 }!.endable, "never offers to end itself")

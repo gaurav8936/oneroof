@@ -202,7 +202,7 @@ final class SettingsDefaultsTests: XCTestCase {
     }
 
     func testModelPathResolution() {
-        XCTAssertTrue(LocalModel.defaultModelPath.hasSuffix("/One Roof/models/Arch-Router-1.5B-Q4_K_M.gguf"))
+        XCTAssertTrue(LocalModel.defaultModelPath.hasSuffix("/One Roof/models/Qwen3-1.7B-Q4_K_M.gguf"))
         XCTAssertEqual(LocalModel.resolve(setting: "", environment: [:]), LocalModel.defaultModelPath)
         XCTAssertEqual(LocalModel.resolve(setting: "/m.gguf", environment: [:]), "/m.gguf")
         XCTAssertEqual(LocalModel.resolve(setting: "/m.gguf", environment: ["ONEROOF_MODEL": "/e.gguf"]), "/e.gguf")

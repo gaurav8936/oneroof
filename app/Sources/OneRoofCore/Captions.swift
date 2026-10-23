@@ -342,11 +342,26 @@ public enum CaptionEngine {
         return p
     }
 
-    /// A llama-server `/v1/chat/completions` body.
+    /// The reply's shape as a JSON schema (LAB-674): with plain `json_object`, Qwen3 sometimes sent `steps` as a list
+    /// and Arch-Router an empty object; held to this schema both answer in the shape `ModelReply` decodes.
+    public static let replySchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "caption": ["type": "string"], "step": ["type": "integer"], "steps": ["type": "integer"], "now": ["type": "string"],
+            "events": ["type": "array", "items": ["type": "object", "properties": ["kind": ["type": "string"], "text": ["type": "string"]],
+                                                  "required": ["kind", "text"]]],
+        ],
+        "required": ["caption"],
+    ]
+
+    /// A llama-server `/v1/chat/completions` body. Qwen3's thinking is off (else the reply is empty); other models
+    /// ignore the field.
     public static func requestBody(_ input: CaptionInput, maxTokens: Int = 200) -> Data {
         let body: [String: Any] = [
             "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": userPrompt(input)]],
-            "temperature": 0, "max_tokens": maxTokens, "response_format": ["type": "json_object"],
+            "temperature": 0, "max_tokens": maxTokens,
+            "response_format": ["type": "json_schema", "json_schema": ["name": "caption", "schema": replySchema]],
+            "chat_template_kwargs": ["enable_thinking": false],
         ]
         return (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
     }
