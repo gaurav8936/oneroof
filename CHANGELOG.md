@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2.2 — no repeated notification prompt (23 Oct 2026)
+
+- **"Allow notifications" no longer comes back again and again** (LAB-718). One Roof now reads macOS's own answer
+  every time instead of remembering the first one, so it only asks when macOS has never been asked, and at most once
+  per launch. Allowing One Roof in System Settings › Notifications takes effect straight away, without a restart.
+  Settings › General shows no button once notifications are allowed, and **Open Notification Settings…** when they
+  are turned off (macOS will not ask a second time).
+
 ## 0.5.2.1 — round 2 fixes (23 Oct 2026)
 
 Two things in 0.5.2 did not work on a real Mac. This fix build makes them work.
