@@ -146,11 +146,15 @@ public struct LoopStoreError: Error, CustomStringConvertible {
 public enum LoopCheck {
     public static let tailLines = 40
     public static let tailChars = 4000
+    public static let unreadableExitCodes = "One Roof cannot read exit codes in this process (SIGCHLD is ignored), so the check was not run."
 
     public static func run(_ command: String, in folder: String, timeout: TimeInterval = 600) -> LoopCheckResult {
         let started = Date()
         let cmd = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cmd.isEmpty else { return LoopCheckResult(passed: false, exitCode: 2, output: "No check command set.") }
+        guard Foundations.childExitCodesReadable else {
+            return LoopCheckResult(passed: false, exitCode: 125, output: LoopCheck.unreadableExitCodes)
+        }
         var dir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: folder, isDirectory: &dir), dir.boolValue else {
             return LoopCheckResult(passed: false, exitCode: 2, output: "Folder not found: \(folder)")
@@ -251,31 +255,78 @@ final class TailBuffer: @unchecked Sendable {
     var text: String { lock.lock(); defer { lock.unlock() }; return String(decoding: data, as: UTF8.self) }
 }
 
-/// A loop's own worktree: `<repo>/.worktrees/loop-<id>` on branch `loop/<id>`, made from the repo's current branch.
+/// A loop's own worktree: `<repo>/.worktrees/loop-<name>` on branch `loop/<name>`, made from the repo's current branch,
+/// where `<name>` is the loop id without a leading "loop-" (so loop "loop-smoke" works in `loop-smoke` on `loop/smoke`,
+/// not `loop-loop-smoke`). A worktree or branch made by an earlier version under the doubled name keeps being used.
 /// The live checkout is never edited; nothing is pushed or merged.
 public enum LoopWorktree {
-    public static func branch(_ id: String) -> String { "loop/" + id }
-
-    public static func path(repo: String, id: String) -> String {
-        ((repo as NSString).appendingPathComponent(".worktrees") as NSString).appendingPathComponent("loop-" + id)
+    /// The id without a leading "loop-" (an id that is only "loop-…" with nothing after it keeps its full id).
+    static func name(_ id: String) -> String {
+        id.hasPrefix("loop-") && id.count > 5 ? String(id.dropFirst(5)) : id
     }
 
-    /// The worktree, made if missing. Throws with git's words when it cannot be made.
+    /// The branch for a new worktree. `branch(_:repo:)` also finds a branch made under the old doubled name.
+    public static func branch(_ id: String) -> String { "loop/" + name(id) }
+    static func legacyBranch(_ id: String) -> String { "loop/" + id }
+
+    static func folder(repo: String) -> String { (repo as NSString).appendingPathComponent(".worktrees") }
+    static func newPath(repo: String, id: String) -> String { (folder(repo: repo) as NSString).appendingPathComponent("loop-" + name(id)) }
+    static func legacyPath(repo: String, id: String) -> String { (folder(repo: repo) as NSString).appendingPathComponent("loop-" + id) }
+
+    /// Where the loop works: the worktree an earlier version made under the doubled name when it is still there,
+    /// otherwise `<repo>/.worktrees/loop-<name>`.
+    public static func path(repo: String, id: String) -> String {
+        let legacy = legacyPath(repo: repo, id: id)
+        if legacy != newPath(repo: repo, id: id), isWorktree(legacy) { return legacy }
+        return newPath(repo: repo, id: id)
+    }
+
+    /// The branch the loop's worktree is on, as far as it can be told without running git: the old doubled name when
+    /// the loop still works in the old doubled folder.
+    public static func branch(_ id: String, repo: String) -> String {
+        path(repo: repo, id: id) == legacyPath(repo: repo, id: id) && legacyPath(repo: repo, id: id) != newPath(repo: repo, id: id)
+            ? legacyBranch(id) : branch(id)
+    }
+
+    /// A folder that is a git checkout (its `.git` file or folder is there).
+    static func isWorktree(_ dir: String) -> Bool {
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: dir, isDirectory: &isDir) && isDir.boolValue
+            && FileManager.default.fileExists(atPath: (dir as NSString).appendingPathComponent(".git"))
+    }
+
+    /// The worktree, made if missing. Throws with git's words when it cannot be made, and never returns a folder that
+    /// is not there: git's exit code alone is not trusted (LAB-677: in roofd, with SIGCHLD ignored, every exit code
+    /// read as 0, a failed `git worktree add` looked like success and round 1 started in a folder that did not exist).
     @discardableResult
     public static func ensure(repo: String, id: String) throws -> String {
         let wt = path(repo: repo, id: id)
         let git = "/usr/bin/git"
-        if FileManager.default.fileExists(atPath: wt + "/.git") { return wt }
+        if isWorktree(wt) { return wt }
         guard FileManager.default.fileExists(atPath: (repo as NSString).appendingPathComponent(".git")) else {
             throw LoopStoreError("\(repo) is not a git repo")
         }
-        try? FileManager.default.createDirectory(atPath: (wt as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-        _ = Foundations.run(git, ["-C", repo, "worktree", "prune"], timeout: 20)
-        let hasBranch = Foundations.run(git, ["-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch(id)], timeout: 10).0 == 0
-        let args = hasBranch ? ["-C", repo, "worktree", "add", wt, branch(id)]
-                             : ["-C", repo, "worktree", "add", "-b", branch(id), wt, "HEAD"]
+        do {
+            try FileManager.default.createDirectory(atPath: folder(repo: repo), withIntermediateDirectories: true)
+        } catch {
+            throw LoopStoreError("could not make \(folder(repo: repo)): \(error.localizedDescription)")
+        }
+        let prune = Foundations.run(git, ["-C", repo, "worktree", "prune"], timeout: 20)
+        // The branch to check out: the new name, else one an earlier version made under the doubled name, else a
+        // new branch from HEAD. Told by what rev-parse prints (the commit), not by its exit code alone.
+        func exists(_ b: String) -> Bool {
+            let (rc, out) = Foundations.run(git, ["-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + b], timeout: 10)
+            return rc == 0 && !out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let existing = [branch(id), legacyBranch(id)].first(where: exists)
+        let args = existing.map { ["-C", repo, "worktree", "add", wt, $0] }
+            ?? ["-C", repo, "worktree", "add", "-b", branch(id), wt, "HEAD"]
         let (rc, out) = Foundations.run(git, args, timeout: 120)
-        guard rc == 0 else { throw LoopStoreError("git worktree add failed: " + out.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        let said = [prune.1, out].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: "\n")
+        guard rc == 0 else { throw LoopStoreError("git worktree add failed (exit \(rc)): " + (said.isEmpty ? "no output" : said)) }
+        guard isWorktree(wt) else {
+            throw LoopStoreError("git worktree add reported success but \(wt) is not there. git said: " + (said.isEmpty ? "nothing" : said))
+        }
         return wt
     }
 }
