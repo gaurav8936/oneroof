@@ -105,7 +105,7 @@ struct SettingsView: View {
             Text("Shown in the Plan panel (also switched there). Each step it reviews is one Claude (\(StepExplainer.model)) call on your Claude account, so it is off by default.")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Allow scheduled runs (Tonight, Nightly)", isOn: $model.settings.scheduledRuns)
-            Text("Installs a launchd agent (com.oneroof.scheduler) that starts scheduled sessions; nothing is merged or committed on its own.")
+            Text("roofd starts Tonight, Nightly and repeating sessions on time, with One Roof open or closed. Off, they run only while One Roof is open. Nothing is merged or committed on its own.")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Menu-bar extra", isOn: $model.settings.menuBarExtra)
         }

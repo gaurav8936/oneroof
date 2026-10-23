@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import WebKit
 import OneRoofCore
 
 /// View › Learn (⌘⇧E): browse and play the agentic-engineering material inside One Roof — the field manual,
@@ -269,61 +268,6 @@ private struct LearnPlayerBar: View {
         if player.pageId != nil {
             Divider()
             PlayerBar(player: player, tokens: tokens, onOpenPage: openPage)
-        }
-    }
-}
-
-/// A local HTML page in WebKit, allowed to read its repo so relative audio and images load in place.
-struct WebPage: NSViewRepresentable {
-    let path: String
-    let root: String
-
-    func makeNSView(context: Context) -> WKWebView {
-        let cfg = WKWebViewConfiguration()
-        cfg.mediaTypesRequiringUserActionForPlayback = []
-        let w = WKWebView(frame: .zero, configuration: cfg)
-        w.loadFileURL(URL(fileURLWithPath: path), allowingReadAccessTo: URL(fileURLWithPath: root))
-        return w
-    }
-
-    func updateNSView(_ w: WKWebView, context: Context) {
-        if w.url?.path != path { w.loadFileURL(URL(fileURLWithPath: path), allowingReadAccessTo: URL(fileURLWithPath: root)) }
-    }
-}
-
-/// A Markdown page rendered natively (headings, lists, links, code).
-struct MarkdownPage: View {
-    let path: String
-
-    /// The page without its `---` frontmatter block.
-    static func body(_ text: String) -> String {
-        guard text.hasPrefix("---\n"), let end = text.range(of: "\n---\n", range: text.index(text.startIndex, offsetBy: 4)..<text.endIndex)
-        else { return text }
-        return String(text[end.upperBound...].drop(while: { $0 == "\n" }))
-    }
-    var body: some View {
-        let text = Self.body((try? String(contentsOfFile: path, encoding: .utf8)) ?? "Not found: \(path)")
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(text.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, block in
-                    if block.hasPrefix("# ") {
-                        Text(block.dropFirst(2)).font(.system(size: 22, weight: .bold))
-                    } else if block.hasPrefix("## ") {
-                        Text(block.dropFirst(3)).font(.system(size: 17, weight: .bold)).padding(.top, 6)
-                    } else if block.hasPrefix("### ") {
-                        Text(block.dropFirst(4)).font(.system(size: 14, weight: .bold))
-                    } else if block.hasPrefix("```") {
-                        Text(block.replacingOccurrences(of: "```", with: "")).font(.system(size: 11.5, design: .monospaced))
-                            .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
-                    } else {
-                        Text((try? AttributedString(markdown: block, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(block))
-                            .font(.system(size: 13)).textSelection(.enabled)
-                    }
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: 780, alignment: .leading)
         }
     }
 }

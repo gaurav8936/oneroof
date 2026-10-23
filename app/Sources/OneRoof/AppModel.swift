@@ -615,6 +615,8 @@ final class AppModel: ObservableObject {
         if FileManager.default.fileExists(atPath: p, isDirectory: &dir), dir.boolValue {
             for readme in ["README.md", "readme.md", "Readme.md"] where FileManager.default.fileExists(atPath: p + "/" + readme) { p += "/" + readme; break }
         }
+        // A search hit (a line) in Markdown or HTML opens the source at that line; otherwise the formatted page.
+        if line != nil, DocumentRoute.hasPreview(FileKind.of(p).core) { EditorState.of(active.id).setMode(.source, for: p) }
         viewerPath = p
         NSApp.mainWindow?.makeKeyAndOrderFront(nil)
     }

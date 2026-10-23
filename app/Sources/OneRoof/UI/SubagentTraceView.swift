@@ -23,7 +23,8 @@ struct SubagentTraceView: View {
 
     private var current: BoardItem? {
         let list = sessions
-        let want = session ?? win.traceFocus
+        // traceFocus is "<session>" or "<session>/<subagent>" (Overview, LAB-595).
+        let want = session ?? win.traceFocus.map { String($0.split(separator: "/", maxSplits: 1).first ?? "") }
         return list.first { $0.id == want } ?? list.first
     }
 
@@ -38,6 +39,16 @@ struct SubagentTraceView: View {
             .background(t.window.color)
         }
         .onReceive(timer) { tick = $0 }
+        .onAppear(perform: takeFocus)
+        .onChange(of: win.traceFocus) { _, _ in takeFocus() }
+    }
+
+    /// A focus set from outside (Overview, a session's Subagents tab) picks the session and the subagent.
+    private func takeFocus() {
+        guard let f = win.traceFocus else { return }
+        let parts = f.split(separator: "/", maxSplits: 1).map(String.init)
+        session = parts.first
+        node = parts.count > 1 ? parts[1] : nil
     }
 
     // MARK: List

@@ -1,8 +1,9 @@
 import Foundation
 
-// "Tonight" runs (v2, ENGINES §6): a launchd user agent `com.oneroof.scheduler` calls `OneRoof --run-scheduled`, which
-// asks roofd to launch the planned session exactly as Launch does. No run while the Mac sleeps: launchd catches up on
-// wake, and a run found late is reported as "missed · run now?" instead. Schedules only start runs; nothing is merged.
+// Scheduled runs (v2, ENGINES §6; LAB-23, LAB-254): Tonight, Nightly and loops. With Settings › Allow scheduled runs on,
+// roofd's Scheduler reads the session store every 30 s and launches what is due exactly as Launch does, with One Roof
+// open or closed; with it off, the app runs schedules itself while it is open (never both). No run while the Mac
+// sleeps: a timed run found late is reported as "missed · run now?" instead. Schedules only start runs; nothing is merged.
 
 public enum Schedule: Codable, Equatable, Hashable, Sendable {
     case tonight(hour: Int, minute: Int)    // one-off
@@ -98,7 +99,7 @@ public struct ScheduleRecord: Codable, Equatable, Sendable {
 }
 
 public enum ScheduleClock {
-    /// How late `--run-scheduled` may start a run; later than this it is "missed" (the Mac was asleep).
+    /// How late a scheduler tick may start a run; later than this it is "missed" (the Mac was asleep).
     public static let grace: TimeInterval = 10 * 60
 
     /// First HH:MM strictly after `date`.
@@ -150,7 +151,7 @@ public enum ScheduleClock {
 
     public enum Action: Equatable, Sendable { case run, missed(Date), nothing }
 
-    /// What `--run-scheduled` (or the morning check) should do for one record now.
+    /// What a scheduler tick (roofd's, or the app's while it is open) should do for one record now.
     public static func action(_ r: ScheduleRecord, now: Date, calendar: Calendar = .current) -> Action {
         guard let due = pendingDue(r, now: now, calendar: calendar) else { return .nothing }
         if case .every = r.schedule { return .run }   // a loop late after sleep just runs its next round
@@ -180,31 +181,5 @@ public enum ScheduleClock {
     public static func isMissed(_ r: ScheduleRecord, now: Date, calendar: Calendar = .current) -> Bool {
         if case .missed = action(r, now: now, calendar: calendar) { return true }
         return false
-    }
-}
-
-/// The launchd user agent One Roof writes (never installed by this code).
-public enum SchedulerAgent {
-    public static let label = "com.oneroof.scheduler"
-
-    public static var plistPath: String {
-        (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents/\(label).plist")
-    }
-
-    /// The plist XML: one StartCalendarInterval per distinct HH:MM, calling `<executable> --run-scheduled`.
-    public static func plist(executable: String, schedules: [Schedule], logPath: String? = nil) -> String {
-        var seen = Set<Int>()
-        let times = schedules.compactMap(\.time).filter { seen.insert($0.hour * 60 + $0.minute).inserted }
-            .sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
-        var dict: [String: Any] = [
-            "Label": label,
-            "ProgramArguments": [executable, "--run-scheduled"],
-            "StartCalendarInterval": times.map { ["Hour": $0.hour, "Minute": $0.minute] },
-            "RunAtLoad": false,
-            "ProcessType": "Background",
-        ]
-        if let logPath { dict["StandardOutPath"] = logPath; dict["StandardErrorPath"] = logPath }
-        guard let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0) else { return "" }
-        return String(decoding: data, as: UTF8.self)
     }
 }

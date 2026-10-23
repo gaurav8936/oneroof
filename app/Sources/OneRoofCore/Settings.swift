@@ -50,7 +50,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var menuBarExtra: Bool
     /// Ask the on-device model for captions and reasons; off = the heuristic captions only.
     public var captionsModel: Bool
-    /// Let One Roof install its launchd agent so Tonight / Nightly sessions start on time.
+    /// Let roofd start Tonight / Nightly / loop sessions on time with the app open or closed (roofd Scheduler, LAB-23);
+    /// off = the app runs them itself only while it is open.
     public var scheduledRuns: Bool
     /// Step review (LAB-260): Claude reads each finished step of the session on screen. Off by default: every step it
     /// reviews is one more model call on the owner's Claude account.
