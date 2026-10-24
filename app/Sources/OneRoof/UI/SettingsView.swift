@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State var tab = Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0
     /// What macOS says about One Roof's notifications (LAB-197).
     @State private var noteStatus = ""
+    @State private var notePermission: NotePermissionStatus = .notAsked
 
     var body: some View {
         TabView(selection: $tab) {
@@ -54,14 +55,27 @@ struct SettingsView: View {
             .font(.caption).foregroundStyle(.secondary)
         LabeledContent("macOS") {
             HStack {
-                Text(noteStatus.isEmpty ? "…" : noteStatus).font(.caption).foregroundStyle(.secondary)
-                Button("Allow notifications…") {
-                    Notifier.shared.requestAuthorization { _ in Notifier.shared.status { noteStatus = $0 } }
+                Text(noteStatus.isEmpty ? "…" : NotePermission.settings(notePermission).text)
+                    .font(.caption).foregroundStyle(.secondary)
+                // LAB-718: no button once allowed; when turned off, macOS won't ask again, so open System Settings.
+                switch NotePermission.settings(notePermission).button {
+                case .ask:
+                    Button("Allow notifications…") {
+                        Notifier.shared.requestAuthorization { _ in Notifier.shared.permission { notePermission = $0; noteStatus = "set" } }
+                    }
+                case .openSystemSettings:
+                    Button("Open Notification Settings…") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+                    }
+                case .none:
+                    EmptyView()
                 }
-                .disabled(!Notifier.available)
             }
         }
-        .onAppear { Notifier.shared.status { noteStatus = $0 } }
+        .onAppear { Notifier.shared.permission { notePermission = $0; noteStatus = "set" } }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Notifier.shared.permission { notePermission = $0; noteStatus = "set" }
+        }
     }
 
     /// Appearance: a grid — Sessions · Files · Terminal · Plan · Centre views × Daylight · Graphite · Midnight and the

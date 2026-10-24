@@ -96,3 +96,28 @@ final class NotificationTests: XCTestCase {
         XCTAssertEqual(NotePrefs(old), NotePrefs())
     }
 }
+
+// LAB-718: never prompt again once macOS has an answer; at most one prompt per launch.
+final class NotePermissionTests: XCTestCase {
+    func testAllowedDeliversWithoutAsking() {
+        XCTAssertEqual(NotePermission.action(.allowed, askedThisLaunch: false), .deliver)
+        XCTAssertEqual(NotePermission.action(.allowed, askedThisLaunch: true), .deliver)
+    }
+
+    func testDeniedNeverPrompts() {
+        XCTAssertEqual(NotePermission.action(.denied, askedThisLaunch: false), .drop)
+        XCTAssertEqual(NotePermission.action(.unavailable, askedThisLaunch: false), .drop)
+    }
+
+    func testNeverAskedPromptsOncePerLaunch() {
+        XCTAssertEqual(NotePermission.action(.notAsked, askedThisLaunch: false), .ask)
+        XCTAssertEqual(NotePermission.action(.notAsked, askedThisLaunch: true), .drop)
+    }
+
+    func testSettingsButtonFollowsTheStatus() {
+        XCTAssertEqual(NotePermission.settings(.allowed).button, .none)
+        XCTAssertEqual(NotePermission.settings(.allowed).text, "Allowed")
+        XCTAssertEqual(NotePermission.settings(.denied).button, .openSystemSettings)
+        XCTAssertEqual(NotePermission.settings(.notAsked).button, .ask)
+    }
+}
