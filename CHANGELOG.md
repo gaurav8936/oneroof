@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2.4 — Back to agent, for real (23 Oct 2026)
+
+- **Back to agent puts the run window away** (LAB-598). The floating run window stayed on top of the agent's terminal,
+  so in 0.5.2.2 and 0.5.2.3 Back to agent seemed to do nothing. It now steps the run window out of the way and gives
+  the agent's terminal the keyboard. The run terminal keeps running; the next Run in Terminal, or **Show window** on its
+  ↳ row in Sessions, brings it back.
+
 ## 0.5.2.3 — Back to agent (23 Oct 2026)
 
 - **Back to agent works** (LAB-598). In a run terminal's floating window, **Back to agent** now brings the agent's
