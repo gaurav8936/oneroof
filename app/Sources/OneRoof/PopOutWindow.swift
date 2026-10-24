@@ -60,9 +60,12 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func backToAgent(_ sender: Any?) {
         guard let parentId else { return }
+        // LAB-598: the run window floats, so it stayed on top of the agent's terminal and Back to agent seemed to do
+        // nothing (0.5.2.2, 0.5.2.3). Step it out of the way: the terminal keeps running, the next Run in Terminal or
+        // its ↳ row (Show window) brings it back.
+        window?.orderOut(nil)
         model.showSession(parentId)
-        // LAB-598: selecting the agent was not enough — this window floats and kept the keyboard, so when the agent was
-        // already on screen nothing seemed to happen. Give the agent's own terminal the keyboard once it is shown.
+        // Then give the agent's own terminal the keyboard once it is shown.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self, let item = self.model.item(parentId), let agent = item.liveAgent else { return }
             if let r = RoofWindowController.owner(of: agent) { r.window?.makeKeyAndOrderFront(nil); return }
