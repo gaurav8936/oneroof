@@ -178,3 +178,37 @@ public enum NoteSignals {
         return nil
     }
 }
+
+// MARK: Permission (LAB-718)
+
+/// What macOS says about One Roof's notifications, without the UserNotifications types (so the rule is testable).
+public enum NotePermissionStatus: Sendable, Equatable {
+    case allowed, denied, notAsked, unavailable
+}
+
+/// What to do with a note, given what macOS says right now. The macOS prompt is only ever shown when macOS has never
+/// been asked, and at most once per launch: 0.5.2 asked again whenever it hadn't asked in this run, so the owner saw
+/// "Allow notifications" again and again although One Roof was allowed in System Settings.
+public enum NotePermission {
+    public enum Action: Equatable, Sendable { case deliver, drop, ask }
+
+    public static func action(_ status: NotePermissionStatus, askedThisLaunch: Bool) -> Action {
+        switch status {
+        case .allowed: return .deliver
+        case .denied, .unavailable: return .drop
+        case .notAsked: return askedThisLaunch ? .drop : .ask
+        }
+    }
+
+    /// The Settings line and its button: allowed → no button; denied → open System Settings; never asked → ask.
+    public enum Button: Equatable, Sendable { case none, openSystemSettings, ask }
+
+    public static func settings(_ status: NotePermissionStatus) -> (text: String, button: Button) {
+        switch status {
+        case .allowed: return ("Allowed", .none)
+        case .denied: return ("Turned off in System Settings › Notifications › One Roof", .openSystemSettings)
+        case .notAsked: return ("Not asked yet: One Roof asks the first time it has something to tell you", .ask)
+        case .unavailable: return ("Not available in this build", .none)
+        }
+    }
+}
