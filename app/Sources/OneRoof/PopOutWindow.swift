@@ -61,6 +61,17 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
     @objc func backToAgent(_ sender: Any?) {
         guard let parentId else { return }
         model.showSession(parentId)
+        // LAB-598: selecting the agent was not enough — this window floats and kept the keyboard, so when the agent was
+        // already on screen nothing seemed to happen. Give the agent's own terminal the keyboard once it is shown.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, let item = self.model.item(parentId), let agent = item.liveAgent else { return }
+            if let r = RoofWindowController.owner(of: agent) { r.window?.makeKeyAndOrderFront(nil); return }
+            if let c = PopOutWindowController.open[agent] { c.show(); return }
+            guard let main = MainWindowController.forWorkspace(self.model.workspaceId(of: item)) else { return }
+            self.model.goTerminals()
+            main.window?.makeKeyAndOrderFront(nil)
+            main.terminalArea.focusTerminal()
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not supported") }
