@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2.3 — Back to agent (23 Oct 2026)
+
+- **Back to agent works** (LAB-598). In a run terminal's floating window, **Back to agent** now brings the agent's
+  window forward on its terminal and gives it the keyboard. In 0.5.2.2 it only selected the agent, and the floating run
+  window kept the keyboard, so nothing seemed to happen.
+
 ## 0.5.2.2 — no repeated notification prompt (23 Oct 2026)
 
 - **"Allow notifications" no longer comes back again and again** (LAB-718). One Roof now reads macOS's own answer
