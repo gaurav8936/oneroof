@@ -31,7 +31,7 @@ final class LearnMatchTests: XCTestCase {
 /// LAB-713: the Career Agent playbook (another product's) is left out of Learn; the shared files are not touched.
 final class LearnExclusionTests: XCTestCase {
     func test_LAB713_careerAgentPagesAreExcludedFromLearn() {
-        XCTAssertTrue(LearnExclusions.isExcluded("/x/labs-agentic-engineering/agents/career-agent/content/index.html"))
+        XCTAssertTrue(LearnExclusions.isExcluded("/x/ae-folder/agents/career-agent/content/index.html"))
         XCTAssertTrue(LearnExclusions.isExcluded("/x/content/field-manual/playbooks/career-agent/architecture.html"))
         XCTAssertTrue(LearnExclusions.isExcluded("/x/content/field-manual/career-agent.html"))
         XCTAssertFalse(LearnExclusions.isExcluded("/x/content/field-manual/home.html"))
