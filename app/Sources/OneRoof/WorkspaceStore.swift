@@ -21,7 +21,7 @@ final class WorkspaceStore {
     private var store: SessionStore?
 
     /// Called once by the model with its store.
-    func attach(_ s: SessionStore?) { store = s }
+    func attach(_ s: SessionStore?) { store = s; cachedIds = nil }
 
     var workspaces: [Record] {
         let all = store?.allWorkspaces() ?? [RoofWorkspace(id: RoofWorkspace.mainId, name: "Main")]
@@ -30,6 +30,15 @@ final class WorkspaceStore {
             return Record(id: w.id.uuidString, name: w.name, colour: w.colour, order: w.order, open: open)
         }
     }
+
+    /// Every workspace id in the store, open or closed (cached: the sidebar asks on every redraw).
+    var ids: Set<String> {
+        if let c = cachedIds { return c }
+        let c = Set(workspaces.map(\.id))
+        cachedIds = c
+        return c
+    }
+    private var cachedIds: Set<String>?
 
     var assignments: [String: String] {
         (store?.sessionWorkspaces() ?? [:]).mapValues(\.uuidString)
@@ -45,6 +54,7 @@ final class WorkspaceStore {
         let order = (workspaces.map(\.order).max() ?? 0) + 1
         let w = RoofWorkspace(name: name, colour: colour, order: order, layout: Self.layout(open: true))
         store?.save(w)
+        cachedIds = nil
         return Record(id: w.id.uuidString, name: name, colour: colour, order: order)
     }
 
@@ -57,6 +67,7 @@ final class WorkspaceStore {
     func remove(_ id: String) {
         guard id != Self.mainId, let u = UUID(uuidString: id) else { return }
         store?.deleteWorkspace(id: u)
+        cachedIds = nil
     }
 
     private static func layout(open: Bool) -> String {

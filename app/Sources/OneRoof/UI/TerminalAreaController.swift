@@ -121,6 +121,9 @@ final class TerminalAreaController: NSViewController {
         }
         // Another window is about to show a session: let go of our terminal for it (only a hidden one, unless forced).
         NotificationCenter.default.addObserver(forName: .releaseSurface, object: nil, queue: .main) { [weak self] n in
+            // A session moved into this window (LAB-707): show it, even if it was handed away from here before.
+            if let self, let agent = n.object as? String, (n.userInfo?["win"] as? String) == self.win.id,
+               (n.userInfo?["moved"] as? Bool) == true { self.refused[agent] = nil }
             guard let self, let agent = n.object as? String, (n.userInfo?["win"] as? String) != self.win.id,
                   let s = self.surfaces[agent], s.isHidden || (n.userInfo?["force"] as? Bool) == true else { return }
             s.onProcessExit = nil
@@ -128,7 +131,9 @@ final class TerminalAreaController: NSViewController {
             self.surfaces[agent] = nil
             if self.shownAgent == agent { self.shownAgent = nil }
             // Handed over on purpose: this pane says where it went, instead of attaching again and winning it back.
-            if !s.isHidden { self.refused[agent] = 2; self.update() }
+            // A session moved to another window (LAB-707) has left this one: nothing to say, and moving it back shows it.
+            if (n.userInfo?["moved"] as? Bool) == true { self.refused[agent] = nil; self.update() }
+            else if !s.isHidden { self.refused[agent] = 2; self.update() }
         }
         // A click in a pane focuses it (the terminal still gets the click).
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in
@@ -197,12 +202,16 @@ final class TerminalAreaController: NSViewController {
             let tall = body.bounds.height >= 520 && !multi
             let expanded = summaryOverride[leaf.id] ?? tall
             let leafId = leaf.id
+            let liveSurface = item.flatMap(\.liveAgent).map { !model.poppedOut.contains($0) && (refused[$0] ?? 0) < 2 } ?? false
             pv.setTop(AnyView(PaneTop(model: model, item: item, focused: focused, split: multi, expanded: expanded, raw: raw,
                                       openChapter: openChapter[leafId],
                                       onToggleSummary: { [weak self] in self?.summaryOverride[leafId] = !expanded; self?.update() },
                                       onChapter: { [weak self] i in self?.toggleChapter(leafId, i, item) },
                                       onZoom: { [weak self] in self?.focus(pane: leafId); self?.toggleZoom() },
-                                      onClose: { [weak self] in self?.closePane(leafId) })))
+                                      onClose: { [weak self] in self?.closePane(leafId) },
+                                      reading: reading.contains(leafId),
+                                      onReading: liveSurface ? { [weak self] in self?.toggleReading(leafId) } : nil,
+                                      onNewTerminal: { [weak self] in self?.newTerminal(in: item?.session.repoPath) })))
             pv.layer?.borderWidth = multi && focused ? 1 : 0
             pv.layer?.borderColor = tokens.accent.nsColor.cgColor
             pv.layer?.backgroundColor = tokens.terminal.background.nsColor.cgColor
@@ -211,8 +220,10 @@ final class TerminalAreaController: NSViewController {
                 pv.setOverlay(nil)
                 pv.show(placeholder: AnyView(ShownElsewherePlaceholder(onShowHere: { [weak self] in self?.showHere(agent) }).themed(theme)))
             } else if let item, let agent = item.liveAgent, !model.poppedOut.contains(agent) {
-                pv.show(surface: surface(agent: agent, cwd: item.session.repoPath, theme: theme))
+                let sv = surface(agent: agent, cwd: item.session.repoPath, theme: theme, size: pv.surfaceSize(fallback: body.bounds.size))
+                pv.show(surface: sv)
                 shown.insert(agent)
+                pv.setReading(reading.contains(leaf.id) ? ReadingText.prepare(sv.allText() ?? "") : nil, theme: theme)
                 if item.session.agent.isAgent {
                     pv.setBottom(AnyView(HintStrip(item: item, raw: raw, onRaw: { [weak self] in
                         guard let self else { return }
@@ -232,9 +243,13 @@ final class TerminalAreaController: NSViewController {
             } else {
                 pv.setBottom(nil)
                 pv.setOverlay(nil)
-                pv.show(placeholder: AnyView(PanePlaceholder(item: item, model: model, emptyPane: multi && item == nil).themed(theme)))
+                pv.setReading(nil, theme: theme)
+                pv.show(placeholder: AnyView(PanePlaceholder(item: item, model: model, emptyPane: multi && item == nil,
+                                                             onNewTerminal: { [weak self] in self?.newTerminal(in: nil) }).themed(theme)))
             }
         }
+        reading.formIntersection(ids)
+        syncReadingTimer()
         win.visibleInPanes = zoomed.flatMap { tree.leaf($0)?.session }.map { [$0] } ?? Set(tree.leaves.compactMap(\.session))
         // Surfaces not in any pane stay alive, hidden, so switching back is instant.
         for (name, s) in surfaces where !shown.contains(name) {
@@ -308,7 +323,7 @@ final class TerminalAreaController: NSViewController {
     /// When each session's terminal surface was last made (for the retry above).
     private var surfaceTried: [String: Date] = [:]
 
-    private func surface(agent: String, cwd: String, theme: ThemeName) -> TerminalSurfaceView {
+    private func surface(agent: String, cwd: String, theme: ThemeName, size: NSSize) -> TerminalSurfaceView {
         if let s = surfaces[agent] {
             // libghostty cannot make a surface while the screen is locked (no GPU): a session started then (a scheduled
             // run overnight) had a blank pane for good. Try again, at most every 5 s, until it has one.
@@ -320,11 +335,19 @@ final class TerminalAreaController: NSViewController {
         surfaceBorn[agent] = Date()
         NotificationCenter.default.post(name: .releaseSurface, object: agent, userInfo: ["win": win.id])
         let dir = Workspace.isInsideProjects(cwd) ? cwd : Workspace.projectsRoot
-        let surface = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: theme)
+        let surface = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: theme, size: size)
         surface.onSearchTotal = { [weak self] n in self?.find.total = n }
         surface.onSearchSelected = { [weak self] n in self?.find.selected = n }
         surface.onOpenURL = { [weak self] url in self?.openLink(url) }
         model.wire(surface, agent: agent)
+        // LAB-745: right-click › New Terminal Here / Split Right with New Terminal, in this session's folder.
+        surface.onNewTerminal = { [weak self] split in
+            guard let self else { return }
+            if let l = self.tree.leaves.first(where: { $0.session.flatMap { self.model.item($0)?.liveAgent } == agent }) {
+                self.focus(pane: l.id)
+            }
+            if split { self.splitWithNewTerminal(sideBySide: true, in: cwd) } else { self.newTerminal(in: cwd) }
+        }
         surface.onProcessExit = { [weak self] _ in
             // The attach client ended (agent closed or detached): forget it; reselecting reattaches.
             guard let self else { return }
@@ -373,6 +396,48 @@ final class TerminalAreaController: NSViewController {
             d.isHidden = false
             d.frame = dividers[i].sideBySide ? dividers[i].rect.insetBy(dx: -3, dy: 0) : dividers[i].rect.insetBy(dx: 0, dy: -3)
         }
+    }
+
+    // MARK: Wrap for reading (LAB-657)
+
+    /// Panes showing their terminal's text re-wrapped at word boundaries instead of the live surface.
+    private var reading = Set<String>()
+    private var readingTimer: Timer?
+
+    func toggleReading(_ pane: String) {
+        if reading.contains(pane) { reading.remove(pane) } else { reading.insert(pane) }
+        update()
+        if !reading.contains(pane) { focusTerminal() }
+    }
+
+    /// While a pane reads, its text follows the terminal once a second.
+    private func syncReadingTimer() {
+        if reading.isEmpty { readingTimer?.invalidate(); readingTimer = nil; return }
+        guard readingTimer == nil else { return }
+        readingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.refreshReading() }
+    }
+
+    private func refreshReading() {
+        let theme = model.themes.terminal
+        for id in reading {
+            guard let pv = paneViews[id], let sid = tree.leaf(id)?.session, let agent = model.item(sid)?.liveAgent,
+                  let s = surfaces[agent] else { continue }
+            pv.setReading(ReadingText.prepare(s.allText() ?? ""), theme: theme)
+        }
+    }
+
+    // MARK: New terminal (LAB-745)
+
+    /// A plain shell in `dir` (or ~/Projects), shown in the focused pane once it starts.
+    func newTerminal(in dir: String?) {
+        let d = dir.flatMap { Workspace.isInsideProjects($0) ? $0 : nil }
+        model.newTerminal(in: d)
+    }
+
+    /// A new pane beside (or below) the focused one with a new plain shell in it.
+    func splitWithNewTerminal(sideBySide: Bool, in dir: String?) {
+        split(sideBySide: sideBySide)
+        newTerminal(in: dir)
     }
 
     // MARK: Pane commands (View › Panes)
@@ -513,6 +578,7 @@ final class PaneView: NSView {
     private var bottom: NSHostingView<AnyView>?
     private var overlay: NSHostingView<AnyView>?
     private var placeholder: NSHostingView<AnyView>?
+    private var readingView: ReadingView?
     private let content = NSView()
     override var isFlipped: Bool { true }
 
@@ -552,6 +618,13 @@ final class PaneView: NSView {
         needsLayout = true
     }
 
+    /// The size a terminal shown in this pane gets (LAB-606): the laid-out content area, or a best guess before then.
+    func surfaceSize(fallback: NSSize) -> NSSize {
+        if content.frame.width > 1, content.frame.height > 1 { return content.frame.size }
+        let base = bounds.width > 1 && bounds.height > 1 ? bounds.size : fallback
+        return NSSize(width: base.width, height: max(1, base.height - 36))   // under the 36 pt pane header
+    }
+
     func show(surface: NSView) {
         placeholder?.isHidden = true
         for v in content.subviews where v !== surface && v !== placeholder { v.removeFromSuperview() }
@@ -563,6 +636,19 @@ final class PaneView: NSView {
             content.addSubview(surface)
         }
         surface.isHidden = false
+    }
+
+    /// Wrap for reading (LAB-657): the terminal's text over the surface, or nil for the live terminal.
+    func setReading(_ text: String?, theme: ThemeName) {
+        guard let text else { readingView?.isHidden = true; return }
+        let r = readingView ?? ReadingView()
+        if readingView == nil {
+            if let overlay { addSubview(r, positioned: .below, relativeTo: overlay) } else { addSubview(r) }
+            readingView = r
+            needsLayout = true
+        }
+        r.isHidden = false
+        r.show(text, theme: theme)
     }
 
     func show(placeholder view: AnyView) {
@@ -597,10 +683,52 @@ final class PaneView: NSView {
         }
         content.frame = NSRect(x: inset, y: y, width: w, height: max(0, bounds.height - y - bottomH - inset))
         for v in content.subviews { v.frame = content.bounds }
+        readingView?.frame = content.frame
         if let overlay, !overlay.isHidden {
-            let h = min(overlay.fittingSize.height, content.frame.height)
+            // LAB-716: measured at the pane's width, so a question that wraps gets the rows it needs.
+            let h = min(Self.height(of: overlay, width: w), content.frame.height)
             overlay.frame = NSRect(x: inset, y: content.frame.maxY - h, width: w, height: h)
         }
+    }
+}
+
+/// Wrap for reading (LAB-657): a read-only, selectable text view of the terminal's text, wrapped at word boundaries to
+/// the pane's width, in the terminal theme. It stays at the bottom while new output arrives, unless scrolled up.
+final class ReadingView: NSScrollView {
+    private let text = NSTextView()
+    private var shown = ""
+
+    init() {
+        super.init(frame: .zero)
+        hasVerticalScroller = true
+        autohidesScrollers = true
+        drawsBackground = true
+        text.isEditable = false
+        text.isSelectable = true
+        text.isRichText = false
+        text.textContainerInset = NSSize(width: 14, height: 10)
+        text.textContainer?.widthTracksTextView = true
+        text.isVerticallyResizable = true
+        text.isHorizontallyResizable = false
+        text.minSize = .zero
+        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        text.autoresizingMask = [.width]
+        text.font = .monospacedSystemFont(ofSize: 12.5, weight: .regular)
+        text.setAccessibilityLabel("Terminal text, wrapped for reading")
+        documentView = text
+    }
+    required init?(coder: NSCoder) { fatalError("not supported") }
+
+    func show(_ s: String, theme: ThemeName) {
+        let t = theme.tokens
+        backgroundColor = t.terminal.background.nsColor
+        text.backgroundColor = t.terminal.background.nsColor
+        text.textColor = t.text.nsColor
+        guard s != shown else { return }
+        let atBottom = shown.isEmpty || contentView.bounds.maxY >= text.frame.height - 24
+        shown = s
+        text.string = s
+        if atBottom { text.scrollToEndOfDocument(nil) }
     }
 }
 

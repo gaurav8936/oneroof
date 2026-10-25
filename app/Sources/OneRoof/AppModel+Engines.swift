@@ -33,10 +33,12 @@ extension AppModel {
         }
         if live != captions { captions = live }
         let names = Dictionary(items.map { ($0.id, $0.session.name) }, uniquingKeysWith: { a, _ in a })
-        let entries = events.reversed().map { e in
-            FeedEntry(id: e.id.uuidString, at: e.at, sessionId: e.sessionId, sessionName: names[e.sessionId] ?? "", kind: e.kind.label, text: e.text)
+        // The engine's buffer is newest first already (LAB-591: reversing it here showed the oldest on top).
+        let entries = events.map { e in
+            FeedEntry(id: e.id.uuidString, at: e.at, sessionId: e.sessionId, sessionName: names[e.sessionId] ?? "", kind: e.kind.label,
+                      feedKind: e.kind, text: e.text)
         }
-        if entries != feed { feed = Array(entries) }
+        if entries != feed { feed = entries }
         if ds != decisions {
             decisions = ds
             Notifier.shared.decisionsChanged(ds, names: names)   // LAB-197: a new question → "needs you"
@@ -149,6 +151,7 @@ struct FeedEntry: Identifiable, Equatable {
     var sessionName: String
     /// "step done" · "finding" · "choice" · "subagents" · "done" · "rotated" · "error".
     var kind: String
+    var feedKind: FeedKind
     var text: String
 }
 

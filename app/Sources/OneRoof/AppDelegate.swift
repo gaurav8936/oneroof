@@ -45,6 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.model.adopt(w)
             self.model.activeWindowId = w.id
             self.openWindow(for: w)
+            // LAB-707: Move to Window › New Workspace Window… moves the session in and shows it there.
+            if a.count > 2, !a[2].isEmpty, let item = self.model.item(a[2]) { self.model.move(item, to: w, select: true) }
+        }
+        NotificationCenter.default.addObserver(forName: .newWorkspaceMoving, object: nil, queue: .main) { [weak self] n in
+            guard let self, let id = n.object as? String else { return }
+            self.newWorkspaceWindow(moving: id)
         }
         NotificationCenter.default.addObserver(forName: .focusWorkspace, object: nil, queue: .main) { [weak self] n in
             guard let self, let id = n.object as? String else { return }
@@ -85,7 +91,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SelfTest.runIfRequested(app: self)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { LocalModel.shared.stop() }
+    func applicationWillTerminate(_ notification: Notification) {
+        // LAB-706: AppKit closes every window after this; they must stay "open" so they all come back.
+        MainWindowController.quitting = true
+        LocalModel.shared.stop()
+    }
 
     /// Open (or bring forward) the main window of a workspace.
     @discardableResult
@@ -199,6 +209,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: v2 actions
 
     @objc func newWorkspaceWindow(_ sender: Any?) { main.newWorkspace() }
+    /// Session › Move to Window › New Workspace Window…: the selected session moves into the new window (LAB-707).
+    @objc func moveSelectedToNewWindow(_ sender: Any?) { if let id = model.selectedId { newWorkspaceWindow(moving: id) } }
+    /// The sheet opens on the session's own window when it is open, else the window in front.
+    func newWorkspaceWindow(moving id: String) {
+        let c = model.item(id).flatMap { MainWindowController.forWorkspace(model.workspaceId(of: $0)) } ?? main
+        c?.newWorkspace(moving: id)
+    }
     @objc func showResources(_ sender: Any?) { model.centre = model.centre == .resources ? .workspace : .resources }
     @objc func showDecisions(_ sender: Any?) { model.centre = model.centre == .decisions ? .workspace : .decisions }
     @objc func showSubagents(_ sender: Any?) { model.centre = model.centre == .subagents ? .workspace : .subagents }
@@ -776,6 +793,8 @@ final class MoveMenu: NSObject, NSMenuDelegate {
             mi.state = w.id == here ? .on : .off
             menu.addItem(mi)
         }
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "New Workspace Window…", action: #selector(AppDelegate.moveSelectedToNewWindow(_:)), keyEquivalent: "")
     }
 
     @objc private func move(_ sender: NSMenuItem) {

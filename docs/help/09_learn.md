@@ -28,6 +28,8 @@ Learning how to work with agents should not mean leaving the place where the wor
 
 The bundled agentic engineering folder has the course and the 17 skills. Choose your own folder, or add Learn folders, to see more.
 
+One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched, its links and playbook card are hidden, and it does not open in Learn. Your folder's files are not changed. The list is `LearnExclusions` in One Roof.
+
 ## Browse and read
 
 - **Search:** type in the box at the top. Plain words filter the list by title.

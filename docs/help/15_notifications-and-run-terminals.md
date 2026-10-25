@@ -26,5 +26,5 @@ Agents often print a command for you to run. Select it, right-click, and choose 
 - One Roof types the command into that agent's **run terminal**, a shell in the same repo, shown in a small floating window. It is **not run**: press **Return** when you are ready.
 - Prompt marks (`$`, `❯`), box borders and wrapped lines are cleaned up. Several lines go in together.
 - Each agent has one run terminal. The next Run in Terminal from the same agent reuses it, so its history stays in one place.
-- It is listed under its agent in the Sessions list (↳). **Back to agent** puts the run window away and returns you to the agent's terminal; the run terminal keeps running, and the next Run in Terminal (or **Show window** on its ↳ row) brings it back.
+- It is listed under its agent in the Sessions list (↳) while it runs; once it has exited it moves to the **Exited** group like any other row (grouped by status). **Back to agent** puts the run window away and returns you to the agent's terminal; the run terminal keeps running, and the next Run in Terminal (or **Show window** on its ↳ row) brings it back.
 - With nothing selected, Run in Terminal is greyed out.

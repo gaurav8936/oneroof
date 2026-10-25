@@ -117,3 +117,48 @@ final class IssueUpdateTests: XCTestCase {
         XCTAssertEqual(session([]).ticketsToStartOnLaunch, [])
     }
 }
+
+/// LAB-638: the New session opening message is built from what is picked now: Where Are We, the focus (team,
+/// project, issues by key and title), the owner's own words, done when, then the issue steps.
+final class SessionOpeningTests: XCTestCase {
+    func test_LAB638_openingFollowsTeamProjectIssuesAndKeepsTheOwnersWords() {
+        let one = Intake.sessionOpening(OpeningFocus(team: "LAB", teamName: "Labs", project: "LAB-ONEROOF-BUGS", projectTitle: "One Roof bugs",
+                                                     issues: [PickedIssue(key: "LAB-591", title: "Feed is reversed", state: "Backlog")],
+                                                     ask: "Fix the feed order first", doneWhen: "newest is on top"))
+        XCTAssertTrue(one.hasPrefix("Invoke the \"Where Are We\" skill from agentic engineering (no transcript needed)."))
+        XCTAssertTrue(one.contains("- Team: LAB · Labs"))
+        XCTAssertTrue(one.contains("- Project: LAB-ONEROOF-BUGS · One Roof bugs"))
+        XCTAssertTrue(one.contains("- Issue: LAB-591 · Feed is reversed"))
+        XCTAssertTrue(one.contains("What I would like you to do:\nFix the feed order first"), "the owner's words are kept when an issue is picked")
+        XCTAssertTrue(one.contains("Done when: newest is on top"))
+        XCTAssertTrue(one.contains("Work on LAB-591 in project LAB-ONEROOF-BUGS: Feed is reversed."))
+        XCTAssertFalse(one.contains("Anchor yourself"))
+
+        // Another team and project: nothing of the first one is left.
+        let other = Intake.sessionOpening(OpeningFocus(team: "ZIB", project: "ZIB-AWS-COST", ask: "Check the bill"))
+        XCTAssertTrue(other.contains("- Team: ZIB") && other.contains("- Project: ZIB-AWS-COST"))
+        XCTAssertFalse(other.contains("LAB"))
+        XCTAssertFalse(other.contains("- Issue"))
+
+        // Several issues: keys in the focus, one plan for all of them; no words typed → a plain ask.
+        let picks = [PickedIssue(key: "LAB-1", title: "a", state: "Backlog"), PickedIssue(key: "LAB-2", title: "b", state: "Todo")]
+        let many = Intake.sessionOpening(OpeningFocus(team: "LAB", project: "LAB-X", issues: picks))
+        XCTAssertTrue(many.contains("- Issues (2, listed with their titles below): LAB-1, LAB-2"))
+        XCTAssertTrue(many.contains("Resolve these 2 issues."))
+        XCTAssertTrue(many.contains("This session works on 2 issues in project LAB-X:"))
+
+        XCTAssertEqual(Intake.sessionOpening(OpeningFocus()), "", "nothing picked, nothing typed: no message")
+    }
+
+    /// LAB-638: an edited message keeps the owner's words; its focus and issue list follow new picks.
+    func test_LAB638_editedOpeningKeepsWordsAndFollowsThePicks() {
+        let start = Intake.sessionOpening(OpeningFocus(team: "LAB", project: "LAB-X", issues: [PickedIssue(key: "LAB-1", title: "a", state: "Backlog")], ask: "go"))
+        let edited = start + "\n\nPS: be brief."
+        let synced = Intake.syncOpening(edited, focus: OpeningFocus(team: "LAB", project: "LAB-X",
+                                                                    issues: [PickedIssue(key: "LAB-1", title: "a", state: "Backlog"), PickedIssue(key: "LAB-2", title: "b", state: "Backlog")], ask: "go"))
+        XCTAssertTrue(synced.contains("PS: be brief."))
+        XCTAssertTrue(synced.contains("- Issues (2, listed with their titles below): LAB-1, LAB-2"))
+        XCTAssertFalse(synced.contains("- Issue: LAB-1 · a"))
+        XCTAssertTrue(synced.contains("This session works on 2 issues"))
+    }
+}

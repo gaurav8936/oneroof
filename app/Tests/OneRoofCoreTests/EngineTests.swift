@@ -203,6 +203,56 @@ final class ChapterTests: XCTestCase {
 final class FeedTests: XCTestCase {
     let t = Date(timeIntervalSince1970: 1000)
 
+    /// LAB-591: the store hands back newest first; the buffer (what the rail shows, unreversed) is newest first.
+    func test_LAB591_feedIsNewestFirstAfterLoadingFromStore() {
+        let fromStore = (0..<5).map { FeedEvent(at: t.addingTimeInterval(Double($0) * 3600), sessionId: "s\($0)", kind: .done, text: "\($0)") }.reversed()
+        let f = FeedBuffer(events: Array(fromStore))
+        XCTAssertEqual(f.events.map(\.text), ["4", "3", "2", "1", "0"])
+        XCTAssertEqual(f.visible().map(\.text), ["4", "3", "2", "1", "0"])
+    }
+
+    /// LAB-659: the same "finished" event again and again for one session (it wakes and rests) shows once, at its
+    /// newest time; something different in between keeps both.
+    func test_LAB659_repeatedEventCollapsesToTheNewest() {
+        var f = FeedBuffer()
+        XCTAssertTrue(f.add(FeedEvent(at: t, sessionId: "a", kind: .done, text: "Misc finished")))
+        XCTAssertTrue(f.add(FeedEvent(at: t.addingTimeInterval(420), sessionId: "a", kind: .done, text: "Misc finished")))
+        XCTAssertTrue(f.add(FeedEvent(at: t.addingTimeInterval(840), sessionId: "a", kind: .done, text: "Misc finished")))
+        XCTAssertEqual(f.events.count, 1)
+        XCTAssertEqual(f.events.first?.at, t.addingTimeInterval(840))
+        XCTAssertTrue(f.add(FeedEvent(at: t.addingTimeInterval(900), sessionId: "b", kind: .done, text: "Misc finished")))
+        XCTAssertTrue(f.add(FeedEvent(at: t.addingTimeInterval(1000), sessionId: "a", kind: .stepDone, text: "Step 1 of 2 done")))
+        XCTAssertTrue(f.add(FeedEvent(at: t.addingTimeInterval(1500), sessionId: "a", kind: .done, text: "Misc finished")))
+        XCTAssertTrue(f.add(FeedEvent(at: t.addingTimeInterval(2000), sessionId: "a", kind: .done, text: "Misc finished: tests pass")))
+        XCTAssertEqual(f.events.filter { $0.sessionId == "a" }.map(\.text), ["Misc finished: tests pass", "Misc finished", "Step 1 of 2 done", "Misc finished"])
+        // Copies already in the store collapse when the feed loads.
+        let stored = (0..<4).map { FeedEvent(at: t.addingTimeInterval(Double($0) * 400), sessionId: "c", kind: .done, text: "c finished") }
+        XCTAssertEqual(FeedBuffer(events: stored).events.count, 1)
+    }
+
+    /// LAB-591/659: a row says what happened without repeating the session name.
+    func test_LAB591_feedLineSplitsActionAndDetail() {
+        let long = "LAB-260, LAB-259, LAB-258 · 22 Defects"
+        XCTAssertEqual(FeedLine.describe(kind: .done, text: long + " finished", sessionName: long), FeedLine(action: "Finished", detail: "Finished its turn"))
+        XCTAssertEqual(FeedLine.describe(kind: .done, text: "help 1 finished: The roofd replacement is implemented", sessionName: "help 1"),
+                       FeedLine(action: "Finished", detail: "The roofd replacement is implemented"))
+        XCTAssertEqual(FeedLine.describe(kind: .error, text: "Plan review exited while working", sessionName: "Plan review"),
+                       FeedLine(action: "Error", detail: "Exited while it was working"))
+        XCTAssertEqual(FeedLine.describe(kind: .stepDone, text: "Step 1 of 3 done · tests", sessionName: "x").detail, "Step 1 of 3 done · tests")
+        XCTAssertEqual(FeedLine.describe(kind: .subagents, text: "Started 2 subagents: A, B", sessionName: "x").action, "Subagents")
+    }
+
+    /// LAB-591: times older than today carry the day (a bare 12-hour time read as out of order).
+    func test_LAB591_feedTimeLabelCarriesTheDay() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let loc = Locale(identifier: "en_US")
+        let now = Date(timeIntervalSince1970: 1_761_300_000)   // 2025-10-24 10:00 UTC
+        XCTAssertTrue(FeedLine.timeLabel(now.addingTimeInterval(-600), now: now, calendar: cal, locale: loc).hasPrefix("9:50"))
+        XCTAssertTrue(FeedLine.timeLabel(now.addingTimeInterval(-86_400), now: now, calendar: cal, locale: loc).hasPrefix("Yesterday "))
+        XCTAssertTrue(FeedLine.timeLabel(now.addingTimeInterval(-3 * 86_400), now: now, calendar: cal, locale: loc).hasPrefix("Oct 21 "))
+        XCTAssertFalse(FeedLine.timeLabel(now.addingTimeInterval(-600), now: now, calendar: cal, locale: loc).contains("Oct"))
+    }
+
     func testDedupSameKindAndSessionWithin60s() {
         var f = FeedBuffer()
         XCTAssertTrue(f.add(FeedEvent(at: t, sessionId: "a", kind: .done, text: "x")))

@@ -358,12 +358,11 @@ final class EngineHub {
 extension Decision {
     /// A blocked session whose prompt no matcher recognises: still a decision, with the question line and no guess.
     static func fallback(sessionId: String, agent: AgentKind, text: String, repo: String, now: Date) -> Decision {
-        let lines = TerminalText.lines(text).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !TerminalText.isChrome($0) }
-        let question = lines.last { $0.contains("?") } ?? lines.last ?? "The agent is waiting for you"
+        let question = DecisionBuilder.fallbackQuestion(text)
         return Decision(sessionId: sessionId, agent: agent, kind: .other, why: DecisionBuilder.noWhy, whyMissing: true,
-                        touches: "One Roof could not read what this prompt does. Open the session to see it.",
+                        touches: DecisionBuilder.unreadPrompt,
                         risk: .high, ifNo: "The agent keeps waiting; it does nothing until you answer.",
-                        pattern: "ask:" + String(question.prefix(80)), repo: Workspace.repoLabel(for: repo), askedAt: now)
+                        pattern: "ask:" + question, repo: Workspace.repoLabel(for: repo), askedAt: now)
     }
 
     /// What the card says: the engine's title, or the agent's own question when the prompt was not recognised.
