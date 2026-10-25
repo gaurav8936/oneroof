@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2.8 — every Agentic Engineering card opens as a card (25 Oct 2026)
+
+- **No more raw text in Learn** (LAB-858). Four new cards (context-as-structure, handoff-read, weekly-review, cost-check)
+  opened their skill file as plain text from the track pages, and two older cards (slack-dm-bot, plan-objective) had no
+  narrated page at all. All 156 cards now open as narrated cards with audio.
+
 ## 0.5.2.7 — Agentic Engineering, bundled (25 Oct 2026)
 
 - **The whole Agentic Engineering deck ships inside One Roof** (LAB-768). Learn (⇧⌘E) now has every narrated card, the
