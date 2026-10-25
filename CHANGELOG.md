@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2.6 — files open as tabs (24 Oct 2026)
+
+- **Files open as tabs beside the terminals** (LAB-799). Opening a Markdown file, image, page, folder or code file used
+  to replace the terminals in the centre. Now a strip at the top of the centre shows **Terminals** and one tab per open
+  file: click Terminals to get them back as you left them, click a file's tab to see it again, and × closes it. Closing
+  the last file brings the terminals back.
+
 ## 0.5.2.5 — the bug backlog (24 Oct 2026)
 
 Fixes for the 23 One Roof bugs in the LAB-ONEROOF-BUGS backlog. Each one stays open until it is checked in this build.
