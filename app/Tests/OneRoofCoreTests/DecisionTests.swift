@@ -326,13 +326,13 @@ final class AnswerKeysTests: XCTestCase {
 final class KimiPanelPromptTests: XCTestCase {
     /// Captured from a live Kimi Code pane (2026-10-18).
     let live = """
-     ● Running a command · $ python3 /Users/x/.kimi-code/skills/plan-review/scripts/plan_proof_v2.py publish /Users/x/PLAN.md
+     ● Running a command · $ python3 /Users/x/.kimi-code/skills/plan-check/scripts/plan_check.py publish /Users/x/PLAN.md
        Press Ctrl+B to run in background
      ──────────────────────────────────────────────────────────
        ▶ Run this command?
 
        cwd: /Users/x/Projects
-       $ python3 /Users/x/.kimi-code/skills/plan-review/scripts/plan_proof_v2.py publish /Users/x/PLAN.md
+       $ python3 /Users/x/.kimi-code/skills/plan-check/scripts/plan_check.py publish /Users/x/PLAN.md
          --slug ws-web-goals-01
 
        ▶ 1. Approve once
@@ -348,7 +348,7 @@ final class KimiPanelPromptTests: XCTestCase {
     func testMatchesTheLivePanel() throws {
         let m = try XCTUnwrap(DecisionMatcher.match(live, agent: .kimi))
         XCTAssertEqual(m.ask, .command)
-        XCTAssertEqual(m.command, "python3 /Users/x/.kimi-code/skills/plan-review/scripts/plan_proof_v2.py publish /Users/x/PLAN.md --slug ws-web-goals-01")
+        XCTAssertEqual(m.command, "python3 /Users/x/.kimi-code/skills/plan-check/scripts/plan_check.py publish /Users/x/PLAN.md --slug ws-web-goals-01")
         XCTAssertEqual(m.options.map(\.key), ["1", "2", "3", "4"])
         XCTAssertEqual(AnswerKeys.keys(for: .allowOnce, prompt: m, agent: .kimi).sends, ["1"])
         XCTAssertEqual(AnswerKeys.keys(for: .always, prompt: m, agent: .kimi).sends, ["2"])

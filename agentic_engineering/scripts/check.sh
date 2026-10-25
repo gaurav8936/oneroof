@@ -37,6 +37,17 @@ for l in "$PKG"/course/[0-9][0-9]-*.md; do
 done
 ok "$(find "$PKG"/course -maxdepth 1 -name '[0-9][0-9]-*.md' | wc -l | tr -d ' ') lessons"
 
+echo "== deck (LAB-768, present in a built app)"
+if [ -f "$PKG/deck/content/catalog.json" ]; then
+  python3 -m json.tool "$PKG/deck/content/catalog.json" >/dev/null && ok "deck catalog parses" || no "deck/content/catalog.json is not valid JSON"
+  for md in "$PKG"/deck/skills/*/*/SKILL.md; do
+    d="$(basename "$(dirname "$md")")"; [ "$(sed -n '2,/^---$/s/^name: //p' "$md" | head -1)" = "$d" ] || no "deck $d: name differs from its folder"
+  done
+  ok "$(find "$PKG/deck/skills" -name SKILL.md | wc -l | tr -d ' ') deck skills"
+else
+  ok "no deck in the source checkout (added when the app is built)"
+fi
+
 echo "== nothing personal or private"
 # Add your own handles and private hostnames with AE_PRIVATE_PATTERN (an extended regex, joined with "|").
 pat="/Users/[a-z]|@gmail\.com|sk-[A-Za-z0-9]{20,}|xox[bp]-${AE_PRIVATE_PATTERN:+|$AE_PRIVATE_PATTERN}"

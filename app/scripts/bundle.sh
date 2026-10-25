@@ -41,9 +41,20 @@ fi
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
-# The bundled agentic-engineering package: skills, routing rules, course + narration. Used whenever Settings ›
-# Foundations points nowhere else (AEFolder). Your own folder, if chosen, is read in place instead.
+# The bundled agentic-engineering package: skills, routing rules, course + narration (AEFolder; no folder choice since LAB-768).
 rsync -a --delete --exclude '.DS_Store' --exclude '.hashes.json' ../agentic_engineering/ "$APP/Contents/Resources/agentic_engineering/"
+# LAB-768 · plus the whole Agentic Engineering deck (every skill, narrated card, track page and its audio) as published:
+# the deck repository (ONEROOF_AE_DECK_REPO, a git checkout) at origin/main, into agentic_engineering/deck. Built from source
+# without it, One Roof still runs with the course and its own skills; a release requires the deck (tools/package-app.sh).
+AE_DECK_REPO="${ONEROOF_AE_DECK_REPO:-}"
+if [ -n "$AE_DECK_REPO" ] && git -C "$AE_DECK_REPO" rev-parse -q --verify origin/main >/dev/null 2>&1; then
+  git -C "$AE_DECK_REPO" fetch -q origin main 2>/dev/null || true
+  DECK="$APP/Contents/Resources/agentic_engineering/deck"; rm -rf "$DECK"; mkdir -p "$DECK"
+  git -C "$AE_DECK_REPO" archive origin/main skills content | tar -x -C "$DECK"
+  echo "deck: $(find "$DECK/skills" -name SKILL.md | wc -l | tr -d ' ') skills, $(find "$DECK/skills" -name '*.mp3' | wc -l | tr -d ' ') clips from the deck repository at origin/main $(git -C "$AE_DECK_REPO" rev-parse --short origin/main)"
+else
+  echo "deck: ONEROOF_AE_DECK_REPO not set to a checkout; bundling without the deck"
+fi
 
 # Help, README and release notes for the Help menu (read from Resources; the source checkout is the fallback).
 rsync -a --delete --exclude '.DS_Store' ../docs/help/ "$APP/Contents/Resources/help/"

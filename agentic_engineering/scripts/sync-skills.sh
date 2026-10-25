@@ -6,7 +6,9 @@
 # Skills live at skills/<track>/<name>/SKILL.md. Each becomes a symlink <home>/<name> in every home that exists:
 #   ~/.claude/skills  ~/.claude-*/skills  ~/.codex/skills  ~/.kimi-code/skills  ~/.gemini/config/skills  + $AE_SKILL_HOMES
 # --dry-run prints "[DRY] ln -sfn <source> <dest>" for every link that is missing or wrong (One Roof reads this).
-# A real folder with the same name is never replaced. --unlink removes only links that point into this package.
+# A real folder with the same name is never replaced, and neither is a link to a folder outside this package that exists
+# (someone's own copy of a skill, e.g. a checkout of the deck repository). --unlink removes only links into this package.
+# The Agentic Engineering deck (deck/skills/<track>/<name>, LAB-768) is linked too; where a name is in both, skills/ wins.
 set -euo pipefail
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 DRY=0; UNLINK=0
@@ -32,9 +34,15 @@ while IFS= read -r home; do
     continue
   fi
   [ "$DRY" = 1 ] || mkdir -p "$home"
-  for md in "$PKG"/skills/*/*/SKILL.md; do
-    src="$(dirname "$md")"; dst="$home/$(basename "$src")"
+  for md in "$PKG"/skills/*/*/SKILL.md "$PKG"/deck/skills/*/*/SKILL.md; do
+    [ -e "$md" ] || continue
+    src="$(dirname "$md")"; name="$(basename "$src")"; dst="$home/$name"
+    case "$md" in "$PKG"/deck/*) compgen -G "$PKG/skills/*/$name/SKILL.md" >/dev/null && continue ;; esac
     if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then same=$((same + 1)); continue; fi
+    if [ -L "$dst" ]; then
+      to="$(readlink "$dst")"
+      case "$to" in "$PKG"/*) ;; *) if [ -d "$to" ]; then kept=$((kept + 1)); continue; fi ;; esac
+    fi
     if [ -e "$dst" ] && [ ! -L "$dst" ]; then echo "  kept $dst (a real folder, not ours)"; kept=$((kept + 1)); continue; fi
     if [ "$DRY" = 1 ]; then echo "[DRY] ln -sfn $src $dst"; else ln -sfn "$src" "$dst"; fi
     made=$((made + 1))

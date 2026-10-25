@@ -94,7 +94,7 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
 
 - **Orchestrator (I8).** Seat gauges (Claude1/2 from the status line, Codex from its logs) on the Launchpad and in
   the sidebar. A router reads `routing.json` and `roles.json` in place from the agentic-engineering folder
-  (`skills/*/agent-routing/`, or `harness-routing/` in older skill libraries):
+  (`skills/*/agent-routing/`):
   kind → agent and model, budget, skip seats near their limit, the emptier Claude seat, reviews off the author.
   Suggest / Route all in the plan view; Suggest agent and Role in Plan a session. An on-device model (Qwen3
   1.7B, Apache-2.0, via llama.cpp, `brew install llama.cpp`, model file set in Settings › Foundations; Arch-Router 1.5B

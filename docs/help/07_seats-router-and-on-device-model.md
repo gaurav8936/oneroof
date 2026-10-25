@@ -73,4 +73,4 @@ During an objective run, a step on a Claude or Codex seat that passes the limit 
 
 ## Change the rules
 
-Edit `routing.json` or `roles.json` under `skills/fleet/agent-routing/` in the agentic engineering folder in use. If that is the bundled copy, choose your own folder first (Settings › Foundations). One Roof reads the files on every suggestion, so the next click uses the new rules.
+To change the rules, copy `routing.json` or `roles.json` from the bundled `skills/fleet/agent-routing/` (Settings › Foundations › **Show**) into `~/.config/oneroof/agent-routing/` and edit your copy: a file there wins over the bundled one. One Roof reads the files on every suggestion, so the next click uses the new rules.

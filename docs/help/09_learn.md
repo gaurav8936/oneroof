@@ -20,13 +20,12 @@ Learning how to work with agents should not mean leaving the place where the wor
 
 | Section | Where it is read from | What you get |
 |---|---|---|
-| Course | `course/` in your agentic engineering folder | The 12 lessons of the bundled course, from "Start here" to "Voices worth reading". Each lesson has narration: press **Play in One Roof**. |
-| Skills | each skill's `SKILL.md` in the same folder | One page per skill, grouped (session, plan, build, fleet, guard, ship, learn for the bundled 17). |
+| Course | `course/` in the bundled package | The 12 lessons of the course, from "Start here" to "Voices worth reading". Each lesson has narration: press **Play in One Roof**. |
+| Agentic Engineering | `deck/` in the bundled package | The whole deck: its home and track pages, then every narrated card by track (**Agentic Engineering · <track>**), each a skill an agent can run and a lesson with narration. A waveform icon means the page has narration. |
+| Skills | each skill's `SKILL.md` in the package | One page per One Roof skill (session, plan, build, fleet, guard, ship, learn). A skill that also has a narrated card is shown once, as the card. |
 | Your Learn folders | the folders you add in Settings › Foundations › Learn folders | Every Markdown page in them, and each folder of narration clips as a playlist. |
-| Field manual | `content/field-manual/` in your own agentic engineering folder | Only if your folder has one. |
-| Narrated skill pages | a `<skill>.html` page (and `<skill>_audio` folder) next to a skill's `SKILL.md` | Only if your folder has them; they replace the plain `SKILL.md` page. A waveform icon means the page has narration. |
 
-The bundled agentic engineering folder has the course and the 17 skills. Choose your own folder, or add Learn folders, to see more.
+Everything ships inside One Roof, audio included, and works offline. There is no folder to choose: Settings shows what is bundled.
 
 One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched, its links and playbook card are hidden, and it does not open in Learn. Your folder's files are not changed. The list is `LearnExclusions` in One Roof.
 

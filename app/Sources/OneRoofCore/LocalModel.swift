@@ -227,7 +227,7 @@ public final class LocalModel: @unchecked Sendable {
 public extension RoutingPolicy {
     /// Kind descriptions for the on-device classifier, read in place from routing.json.
     static func kindDescriptions(agenticEngineering: String = AEFolder.resolve(setting: "").path) -> [String: String] {
-        if let dir = AEFolder.routingDir(agenticEngineering), let d = FileManager.default.contents(atPath: dir + "/routing.json"),
+        if let f = AEFolder.routingFile(agenticEngineering, "routing.json"), let d = FileManager.default.contents(atPath: f),
            let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
            let k = j["kind_descriptions"] as? [String: String], !k.isEmpty { return k }
         return ["research": "Reading, investigating, comparing options", "design": "Designing an approach before building",
