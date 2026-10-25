@@ -86,7 +86,12 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
     private func attach() {
         attempts += 1
         born = Date()
-        let s = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: model.themes.terminal)
+        // LAB-606: created at the window's real size, so roofd's redraw matches the terminal from the first frame.
+        // The first attach runs before the window takes its final frame; a retry uses the window as it is now.
+        let first = parentId != nil ? NSSize(width: 760, height: 332) : NSSize(width: 1000, height: 680)
+        let size = attempts > 1 ? (window?.contentView.map { $0.bounds.size }.flatMap { $0.width > 0 ? $0 : nil } ?? first) : first
+        let s = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: model.themes.terminal,
+                                    size: size)
         s.onProcessExit = { [weak self] _ in
             guard let self else { return }
             switch PopOutAttach.next(attempt: self.attempts, ranFor: Date().timeIntervalSince(self.born), max: Self.maxAttempts) {

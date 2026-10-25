@@ -1,6 +1,7 @@
 import CRoofSpawn
 import Darwin
 import Foundation
+import OneRoofCore
 
 /// `roofd attach <id>`: what a libghostty surface runs. Transparent: no screen, keys or alternate screen of its own;
 /// it moves bytes between its terminal (raw mode) and the session, and exits with the child's code (T14 §3c).
@@ -14,7 +15,19 @@ enum Attach {
         }
         var cols: UInt16 = 120, rows: UInt16 = 40
         let tty = isatty(0) != 0
-        if tty { _ = roof_get_winsize(0, &cols, &rows); _ = roof_make_raw(0) }
+        if tty {
+            _ = roof_make_raw(0)
+            // LAB-606: the redraw is built for the size in the hello; wait until the terminal has its real size.
+            var settle = SizeSettle()
+            for _ in 0..<SizeSettle.maxReads {
+                var c: UInt16 = 0, r: UInt16 = 0
+                if roof_get_winsize(0, &c, &r) == 0 {
+                    if c > 0, r > 0 { (cols, rows) = (c, r) }
+                    if settle.read(cols: c, rows: r) { break }
+                }
+                usleep(SizeSettle.intervalMicros)
+            }
+        }
         defer { if tty { roof_restore_tty(0) } }
         let history = Int(ProcessInfo.processInfo.environment["ROOFD_HISTORY"] ?? "") ?? 5000
         Sock.writeAll(fd, Wire.encode(.hello, json: ["proto": 1, "cols": Int(cols), "rows": Int(rows), "role": "primary",

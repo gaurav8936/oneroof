@@ -33,12 +33,18 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
     var onDesktopNotification: ((String, String) -> Void)?
     /// Right-click › Run in Terminal with the selected text (LAB-598).
     var onRunSelection: ((String) -> Void)?
+    /// Right-click › New Terminal Here (false) / Split Right with New Terminal (true) (LAB-745). Without it the menu
+    /// still offers File › New Terminal.
+    var onNewTerminal: ((Bool) -> Void)?
 
-    init(command: String, workingDirectory: String, env: [String: String] = [:], theme: ThemeName) {
+    /// `size`: where the surface will be shown (LAB-606), so its program starts at the right number of rows and
+    /// columns instead of libghostty's default until the first layout.
+    init(command: String, workingDirectory: String, env: [String: String] = [:], theme: ThemeName,
+         size: NSSize = NSSize(width: 800, height: 600)) {
         self.command = command
         self.workingDirectory = workingDirectory
         self.theme = theme
-        super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        super.init(frame: NSRect(origin: .zero, size: size.width > 0 && size.height > 0 ? size : NSSize(width: 800, height: 600)))
         wantsLayer = true
         registerForDraggedTypes([.fileURL, .png, .tiff])
 
@@ -75,6 +81,12 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
             return ghostty_surface_new(app, &cfg)
         }
         applyTheme(theme)
+        // LAB-606: the grid size at once (in pixels at the screen's scale; there is no window yet to convert with).
+        if let surface {
+            let scale = cfg.scale_factor
+            contentSize = frame.size
+            ghostty_surface_set_size(surface, UInt32(max(frame.width * scale, 1)), UInt32(max(frame.height * scale, 1)))
+        }
         updateTrackingAreas()
     }
 
@@ -247,11 +259,30 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
             run.toolTip = "Types the selected command into this session's run terminal. Nothing runs until you press Return there."
             m.addItem(run)
         }
+        // LAB-745: start a plain terminal from the centre panel.
+        m.addItem(.separator())
+        let titles = TerminalMenu.newTerminalItems(inPane: onNewTerminal != nil)
+        let here = NSMenuItem(title: titles[0], action: #selector(newTerminalHere(_:)), keyEquivalent: "")
+        here.toolTip = onNewTerminal != nil
+            ? "Opens a plain shell in this session's folder (\((workingDirectory as NSString).abbreviatingWithTildeInPath)) and shows it in this pane. The session keeps running in the Sessions list."
+            : "Opens a plain shell in your projects folder (File › New Terminal, ⌘T)."
+        m.addItem(here)
+        if onNewTerminal != nil {
+            let split = NSMenuItem(title: titles[1], action: #selector(splitWithNewTerminal(_:)), keyEquivalent: "")
+            split.toolTip = "Splits this pane and opens a plain shell in this session's folder on the right, next to this terminal."
+            m.addItem(split)
+        }
         m.addItem(.separator())
         m.addItem(NSMenuItem(title: "Clear", action: #selector(clearScreen(_:)), keyEquivalent: ""))
         for i in m.items { i.target = self }
         return m
     }
+
+    @objc func newTerminalHere(_ sender: Any?) {
+        if let onNewTerminal { onNewTerminal(false) } else { NSApp.sendAction(#selector(AppDelegate.newTerminal(_:)), to: nil, from: self) }
+    }
+
+    @objc func splitWithNewTerminal(_ sender: Any?) { onNewTerminal?(true) }
 
     @objc func clearScreen(_ sender: Any?) { bindingAction("clear_screen") }
 
@@ -477,6 +508,20 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
     func bindingAction(_ name: String) {
         guard let surface else { return }
         _ = ghostty_surface_binding_action(surface, name, UInt(name.utf8.count))
+    }
+
+    /// Scrollback and screen as plain text, soft-wrapped lines joined (Wrap for reading, LAB-657).
+    func allText() -> String? {
+        guard let surface else { return nil }
+        var text = ghostty_text_s()
+        let sel = ghostty_selection_s(
+            top_left: ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+            bottom_right: ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+            rectangle: false)
+        guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
+        defer { ghostty_surface_free_text(surface, &text) }
+        guard let p = text.text else { return nil }
+        return String(cString: p)
     }
 
     /// The visible screen as plain text (viewport top-left → bottom-right).

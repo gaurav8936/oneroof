@@ -124,3 +124,14 @@ public enum RunTerminal {
         return out
     }
 }
+
+/// LAB-745: the terminal's right-click menu always offers a new plain terminal from the centre panel. In a pane it is
+/// "New Terminal Here" (this session's folder, shown in the pane) and "Split Right with New Terminal"; anywhere else
+/// (a terminal not in a pane) "New Terminal" (File › New Terminal, ⌘T).
+public enum TerminalMenu {
+    public static let newHere = "New Terminal Here"
+    public static let splitNew = "Split Right with New Terminal"
+    public static let newPlain = "New Terminal"
+
+    public static func newTerminalItems(inPane: Bool) -> [String] { inPane ? [newHere, splitNew] : [newPlain] }
+}

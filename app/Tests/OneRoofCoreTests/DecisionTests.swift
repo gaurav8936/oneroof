@@ -355,3 +355,17 @@ final class KimiPanelPromptTests: XCTestCase {
         XCTAssertEqual(AnswerKeys.keys(for: .deny, prompt: m, agent: .kimi).sends, ["3"])
     }
 }
+
+/// LAB-716: an unrecognised prompt's card shows the whole question, not its first 80 characters.
+final class FallbackQuestionTests: XCTestCase {
+    func testKeepsTheWholeQuestion() {
+        let q = "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team)"
+        let screen = "Accessing workspace:\n\n/Users/me/Projects/x\n\n" + q + "\n\n❯ 1. Yes, proceed\n  2. No, exit\n"
+        XCTAssertEqual(DecisionBuilder.fallbackQuestion(screen), q)
+        XCTAssertGreaterThan(q.count, 80)
+    }
+
+    func testNoQuestionMarkUsesTheLastLine() {
+        XCTAssertEqual(DecisionBuilder.fallbackQuestion("working\npress enter to continue\n"), "press enter to continue")
+    }
+}

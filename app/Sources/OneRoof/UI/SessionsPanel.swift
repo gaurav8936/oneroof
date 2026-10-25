@@ -20,14 +20,25 @@ struct SessionsPanel: View {
         @State private var popoverFor: String?
 
         var body: some View {
-            if win.centre == .editor { rail } else { full }
+            // LAB-651 / LAB-714: the rail follows the panel's width, not the centre view. The Editor still folds the
+            // panel to 56 pt (S07 §1.1); dragging it wider, or the rail's widen button, brings the full list back.
+            GeometryReader { g in
+                if SessionsRail.shows(width: g.size.width) { rail } else { full }
+            }
         }
 
-        /// The Editor folds the panel to a 56 pt rail: badge + status dot per session (S07 §1.1).
+        /// The narrow panel (the Editor folds it to 56 pt): badge + status dot per session (S07 §1.1).
         private var rail: some View {
             let claimer = win.viewerPath.flatMap { model.fileClaims.claim(for: $0)?.sessionId }
             return ScrollView {
                 VStack(spacing: 8) {
+                    Button { controller.widenSessions() } label: {
+                        Image(systemName: "chevron.right.2").font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(t.text2.color).frame(width: 32, height: 22).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show the full Sessions list (or drag the panel's edge wider)")
+                    .accessibilityLabel("Show the full Sessions list")
                     ForEach(model.items(in: win)) { i in
                         let mark = AgentMark(agent: i.session.agent, account: i.account)
                         Button { win.selectedId = i.id; model.show(.workspace, in: win) } label: {
