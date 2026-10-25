@@ -360,7 +360,7 @@ final class KimiPanelPromptTests: XCTestCase {
 final class FallbackQuestionTests: XCTestCase {
     func testKeepsTheWholeQuestion() {
         let q = "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team)"
-        let screen = "Accessing workspace:\n\n/Users/me/Projects/x\n\n" + q + "\n\n❯ 1. Yes, proceed\n  2. No, exit\n"
+        let screen = "Accessing workspace:\n\n/tmp/proj/x\n\n" + q + "\n\n❯ 1. Yes, proceed\n  2. No, exit\n"
         XCTAssertEqual(DecisionBuilder.fallbackQuestion(screen), q)
         XCTAssertGreaterThan(q.count, 80)
     }
