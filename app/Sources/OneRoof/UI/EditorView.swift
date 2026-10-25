@@ -158,30 +158,13 @@ private struct EditorBody: View {
 
     // MARK: Tabs
 
+    /// The file's name and folder; its tab lives in the centre's tab strip (LAB-799).
     private var tabBar: some View {
-        HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(state.tabs, id: \.self) { p in
-                        let on = p == path
-                        Button { win.show(path: p) } label: {
-                            HStack(spacing: 6) {
-                                Text((p as NSString).lastPathComponent).ui(12.5, on ? .semibold : .regular).foregroundStyle(on ? t.text.color : t.text2.color)
-                                if state.isDirty(p) { Circle().fill(t.text.color).frame(width: 6, height: 6).accessibilityLabel("unsaved") }
-                                Button { state.close(p); if on { if let n = state.tabs.last { win.show(path: n) } else { model.show(.workspace, in: win) } } } label: {
-                                    Text("✕").ui(9).foregroundStyle(t.text3.color)
-                                }.buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 14).frame(height: 34)
-                            .background(on ? t.surface.color : .clear)
-                            .overlay(alignment: .top) { if on { Rectangle().fill(t.accent.color).frame(height: 2) } }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        Rectangle().fill(t.separator.color).frame(width: 1, height: 34)
-                    }
-                }
-            }
+        HStack(spacing: 8) {
+            Text((path as NSString).lastPathComponent).ui(12.5, .semibold).foregroundStyle(t.text.color).padding(.leading, 14)
+            if state.isDirty(path) { Circle().fill(t.text.color).frame(width: 6, height: 6).accessibilityLabel("unsaved") }
+            Text(((path as NSString).deletingLastPathComponent).replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                .ui(11).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.middle)
             Spacer()
             if DocumentRoute.hasPreview(FileKind.of(path).core) {
                 Segmented(options: [(ViewerMode.preview, "Preview"), (.source, "Source")],

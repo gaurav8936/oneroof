@@ -58,10 +58,10 @@ struct FileViewer: View {
                 .buttonStyle(.borderless).help("Reveal in Finder")
             Button { NSWorkspace.shared.open(URL(fileURLWithPath: path)) } label: { Image(systemName: "arrow.up.forward.app") }
                 .buttonStyle(.borderless).help("Open in its default app")
-            Button { model.viewerPath = nil } label: { Image(systemName: "xmark") }
-                .buttonStyle(.borderless).help("Close the viewer (back to the terminal)")
+            Button { model.active.closeTab(rawPath) } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless).help("Close this file's tab (the terminals stay as they were)")
         }
-        .padding(.horizontal, 14).padding(.top, 34).padding(.bottom, 8)
+        .padding(.horizontal, 14).padding(.vertical, 8)
         .background(t.surface.color)
     }
 
