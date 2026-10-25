@@ -71,8 +71,10 @@ extension AppModel {
         let s = Session(name: Intake.sessionName(key: issue.identifier, title: issue.shortTitle), agent: agent, account: d.account, repoPath: repo,
                         workstream: w.wsId,
                         objective: issue.shortTitle + (issue.description.isEmpty ? "" : "\n\n" + String(issue.description.prefix(600))),
-                        openingMessage: Intake.anchored(Intake.ticketOpening(key: issue.identifier, title: issue.shortTitle, url: issue.url, project: w.wsId),
-                                                        team: w.team, project: w.wsId),
+                        // LAB-638: the same opening as the New session sheet (Where Are We, focus, the issue).
+                        openingMessage: Intake.sessionOpening(OpeningFocus(
+                            team: w.team, teamName: linearTeams.first { $0.key == w.team }?.name, project: w.wsId, projectTitle: w.title,
+                            issues: [PickedIssue(key: issue.identifier, title: issue.shortTitle, state: issue.state, url: issue.url.isEmpty ? nil : issue.url)])),
                         lifecycle: .next, model: d.model.isEmpty ? nil : d.model,
                         ticket: issue.identifier, ticketId: issue.id, ticketTeam: w.team)
         createPlanned(s, launchNow: false)

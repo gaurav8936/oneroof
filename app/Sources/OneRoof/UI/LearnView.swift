@@ -45,7 +45,7 @@ struct LearnView: View {
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     Divider()
                     if c.isFolder { TrackList(item: c, player: model.player, tokens: t) }
-                    else if c.path.hasSuffix(".md") { MarkdownPage(path: c.path) } else { WebPage(path: c.path, root: c.root) }
+                    else if c.path.hasSuffix(".md") { MarkdownPage(path: c.path) } else { WebPage(path: c.path, root: c.root, blocked: { LearnExclusions.isExcluded($0) }, pageScript: LearnExclusions.hideLinksScript) }
                 }
             } else {
                 VStack(spacing: 10) {
@@ -206,7 +206,8 @@ enum LearnIndex {
                                          : plainText(e.path)))
             }
         }
-        return out
+        // LAB-713: pages that belong to another product (the Career Agent playbook).
+        return out.filter { !LearnExclusions.isExcluded($0.path) }
     }
 
     /// The first ~1,500 characters of a page's text (tags, scripts and styles removed).

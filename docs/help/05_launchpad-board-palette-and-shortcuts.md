@@ -11,13 +11,13 @@
 One page that answers "what needs me, and what is going on?" across every window. Open it with **⇧⌘L** (View › Overview), **Overview** in the toolbar, or Window › All Windows (⌃↑, if macOS Mission Control does not already use that key).
 
 - **Windows:** one card per workspace window with its sessions and how many need you.
-- **What's happening:** a feed of what agents in all windows are doing, from their captions.
+- **What's happening:** a feed of what agents in all windows did, newest at the top. Each row reads like a table row: what happened (Finished, Step done, Error…), which agent, **Needs you** when that session is waiting on you now, and the time (with the day when it is not today); then what was done; then the window and session on one line. Click a row to open the session. The same event repeated by one session (for example "finished" every few minutes while it rests) shows once, at its newest time. Drag the edge between the window cards and the feed to make it wider or narrower; double-click the edge to reset it.
 - **Objectives:** open objectives with their progress, or "Plan ready" when a plan waits for approval; **+ New objective**.
-- **Agents at work:** live sessions per account (Claude1, Claude2, Kimi…).
+- **Agents at work:** live sessions per account (Claude1, Claude2, Kimi…), each session on its own row, and under it the subagents it is running now (for example two lanes a Claude session started with its Agent tool). Click a subagent to open its trace.
 - **Seats:** Claude1, Claude2 and Codex use of the 5-hour and 7-day windows, with reset times, when usage data exists ([Seats and routing](07_seats-router-and-on-device-model.md)). Kimi and Antigravity publish no usage, so One Roof counts their sessions.
 - **Just finished:** results you have not looked at yet.
 - **Foundations:** the startup check in one line; **Open Foundations** when something is wrong.
-- **+ New work item** at the top.
+- **+ New work item** at the top, and **Overview · Subagents** to switch to the subagent trace. Board and Decisions are their own tabs in the toolbar (⌘B, ⌘I).
 
 ## Board (⌘B)
 
@@ -32,6 +32,14 @@ Every agent that is waiting on you, in one list: its question in its own words, 
 ## Subagents (⇧⌘A)
 
 A timeline of the subagents a Claude session started, read from its conversation transcript. A session whose transcript cannot be matched shows no subagents rather than a guess.
+
+The time axis labels every 1, 2, 5, 10, 15 or 30 minutes (or hours for long sessions), whatever fits the width. Click a subagent to see its card:
+
+- **Task:** the name the parent gave it, and **Given by** the session that started it.
+- **What it was asked:** the parent's prompt, folded to five lines; **Show all** opens the rest.
+- **Status:** running for how long, or finished how long ago and how long it ran; its model and tokens.
+- **Its final report** (or **Its latest message** while it runs): the subagent's own last words. It says so plainly when it has written nothing.
+- **Files it read or changed:** with lines added and removed; click one to open it.
 
 ## Command palette (⌘K)
 

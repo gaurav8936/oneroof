@@ -27,3 +27,16 @@ final class LearnMatchTests: XCTestCase {
         XCTAssertEqual(LearnMatch.rank("agent", docs, limit: 2).count, 2)
     }
 }
+
+/// LAB-713: the Career Agent playbook (another product's) is left out of Learn; the shared files are not touched.
+final class LearnExclusionTests: XCTestCase {
+    func test_LAB713_careerAgentPagesAreExcludedFromLearn() {
+        XCTAssertTrue(LearnExclusions.isExcluded("/x/labs-agentic-engineering/agents/career-agent/content/index.html"))
+        XCTAssertTrue(LearnExclusions.isExcluded("/x/content/field-manual/playbooks/career-agent/architecture.html"))
+        XCTAssertTrue(LearnExclusions.isExcluded("/x/content/field-manual/career-agent.html"))
+        XCTAssertFalse(LearnExclusions.isExcluded("/x/content/field-manual/home.html"))
+        XCTAssertFalse(LearnExclusions.isExcluded("/x/content/field-manual/playbooks/index.html"))
+        XCTAssertFalse(LearnExclusions.isExcluded("/x/skills/career/agent-routing/SKILL.md"))
+        XCTAssertTrue(LearnExclusions.hideLinksScript.contains("\"career-agent\""))
+    }
+}

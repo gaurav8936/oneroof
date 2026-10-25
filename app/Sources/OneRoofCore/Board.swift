@@ -177,8 +177,14 @@ public enum Board {
             }
         }
         // LAB-598: a run terminal sits with its parent agent session (same group, right under it).
+        // LAB-726: …while it runs. By status, an exited run terminal goes to Exited like any other row; it stayed in
+        // Active under its working parent.
         let byId = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        func parent(_ i: BoardItem) -> BoardItem? { i.session.parentSessionId.flatMap { byId[$0] } }
+        func parent(_ i: BoardItem) -> BoardItem? {
+            if g == .status, i.listStatus.groupLabel != byId[i.session.parentSessionId ?? ""]?.listStatus.groupLabel,
+               [.exited, .doNotUse].contains(i.listStatus) { return nil }
+            return i.session.parentSessionId.flatMap { byId[$0] }
+        }
         func groupKey(_ i: BoardItem) -> String { parent(i).map(key) ?? key(i) }
         func isPinned(_ i: BoardItem) -> Bool { parent(i)?.session.pinned ?? i.session.pinned }
         var dict: [String: [BoardItem]] = [:]

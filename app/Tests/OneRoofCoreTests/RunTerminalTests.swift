@@ -80,6 +80,27 @@ final class RunTerminalTests: XCTestCase {
         XCTAssertEqual(p.first?.items.map(\.id), ["a", "r"])
     }
 
+    /// LAB-726: an exited run terminal (or plain terminal) goes to Exited, not Active under its working parent.
+    func test_LAB726_exitedTerminalsLeaveTheActiveGroup() {
+        let agent = Session(id: "a", name: "Building v0.50", repoPath: "/p/r", lifecycle: .idle)
+        var run = Session(id: "r", name: RunTerminal.name(parent: "Building v0.50"), agent: .shell, repoPath: "/p/r", lifecycle: .idle)
+        run.parentSessionId = "a"
+        let term = Session(id: "t", name: "TERMINAL", agent: .shell, repoPath: "/p", lifecycle: .idle)
+        let rows = [BoardItem(id: "a", session: agent, status: .running, adopted: false),
+                    BoardItem(id: "r", session: run, status: .exited, adopted: false),
+                    BoardItem(id: "t", session: term, status: .exited, adopted: false)]
+        let g = Board.group(rows, by: .status)
+        XCTAssertEqual(g.map(\.title), ["Active", "Exited"])
+        XCTAssertEqual(g[0].items.map(\.id), ["a"])
+        XCTAssertEqual(Set(g[1].items.map(\.id)), ["r", "t"])
+        // Still running: it stays right under its parent.
+        let live = Board.group([rows[0], BoardItem(id: "r", session: run, status: .idle, adopted: false)], by: .status)
+        XCTAssertEqual(live.map(\.title), ["Active"])
+        XCTAssertEqual(live[0].items.map(\.id), ["a", "r"])
+        // Other groupings keep it with its parent whatever its state.
+        XCTAssertEqual(Board.group(Array(rows.prefix(2)), by: .agent).count, 1)
+    }
+
     func testParentSurvivesSaveAndOldRowsLoad() throws {
         var s = Session(name: "Run · x", agent: .shell, repoPath: "/p")
         s.parentSessionId = "parent-1"

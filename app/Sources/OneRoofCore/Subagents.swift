@@ -553,3 +553,99 @@ public enum SubagentTree {
             .compactMap { $0 }.joined(separator: " · ")
     }
 }
+
+/// LAB-635: Overview › Agents listed agent sessions per account only ("Claude1 · 4 live"), so a session running two
+/// lanes as subagents looked like one agent. Now each account lists its live sessions, and under each session the
+/// subagents it is running right now.
+public enum AgentsAtWork {
+    public struct Entry: Equatable, Sendable, Identifiable {
+        public var sessionId: String
+        /// Its subagents still running (or waiting on you), in start order.
+        public var running: [Subagent]
+        public var id: String { sessionId }
+    }
+
+    public struct Group: Equatable, Sendable, Identifiable {
+        /// The account ("Claude1") or agent name.
+        public var key: String
+        public var sessions: [Entry]
+        public var id: String { key }
+        public var runningSubagents: Int { sessions.reduce(0) { $0 + $1.running.count } }
+    }
+
+    /// `live`: the live agent sessions with their account key, in list order. Groups sorted by key; inside a group,
+    /// sessions with running subagents first, else in the order given.
+    public static func groups(_ live: [(id: String, key: String)], subagents: [String: [Subagent]]) -> [Group] {
+        var order: [String] = []
+        var byKey: [String: [Entry]] = [:]
+        for s in live {
+            if byKey[s.key] == nil { order.append(s.key) }
+            let running = (subagents[s.id] ?? []).filter { $0.ended == nil || $0.status == .needsYou }.sorted { $0.started < $1.started }
+            byKey[s.key, default: []].append(Entry(sessionId: s.id, running: running))
+        }
+        return order.sorted().map { k in
+            let list = byKey[k] ?? []
+            let busy = list.filter { !$0.running.isEmpty }, quiet = list.filter { $0.running.isEmpty }
+            return Group(key: k, sessions: busy + quiet)
+        }
+    }
+}
+
+/// LAB-694: the Subagents timeline's time axis. It labelled every 2 minutes whatever the span, so 159 minutes drew
+/// 80 labels on top of each other ("0m2m4m6m…"). The step now comes from the space: the smallest of 1, 2, 5, 10,
+/// 15, 30 min, 1, 2, 3, 4, 6, 12, 24 h that leaves `minSpacing` points between labels.
+public enum TimelineTicks {
+    public static let steps: [Int] = [1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440]
+
+    /// Minutes per tick for `span` seconds drawn `width` points wide.
+    public static func step(span: TimeInterval, width: Double, minSpacing: Double = 56) -> Int {
+        guard span > 0, width > 0 else { return steps[0] }
+        let perMinute = width / (span / 60)
+        return steps.first { Double($0) * perMinute >= minSpacing } ?? steps.last!
+    }
+
+    /// The tick minutes from 0 up to the span, leaving out one too close to the right edge for its label.
+    public static func ticks(span: TimeInterval, width: Double, minSpacing: Double = 56, labelWidth: Double = 36) -> [Int] {
+        guard span > 0, width > 0 else { return [0] }
+        let s = step(span: span, width: width, minSpacing: minSpacing)
+        let total = span / 60
+        return stride(from: 0, through: Int(total), by: s).filter { m in Double(m) == 0 || width * Double(m) / total <= width - labelWidth }
+    }
+
+    /// "0m", "45m", "1h", "1h30", "24h".
+    public static func label(_ minutes: Int) -> String {
+        guard minutes >= 60 else { return "\(minutes)m" }
+        let h = minutes / 60, m = minutes % 60
+        return m == 0 ? "\(h)h" : "\(h)h\(String(format: "%02d", m))"
+    }
+}
+
+/// LAB-695: the words of the Subagents detail card, so it explains itself. Before it read "R1 LANE A · ASKED BY
+/// BUILDING V0.50 / FINISHED · 2H AGO / no caption yet / TOUCHED" with the whole prompt as a wall of text.
+public enum SubagentDetail {
+    /// "Running for 8m", "Finished 2h ago · ran 8m", "Waiting on you · running 3m".
+    public static func status(_ s: Subagent, now: Date = Date()) -> String {
+        let ran = CaptionEngine.ageText(s.duration(now: now))
+        if s.status == .needsYou { return "Waiting on you · running \(ran)" }
+        guard let end = s.ended else { return "Running for \(ran)" }
+        let ago = CaptionEngine.ageText(now.timeIntervalSince(end))
+        return "Finished \(ago == "<1m" ? "just now" : ago + " ago") · ran \(ran)"
+    }
+
+    /// What it did, in its own words: the caption when there is one, else its latest (or, finished, final) message,
+    /// else a plain statement that it has written nothing (never invented).
+    public static func summary(_ s: Subagent, limit: Int = 600) -> (label: String, text: String) {
+        if !s.caption.isEmpty { return ("Now", s.caption) }
+        let last = (s.lastText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !last.isEmpty { return (s.ended == nil ? "Its latest message" : "Its final report", CaptionEngine.clip(last, limit)) }
+        return ("Summary", s.ended == nil ? "Working · it has not written a message yet" : "It finished without a written report")
+    }
+
+    /// The prompt is long: show this many lines folded, the rest behind "Show all".
+    public static let foldedLines = 5
+
+    /// Whether the prompt is long enough to fold.
+    public static func isLong(_ asked: String, lines: Int = foldedLines, chars: Int = 420) -> Bool {
+        asked.count > chars || asked.split(separator: "\n", omittingEmptySubsequences: false).count > lines
+    }
+}

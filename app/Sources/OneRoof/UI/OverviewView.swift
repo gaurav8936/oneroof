@@ -10,28 +10,29 @@ struct OverviewView: View {
     @Environment(\.theme) private var t
     @State private var rail = OverviewView.initialRail
     @State private var sibling: CentreView = .overview
+    /// LAB-591: the rail (feed) is as wide as the owner drags it.
+    @AppStorage("overview.railWidth", store: Prefs.defaults) private var railWidth: Double = 330
+    @State private var dragStart: Double?
+    static let railWidths: ClosedRange<Double> = 280...760
 
     static var initialRail: String { ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_RAILTAB"] ?? "feed" }
 
     var body: some View {
         FleetPage(title: "All windows", subtitle: subtitle) {
             RoofButton("+ New work item") { NotificationCenter.default.post(name: .newWorkItem, object: nil); model.show(.work, in: win) }
-            Segmented(options: [(CentreView.overview, "Overview"), (.board, "Board"), (.decisions, "Decisions"), (.subagents, "Subagents")],
-                      selection: Binding(get: { .overview }, set: { model.show($0, in: win) }),
-                      badge: { v in
-                          if v == .decisions, model.openDecisionCount > 0 { return "\(model.openDecisionCount)" }
-                          if v == .subagents, model.runningSubagents > 0 { return nil }
-                          return nil
-                      })
+            // LAB-593: Board and Decisions are top-level tabs (and ⌘ shortcuts) already; only Subagents lives here.
+            Segmented(options: [(CentreView.overview, "Overview"), (.subagents, "Subagents")],
+                      selection: Binding(get: { .overview }, set: { model.show($0, in: win) }))
         } content: {
-            HStack(alignment: .top, spacing: 22) {
+            HStack(alignment: .top, spacing: 0) {
                 ScrollView {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 18, alignment: .top), count: 3), spacing: 18) {
                         ForEach(model.windows) { w in windowCard(w) }
                     }
                 }
                 .frame(maxWidth: .infinity)
-                railCard.frame(width: 330)
+                railHandle
+                railCard.frame(width: CGFloat(min(max(railWidth, Self.railWidths.lowerBound), Self.railWidths.upperBound)))
             }
         }
         .onAppear {
@@ -128,6 +129,24 @@ struct OverviewView: View {
 
     // MARK: Rail
 
+    /// Drag to resize the rail (LAB-591); double-click puts it back to 330 pt.
+    private var railHandle: some View {
+        Capsule().fill(t.separatorStrong.color).frame(width: 3, height: 36)
+            .frame(width: 22).frame(maxHeight: .infinity)   // the 22 pt gap between the cards and the rail
+            .contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { v in
+                    let start = dragStart ?? railWidth
+                    dragStart = start
+                    railWidth = min(max(start - Double(v.translation.width), Self.railWidths.lowerBound), Self.railWidths.upperBound)
+                }
+                .onEnded { _ in dragStart = nil })
+            .onTapGesture(count: 2) { railWidth = 330 }
+            .help("Drag to make the feed wider or narrower")
+            .accessibilityLabel("Resize the feed")
+    }
+
     private var railCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 10) {
@@ -161,7 +180,7 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("What's happening").ui(15, .semibold).foregroundStyle(t.text.color)
-                Text("FYI · all windows").ui(12).foregroundStyle(t.text3.color)
+                Text("FYI · all windows · newest first").ui(12).foregroundStyle(t.text3.color).lineLimit(1)
                 Spacer()
                 Menu("Mute") {
                     ForEach(model.windows) { w in
@@ -252,19 +271,33 @@ struct OverviewView: View {
     /// Agents at work, seats and just finished (v0.1 Launchpad).
     private var agents: some View {
         let live = model.items.filter { $0.status.isLive && $0.session.agent.isAgent }
-        let byAccount = Dictionary(grouping: live) { $0.account ?? $0.session.agent.displayName }
+        let groups = AgentsAtWork.groups(live.map { ($0.id, $0.account ?? $0.session.agent.displayName) }, subagents: model.subagents)
         let finished = model.items.filter { $0.status == .done }
         return ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 MicroLabel("Agents at work")
-                if byAccount.isEmpty { Text("No agent sessions open.").ui(12.5).foregroundStyle(t.text2.color) }
-                ForEach(byAccount.keys.sorted(), id: \.self) { k in
-                    let first = byAccount[k]![0]
-                    HStack(spacing: 8) {
-                        AgentBadge(item: first, size: 20, status: false)
-                        Text(k).ui(13, .semibold).foregroundStyle(t.text.color)
-                        Spacer()
-                        Text("\(byAccount[k]!.count) live").ui(12).foregroundStyle(t.text2.color)
+                if groups.isEmpty { Text("No agent sessions open.").ui(12.5).foregroundStyle(t.text2.color) }
+                ForEach(groups) { g in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            if let first = g.sessions.first.flatMap({ model.item($0.sessionId) }) { AgentBadge(item: first, size: 20, status: false) }
+                            Text(g.key).ui(13, .semibold).foregroundStyle(t.text.color)
+                            Spacer()
+                            Text("\(g.sessions.count) live" + (g.runningSubagents > 0 ? " · \(g.runningSubagents) subagent\(g.runningSubagents == 1 ? "" : "s")" : ""))
+                                .ui(12).foregroundStyle(t.text2.color)
+                        }
+                        // LAB-635: each session, and under it the subagents (Agent/Task lanes) it is running now.
+                        ForEach(g.sessions) { e in
+                            if let item = model.item(e.sessionId) {
+                                SessionRow(row: model.rowData(item), density: .compact, selected: false)
+                                    .overlay(alignment: .topLeading) { if !e.running.isEmpty { SubagentTrunk() } }
+                                    .onTapGesture { model.reveal(item) }
+                                SubagentBranches(subs: e.running, parent: item.session.name) { sub in
+                                    win.traceFocus = item.id + (sub.map { "/" + $0.id } ?? "")
+                                    model.show(.subagents, in: win)
+                                }
+                            }
+                        }
                     }
                 }
                 MicroLabel("Seats").padding(.top, 6)
@@ -313,7 +346,9 @@ struct OverviewView: View {
     }
 }
 
-/// A feed item (COMPONENTS FeedItem): time · agent badge · "Window › Session · kind" · text.
+/// A feed item (COMPONENTS FeedItem). LAB-591/659: one row per event, read like a table row — when · agent · what
+/// happened (and "Needs you" when the session is waiting on the owner now), then what was done, then the session on
+/// one truncated line (a multi-issue session's long name no longer fills the row twice).
 struct FeedRow: View {
     @Environment(\.theme) private var t
     let entry: FeedEntry
@@ -321,16 +356,26 @@ struct FeedRow: View {
 
     var body: some View {
         let item = model.item(entry.sessionId)
+        let name = item?.session.name ?? entry.sessionName
+        let line = FeedLine.describe(kind: entry.feedKind, text: entry.text, sessionName: name)
+        let needs = item?.status == .needsYou
+        let agent = item.map { $0.account ?? $0.session.agent.displayName } ?? ""
+        let place = [windowName(item), name].filter { !$0.isEmpty }.joined(separator: " › ")
         Button { if let item { model.reveal(item) } } label: {
             HStack(alignment: .top, spacing: 8) {
-                Text(entry.at.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute())).ui(11, mono: true).foregroundStyle(t.text3.color)
-                    .frame(width: 40, alignment: .leading)
                 if let item { AgentBadge(item: item, size: 18, status: false) } else { Color.clear.frame(width: 18, height: 18) }
-                VStack(alignment: .leading, spacing: 2) {
-                    (Text("\(windowName(item)) › \(item?.session.name ?? entry.sessionName) · ").foregroundColor(t.text3.color)
-                     + Text(entry.kind).foregroundColor(kindColor.color))
-                        .ui(11.5).lineLimit(1)
-                    Text(entry.text).ui(13).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(line.action).ui(11.5, .semibold).foregroundStyle(kindColor.color).lineLimit(1).fixedSize()
+                        if !agent.isEmpty { Text(agent).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1) }
+                        if needs { StatusPill(status: .needsYou) }
+                        Spacer(minLength: 4)
+                        Text(FeedLine.timeLabel(entry.at)).ui(11, mono: true).foregroundStyle(t.text3.color).lineLimit(1).fixedSize()
+                    }
+                    Text(line.detail).ui(13).foregroundStyle(t.text.color).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    if !place.isEmpty {
+                        Text(place).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.tail).help(place)
+                    }
                 }
             }
             .padding(.vertical, 9)
@@ -338,7 +383,8 @@ struct FeedRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(line.action)\(agent.isEmpty ? "" : ", " + agent)\(needs ? ", needs you" : ""): \(line.detail). Session \(place). \(FeedLine.timeLabel(entry.at))")
     }
 
     private func windowName(_ i: BoardItem?) -> String {

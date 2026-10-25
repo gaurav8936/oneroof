@@ -12,6 +12,8 @@ struct SubagentTraceView: View {
     @State private var node: String?
     @State private var minutes: Double = 14
     @State private var tick = Date()
+    /// LAB-695: the selected subagent's prompt, unfolded.
+    @State private var askedOpen = false
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private func running(_ id: String) -> Int { (model.subagents[id] ?? []).filter { $0.ended == nil }.count }
@@ -123,9 +125,10 @@ struct SubagentTraceView: View {
                         HStack(spacing: 0) {
                             Text("AGENT").ui(11, .semibold).tracking(0.6).foregroundStyle(t.text3.color).frame(width: 330, alignment: .leading)
                             ZStack(alignment: .leading) {
-                                ForEach(Array(stride(from: 0.0, through: span / 60, by: 2)), id: \.self) { m in
-                                    Text("\(Int(m))m").ui(11, mono: true).foregroundStyle(t.text3.color)
-                                        .offset(x: barW * CGFloat(m * 60 / span))
+                                // LAB-694: a tick step that fits the width (every 2 min over 159 min overlapped).
+                                ForEach(TimelineTicks.ticks(span: span, width: Double(max(barW, 1))), id: \.self) { m in
+                                    Text(TimelineTicks.label(m)).ui(11, mono: true).foregroundStyle(t.text3.color).fixedSize()
+                                        .offset(x: barW * CGFloat(Double(m) * 60 / span))
                                 }
                             }
                             .frame(width: barW, alignment: .leading)
@@ -142,7 +145,7 @@ struct SubagentTraceView: View {
                                 line: [sub.model, sub.inferred ? "inferred" : nil, SubagentCard.tokens(sub.tokens) + " tokens"].compactMap { $0 }.joined(separator: " · "),
                                 prefix: String(repeating: "│ ", count: max(0, sub.depth - 1)) + (last ? "└" : "├"),
                                 from: sub.started, to: sub.ended, running: sub.ended == nil, start: start, span: span, barW: barW,
-                                selected: sub.id == sel?.id, inferred: sub.inferred) { node = sub.id }
+                                selected: sub.id == sel?.id, inferred: sub.inferred) { node = sub.id; askedOpen = false }
                                 .contextMenu {
                                     Button("Ask the parent to stop \(sub.name)") { model.askToStop(sub, in: s) }
                                 }
@@ -191,22 +194,42 @@ struct SubagentTraceView: View {
         .accessibilityLabel("\(name), \(running ? "running" : "finished")")
     }
 
+    /// LAB-695: the card for the selected subagent, each part labelled in plain words: the task and who gave it,
+    /// what it was asked (folded when long), its status and summary in its own words, and the files it changed.
     private func detail(_ sub: Subagent, parent: BoardItem) -> some View {
-        HStack(alignment: .top, spacing: 26) {
+        let summary = SubagentDetail.summary(sub)
+        let long = SubagentDetail.isLong(sub.asked)
+        return HStack(alignment: .top, spacing: 26) {
             VStack(alignment: .leading, spacing: 8) {
-                MicroLabel("\(sub.name) · asked by \(parent.session.name)")
-                Text(sub.asked.isEmpty ? "—" : "\u{201C}" + sub.asked + "\u{201D}").ui(14).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+                MicroLabel("Task")
+                Text(sub.name).ui(14, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+                Text("Given by \(parent.session.name)").ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
+                MicroLabel("What it was asked").padding(.top, 6)
+                Text(sub.asked.isEmpty ? "—" : sub.asked).ui(13).foregroundStyle(t.text.color)
+                    .lineLimit(long && !askedOpen ? SubagentDetail.foldedLines : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                if long {
+                    Button { askedOpen.toggle() } label: {
+                        Text(askedOpen ? "Show less ▴" : "Show all ▾").ui(12.5, .medium).foregroundStyle(t.accentText.color)
+                    }.buttonStyle(.plain)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 8) {
-                MicroLabel(sub.ended == nil ? "Right now · \(ageText(sub.started)) ago" : "Finished · \(ageText(sub.ended)) ago")
-                Text(sub.caption.isEmpty ? "no caption yet" : sub.caption).ui(14, .medium).foregroundStyle(t.now.color).fixedSize(horizontal: false, vertical: true)
-                Text("\(sub.model) · \(SubagentCard.tokens(sub.tokens)) tokens · \(ageText(sub.started, now: sub.ended ?? tick))").ui(12.5).foregroundStyle(t.text3.color)
+                MicroLabel("Status")
+                Text(SubagentDetail.status(sub, now: tick)).ui(13, .medium)
+                    .foregroundStyle((sub.ended == nil ? t.now : t.statusDone).color)
+                Text("\(sub.model.isEmpty ? "model not recorded" : sub.model) · \(SubagentCard.tokens(sub.tokens)) tokens\(sub.inferred ? " · inferred from a new pane" : "")")
+                    .ui(12).foregroundStyle(t.text3.color)
+                MicroLabel(summary.label).padding(.top, 6)
+                Text(summary.text).ui(13).foregroundStyle(t.text.color).lineLimit(12)
+                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 6) {
-                MicroLabel("Touched")
-                if sub.touched.isEmpty { Text("Nothing yet").ui(12.5).foregroundStyle(t.text3.color) }
+                MicroLabel("Files it read or changed")
+                if sub.touched.isEmpty { Text("None yet").ui(12.5).foregroundStyle(t.text3.color) }
                 ForEach(sub.touched, id: \.path) { f in
                     Button { model.openInViewer(f.path) } label: {
                         HStack {
@@ -216,10 +239,12 @@ struct SubagentTraceView: View {
                             if f.removed > 0 { Text("−\(f.removed)").ui(12, mono: true).foregroundStyle(t.diffDelText.color) }
                             if f.read && f.added + f.removed == 0 { Text("read").ui(12, mono: true).foregroundStyle(t.text3.color) }
                         }
-                    }.buttonStyle(.plain)
+                    }
+                    .buttonStyle(.plain)
+                    .help(f.path)
                 }
                 Button { model.reveal(parent); NotificationCenter.default.post(name: .rawStream, object: model.workspaceId(of: parent)) } label: {
-                    Text("Open its raw stream ⌘R").ui(12.5).foregroundStyle(t.text2.color)
+                    Text("Open the parent session's raw stream ⌘R").ui(12.5).foregroundStyle(t.text2.color)
                 }.buttonStyle(.plain).padding(.top, 6)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
