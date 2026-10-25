@@ -37,7 +37,7 @@ The window should look the way you like and hold only what you need right now: a
 ![The file browser and the viewer showing a Markdown file](img/viewer.png)
 
 - **File browser (⌥⌘B):** the selected session's repo as a tree (build folders, `node_modules` and `.git` are hidden), with its uncommitted changes. Click a file to open it. Right-click: Open, Open in Default App, Reveal in Finder, Copy Path, Type Path into Terminal, Attach to Agent Message, New Terminal Here.
-- **Editor:** text and code files open here, with tabs, line numbers, syntax colours and problems from linters you have installed (ruff, swiftlint, tsc). ⌘S saves; a save waits while another session's step is working on the same file. ⌘R runs and ⇧⌘R debugs the file in a terminal at the bottom. While the editor is open, the sessions panel folds to a narrow rail of agent badges.
+- **Editor:** text and code files open here, with tabs, line numbers, syntax colours and problems from linters you have installed (ruff, swiftlint, tsc). ⌘S saves; a save waits while another session's step is working on the same file. ⌘R runs and ⇧⌘R debugs the file in a terminal at the bottom. While the editor is open, the sessions panel folds to a narrow rail of agent badges; drag its edge wider, or click the double chevron at the top of the rail, and the full list comes back (the rail shows only while the panel is narrow).
 - **Viewer:** Markdown, images, HTML pages and folders (their listing, or their README) open in the centre viewer. Anything else offers "Open in its default app". The header has Back, Reveal in Finder, Open in default app and Close (back to the terminal).
 - **Other ways in:** File › Open File… (⌘O), ⌘-click a file path in a terminal, pick a file in the command palette (⌘K), Plan file in an objective, or Help › One Roof README.
 
@@ -49,11 +49,16 @@ The window should look the way you like and hold only what you need right now: a
 - **Return** or **⌘G**: next match. **⇧Return** or **⇧⌘G**: previous. **Esc** closes the bar and returns to the terminal.
 - **⇧⌘S** (Edit › Find in Workspace) searches across your repos and shows the results in the centre.
 
+## Wrap for reading
+
+The terminal wraps long lines at its right edge, letter by letter (that is how every terminal works), and re-wraps them when the pane is resized. Long compiler errors can still be hard to read that way. Click **Wrap** at the top right of a pane: the pane shows the terminal's text, scrollback included, re-wrapped at word boundaries to the pane's width, with runs of blank lines cut to one. It is read-only, you can select and copy from it, and it follows new output once a second (it stays where you are if you scroll up). Click **Wrap** again for the live terminal, to type.
+
 
 ## Select, copy and paste in a terminal
 
 - **Select:** drag across text. Double-click selects a word, triple-click a line, Shift-click extends the selection.
 - **Copy and paste:** ⌘C and ⌘V, or right-click › Copy / Paste / Select All / Clear.
+- **A new plain terminal from the centre:** right-click a terminal › **New Terminal Here** (a shell in that session's folder, shown in the pane) or **Split Right with New Terminal** (beside it). The **+ Terminal** button in the pane header and the **New terminal** button in an empty pane do the same; File › New Terminal (⌘T) and New Terminal in Selected Repo (⌃⌘T) still work.
 - **Paste an image** (a screenshot, or an image copied from a browser or Preview) with ⌘V: One Roof saves it as a PNG in `~/Library/Caches/OneRoof/pastes/` and types its path, so Claude Code, Codex and the other agents attach it. Saved images are cleared after 7 days.
 - **Paste files copied in Finder** to type their full paths, not just their names.
 - **Drag a file in** to type its path (quoted if it has spaces). Dragging an image from a browser saves it and types its path, as pasting does.

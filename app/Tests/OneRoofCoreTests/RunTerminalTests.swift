@@ -110,3 +110,11 @@ final class RunTerminalTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(Session.self, from: Data(old.utf8)).parentSessionId)
     }
 }
+
+/// LAB-745: a new plain terminal is always one right-click away in the centre.
+final class TerminalMenuTests: XCTestCase {
+    func testNewTerminalIsAlwaysOffered() {
+        XCTAssertEqual(TerminalMenu.newTerminalItems(inPane: true), ["New Terminal Here", "Split Right with New Terminal"])
+        XCTAssertEqual(TerminalMenu.newTerminalItems(inPane: false), ["New Terminal"])
+    }
+}

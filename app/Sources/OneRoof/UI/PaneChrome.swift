@@ -16,11 +16,15 @@ struct PaneTop: View {
     var onChapter: (Int) -> Void
     var onZoom: () -> Void
     var onClose: () -> Void
+    var reading = false
+    var onReading: (() -> Void)? = nil
+    var onNewTerminal: (() -> Void)? = nil
 
     var body: some View {
         let term = model.themes.terminal.tokens
         VStack(spacing: 0) {
-            PaneHeader(model: model, item: item, focused: focused, split: split, onZoom: onZoom, onClose: onClose)
+            PaneHeader(model: model, item: item, focused: focused, split: split, onZoom: onZoom, onClose: onClose,
+                       reading: reading, onReading: onReading, onNewTerminal: onNewTerminal)
             if let item, item.session.agent.isAgent, item.liveAgent != nil {
                 if expanded {
                     SummaryCard(model: model, item: item, openChapter: openChapter, onChapter: onChapter, onCollapse: onToggleSummary)
@@ -54,6 +58,11 @@ struct PaneHeader: View {
     let split: Bool
     var onZoom: () -> Void
     var onClose: () -> Void
+    /// Wrap for reading (LAB-657): nil hides the toggle (no live terminal in the pane).
+    var reading = false
+    var onReading: (() -> Void)? = nil
+    /// LAB-745: a new plain terminal in this pane's folder.
+    var onNewTerminal: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -76,6 +85,32 @@ struct PaneHeader: View {
             }
             Spacer(minLength: 8)
             Text("⌘D ⇧⌘D ⇧⌘↩").ui(11, mono: true).foregroundStyle(t.text3.color).lineLimit(1)
+            if let onNewTerminal {
+                Button(action: onNewTerminal) {
+                    Label("Terminal", systemImage: "plus").labelStyle(.titleAndIcon).ui(11.5, .medium).foregroundStyle(t.text2.color)
+                }
+                .buttonStyle(.plain)
+                .help("New terminal: a plain shell in this session's folder, shown here (⌘T opens one in your projects folder; right-click the terminal for more)")
+                .accessibilityLabel("New terminal in this folder")
+            }
+            if let onReading {
+                Button(action: onReading) {
+                    HStack(spacing: 4) {
+                        Image(systemName: reading ? "checkmark" : "text.justify.left").font(.system(size: 9.5, weight: .bold))
+                        Text("Wrap").ui(11.5, .medium)
+                    }
+                    .foregroundStyle(reading ? t.text.color : t.text2.color)
+                    .padding(.vertical, 2).padding(.horizontal, 7)
+                    .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(reading ? t.surface.color : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(reading
+                      ? "Wrap is on: this is a read-only copy of the terminal's text, re-wrapped at word boundaries and kept up to date. Click to go back to the live terminal and type."
+                      : "Wrap for reading: show this terminal's text, scrollback included, re-wrapped at word boundaries to the pane's width, so long lines such as compiler errors read cleanly. Read-only and live; click again for the terminal. (The terminal itself wraps long lines at its edge, letter by letter, and re-wraps them when the pane is resized.)")
+                .accessibilityLabel(reading ? "Wrap for reading on, back to the live terminal" : "Wrap for reading")
+            }
             Button { NotificationCenter.default.post(name: .panelCommand, object: "focus") } label: { Image(systemName: "rectangle.inset.filled").font(.system(size: 11)).foregroundStyle(t.text2.color) }
                 .buttonStyle(.plain).help("Focus: terminal only, both side panels hidden (⌥⌘F); again to bring them back")
                 .accessibilityLabel("Focus terminal only")
@@ -262,7 +297,10 @@ struct RewindBar: View {
     }
 }
 
-/// The approval card in a terminal pane (COMPONENTS ApprovalCard): title, risk, why, Allow y · Always a · Deny n · Reply.
+/// The approval card in a terminal pane (COMPONENTS ApprovalCard): title, risk, why, Allow once · Always allow · Deny ·
+/// Reply. LAB-716: the question wraps (up to four lines, the rest in the tooltip); the buttons say what they do (the
+/// mock's "y / a / n" letters were not shortcuts and read as gibberish), each with a tooltip; Always allow is left
+/// out for a prompt One Roof does not recognise, since it cannot tell which key means "always" there.
 struct ApprovalCard: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -271,25 +309,38 @@ struct ApprovalCard: View {
     @State private var reply = ""
 
     var body: some View {
+        let title = decision.command.map { "Run " + $0 } ?? decision.headline
+        let unread = decision.pattern.hasPrefix("ask:")
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text(decision.command.map { "Run " + $0 } ?? decision.headline).ui(13, .semibold, mono: decision.command != nil)
-                    .foregroundStyle(t.text.color).lineLimit(1)
-                RiskPill(risk: decision.risk)
-                Spacer()
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title).ui(13, .semibold, mono: decision.command != nil)
+                    .foregroundStyle(t.text.color).lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled).help(title)
+                RiskPill(risk: decision.risk).fixedSize()
+                Spacer(minLength: 0)
             }
-            Text((decision.whyMissing ? "" : "Why: ") + decision.why + (decision.touches.isEmpty ? "" : "\n" + decision.touches))
+            Text(decision.whyMissing ? "The agent did not say why. Use Reply… to ask it." : "Why: " + decision.why)
                 .ui(12.5).foregroundStyle(t.text.color.opacity(0.92)).fixedSize(horizontal: false, vertical: true)
+            if !decision.touches.isEmpty {
+                Text(decision.touches).ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 6) {
-                key("Allow", "y", primary: true) { model.answer(decision, .allowOnce) }
-                key("Always", "a") { model.answer(decision, .always) }
-                key("Deny", "n") { model.answer(decision, .deny) }
+                key("Allow once", primary: true, help: "Yes, this time only: One Roof presses the agent's own \u{201C}yes\u{201D} key for you.") {
+                    model.answer(decision, .allowOnce)
+                }
+                if !unread {
+                    key("Always allow", help: "Yes, and the agent stops asking for this (its \u{201C}always\u{201D} / \u{201C}don't ask again\u{201D} option). One Roof also remembers it for \(decision.pattern) in \(decision.repo).") {
+                        model.answer(decision, .always)
+                    }
+                }
+                key("Deny", help: "No: the agent does not do it and waits for what you say next.") { model.answer(decision, .deny) }
                 if replying {
                     TextField("Instructions for the agent", text: $reply, onCommit: { model.answer(decision, .reply, reply: reply) })
                         .textFieldStyle(.plain).ui(12.5).padding(.horizontal, 8).frame(height: 26)
                         .background(RoundedRectangle(cornerRadius: 6).fill(t.surface.color))
                 } else {
                     Button { replying = true } label: { Text("Reply…").ui(12.5).foregroundStyle(t.text2.color) }.buttonStyle(.plain)
+                        .help("No, and tell the agent what to do instead: type it and press Return.")
                 }
             }
         }
@@ -301,9 +352,9 @@ struct ApprovalCard: View {
         .accessibilityLabel("Decision: \(decision.headline)")
     }
 
-    private func key(_ label: String, _ k: String, primary: Bool = false, _ action: @escaping () -> Void) -> some View {
+    private func key(_ label: String, primary: Bool = false, help: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            (Text(label + " ").fontWeight(.semibold) + Text(k).font(.system(size: 11, design: .monospaced)))
+            Text(label).fontWeight(.semibold)
                 .ui(12.5)
                 .foregroundStyle(primary ? AgentMark.ink.color : t.text.color)
                 .padding(.vertical, 5).padding(.horizontal, 10)
@@ -311,7 +362,9 @@ struct ApprovalCard: View {
                 .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color))
         }
         .buttonStyle(.plain)
+        .help(help)
         .accessibilityLabel(label)
+        .accessibilityHint(help)
     }
 }
 
@@ -400,6 +453,8 @@ struct PanePlaceholder: View {
     let item: BoardItem?
     @ObservedObject var model: AppModel
     var emptyPane = false
+    /// LAB-745: start a plain terminal from the centre.
+    var onNewTerminal: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -407,6 +462,7 @@ struct PanePlaceholder: View {
             if emptyPane {
                 Text("Empty pane").ui(18, .semibold).foregroundStyle(t.text.color)
                 Text("Pick a session to show it here, or ⌘T for a new terminal.").ui(13).foregroundStyle(t.text2.color)
+                if let onNewTerminal { RoofButton("New terminal", .primary, action: onNewTerminal).help("A plain shell in your projects folder, shown in this pane (⌘T)") }
             } else if let item, let agent = item.liveAgent, model.poppedOut.contains(agent) {
                 Text("Open in its own window").ui(18, .semibold).foregroundStyle(t.text.color)
                 HStack {
@@ -458,6 +514,7 @@ struct PanePlaceholder: View {
             } else {
                 Text("One Roof").ui(22, .semibold).foregroundStyle(t.text.color)
                 Text("Pick a session, or press ⌘N for a new one.").ui(13).foregroundStyle(t.text2.color)
+                if let onNewTerminal { RoofButton("New terminal", action: onNewTerminal).help("A plain shell in your projects folder, shown here (⌘T)") }
             }
             Spacer()
         }
