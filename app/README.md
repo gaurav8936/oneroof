@@ -25,7 +25,9 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
 - **Decisions** (⌘I): every agent waiting on you with its reason in its own words, what the command touches, risk,
   what happens if you say no; Allow once · Always · Deny · Reply send the agent's own keys. Plans to approve too.
 - **Subagents** (⇧⌘A): Claude subagents as a timeline from the transcript.
-- **Editor** (open a text file): tabs, syntax colours, problems (ruff / swiftlint / tsc), Run ⌘R / Debug ⇧⌘R in a dock
+- **File tabs** (LAB-799): every open file is a tab in a strip at the top of the centre, after **Terminals**; a file never
+  replaces the terminals, and closing the last file brings them back.
+- **Editor** (open a text file): syntax colours, problems (ruff / swiftlint / tsc), Run ⌘R / Debug ⇧⌘R in a dock
   terminal, ⌘I asks an agent about the selection, saves wait while an agent's step claims the file.
 - **Review changes** (⌥⌘R): files, diff with "What the agent did", comments sent to the agent, checks from its output,
   Commit (never pushes).
@@ -107,7 +109,7 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   Skills has a Learn button per skill.
 
 - **Layout and navigation (owner round + terminal-app parity).** Title bar: Terminals · Launchpad · Board · Work · Learn and
-  buttons to open or close every panel, the centre included (⌘⌥S / ⌘⌥B / ⌘⌥C / ⌘⌥P). Files, plans and docs open in a
+  buttons to open or close every panel, the centre included (⌘⌥S / ⌘⌥B / ⌘⌥C / ⌘⌥P). Files, plans and docs open as tabs in a
   centre viewer (code with line numbers, Markdown, images, HTML, folders). Session › Open in New Window (⌘⌥O) moves a
   session into its own window. Find in terminal (⌘F, ⌘G). ⌘-clicked links open files in the viewer. Command palette
   (⌘P) over views, actions, sessions, objectives, projects, repo files and skills. Five themes (Light, Paper, Dim,
