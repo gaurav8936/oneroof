@@ -370,11 +370,25 @@ final class CentreController: NSViewController {
     }
     required init?(coder: NSCoder) { fatalError("not supported") }
 
+    /// Where the centre views sit, under the file tab strip (LAB-799).
+    private let content = NSView()
+
     override func loadView() {
         let root = NSView()
         root.wantsLayer = true
+        // The strip is as tall as it draws: 30 pt while a file is open, nothing otherwise.
+        let m = model, w = win
+        let strip = NSHostingView(rootView: AnyView(CentreThemed(model: m, win: w) { CentreTabStrip(model: m, win: w) }))
+        strip.sizingOptions = [.intrinsicContentSize]
+        for v in [strip, content] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        NSLayoutConstraint.activate([
+            strip.topAnchor.constraint(equalTo: root.topAnchor),
+            strip.leadingAnchor.constraint(equalTo: root.leadingAnchor), strip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            content.topAnchor.constraint(equalTo: strip.bottomAnchor), content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            content.leadingAnchor.constraint(equalTo: root.leadingAnchor), content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+        ])
         addChild(terminalArea)
-        pin(terminalArea.view, in: root)
+        pin(terminalArea.view, in: content)
         hosts[.workspace] = terminalArea.view
         view = root
     }
@@ -408,7 +422,7 @@ final class CentreController: NSViewController {
         }
         let h = NSHostingView(rootView: v)
         h.sizingOptions = []
-        pin(h, in: view)
+        pin(h, in: content)
         h.isHidden = true
         hosts[c] = h
         return h

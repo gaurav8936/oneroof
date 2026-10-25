@@ -103,7 +103,18 @@ final class WindowState: ObservableObject, Identifiable {
         viewerLine = line
         viewerPath = path
         if viewerHistory.last != path { viewerHistory.append(path) }
+        let tabs = EditorState.of(id)
+        tabs.tabs = CentreTabs.opening(path, in: tabs.tabs, isFile: path != FileKind.searchPath && !path.hasPrefix(FileKind.diffPrefix))
         centre = .editor
+    }
+
+    /// Close a file's tab (LAB-799): the centre moves to a neighbouring file, or back to the terminals after the last.
+    func closeTab(_ path: String) {
+        let state = EditorState.of(id)
+        let front = centre == .editor ? viewerPath : nil
+        let next = CentreTabs.showing(afterClosing: path, in: state.tabs, showing: front)
+        state.close(path)
+        if let next { if next != front { show(path: next) } } else if centre == .editor { centre = .workspace }
     }
 }
 
