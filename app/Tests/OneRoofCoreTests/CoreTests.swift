@@ -565,10 +565,9 @@ final class AEFolderTests: XCTestCase {
         XCTAssertEqual(AEFolder.resolve(setting: "", environment: [:], bundled: nil).source, .missing)
     }
 
-    func testRoutingFolderIsFoundInAnyGroupAndOldLayout() throws {
-        let new = try temp("new", routing: "fleet/agent-routing"), old = try temp("old", routing: "doctrine/harness-routing")
+    func testRoutingFolderIsFoundInAnyGroup() throws {
+        let new = try temp("new", routing: "fleet/agent-routing")
         XCTAssertTrue(AEFolder.routingDir(new)?.hasSuffix("fleet/agent-routing") ?? false)
-        XCTAssertTrue(AEFolder.routingDir(old)?.hasSuffix("doctrine/harness-routing") ?? false)
         XCTAssertEqual(Router.suggest(kind: "research", usage: [], policy: RoutingPolicy.load(agenticEngineering: new)).agent, .codex)
         XCTAssertNil(AEFolder.routingDir(try temp("none")))
     }

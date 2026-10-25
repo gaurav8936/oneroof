@@ -45,15 +45,12 @@ public enum AEFolder {
         return Resolved(path: setting, source: .missing)
     }
 
-    /// The folder holding routing.json and roles.json: `skills/<any group>/agent-routing` (the bundled layout) or
-    /// `.../harness-routing` (older skill libraries).
+    /// The folder holding routing.json and roles.json: `skills/<any group>/agent-routing`.
     public static func routingDir(_ ae: String) -> String? {
         let fm = FileManager.default
-        for name in ["agent-routing", "harness-routing"] {
-            for group in ((try? fm.contentsOfDirectory(atPath: ae + "/skills")) ?? []).sorted() {
-                let d = ae + "/skills/" + group + "/" + name
-                if fm.fileExists(atPath: d + "/routing.json") || fm.fileExists(atPath: d + "/roles.json") { return d }
-            }
+        for group in ((try? fm.contentsOfDirectory(atPath: ae + "/skills")) ?? []).sorted() {
+            let d = ae + "/skills/" + group + "/agent-routing"
+            if fm.fileExists(atPath: d + "/routing.json") || fm.fileExists(atPath: d + "/roles.json") { return d }
         }
         return nil
     }
