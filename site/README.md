@@ -24,8 +24,8 @@ cd site && python3 -m http.server 3952
 At the top of `assets/site.js`:
 
 ```js
-const LAUNCH = { released: true, version: '0.5.2.7', releaseDate: 'Sun 25 Oct 2026',
-  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.5.2.7.zip',
+const LAUNCH = { released: true, version: '0.5.2.8', releaseDate: 'Sun 25 Oct 2026',
+  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-0.5.2.8.zip',
   repo: 'https://github.com/gaurav8936/oneroof', blogUrl: 'https://gabblegrid.ai/blog/one-workspace' };
 ```
 
