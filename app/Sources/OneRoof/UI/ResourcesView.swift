@@ -67,8 +67,8 @@ struct ResourcesView: View {
         let open = Set(model.windows.map(\.id))
         let live = model.lastSnapshotSessions
         return ResourceBoard.rows(items: model.items, sessions: snap.sessions, window: { i in
-            let assigned = model.sessionWorkspace[i.id]
-            return assigned == nil ? model.windows.first?.id : (open.contains(assigned!) ? assigned : nil)
+            let home = model.workspaceId(of: i)
+            return open.contains(home) ? home : nil
         }, title: { live[$0]?.title })
     }
 

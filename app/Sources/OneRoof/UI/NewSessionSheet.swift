@@ -32,7 +32,11 @@ struct NewSessionSheet: View {
     @State private var startInRepo = false
     @State private var doneWhen = ""
     @State private var opening = ""
-    @State private var openingTouched = false
+    /// LAB-638: the last message the sheet generated. The message counts as edited when it differs from it (or a role
+    /// or self-test set it): a flag set on every change raced the sheet's own updates and could stick, which froze a
+    /// stale message while the team, project or issues changed.
+    @State private var generatedOpening = ""
+    @State private var openingSetByHand = false
     @State private var advanced = false
     @State private var args = ""
     @State private var resumeId = ""
@@ -124,8 +128,22 @@ struct NewSessionSheet: View {
             Hairline()
             section {
                 HStack(alignment: .top, spacing: 14) {
-                    labelled("Done when") { box($doneWhen, minHeight: 64) }
-                    if mark != .shell { labelled("Opening message · sent when the agent is ready") { box($opening, minHeight: 64, onEdit: { openingTouched = true }) } }
+                    // LAB-639: say what Done when is for and what it does not do.
+                    labelled("Done when · optional") {
+                        box($doneWhen, minHeight: 64, placeholder: "What finished looks like, e.g. \"tests pass and the feed shows newest first\"")
+                            .onChange(of: doneWhen) { _, _ in refreshOpening() }
+                        Text(mark == .shell ? "Kept with the session and shown in its Plan panel."
+                             : "Told to the agent in the opening message and shown in the Plan panel. It never ends the session or runs last call; you decide when it is done.")
+                            .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if mark != .shell {
+                        labelled("Opening message · sent when the agent is ready") {
+                            box($opening, minHeight: 64)
+                            Text(openingTouched ? "Edited by you: your words stay; the focus and issue list still follow your picks."
+                                 : "Built from the team, project, issues, what should happen and done when; it updates as you change them.")
+                                .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
                 DisclosureGroup(isExpanded: $advanced) { advancedFields } label: {
                     Text("Advanced").ui(12, .semibold).foregroundStyle(t.text2.color)
@@ -153,7 +171,13 @@ struct NewSessionSheet: View {
         .onAppear(perform: installPaste)
         .onDisappear(perform: removePaste)
         .onDisappear { IssuePickerPanel.close() }
-        .onChange(of: model.workstreams) { _, _ in defaultWorkstream() }
+        .onChange(of: model.workstreams) { _, _ in defaultWorkstream(); refreshOpening() }
+        // LAB-638: the opening follows the team, project and kind however they change (the last-used project and team
+        // are picked in on open, and the team names arrive from Linear later).
+        .onChange(of: wsId) { _, _ in refreshOpening() }
+        .onChange(of: teamKey) { _, _ in refreshOpening() }
+        .onChange(of: kind) { _, _ in refreshOpening() }
+        .onReceive(model.$linearTeams.dropFirst()) { _ in DispatchQueue.main.async { refreshOpening() } }
         .onReceive(model.$issues) { all in selfTestPick(all) }
         .onReceive(selection.$issues.dropFirst()) { _ in DispatchQueue.main.async { selectionChanged() } }
         .onReceive(selection.$newKind.compactMap { $0 }) { k in DispatchQueue.main.async { selection.newKind = nil; newIssue(k) } }
@@ -170,7 +194,7 @@ struct NewSessionSheet: View {
         guard SelfTest.isActive, !Self.selfTestPicked, let w = currentWorkstream, let list = all[w.id], !list.isEmpty else { return }
         Self.selfTestPicked = true
         // LAB-528: the owner's own words typed before the picks (they must survive, and the list must follow the picks).
-        if let o = env["ONEROOF_SELFTEST_OPENING"] { opening = o; openingTouched = true }
+        if let o = env["ONEROOF_SELFTEST_OPENING"] { opening = o; openingSetByHand = true }
         for k in (env["ONEROOF_SELFTEST_PICK"] ?? "").split(separator: ",").map(String.init) {
             if let i = list.first(where: { $0.identifier == k }) { toggleIssue(i) }
         }
@@ -640,13 +664,17 @@ struct NewSessionSheet: View {
         .help(startInRepo ? "Claude memory will split from ~/Projects" : "Starts in ~/Projects so every agent shares one memory")
     }
 
-    private func box(_ binding: Binding<String>, minHeight: CGFloat, onEdit: (() -> Void)? = nil) -> some View {
+    private func box(_ binding: Binding<String>, minHeight: CGFloat, placeholder: String? = nil) -> some View {
         TextEditor(text: binding)
             .ui(13).scrollContentBackground(.hidden)
             .padding(8).frame(minHeight: minHeight, maxHeight: 110)
             .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.card.color))
             .foregroundStyle(t.text.color)
-            .onChange(of: binding.wrappedValue) { _, _ in onEdit?() }
+            .overlay(alignment: .topLeading) {
+                if let placeholder, binding.wrappedValue.isEmpty {
+                    Text(placeholder).ui(13).foregroundStyle(t.text3.color).padding(.horizontal, 13).padding(.vertical, 8).allowsHitTesting(false)
+                }
+            }
     }
 
     // MARK: Advanced
@@ -789,23 +817,28 @@ struct NewSessionSheet: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
-    /// The opening message template (S09 §1.7), until the owner edits it.
+    /// Did the owner (or a role) write the opening message, rather than the sheet?
+    private var openingTouched: Bool { openingSetByHand || opening != generatedOpening }
+
+    /// LAB-638: what the opening message is built from — always what is picked now.
+    private func openingFocus(issues: [PickedIssue]? = nil, w: LinearWorkstream? = nil) -> OpeningFocus {
+        let ws = w ?? currentWorkstream
+        let team = ws.flatMap { $0.team.isEmpty ? nil : $0.team } ?? openingTeam
+        let creating = (kind == .ticket || kind == .defect) && useTicket == nil && issues == nil
+        return OpeningFocus(team: team, teamName: model.linearTeams.first { $0.key == team }?.name,
+                            project: ws?.wsId, projectTitle: ws?.title, issues: issues ?? picked,
+                            newIssueTitle: creating ? text.trimmingCharacters(in: .whitespaces) : nil,
+                            ask: creating ? "" : text, doneWhen: doneWhen)
+    }
+
+    /// The opening message (S09 §1.7): rebuilt from the picks until the owner edits it; an edited message keeps the
+    /// owner's words and only its focus and issue blocks follow the picks (LAB-528).
     private func refreshOpening() {
-        // LAB-528: an edited message keeps the owner's words; only its issue list follows the picks.
-        guard !openingTouched else { opening = Intake.syncIssueBlock(opening, issues: picked, project: currentWorkstream?.wsId); return }
-        let title = useTicket?.shortTitle ?? text.trimmingCharacters(in: .whitespaces)
-        if pickedIssues.count > 1 {
-            opening = Intake.multiTicketOpening(picked, project: currentWorkstream?.wsId)
-        } else if let tk = useTicket {
-            opening = Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url, project: currentWorkstream?.wsId)
-        } else if kind == .ticket || kind == .defect {
-            // The key is filled in once Linear creates the issue.
-            opening = Intake.ticketOpening(key: Intake.newIssueKey, title: title, project: currentWorkstream?.wsId)
-        } else {
-            opening = title
-        }
-        opening = Intake.anchored(opening, team: openingTeam, project: currentWorkstream?.wsId)
-        DispatchQueue.main.async { openingTouched = false }
+        let f = openingFocus()
+        if openingTouched { opening = Intake.syncOpening(opening, focus: f); return }
+        let g = Intake.sessionOpening(f)
+        generatedOpening = g
+        opening = g
     }
 
     private func applyRole(_ r: Role) {
@@ -814,7 +847,7 @@ struct NewSessionSheet: View {
         if let m = r.model { modelName = m }
         if text.isEmpty { text = r.title }
         opening = r.opening(repo: Workspace.repoLabel(for: repo), workstream: currentWorkstream?.wsId)
-        openingTouched = true
+        openingSetByHand = true
     }
 
     private func pickConversation(_ c: Conversation) {
@@ -853,13 +886,14 @@ struct NewSessionSheet: View {
             // LAB-248: a new issue's real key replaces the placeholder (the template is rebuilt unless edited).
             let several = ticket != nil && ticket?.id == useTicket?.id && !moreTickets.isEmpty
             if several {
-                opening = openingTouched ? Intake.syncIssueBlock(opening, issues: picked, project: w?.wsId)
-                    : Intake.anchored(Intake.multiTicketOpening(picked, project: w?.wsId), team: openingTeam, project: w?.wsId)
+                opening = openingTouched ? Intake.syncOpening(opening, focus: openingFocus(w: w))
+                    : Intake.sessionOpening(openingFocus(w: w))
             } else if let tk = ticket {
-                if !openingTouched || opening.contains(Intake.newIssueKey) {
-                    opening = openingTouched ? opening.replacingOccurrences(of: Intake.newIssueKey, with: tk.identifier)
-                        : Intake.anchored(Intake.ticketOpening(key: tk.identifier, title: tk.shortTitle, url: tk.url.isEmpty ? nil : tk.url, project: w?.wsId),
-                                          team: openingTeam, project: w?.wsId)
+                let one = [PickedIssue(key: tk.identifier, title: tk.shortTitle, state: tk.state, url: tk.url.isEmpty ? nil : tk.url)]
+                if !openingTouched {
+                    opening = Intake.sessionOpening(openingFocus(issues: one, w: w))
+                } else if opening.contains(Intake.newIssueKey) {
+                    opening = opening.replacingOccurrences(of: Intake.newIssueKey, with: tk.identifier)
                 }
             }
             let sessionName = several ? Intake.sessionName(keys: pickedIssues.map(\.identifier), title: typed)
@@ -877,7 +911,7 @@ struct NewSessionSheet: View {
                             ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
             if several { s.moreTickets = moreTickets.map { SessionIssue(key: $0.identifier, id: $0.id, team: s.ticketTeam) } }
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
-            model.createPlanned(s, launchNow: launch && !forcePlanned)
+            model.createPlanned(s, launchNow: launch && !forcePlanned, in: win)
             if when == .tonight && !forcePlanned, let i = model.item(s.id) { model.schedule(i, hour: 2, minute: 0, nightly: nightly) }
             if when == .every && !forcePlanned, let i = model.item(s.id) { model.repeatEvery(i, minutes: everyMinutes) }
             close()

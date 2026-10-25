@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.5.2.5 — the bug backlog (24 Oct 2026)
+
+Fixes for the 23 One Roof bugs in the LAB-ONEROOF-BUGS backlog. Each one stays open until it is checked in this build.
+
+**Windows**
+- **A session stays in the window it was made in** (LAB-705). A new session used to join whichever window was in front
+  when its launch finished, and a closed window's sessions showed up in the first window. Now a window lists only its
+  own sessions; a closed window's sessions wait for it (Window › Workspaces reopens it).
+- **Every window comes back after a quit or an install** (LAB-706). Quitting no longer counts as closing each window.
+- **Move to Window › New Workspace Window… moves the session** (LAB-707), and **Open in New Window opens it** (LAB-708).
+
+**Layout**
+- **The window keeps its size** (LAB-596, LAB-653). The panels' minimum widths now fit the window, so opening Files or
+  leaving the editor never grows it, a title-bar double-click never shrinks it, and quick clicks on toolbar tabs no
+  longer count as a double-click.
+- **The Sessions panel is a badge rail only while it is narrow** (LAB-651, LAB-714). Opening a file no longer leaves it
+  stuck as icons; drag it wider or click the chevron at the top of the rail.
+- **Sessions · Files · Terminal · Plan stay visible in the toolbar** (LAB-715); a long window name truncates instead,
+  and anything that does overflow works from ».
+
+**Terminal**
+- **No blank block in terminal output after a reattach** (LAB-606). Terminals start at their real size, and roofd waits
+  for that size before it redraws the session.
+- **Wrap** (LAB-657): a toggle at the top right of each pane shows the terminal's text re-wrapped at word boundaries
+  for reading; click it again to type in the live terminal.
+- **The permission card shows the whole question** (LAB-716), and its buttons say what they do: Allow once, Always
+  allow, Deny, Reply…. Always allow is hidden for prompts One Roof cannot read.
+- **New Terminal from the centre panel** (LAB-745): New Terminal Here and Split Right with New Terminal in the
+  terminal's right-click menu, a + Terminal button in the pane header, and New terminal in an empty pane.
+- **Exited terminals move to Exited** (LAB-726) instead of staying in Active under their parent.
+
+**Overview, Subagents, Learn**
+- **Feed: newest on top** (LAB-591), resizable (drag the gap beside it), and each row says what happened, which agent,
+  and whether it needs you; the session name shows once, on one line, and repeated events fold into one (LAB-659).
+- **Overview drops its Board and Decisions sub-tabs** (LAB-593); they repeated the toolbar tabs.
+- **Agents lists each live session with the subagents (lanes) it is running** (LAB-635).
+- **Subagents timeline labels no longer overlap** (LAB-694), and the detail card explains itself: the task, who gave
+  it, its status, its own final report, and the files it changed (LAB-695).
+- **Career Agent is no longer in Learn** (LAB-713).
+
+**New session**
+- **The opening message is built from what you pick** (LAB-638): Where Are We, then the team, project and issues by key
+  and title, then your own words. It follows your picks until you edit it.
+- **Done when is explained** (LAB-639): it is told to the agent ("when that is true, tell me and stop there"); it never
+  ends the session or runs last call.
+
 ## 0.5.2.4 — Back to agent, for real (23 Oct 2026)
 
 - **Back to agent puts the run window away** (LAB-598). The floating run window stayed on top of the agent's terminal,

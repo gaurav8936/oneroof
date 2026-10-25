@@ -41,8 +41,72 @@ final class ToolbarDelegate: NSObject, NSToolbarDelegate {
         host.frame.size = host.fittingSize
         item.view = host
         item.isBordered = false
-        item.visibilityPriority = id == Self.switcher || id == Self.new ? .high : .standard
+        // LAB-715: the panel toggles stay visible longest; the window name and search give way first.
+        let slot = Self.slot(id)
+        switch slot?.keepRank ?? 0 {
+        case 3: item.visibilityPriority = .user
+        case 2: item.visibilityPriority = .high
+        case 1: item.visibilityPriority = .standard
+        default: item.visibilityPriority = .low
+        }
+        // A view item in the » overflow menu does nothing without a menu form (the 0.5.2.1 chevron that did not work).
+        if let slot { item.label = Self.label(slot); item.menuFormRepresentation = menuForm(slot, controller: controller) }
         return item
+    }
+
+    private static func slot(_ id: NSToolbarItem.Identifier) -> ToolbarSlot? {
+        switch id {
+        case switcher: return .switcher
+        case workspace: return .workspace
+        case search: return .search
+        case panels: return .panels
+        case new: return .new
+        default: return nil
+        }
+    }
+
+    private static func label(_ s: ToolbarSlot) -> String {
+        switch s {
+        case .switcher: return "View"
+        case .workspace: return "Window"
+        case .search: return "Search"
+        case .panels: return "Panels"
+        case .new: return "New Session"
+        }
+    }
+
+    /// What an item does from the overflow menu: the same actions as its controls.
+    private func menuForm(_ s: ToolbarSlot, controller: MainWindowController) -> NSMenuItem {
+        let m = model, w = win
+        switch s {
+        case .switcher:
+            let item = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            for v in CentreView.switcher { sub.addItem(MenuAction(v.title) { m.show(v, in: w) }) }
+            item.submenu = sub
+            return item
+        case .workspace:
+            let item = NSMenuItem(title: "This Window", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            sub.addItem(MenuAction("Rename Workspace…") { w.promptRename() })
+            sub.addItem(MenuAction("New Workspace Window…") { [weak controller] in controller?.newWorkspace() })
+            sub.addItem(MenuAction("Release Notes") { NSApp.sendAction(#selector(AppDelegate.openReleaseNotes(_:)), to: nil, from: nil) })
+            item.submenu = sub
+            return item
+        case .search:
+            return MenuAction("Search Sessions, Files, Docs (⌘K)") { NSApp.sendAction(#selector(AppDelegate.showPalette(_:)), to: nil, from: nil) }
+        case .panels:
+            let item = NSMenuItem(title: "Panels", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            sub.addItem(MenuAction("Show or Hide Sessions (⌥⌘S)") { [weak controller] in controller?.toggleSidebar() })
+            sub.addItem(MenuAction("Show or Hide Files (⌥⌘B)") { [weak controller] in controller?.toggleFiles() })
+            sub.addItem(MenuAction("Show or Hide Terminal (⌥⌘C)") { [weak controller] in controller?.toggleCentre() })
+            sub.addItem(MenuAction("Show or Hide Plan (⌥⌘P)") { [weak controller] in controller?.togglePlanPanel() })
+            item.submenu = sub
+            return item
+        case .new:
+            return MenuAction("New Session… (⌘N)") { [weak controller] in controller?.newSession() }
+        }
     }
 }
 
@@ -114,7 +178,10 @@ struct WorkspaceMenu: View {
             Button { showMenu() } label: {
                 HStack(spacing: 5) {
                     if let accent { RoundedRectangle(cornerRadius: 3, style: .continuous).fill(accent.ink.color).frame(width: 10, height: 10) }
+                    // LAB-715: a long name no longer pushes the panel toggles into the overflow menu; the full name
+                    // is in the tooltip and the Window menu.
                     Text(win.name).ui(16, .bold).foregroundStyle(accent?.ink.color ?? t.text.color).lineLimit(1)
+                        .truncationMode(.tail).frame(maxWidth: 220, alignment: .leading)
                     Text("▾").ui(10).foregroundStyle(t.text2.color)
                 }
                 .contentShape(Rectangle())

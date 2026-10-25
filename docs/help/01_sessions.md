@@ -14,7 +14,7 @@ You should be able to look at the left panel and know, without clicking, which a
 
 | State | Where it comes from | What it means for you |
 |---|---|---|
-| Needs you | roofd (a prompt is waiting) | Stopped on a question or a permission prompt; it waits for you. Answer in its terminal, or in Decisions (⌘I). Counted on the Dock badge. |
+| Needs you | roofd (a prompt is waiting) | Stopped on a question or a permission prompt; it waits for you. Answer in its terminal, on the card over the bottom of its terminal (**Allow once**, **Always allow**, **Deny**, **Reply…**; hover a button to see what it does), or in Decisions (⌘I). Counted on the Dock badge. |
 | Working | roofd | Busy right now: thinking, running a tool or writing. Goes back to Ready or Idle a few seconds after it stops. |
 | Ready | roofd | Finished a turn you have not looked at yet. Turns Idle as soon as you open the session or type in it. There is no timer. |
 | Idle | roofd | Alive at its prompt with nothing new for you; not executing. Plain terminals are always Idle (they have no agent). |
@@ -46,7 +46,7 @@ Every session runs in **roofd**, One Roof's own session manager, which ships ins
 
 ## Workspace windows
 
-Each main window is a **workspace** with its own sessions. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session. Closing a workspace window keeps its sessions. Closing any One Roof window (a workspace, a session in its own window, a roof window) first asks **Close …?**: tick **Yes, I'm sure** to enable Close; Cancel or Esc keeps it open. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy Attach Command opens a One Roof session from any terminal). Rows started outside One Roof.
+Each main window is a **workspace** with its own sessions. A session belongs to the window you made it in (the window the New Session sheet opened in), and only that window lists it. File › New Workspace Window… (⇧⌘N) opens another one; Window › Workspaces (⌥⌘1 to ⌥⌘9) switches between them; right-click a row › Move to Window moves a session to another window, and Move to Window › New Workspace Window… makes a new window and moves the session into it. Closing a workspace window keeps its sessions: they wait for that window and do not show up in your other windows; reopen it from Window › Workspaces (opening one of its sessions from a notification or Overview reopens it too). Quitting One Roof is not closing its windows: at the next launch (also after an install or update) every window that was open comes back with its name, colour, size, place and sessions. Only sessions that belong to no window (agents started outside One Roof) are listed in the first window. Closing any One Roof window (a workspace, a session in its own window, a roof window) first asks **Close …?**: tick **Yes, I'm sure** to enable Close; Cancel or Esc keeps it open. Overview, Board and Decisions show every window. Agents you start by typing their name in a One Roof terminal show that agent in their row; agents started in other terminal apps are not listed (Copy Attach Command opens a One Roof session from any terminal). Rows started outside One Roof.
 
 ## The top of the panel
 
@@ -116,7 +116,7 @@ The steps cover the session's last 5,000 lines; an older step can no longer be r
 
 ## A session in its own window
 
-Session › Open in New Window (⌥⌘O), or New window in the session menu, moves a running session's terminal into its own window. The centre then says "Open in its own window" with **Show window** and **Bring back here**.
+Session › Open in New Window (⌥⌘O), or Open in New Window in the row's menu, moves a running session's terminal into its own window (the session still belongs to its workspace window). If another terminal is still letting go of the session, the new window waits a moment and tries again; if it cannot, One Roof says so instead of doing nothing. The centre then says "Open in its own window" with **Show window** and **Bring back here**.
 
 ## The footer
 

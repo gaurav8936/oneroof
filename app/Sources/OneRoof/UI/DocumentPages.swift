@@ -13,13 +13,19 @@ struct WebPage: NSViewRepresentable {
     let root: String
     /// Bumped to reload the page (the viewer's ↻).
     var reload = 0
+    /// Local pages this view must not open (Learn, LAB-713), and a script run at the end of each page.
+    var blocked: (@Sendable (String) -> Bool)? = nil
+    var pageScript: String? = nil
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { let c = Coordinator(); c.blocked = blocked; return c }
 
     func makeNSView(context: Context) -> WKWebView {
         let cfg = WKWebViewConfiguration()
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.defaultWebpagePreferences.allowsContentJavaScript = true
+        if let js = pageScript {
+            cfg.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
         let w = WKWebView(frame: .zero, configuration: cfg)
         w.navigationDelegate = context.coordinator
         w.uiDelegate = context.coordinator
@@ -42,10 +48,12 @@ struct WebPage: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var loadedPath = ""
         var reload = 0
+        var blocked: (@Sendable (String) -> Bool)?
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url else { decisionHandler(.cancel); return }
+            if url.isFileURL, blocked?(url.path) == true { decisionHandler(.cancel); return }
             let clicked = action.navigationType == .linkActivated || action.navigationType == .formSubmitted
             switch WebLinkPolicy.decide(url.absoluteString, clicked: clicked) {
             case .allow: decisionHandler(.allow)
@@ -58,7 +66,7 @@ struct WebPage: NSViewRepresentable {
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
                      windowFeatures: WKWindowFeatures) -> WKWebView? {
             if let url = action.request.url {
-                if url.isFileURL { webView.load(action.request) } else if WebLinkPolicy.decide(url.absoluteString, clicked: true) == .openExternally {
+                if url.isFileURL { if blocked?(url.path) != true { webView.load(action.request) } } else if WebLinkPolicy.decide(url.absoluteString, clicked: true) == .openExternally {
                     NSWorkspace.shared.open(url)
                 }
             }

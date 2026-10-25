@@ -40,7 +40,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .none
-        window.minSize = NSSize(width: 1000, height: 560)
+        window.minSize = NSSize(width: PanelMinimums.windowWidth, height: 560)
         window.isReleasedWhenClosed = false
         let autosave = win.id == WorkspaceStore.mainId ? "OneRoofMain" : "OneRoofMain." + win.id
         if !SelfTest.isActive { window.setFrameAutosaveName(autosave) }   // tests never change the owner's layout
@@ -68,21 +68,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         split = NSSplitViewController()
         split.splitView.isVertical = true
         split.splitView.dividerStyle = .thin
+        // LAB-596: the minimum widths of all four panels fit the window's minimum width (PanelMinimums), so opening a
+        // panel never makes AppKit grow the window; a panel opening or closing resizes its neighbours, never the window.
         sideItem = NSSplitViewItem(viewController: sidebar)
-        sideItem.minimumThickness = 240; sideItem.canCollapse = true
+        sideItem.minimumThickness = PanelMinimums.sessions; sideItem.canCollapse = true
         sideItem.holdingPriority = .init(260)
         filesItem = NSSplitViewItem(viewController: files)
-        filesItem.minimumThickness = 200; filesItem.canCollapse = true
+        filesItem.minimumThickness = PanelMinimums.files; filesItem.canCollapse = true
         filesItem.holdingPriority = .init(255)
         filesItem.isCollapsed = true
         centreItem = NSSplitViewItem(viewController: centre)
-        centreItem.minimumThickness = 420
+        centreItem.minimumThickness = PanelMinimums.centre
         centreItem.canCollapse = true
         centreItem.holdingPriority = .init(250)
         planItem = NSSplitViewItem(viewController: plan)
-        planItem.minimumThickness = 260; planItem.canCollapse = true
+        planItem.minimumThickness = PanelMinimums.plan; planItem.canCollapse = true
         planItem.holdingPriority = .init(251)
-        for i in [sideItem, filesItem, centreItem, planItem] { split.addSplitViewItem(i!) }
+        for i in [sideItem, filesItem, centreItem, planItem] {
+            i!.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
+            split.addSplitViewItem(i!)
+        }
         if !SelfTest.isActive { split.splitView.autosaveName = win.id == WorkspaceStore.mainId ? "OneRoofSplit" : "OneRoofSplit." + win.id }
 
         // Content: the themed toolbar backdrop (behind the transparent title bar) and the panels below it.
@@ -135,9 +140,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             self.applyThemes(self.model.themes)
         }.store(in: &bag)
         syncPanels()
+        watchToolbarClicks()
     }
 
     required init?(coder: NSCoder) { fatalError("not supported") }
+
+    deinit { if let toolbarClickMonitor { NSEvent.removeMonitor(toolbarClickMonitor) } }
+
+    /// LAB-596 / LAB-653: two quick clicks on toolbar controls (tabs, window name, panel toggles) reach the title bar
+    /// as a double-click where SwiftUI does not take them, and macOS zooms or "fills" the window. They become single
+    /// clicks; a double-click on empty toolbar space still does what System Settings says.
+    private var toolbarClickMonitor: Any?
+    private func watchToolbarClicks() {
+        toolbarClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] e in
+            guard let self, let window = self.window, e.window === window, e.clickCount >= 2,
+                  let items = window.toolbar?.items else { return e }
+            let controls = items.compactMap { i -> CGRect? in
+                guard let v = i.view, v.window === window, !v.isHidden else { return nil }
+                return v.convert(v.bounds, to: nil)
+            }
+            guard WindowZoom.toolbarClickCount(e.clickCount, at: e.locationInWindow, controls: controls) != e.clickCount else { return e }
+            return NSEvent.mouseEvent(with: e.type, location: e.locationInWindow, modifierFlags: e.modifierFlags,
+                                      timestamp: e.timestamp, windowNumber: e.windowNumber, context: nil,
+                                      eventNumber: e.eventNumber, clickCount: 1, pressure: e.pressure) ?? e
+        }
+    }
 
     // MARK: Window
 
@@ -147,7 +174,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
 
     /// LAB-520: a double-click on empty toolbar space is a title-bar double-click, and macOS zooms the window. A window
     /// already stretched to fill the screen then "zooms" back to its last smaller size, so a stray double-click between the
-    /// toolbar tabs shrank the window. Such a double-click never makes the window smaller; Window › Zoom still toggles.
+    /// toolbar tabs shrank the window. LAB-653: the same for a window tiled to half the screen. Such a double-click never
+    /// makes the window smaller; Window › Zoom and the green button still toggle.
     func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
         WindowZoom.allow(current: window.frame, to: newFrame, visible: window.screen?.visibleFrame,
                          fromTitleBarDoubleClick: Self.isTitleBarDoubleClick(NSApp.currentEvent, in: window))
@@ -163,15 +191,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             detail: "Its sessions keep running in roofd. Reopen the window from Window \u{25B8} Workspaces.")
     }
 
+    /// Set when the app quits: AppKit then closes every window, and those closes are not the owner closing them.
+    static var quitting = false
+
     func windowWillClose(_ notification: Notification) {
         Self.all.removeAll { $0 === self }
         // Closing a workspace window keeps its sessions (they wait in the store, roofd keeps the agents);
-        // reopen it from Window ▸.
-        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == win.id }), !SelfTest.isActive, Self.all.count > 0 {
+        // reopen it from Window ▸. Quitting is not closing (LAB-706): every window comes back at the next launch.
+        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == win.id }), !SelfTest.isActive,
+           WindowMembership.remembersClosed(quitting: Self.quitting, otherOpenWindows: Self.all.count) {
             r.open = false
             WorkspaceStore.shared.update(r)
         }
-        if Self.all.isEmpty { return }
+        if Self.all.isEmpty || Self.quitting { return }
         model.forget(win)
     }
 
@@ -217,6 +249,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     func togglePlanPanel() { guard guardLast(planItem) else { return }; planItem.animator().isCollapsed.toggle(); syncLater() }
     func toggleFiles() { guard guardLast(filesItem) else { return }; filesItem.animator().isCollapsed.toggle(); syncLater() }
     func toggleSidebar() { guard guardLast(sideItem) else { return }; sideItem.animator().isCollapsed.toggle(); syncLater() }
+    /// The Sessions rail's widen button (LAB-714): back to the panel's usual width.
+    func widenSessions() {
+        if sideItem.isCollapsed { sideItem.animator().isCollapsed = false }
+        split.splitView.setPosition(300, ofDividerAt: 0)
+        syncLater()
+    }
     private func syncLater() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.syncPanels() } }
 
     /// Never close the last open panel (S00.T.4: the button shakes, no beep).
@@ -254,12 +292,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         if c == .editor {
             if planBeforeEditor == nil { planBeforeEditor = !planItem.isCollapsed }
             planItem.animator().isCollapsed = true
-            sideItem.minimumThickness = 56
-            if !sideItem.isCollapsed { split.splitView.setPosition(56, ofDividerAt: 0) }
+            sideItem.minimumThickness = PanelMinimums.sessionsRail
+            if !sideItem.isCollapsed { split.splitView.setPosition(PanelMinimums.sessionsRail, ofDividerAt: 0) }
             if filesItem.isCollapsed { filesItem.animator().isCollapsed = false }
-        } else if sideItem.minimumThickness != 240 {
+        } else if sideItem.minimumThickness != PanelMinimums.sessions {
             if let was = planBeforeEditor { planItem.animator().isCollapsed = !was; planBeforeEditor = nil }
-            sideItem.minimumThickness = 240
+            sideItem.minimumThickness = PanelMinimums.sessions
             if !sideItem.isCollapsed { split.splitView.setPosition(300, ofDividerAt: 0) }
         }
         centre.show(c)
@@ -280,8 +318,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         present(AttachIssueSheet(model: model, item: item, close: { [weak self] in self?.closeSheet() }))
     }
 
-    func newWorkspace() {
-        present(NewWorkspaceSheet(model: model, close: { [weak self] in self?.closeSheet() }))
+    /// New Workspace Window…; with `moving`, that session moves into the new window (LAB-707).
+    func newWorkspace(moving sessionId: String? = nil) {
+        present(NewWorkspaceSheet(model: model, moving: sessionId, close: { [weak self] in self?.closeSheet() }))
     }
 
     private func present<V: View>(_ v: V) {

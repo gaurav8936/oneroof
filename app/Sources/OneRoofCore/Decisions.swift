@@ -629,6 +629,18 @@ public struct DecisionContext: Sendable {
 
 public enum DecisionBuilder {
     public static let noWhy = "The agent didn't say why. Ask it:"
+    /// LAB-716: what the card says when no matcher recognises the prompt (was "One Roof could not read what this
+    /// prompt does. Open the session to see it.").
+    public static let unreadPrompt = "One Roof does not recognise this prompt, so it cannot tell what Allow or Deny will press. Check the prompt's own options in the terminal; you can also answer there by typing."
+
+    /// LAB-716: the question of a prompt no matcher recognises: the last line with a "?", in full (it was cut to 80
+    /// characters, which dropped the end of Claude's "Is this a project you created or one you trust? (Like your own
+    /// code, …)"), else the last line; at most 400 characters.
+    public static func fallbackQuestion(_ text: String) -> String {
+        let lines = TerminalText.lines(text).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !TerminalText.isChrome($0) }
+        let q = lines.last { $0.contains("?") } ?? lines.last ?? "The agent is waiting for you"
+        return String(q.prefix(400))
+    }
 
     /// A decision from a blocked session's terminal, or nil when no prompt can be read.
     public static func build(_ c: DecisionContext) -> Decision? {
