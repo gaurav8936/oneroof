@@ -347,7 +347,7 @@ struct SessionContextMenu: View {
                 Button(w.name) { model.move(it, to: w) }.disabled(model.workspaceId(of: it) == w.id)
             }
             Divider()
-            Button("New Workspace Window…") { NSApp.sendAction(#selector(AppDelegate.newWorkspaceWindow(_:)), to: nil, from: nil) }
+            Button("New Workspace Window…") { NotificationCenter.default.post(name: .newWorkspaceMoving, object: it.id) }
         }
         if it.liveAgent != nil {
             Button("Open in New Window") { PopOutWindowController.popOut(it, model: model) }

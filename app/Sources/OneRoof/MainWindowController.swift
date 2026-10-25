@@ -163,15 +163,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             detail: "Its sessions keep running in roofd. Reopen the window from Window \u{25B8} Workspaces.")
     }
 
+    /// Set when the app quits: AppKit then closes every window, and those closes are not the owner closing them.
+    static var quitting = false
+
     func windowWillClose(_ notification: Notification) {
         Self.all.removeAll { $0 === self }
         // Closing a workspace window keeps its sessions (they wait in the store, roofd keeps the agents);
-        // reopen it from Window ▸.
-        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == win.id }), !SelfTest.isActive, Self.all.count > 0 {
+        // reopen it from Window ▸. Quitting is not closing (LAB-706): every window comes back at the next launch.
+        if var r = WorkspaceStore.shared.workspaces.first(where: { $0.id == win.id }), !SelfTest.isActive,
+           WindowMembership.remembersClosed(quitting: Self.quitting, otherOpenWindows: Self.all.count) {
             r.open = false
             WorkspaceStore.shared.update(r)
         }
-        if Self.all.isEmpty { return }
+        if Self.all.isEmpty || Self.quitting { return }
         model.forget(win)
     }
 
@@ -280,8 +284,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         present(AttachIssueSheet(model: model, item: item, close: { [weak self] in self?.closeSheet() }))
     }
 
-    func newWorkspace() {
-        present(NewWorkspaceSheet(model: model, close: { [weak self] in self?.closeSheet() }))
+    /// New Workspace Window…; with `moving`, that session moves into the new window (LAB-707).
+    func newWorkspace(moving sessionId: String? = nil) {
+        present(NewWorkspaceSheet(model: model, moving: sessionId, close: { [weak self] in self?.closeSheet() }))
     }
 
     private func present<V: View>(_ v: V) {
