@@ -11,7 +11,6 @@ struct SetupView: View {
     @State private var projects = ""
     @State private var shared = ""
     @State private var sharedSkipped = false
-    @State private var ae = ""
     @State private var linearKey = ""
     @State private var agents: [AgentRow] = []
     @State private var tools: [CheckResult] = []
@@ -65,16 +64,9 @@ struct SetupView: View {
                     }
                 }
                 Section("Agentic engineering") {
-                    HStack {
-                        Text(ae.isEmpty ? "Bundled copy (skills, routing rules, course)" : ae.tilde)
-                            .lineLimit(1).truncationMode(.middle)
-                        Spacer()
-                        Button("Use bundled") { ae = "" }.disabled(ae.isEmpty)
-                        Button("Choose…") {
-                            if let p = pick("Choose a folder with a skills/ folder inside") { ae = p }
-                        }
-                    }
-                    if !ae.isEmpty, !AEFolder.isPackage(ae) { note("No skills/ folder there: the bundled copy will be used.", warn: true) }
+                    // LAB-768: bundled, nothing to choose.
+                    Text("Bundled with One Roof: the course, every skill, and the narrated Agentic Engineering deck (Learn, ⇧⌘E).")
+                        .foregroundStyle(.secondary)
                 }
                 Section("Required tools") {
                     if tools.isEmpty {
@@ -162,7 +154,6 @@ struct SetupView: View {
         let s = model.settings
         projects = s.projectsPath
         shared = s.commonPath
-        ae = s.agenticEngineeringPath
         DispatchQueue.global(qos: .userInitiated).async {
             let found = Foundations.requiredTools()
             DispatchQueue.main.async { tools = found }
@@ -196,7 +187,6 @@ struct SetupView: View {
         var s = model.settings
         s.projectsPath = projects.trimmingCharacters(in: .whitespaces)
         s.commonPath = sharedSkipped ? "" : shared.trimmingCharacters(in: .whitespaces)
-        s.agenticEngineeringPath = ae
         s.setupDone = true
         model.settings = s
         model.runFoundations()

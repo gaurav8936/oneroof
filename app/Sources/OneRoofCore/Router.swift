@@ -95,8 +95,8 @@ public struct RoutingPolicy: Sendable {
     }
 
     public static func load(agenticEngineering: String = AEFolder.resolve(setting: "").path) -> RoutingPolicy {
-        guard let dir = AEFolder.routingDir(agenticEngineering),
-              let d = FileManager.default.contents(atPath: dir + "/routing.json"),
+        guard let f = AEFolder.routingFile(agenticEngineering, "routing.json"),
+              let d = FileManager.default.contents(atPath: f),
               let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return builtIn }
         var kinds: [String: [Choice]] = [:]
         for (k, v) in j["kinds"] as? [String: Any] ?? [:] {
@@ -184,8 +184,8 @@ public struct Role: Identifiable, Equatable, Sendable {
     }
 
     public static func load(agenticEngineering: String = AEFolder.resolve(setting: "").path) -> [Role] {
-        guard let dir = AEFolder.routingDir(agenticEngineering),
-              let d = FileManager.default.contents(atPath: dir + "/roles.json"),
+        guard let f = AEFolder.routingFile(agenticEngineering, "roles.json"),
+              let d = FileManager.default.contents(atPath: f),
               let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [] }
         return (j["roles"] as? [[String: Any]] ?? []).compactMap { r in
             guard let id = r["id"] as? String, let title = r["title"] as? String, let skill = r["skill"] as? String,
