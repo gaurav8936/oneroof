@@ -52,10 +52,17 @@ public struct FeedBuffer: Sendable {
     }
 
     /// Adds an event unless the same kind for the same session arrived within 60 s. Returns whether it was added.
+    /// LAB-659: an event that only repeats the session's latest one (same kind, same words, e.g. "X finished" every
+    /// few minutes while a session with background agents wakes and rests) replaces it, so the feed shows it once,
+    /// at its newest time, instead of a column of copies.
     @discardableResult
     public mutating func add(_ e: FeedEvent) -> Bool {
         if events.contains(where: { $0.sessionId == e.sessionId && $0.kind == e.kind && abs($0.at.timeIntervalSince(e.at)) < Self.dedupWindow }) {
             return false
+        }
+        if let j = events.firstIndex(where: { $0.sessionId == e.sessionId }), events[j].at <= e.at,
+           events[j].kind == e.kind, events[j].text == e.text {
+            events.remove(at: j)
         }
         let i = events.firstIndex(where: { $0.at <= e.at }) ?? events.count
         events.insert(e, at: i)
@@ -118,5 +125,59 @@ public enum FeedSignals {
 
     public static func scheduleMissed(sessionId: String, name: String, time: String, at: Date = Date()) -> FeedEvent {
         FeedEvent(at: at, sessionId: sessionId, kind: .error, text: "\(name) missed its \(time) run · run now?")
+    }
+}
+
+/// LAB-591/659: what one feed row says, split into fields: what happened (the action), the detail of it without the
+/// session's name (the row shows the session once, on its own line), and when.
+public struct FeedLine: Equatable, Sendable {
+    /// "Finished", "Error", "Step done", "Subagents", …
+    public var action: String
+    /// What was done: the result words, without "<session name> finished".
+    public var detail: String
+
+    public init(action: String, detail: String) { self.action = action; self.detail = detail }
+
+    public static func action(_ k: FeedKind) -> String {
+        switch k {
+        case .stepDone: return "Step done"
+        case .finding: return "Finding"
+        case .choice: return "Choice"
+        case .subagents: return "Subagents"
+        case .done: return "Finished"
+        case .rotated: return "Handed off"
+        case .error: return "Error"
+        }
+    }
+
+    /// `name` is the session's name now; the event's text may carry the name it had when it happened.
+    public static func describe(kind: FeedKind, text: String, sessionName: String) -> FeedLine {
+        var d = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch kind {
+        case .done:
+            if let r = d.range(of: " finished: ") { d = String(d[r.upperBound...]) }
+            else if d.hasSuffix(" finished") || d == "finished" { d = "Finished its turn" }
+        case .error:
+            if d.hasSuffix(" exited while working") { d = "Exited while it was working" }
+        default:
+            if !sessionName.isEmpty, d.hasPrefix(sessionName + " ") { d = String(d.dropFirst(sessionName.count + 1)) }
+        }
+        if let f = d.first, f.isLowercase { d = f.uppercased() + d.dropFirst() }
+        return FeedLine(action: action(kind), detail: d.isEmpty ? action(kind) : d)
+    }
+
+    /// "1:13 PM" today, "Yesterday 1:13 PM", else "Oct 22 1:13 PM" (the feed covers 7 days; a bare 12-hour time read
+    /// as out of order).
+    public static func timeLabel(_ at: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
+        let time = DateFormatter()
+        time.locale = locale; time.timeZone = calendar.timeZone
+        time.dateStyle = .none; time.timeStyle = .short
+        let t = time.string(from: at)
+        if calendar.isDate(at, inSameDayAs: now) { return t }
+        if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(at, inSameDayAs: y) { return "Yesterday " + t }
+        let day = DateFormatter()
+        day.locale = locale; day.timeZone = calendar.timeZone
+        day.setLocalizedDateFormatFromTemplate("MMMd")
+        return day.string(from: at) + " " + t
     }
 }

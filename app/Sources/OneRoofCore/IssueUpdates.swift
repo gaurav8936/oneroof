@@ -159,6 +159,85 @@ extension Intake {
     }
 }
 
+/// LAB-638: what a new session's opening message is built from: the team, project and issues picked in the sheet,
+/// what should happen (the owner's words) and done when.
+public struct OpeningFocus: Equatable, Sendable {
+    public var team: String?
+    public var teamName: String?
+    public var project: String?
+    public var projectTitle: String?
+    public var issues: [PickedIssue]
+    /// A Ticket or Bug the sheet will create: its title (the key is filled in once Linear assigns it).
+    public var newIssueTitle: String?
+    public var ask: String
+    public var doneWhen: String
+
+    public init(team: String? = nil, teamName: String? = nil, project: String? = nil, projectTitle: String? = nil,
+                issues: [PickedIssue] = [], newIssueTitle: String? = nil, ask: String = "", doneWhen: String = "") {
+        func clean(_ s: String?) -> String? { s.flatMap { let t = $0.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t } }
+        self.team = clean(team); self.teamName = clean(teamName); self.project = clean(project); self.projectTitle = clean(projectTitle)
+        self.issues = issues; self.newIssueTitle = newIssueTitle.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        self.ask = ask.trimmingCharacters(in: .whitespacesAndNewlines); self.doneWhen = doneWhen.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension Intake {
+    static let focusHeading = "Focus of this session:"
+    static let focusEnd = "Stay on this focus"
+
+    /// The focus lines: team, project, issues, and the stay-in-scope rule. Empty when nothing is picked.
+    static func focusBlock(_ f: OpeningFocus) -> [String] {
+        var lines: [String] = []
+        if let t = f.team { lines.append("- Team: " + t + (f.teamName.map { " · " + $0 } ?? "")) }
+        if let p = f.project { lines.append("- Project: " + p + (f.projectTitle.map { " · " + $0 } ?? "")) }
+        if f.issues.count == 1, let i = f.issues.first { lines.append("- Issue: \(i.key) · \(i.title)") }
+        else if f.issues.count > 1 {
+            lines.append("- Issues (\(f.issues.count), listed with their titles below): " + f.issues.map(\.key).joined(separator: ", "))
+        } else if let n = f.newIssueTitle { lines.append("- Issue: a new one, \"\(n)\" (its key is added when Linear creates it)") }
+        guard !lines.isEmpty else { return [] }
+        let scope = [f.team.map { _ in "team" }, f.project.map { _ in "project" }, (f.issues.isEmpty && f.newIssueTitle == nil) ? nil : "these issues"]
+            .compactMap { $0 }.joined(separator: ", ")
+        return [focusHeading] + lines + ["\(focusEnd) (\(scope)) for the whole session\(f.team == nil ? "" : "; do not switch to another team").",]
+    }
+
+    /// LAB-638: the opening message of a new session, always built from what is picked now. It runs Where Are We
+    /// (no transcript), states the focus (team, project, the issues by key and title), then what should happen in the
+    /// owner's words, done when, and the issue steps (one issue: read it and the commit format; several: one plan for
+    /// all of them). Before, the owner's "What should happen" was dropped as soon as an issue was picked, and the
+    /// focus was one generic "Anchor yourself in project X (team Y)" line. Empty when there is nothing to say.
+    public static func sessionOpening(_ f: OpeningFocus) -> String {
+        let focus = focusBlock(f)
+        let issueBlock: String
+        if f.issues.count > 1 { issueBlock = multiTicketOpening(f.issues, project: f.project) }
+        else if let i = f.issues.first { issueBlock = ticketOpening(key: i.key, title: i.title, url: i.url, project: f.project) }
+        else if let n = f.newIssueTitle { issueBlock = ticketOpening(key: newIssueKey, title: n, project: f.project) }
+        else { issueBlock = "" }
+        var ask = f.ask
+        if ask.isEmpty, !issueBlock.isEmpty { ask = f.issues.count > 1 ? "Resolve these \(f.issues.count) issues." : "Resolve this issue." }
+        guard !ask.isEmpty || !focus.isEmpty else { return "" }
+        var parts = ["Invoke the \"Where Are We\" skill from agentic engineering (no transcript needed)."]
+        if !focus.isEmpty { parts.append(focus.joined(separator: "\n")) }
+        if !ask.isEmpty { parts.append("What I would like you to do:\n" + ask) }
+        if !f.doneWhen.isEmpty {
+            parts.append("Done when: \(f.doneWhen)\nWhen that is true, tell me and stop there; I review the work and decide when the session ends.")
+        }
+        if !issueBlock.isEmpty { parts.append(issueBlock) }
+        return parts.joined(separator: "\n\n")
+    }
+
+    /// An opening message the owner edited: their words stay; the focus block and the issue block follow the picks.
+    public static func syncOpening(_ text: String, focus f: OpeningFocus) -> String {
+        var out = syncIssueBlock(text, issues: f.issues, project: f.project)
+        var lines = out.components(separatedBy: "\n")
+        if let a = lines.firstIndex(of: focusHeading), let b = lines[a...].firstIndex(where: { $0.hasPrefix(focusEnd) }) {
+            let block = focusBlock(f)
+            lines.replaceSubrange(a...b, with: block)
+            out = lines.joined(separator: "\n").replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        }
+        return out
+    }
+}
+
 extension Session {
     /// Issues moved to In Progress when the session launches: its one issue. A session on several issues leaves them
     /// as they are; its agent moves each one when it starts on it (LAB-518).

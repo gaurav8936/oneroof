@@ -525,7 +525,7 @@ struct SubagentCard: View {
                 Text("\(Self.tokens(sub.tokens)) · \(ageText(sub.started, now: sub.ended ?? Date()))").ui(11.5, mono: true).foregroundStyle(t.text3.color)
             }
             if !sub.asked.isEmpty { Text("Asked: " + sub.asked).ui(12).foregroundStyle(t.text2.color).lineLimit(2) }
-            Text(sub.caption.isEmpty ? "no caption yet" : sub.caption).ui(13).foregroundStyle(t.text.color).lineLimit(3)
+            Text(SubagentDetail.summary(sub).text).ui(13).foregroundStyle(t.text.color).lineLimit(3)   // LAB-695
         }
         .padding(.vertical, 11).padding(.horizontal, 12)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.surface.color))

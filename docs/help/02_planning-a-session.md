@@ -65,8 +65,8 @@ The last item of each menu creates something, then starts the session on it.
 | Model | Passed to the CLI as `--model <name>`. Claude: opus, sonnet, haiku; any name works. Empty means the CLI's default. |
 | Repo | The repo the session works on, or your projects folder itself. It decides the repo label, the file browser and the branch chip. |
 | Start in | **Projects folder · one memory** (the default) or **Repo folder**. In the repo folder, Claude may ask once to trust it, and its memory is kept separately from your projects folder. |
-| Done when | What finished looks like. Shown in the plan panel. |
-| Opening message | The first prompt. One Roof sends it once the agent is at its prompt and idle, and never twice, even across restarts. With an issue picked it says which issue to work on and how to name commits. |
+| Done when | Optional. What finished looks like, for example "tests pass and the feed shows newest first". The agent is told it in the opening message ("Done when: …; when that is true, tell me and stop there"), the Plan panel shows it as **Objective · done when**, captions and decisions use it as context, and when the sheet creates an issue or project it becomes the description. It does **not** run last call and it can **not** end the session: nothing in One Roof checks it automatically; you decide when the work is done. |
+| Opening message | The first prompt, built from what you picked and typed, and updated as you change them: run the Where Are We skill (no transcript), the focus (team, project, the issues by key and title, and to stay in that team), what should happen in your words, done when, then the issue steps (one issue: read it and how to name commits; several: one plan for all of them, kept up to date on each issue). Once you edit it, your words stay; only its focus and issue list follow your picks. One Roof sends it once the agent is at its prompt and idle, and never twice, even across restarts. |
 
 **Advanced** holds:
 
