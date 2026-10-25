@@ -10,6 +10,12 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
     private var surface: TerminalSurfaceView?
     /// A run terminal's agent session (LAB-598): the window floats over the main window with "Back to agent".
     let parentId: String?
+    private let dir: String
+    /// LAB-708: roofd lets one terminal show a session. When this window's attach is refused because a main window
+    /// had not let go yet, it tries again instead of closing at once (which looked like "nothing happens").
+    private var born = Date()
+    private var attempts = 0
+    static let maxAttempts = 4
 
     init(item: BoardItem, model: AppModel, parentId: String? = nil) {
         self.agent = item.liveAgent ?? ""
@@ -19,14 +25,10 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         w.title = "\(item.session.name) · \(item.session.agent.displayName)\(item.account.map { " · \($0)" } ?? "")"
         w.isReleasedWhenClosed = false
+        dir = Workspace.isInsideProjects(item.session.repoPath) ? item.session.repoPath : Workspace.projectsRoot
         super.init(window: w)
         w.delegate = self
-        let dir = Workspace.isInsideProjects(item.session.repoPath) ? item.session.repoPath : Workspace.projectsRoot
-        let s = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: model.themes.terminal)
-        s.onProcessExit = { [weak self] _ in self?.window?.close() }
-        model.wire(s, agent: agent)
-        w.contentView = s
-        surface = s
+        attach()
         w.center()
         w.setFrameAutosaveName("OneRoofPopOut-" + agent)
         if parentId != nil { makeRunWindow(w, item: item) }
@@ -79,6 +81,42 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
 
     required init?(coder: NSCoder) { fatalError("not supported") }
 
+    /// Attach a terminal to the session. An attach that ends within 3 s was refused (another terminal still held the
+    /// session): ask every main window to let go and try again a moment later; after a few tries, say so and close.
+    private func attach() {
+        attempts += 1
+        born = Date()
+        let s = TerminalSurfaceView(command: model.runtime.attachCommand(agent), workingDirectory: dir, theme: model.themes.terminal)
+        s.onProcessExit = { [weak self] _ in
+            guard let self else { return }
+            switch PopOutAttach.next(attempt: self.attempts, ranFor: Date().timeIntervalSince(self.born), max: Self.maxAttempts) {
+            case .retry:
+                PopOutWindowController.askMainWindowsToLetGo(self.agent)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    guard let self, PopOutWindowController.open[self.agent] === self else { return }
+                    // The agent itself ended: nothing to show.
+                    guard self.model.items.contains(where: { $0.liveAgent == self.agent }) else { self.window?.close(); return }
+                    self.attach()
+                }
+            case .giveUp:
+                self.model.lastError = "Could not open the session in its own window: another terminal is still showing it. Try again in a moment."
+                self.window?.close()
+            case .ended:
+                self.window?.close()
+            }
+        }
+        model.wire(s, agent: agent)
+        window?.contentView = s
+        surface = s
+        if window?.isVisible == true { window?.makeFirstResponder(s) }
+    }
+
+    /// Main windows drop their terminal for this agent now (not on their next redraw), and do not mark the pane
+    /// "showing in another window": the pop-out is the one place it shows until it closes.
+    static func askMainWindowsToLetGo(_ agent: String) {
+        NotificationCenter.default.post(name: .releaseSurface, object: agent, userInfo: ["win": "popout", "force": true, "moved": true])
+    }
+
     func show() {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
@@ -103,6 +141,7 @@ final class PopOutWindowController: NSWindowController, NSWindowDelegate {
         if let r = RoofWindowController.owner(of: agent) { r.window?.makeKeyAndOrderFront(nil); return }
         if let c = open[agent] { c.show(); return }
         model.poppedOut.insert(agent)            // the main window releases its terminal first
+        askMainWindowsToLetGo(agent)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             let c = PopOutWindowController(item: item, model: model)
             open[agent] = c

@@ -121,6 +121,9 @@ final class TerminalAreaController: NSViewController {
         }
         // Another window is about to show a session: let go of our terminal for it (only a hidden one, unless forced).
         NotificationCenter.default.addObserver(forName: .releaseSurface, object: nil, queue: .main) { [weak self] n in
+            // A session moved into this window (LAB-707): show it, even if it was handed away from here before.
+            if let self, let agent = n.object as? String, (n.userInfo?["win"] as? String) == self.win.id,
+               (n.userInfo?["moved"] as? Bool) == true { self.refused[agent] = nil }
             guard let self, let agent = n.object as? String, (n.userInfo?["win"] as? String) != self.win.id,
                   let s = self.surfaces[agent], s.isHidden || (n.userInfo?["force"] as? Bool) == true else { return }
             s.onProcessExit = nil
@@ -128,7 +131,9 @@ final class TerminalAreaController: NSViewController {
             self.surfaces[agent] = nil
             if self.shownAgent == agent { self.shownAgent = nil }
             // Handed over on purpose: this pane says where it went, instead of attaching again and winning it back.
-            if !s.isHidden { self.refused[agent] = 2; self.update() }
+            // A session moved to another window (LAB-707) has left this one: nothing to say, and moving it back shows it.
+            if (n.userInfo?["moved"] as? Bool) == true { self.refused[agent] = nil; self.update() }
+            else if !s.isHidden { self.refused[agent] = 2; self.update() }
         }
         // A click in a pane focuses it (the terminal still gets the click).
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in

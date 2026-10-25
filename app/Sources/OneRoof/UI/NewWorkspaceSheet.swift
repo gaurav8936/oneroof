@@ -5,6 +5,8 @@ import OneRoofCore
 struct NewWorkspaceSheet: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
+    /// A session to move into the new window (Move to Window › New Workspace Window…, LAB-707).
+    var moving: String? = nil
     var close: () -> Void
     @State private var name = ""
     @State private var colour: String?
@@ -12,7 +14,7 @@ struct NewWorkspaceSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("New workspace window").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
-            Text("A workspace is a main window with its own sessions, layout and panel widths. Overview, Board and Decisions show every workspace.")
+            Text(movingNote + "A workspace is a main window with its own sessions, layout and panel widths. Overview, Board and Decisions show every workspace.")
                 .ui(12.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             TextField("Name, e.g. Website", text: $name)
                 .textFieldStyle(.plain).ui(14)
@@ -39,15 +41,22 @@ struct NewWorkspaceSheet: View {
         .background(t.window.color)
     }
 
+    private var movingNote: String {
+        guard let id = moving, let i = model.item(id) else { return "" }
+        return "\u{201C}\(i.session.name)\u{201D} moves into the new window. "
+    }
+
     private func create() {
         let n = name.trimmingCharacters(in: .whitespaces)
         guard !n.isEmpty else { return }
         close()
-        NotificationCenter.default.post(name: .newWorkspace, object: [n, colour ?? ""])
+        NotificationCenter.default.post(name: .newWorkspace, object: [n, colour ?? "", moving ?? ""])
     }
 }
 
 extension Notification.Name {
-    /// Create a workspace window (object: [name, colour]).
+    /// Create a workspace window (object: [name, colour, session id to move in or ""]).
     static let newWorkspace = Notification.Name("oneroof.newWorkspace")
+    /// Ask for a new workspace window that a session moves into (object: the session id).
+    static let newWorkspaceMoving = Notification.Name("oneroof.newWorkspaceMoving")
 }

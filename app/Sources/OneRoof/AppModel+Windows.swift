@@ -88,33 +88,52 @@ extension AppModel {
 
     // MARK: Workspaces
 
-    /// The workspace a session belongs to.
+    /// The workspace a session belongs to (LAB-705): the window it was made in or moved to, even while that window is
+    /// closed; only a session with no window is the first open window's. See `WindowMembership`.
     func workspaceId(of item: BoardItem) -> String {
-        if let w = sessionWorkspace[item.id], windows.contains(where: { $0.id == w }) { return w }
-        return windows.first?.id ?? WorkspaceStore.mainId
+        WindowMembership.home(of: item.id, assigned: sessionWorkspace, open: windows.map(\.id), existing: WorkspaceStore.shared.ids)
+            ?? WorkspaceStore.mainId
     }
 
-    /// Sessions in one window, in the order the sidebar shows them.
+    /// Sessions in one window, in the order the sidebar shows them. A closed window's sessions are in none.
     func items(in w: WindowState) -> [BoardItem] { items.filter { workspaceId(of: $0) == w.id } }
 
-    /// Move a session to another workspace window (S00.W.1).
-    func move(_ item: BoardItem, to w: WindowState) {
+    /// Move a session to another workspace window (S00.W.1). The window it leaves lets go of its terminal, so the new
+    /// window can show it at once; `select` also makes it the new window's selection.
+    func move(_ item: BoardItem, to w: WindowState, select: Bool = false) {
         sessionWorkspace[item.id] = w.id
         WorkspaceStore.shared.assign(session: item.id, to: w.id)
         for other in windows where other.selectedId == item.id && other.id != w.id { other.selectedId = nil }
+        if let agent = item.liveAgent {
+            NotificationCenter.default.post(name: .releaseSurface, object: agent, userInfo: ["win": w.id, "force": true, "moved": true])
+        }
+        if select {
+            w.selectedId = item.id
+            show(.workspace, in: w)
+        }
         objectWillChange.send()
     }
 
-    /// A new session joins the window in front.
-    func assignToActive(_ sessionId: String) {
+    /// A new session joins the window it was asked for in (LAB-705), or the window in front when no window asked.
+    /// Pass the window: a sheet's Linear call or a launch can finish after the owner clicked into another window.
+    func assign(_ sessionId: String, to w: WindowState? = nil) {
         guard sessionWorkspace[sessionId] == nil else { return }
-        sessionWorkspace[sessionId] = active.id
-        WorkspaceStore.shared.assign(session: sessionId, to: active.id)
+        let id = (w ?? active).id
+        sessionWorkspace[sessionId] = id
+        WorkspaceStore.shared.assign(session: sessionId, to: id)
     }
 
-    /// Select a session wherever it lives: its window comes forward with the terminal in the centre.
+    /// The open window a session belongs to; nil while that window is closed.
+    func window(of sessionId: String) -> WindowState? { item(sessionId).flatMap { window(workspaceId(of: $0)) } }
+
+    /// Select a session wherever it lives: its window comes forward (reopened if it was closed) with the terminal in the
+    /// centre.
     func reveal(_ item: BoardItem) {
-        let w = window(workspaceId(of: item)) ?? active
+        let id = workspaceId(of: item)
+        if window(id) == nil, let r = WorkspaceStore.shared.workspaces.first(where: { $0.id == id }) {
+            adopt(WindowState(id: r.id, name: r.name, colour: r.colour))
+        }
+        let w = window(id) ?? active
         w.selectedId = item.id
         show(.workspace, in: w)
         NotificationCenter.default.post(name: .focusWorkspace, object: w.id)

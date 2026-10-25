@@ -170,8 +170,10 @@ final class AppModel: ObservableObject {
         objectives = store?.allObjectives() ?? []
         if store == nil { lastError = "Could not open the session store." }
         WorkspaceStore.shared.attach(store)
-        for r in WorkspaceStore.shared.workspaces where r.open { adopt(WindowState(id: r.id, name: r.name, colour: r.colour)) }
-        if windows.isEmpty, let r = WorkspaceStore.shared.workspaces.first { adopt(WindowState(id: r.id, name: r.name, colour: r.colour)) }
+        let records = WorkspaceStore.shared.workspaces
+        for id in WindowMembership.toRestore(records.map { ($0.id, $0.open) }) {
+            if let r = records.first(where: { $0.id == id }) { adopt(WindowState(id: r.id, name: r.name, colour: r.colour)) }
+        }
         scheduleRecords = Dictionary((store?.schedules() ?? []).map { ($0.sessionId, $0) }, uniquingKeysWith: { a, _ in a })
         schedules = scheduleRecords.compactMapValues { ScheduleClock.rowLabel($0) }
         sessionWorkspace = WorkspaceStore.shared.assignments
@@ -708,10 +710,11 @@ final class AppModel: ObservableObject {
         for i in items where i.status == .exited && !i.session.pinned && !i.adopted && !busySteps.contains(i.id) { delete(i) }
     }
 
-    func createPlanned(_ s: Session, launchNow: Bool) {
-        assignToActive(s.id)
+    /// A new session, in `window` (the window that asked for it) or the window in front (LAB-705).
+    func createPlanned(_ s: Session, launchNow: Bool, in window: WindowState? = nil) {
+        assign(s.id, to: window)
         save(s)
-        selectedId = s.id
+        (self.window(of: s.id) ?? active).selectedId = s.id
         if launchNow, let item = item(s.id) { launch(item) }
     }
 
@@ -767,7 +770,8 @@ final class AppModel: ObservableObject {
             }
             if s.lifecycle != .doNotUse { s.lifecycle = .idle }
             self.save(s)
-            self.selectedId = s.id
+            // Selected in its own window, not whichever is in front when the launch finishes (LAB-705).
+            if let w = self.window(of: s.id) { w.selectedId = s.id }
             if !adopted { for i in s.ticketsToStartOnLaunch { if let id = i.id, let team = i.team { self.ticketStarted(id: id, team: team) } } }
             self.queue.async { self.poll() }
         }
