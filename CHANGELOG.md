@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2.7 — Agentic Engineering, bundled (25 Oct 2026)
+
+- **The whole Agentic Engineering deck ships inside One Roof** (LAB-768). Learn (⇧⌘E) now has every narrated card, the
+  deck's home and track pages, and all their audio, offline. The skills come too: One Roof links them into each agent's
+  skills folder alongside its own, and never replaces a link that already points at your own copy of a skill.
+- **No folder to choose.** Settings and first-run Setup no longer ask for an agentic-engineering folder; they show what is
+  bundled. (Developers can still point One Roof elsewhere with `ONEROOF_AE_PATH`.)
+
 ## 0.5.2.6 — files open as tabs (24 Oct 2026)
 
 - **Files open as tabs beside the terminals** (LAB-799). Opening a Markdown file, image, page, folder or code file used

@@ -288,30 +288,17 @@ struct SettingsView: View {
         }
     }
 
-    /// Agentic engineering: your own folder, or the copy bundled with One Roof (empty field). ONEROOF_AE_PATH overrides both.
+    /// Agentic engineering ships inside One Roof (LAB-768): the course, every skill and the narrated deck. No folder choice;
+    /// ONEROOF_AE_PATH still overrides it for development, and the row says so when it does.
     private var aeRow: some View {
         let r = model.settings.agenticEngineering
+        let cards = AEFolder.deckRoot(r.path).map { AEFolder.deckCards($0).count } ?? 0
         return LabeledContent("Agentic engineering") {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    TextField("bundled copy", text: $model.settings.agenticEngineeringPath).labelsHidden()
-                    Button("Choose…") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
-                        panel.message = "Choose a folder with a skills/ folder inside (your own agentic-engineering repo)"
-                        if panel.runModal() == .OK, let u = panel.url { model.settings.agenticEngineeringPath = u.path }
-                    }
-                    Button("Use bundled") { model.settings.agenticEngineeringPath = "" }
-                        .disabled(model.settings.agenticEngineeringPath.isEmpty)
-                    Button("Show") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: r.path) }
-                }
-                HStack(spacing: 4) {
-                    if r.source == .missing || (!model.settings.agenticEngineeringPath.isEmpty && r.source != .settings) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    }
-                    Text("In use: \(r.label) · \(r.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
+            HStack(spacing: 8) {
+                Text(r.source == .bundled ? "Bundled with One Roof · \(cards) narrated cards" : "\(r.label) · \(r.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Button("Show") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: r.path) }
             }
         }
     }

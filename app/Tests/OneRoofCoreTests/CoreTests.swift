@@ -555,14 +555,39 @@ final class AEFolderTests: XCTestCase {
         return d
     }
 
-    func testOrderIsEnvironmentThenSettingsThenBundled() throws {
+    func testOrderIsEnvironmentThenBundled() throws {
         let env = try temp("env"), mine = try temp("mine"), bundled = try temp("bundled")
         XCTAssertEqual(AEFolder.resolve(setting: mine, environment: ["ONEROOF_AE_PATH": env], bundled: bundled).source, .environment)
-        XCTAssertEqual(AEFolder.resolve(setting: mine, environment: [:], bundled: bundled), .init(path: mine, source: .settings))
+        // LAB-768: the Settings folder is ignored; the bundled package is always used unless ONEROOF_AE_PATH is set.
+        XCTAssertEqual(AEFolder.resolve(setting: mine, environment: [:], bundled: bundled), .init(path: bundled, source: .bundled))
         XCTAssertEqual(AEFolder.resolve(setting: "", environment: [:], bundled: bundled), .init(path: bundled, source: .bundled))
         // A setting that no longer exists falls back to the bundled copy rather than breaking routing and Learn.
         XCTAssertEqual(AEFolder.resolve(setting: "/nope/gone", environment: [:], bundled: bundled).source, .bundled)
         XCTAssertEqual(AEFolder.resolve(setting: "", environment: [:], bundled: nil).source, .missing)
+    }
+
+    func testDeckIsFoundInsideThePackageOrAtItsRoot() throws {
+        let fm = FileManager.default
+        let pkg = try temp("pkg"), deck = pkg + "/deck"
+        XCTAssertNil(AEFolder.deckRoot(pkg))
+        try fm.createDirectory(atPath: deck + "/content", withIntermediateDirectories: true)
+        try "{}".write(toFile: deck + "/content/catalog.json", atomically: true, encoding: .utf8)
+        for (track, slug, page) in [("rhythms", "day-recap", true), ("rhythms", "no-page", false), ("ship", "pr-lifecycle", true)] {
+            try fm.createDirectory(atPath: "\(deck)/skills/\(track)/\(slug)", withIntermediateDirectories: true)
+            if page { try "<html>".write(toFile: "\(deck)/skills/\(track)/\(slug)/\(slug).html", atomically: true, encoding: .utf8) }
+        }
+        XCTAssertEqual(AEFolder.deckRoot(pkg), deck)
+        XCTAssertEqual(AEFolder.deckCards(deck).map { "\($0.track)/\($0.slug)" }, ["rhythms/day-recap", "ship/pr-lifecycle"])
+        XCTAssertEqual(AEFolder.deckRoot(deck), deck)   // ONEROOF_AE_PATH straight at the deck repository
+    }
+
+    func testYourOwnRoutingFileWinsOverTheBundledOne() throws {
+        let pkg = try temp("pkg", routing: "fleet/agent-routing"), home = try temp("home")
+        XCTAssertEqual(AEFolder.routingFile(pkg, "routing.json", home: home), pkg + "/skills/fleet/agent-routing/routing.json")
+        try FileManager.default.createDirectory(atPath: home + "/.config/oneroof/agent-routing", withIntermediateDirectories: true)
+        try "{}".write(toFile: home + "/.config/oneroof/agent-routing/routing.json", atomically: true, encoding: .utf8)
+        XCTAssertEqual(AEFolder.routingFile(pkg, "routing.json", home: home), home + "/.config/oneroof/agent-routing/routing.json")
+        XCTAssertEqual(AEFolder.routingFile(pkg, "roles.json", home: home), pkg + "/skills/fleet/agent-routing/roles.json")
     }
 
     func testRoutingFolderIsFoundInAnyGroup() throws {
