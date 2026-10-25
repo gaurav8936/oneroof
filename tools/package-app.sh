@@ -36,7 +36,7 @@ ln -sfn "$STAGE/ghostty/macos/GhosttyKit.xcframework" "$STAGE/src/app/Vendor/Gho
 (cd "$STAGE/src/app" && ONEROOF_GHOSTTY_DIR="$STAGE/ghostty" scripts/bundle.sh release)
 
 APP="$STAGE/src/app/build/One Roof.app"
-for need in agentic_engineering THIRD-PARTY-NOTICES.md licenses/Qwen3-LICENSE.txt MacOS/OneRoof MacOS/roofd Library/LaunchAgents/io.github.gaurav8936.oneroof.roofd.plist; do
+for need in agentic_engineering agentic_engineering/deck/content/catalog.json THIRD-PARTY-NOTICES.md licenses/Qwen3-LICENSE.txt MacOS/OneRoof MacOS/roofd Library/LaunchAgents/io.github.gaurav8936.oneroof.roofd.plist; do
   [ -e "$APP/Contents/Resources/$need" ] || [ -e "$APP/Contents/$need" ] || { echo "package-app: $need missing from the bundle" >&2; exit 1; }
 done
 bash tools/release-check.sh --app "$APP" || { echo "package-app: the built app leaks build-machine paths" >&2; exit 1; }

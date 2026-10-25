@@ -164,17 +164,28 @@ enum LearnIndex {
                                  summary: (meta["summary"] ?? "") + " " + String(MarkdownPage.body(text).prefix(1200)),
                                  audioFolder: audio ? clips : nil))
         }
-        let manual = ae + "/content/field-manual"
+        // LAB-768 · the Agentic Engineering deck bundled with the app (`<ae>/deck`): its home + track pages, then every
+        // narrated card. A pack skill that also has a narrated card is shown once, as the card.
+        let deck = AEFolder.deckRoot(ae)
+        let manual = (deck ?? ae) + "/content/field-manual"
         let pages = ((try? fm.contentsOfDirectory(atPath: manual)) ?? []).filter { $0.hasSuffix(".html") }.sorted { a, b in
             a == "home.html" ? true : b == "home.html" ? false : a < b
         }
         for p in pages {
             let name = (p as NSString).deletingPathExtension
             out.append(LearnItem(title: name == "home" ? "Start here" : name.replacingOccurrences(of: "-", with: " ").capitalized,
-                                 section: "Field manual", path: manual + "/" + p, root: ae, audio: false,
+                                 section: "Agentic Engineering", path: manual + "/" + p, root: deck ?? ae, audio: false,
                                  summary: plainText(manual + "/" + p)))
         }
-        for s in Foundations.skills(FoundationPaths(agenticEngineering: ae)) {
+        let cards = deck.map { AEFolder.deckCards($0) } ?? []
+        let carded = Set(cards.map(\.slug))
+        for c in cards where deck != ae {
+            let text = (try? String(contentsOfFile: c.dir + "/SKILL.md", encoding: .utf8)) ?? ""
+            let meta = Foundations.frontmatter(text)
+            out.append(LearnItem(title: meta["name"] ?? c.slug, section: "Agentic Engineering · " + c.track, path: c.dir + "/" + c.slug + ".html",
+                                 root: deck!, audio: fm.fileExists(atPath: c.dir + "/" + c.slug + "_audio"), summary: meta["description"] ?? ""))
+        }
+        for s in Foundations.skills(FoundationPaths(agenticEngineering: ae)) where deck == ae || !carded.contains((s.path as NSString).lastPathComponent) {
             let html = s.path + "/" + (s.path as NSString).lastPathComponent + ".html"
             guard fm.fileExists(atPath: html) else {
                 // A plain skill (the bundled package): show its SKILL.md.
