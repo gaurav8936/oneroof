@@ -194,8 +194,146 @@ struct V2StepButton: View {
         .padding(.horizontal, 9).frame(height: 22)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(focus ? t.accent.color : t.surface.color))
         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(focus ? .clear : t.separator.color, lineWidth: 1))
-        .barHelp(focus ? "Leave Focus (⌥⌘F). Press and hold for the four steps." : "Focus ladder: step on ⌥⌘F, step back ⇧⌥⌘F. Press and hold for the four steps.")
+        // LAB-1274 (owner): a click cycling the steps and a hold listing them was not discoverable from a one-line tooltip.
+        // Hovering shows a hint popover with the whole ladder instead (`StepHintAnchor`); `.help` stays for VoiceOver.
+        .help(focus ? "Leave Focus (⌥⌘F). Press and hold for the four steps." : "Focus ladder: step on ⌥⌘F, step back ⇧⌥⌘F. Press and hold for the four steps.")
+        .overlay(StepHintAnchor(dark: scheme == .dark) {
+            AnyView(V2StepHint(step: win.focusStep).environment(\.theme, t).environment(\.colorScheme, scheme))
+        })
         .accessibilityLabel("Focus step: \(win.focusStep.title)")
+        .accessibilityHint("Click for the next step, press and hold to choose one")
+    }
+    @Environment(\.colorScheme) private var scheme
+}
+
+/// LAB-1274 · the step button's hover hint: what a click and a hold do, and the four steps with the current one marked.
+struct V2StepHint: View {
+    let step: FocusStep
+    @Environment(\.theme) private var t
+
+    static func what(_ s: FocusStep) -> String {
+        switch s {
+        case .full: return "Rail, sessions, the Plan and the dock"
+        case .sessions: return "Sessions and the centre; the Plan on its edge tab"
+        case .wide: return "Rail and sessions; more room for the centre"
+        case .focus: return "The centre alone; sessions as avatars"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Focus steps").font(.system(size: 13, weight: .semibold)).foregroundStyle(t.text.color)
+            VStack(alignment: .leading, spacing: 3) {
+                row("Click", step == .focus ? "Leave Focus" : "Next step: \(step.next.title)")
+                row("Hold", "Choose a step from the list")
+                row("⌥⌘F", "Next step · ⇧⌥⌘F back · Esc leaves Focus")
+            }
+            Rectangle().fill(t.separator.color).frame(height: 1)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(FocusStep.allCases, id: \.self) { s in
+                    let on = s == step
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(s.rawValue)").font(.system(size: 11, design: .monospaced)).foregroundStyle(on ? t.accentText.color : t.text3.color)
+                            .frame(width: 12, alignment: .trailing)
+                        Text(s.title).font(.system(size: 12, weight: on ? .semibold : .regular)).foregroundStyle(t.text.color)
+                            .frame(width: 62, alignment: .leading)
+                        Text(Self.what(s)).font(.system(size: 11.5)).foregroundStyle(t.text2.color)
+                        Spacer(minLength: 0)
+                        if on { Text("now").font(.system(size: 10, weight: .semibold)).foregroundStyle(t.accentText.color) }
+                    }
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(on ? t.selection.color : .clear))
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 360, alignment: .leading)
+        .background(t.surface.color)
+    }
+
+    private func row(_ key: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(key).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(t.accentText.color)
+                .frame(width: 44, alignment: .leading)
+            Text(text).font(.system(size: 12)).foregroundStyle(t.text.color)
+        }
+    }
+}
+
+/// LAB-1274 · shows `content` in a popover under the view after a short hover. Click-through (never takes a click), the
+/// popover ignores the mouse, and any click or key closes it and goes on to where it was going (keys are never kept).
+/// An AppKit tracking area, because SwiftUI's hover does not reach views inside an NSToolbar item (LAB-1236).
+struct StepHintAnchor: NSViewRepresentable {
+    var dark: Bool
+    let content: () -> AnyView
+    func makeNSView(context: Context) -> HintAnchorView { let v = HintAnchorView(); v.content = content; v.dark = dark; return v }
+    func updateNSView(_ v: HintAnchorView, context: Context) { v.content = content; v.dark = dark; v.refresh() }
+
+    final class HintAnchorView: NSView {
+        /// ONEROOF_SELFTEST_STEPHINT: a self-test shows the hint without a mouse.
+        static let show = Notification.Name("oneroof.v2.stepHint.show")
+        var content: (() -> AnyView)?
+        var dark = false
+        private var area: NSTrackingArea?
+        private var popover: NSPopover?
+        private var pending: DispatchWorkItem?
+        private var monitor: Any?
+        private var observer: NSObjectProtocol?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let area { removeTrackingArea(area) }
+            let a = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+            addTrackingArea(a); area = a
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil { hide(); if let observer { NotificationCenter.default.removeObserver(observer) }; observer = nil; return }
+            guard observer == nil else { return }
+            observer = NotificationCenter.default.addObserver(forName: Self.show, object: nil, queue: .main) { [weak self] _ in self?.present() }
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            pending?.cancel()
+            let w = DispatchWorkItem { [weak self] in self?.present() }
+            pending = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: w)
+        }
+        override func mouseExited(with event: NSEvent) { hide() }
+
+        /// The step changed while the hint shows: redraw it.
+        func refresh() {
+            guard let popover, let content else { return }
+            (popover.contentViewController as? NSHostingController<AnyView>)?.rootView = content()
+        }
+
+        func present() {
+            guard popover == nil, let content, let window, window.isVisible, !isHiddenOrHasHiddenAncestor else { return }
+            let host = NSHostingController(rootView: content())
+            host.sizingOptions = [.preferredContentSize]
+            let p = NSPopover()
+            p.behavior = .applicationDefined
+            p.animates = !Motion.reduce
+            p.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            p.contentViewController = host
+            p.show(relativeTo: bounds, of: self, preferredEdge: .minY)
+            host.view.window?.ignoresMouseEvents = true
+            popover = p
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown, .scrollWheel]) { [weak self] e in
+                self?.hide(); return e
+            }
+        }
+
+        func hide() {
+            pending?.cancel(); pending = nil
+            if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil
+            popover?.close(); popover = nil
+        }
+
+        deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
     }
 }
 

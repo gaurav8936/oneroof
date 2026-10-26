@@ -583,7 +583,6 @@ final class AEFolderTests: XCTestCase {
         let fm = FileManager.default
         let pkg = try temp("pkg"), deck = pkg + "/deck"
         XCTAssertNil(AEFolder.deckRoot(pkg))
-        XCTAssertNil(AEFolder.courseDir(pkg))
         try fm.createDirectory(atPath: deck + "/content", withIntermediateDirectories: true)
         try "{}".write(toFile: deck + "/content/catalog.json", atomically: true, encoding: .utf8)
         for (track, slug, page) in [("rhythms", "day-recap", true), ("rhythms", "no-page", false), ("ship", "pr-lifecycle", true)] {
@@ -593,25 +592,12 @@ final class AEFolderTests: XCTestCase {
         XCTAssertEqual(AEFolder.deckRoot(pkg), deck)
         XCTAssertEqual(AEFolder.deckCards(deck).map { "\($0.track)/\($0.slug)" }, ["rhythms/day-recap", "ship/pr-lifecycle"])
         XCTAssertEqual(AEFolder.deckRoot(deck), deck)   // ONEROOF_AE_PATH straight at the deck repository
-        // LAB-1257: the course and the hooks are read from the deck; the skills One Roof lists are the deck's.
-        XCTAssertNil(AEFolder.courseDir(pkg))
-        try fm.createDirectory(atPath: deck + "/content/course/audio", withIntermediateDirectories: true)
+        // LAB-1257: the hooks are read from the deck; the skills One Roof lists are the deck's. (1.9.2: no course.)
+        XCTAssertNil(AEFolder.hooksDir(pkg))
         try fm.createDirectory(atPath: deck + "/hooks", withIntermediateDirectories: true)
-        XCTAssertEqual(AEFolder.courseDir(pkg), deck + "/content/course")
         XCTAssertEqual(AEFolder.hooksDir(pkg), deck + "/hooks")
         XCTAssertEqual(FoundationPaths(agenticEngineering: pkg).skills, deck + "/skills")
         XCTAssertEqual(FoundationPaths(agenticEngineering: deck).skills, deck + "/skills")
-    }
-
-    func testCourseIsListedFromTheDeck() throws {
-        let fm = FileManager.default
-        let pkg = try temp("course"), c = pkg + "/deck/content/course"
-        try fm.createDirectory(atPath: c + "/audio/01-start-here", withIntermediateDirectories: true)
-        try "{}".write(toFile: pkg + "/deck/content/catalog.json", atomically: true, encoding: .utf8)
-        try "---\ntitle: Start here\n---\n# Start here\n\n## One\n\nText.\n".write(toFile: c + "/01-start-here.md", atomically: true, encoding: .utf8)
-        try "x".write(toFile: c + "/README.md", atomically: true, encoding: .utf8)
-        try Data().write(to: URL(fileURLWithPath: c + "/audio/01-start-here/01-one.mp3"))
-        XCTAssertEqual(try fm.contentsOfDirectory(atPath: AEFolder.courseDir(pkg)!).filter { $0.first?.isNumber == true }, ["01-start-here.md"])
     }
 
     func testYourOwnRoutingFileWinsOverTheAppsOwn() throws {

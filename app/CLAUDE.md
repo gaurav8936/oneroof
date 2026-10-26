@@ -36,7 +36,7 @@ Ship the v2 interface on top of the existing v0.1 app. **Nothing that works toda
 - A page is done only when checked in all three themes on every panel it touches, with contrast tests passing (body 4.5:1, status 3:1).
 
 ## 6. Data
-- herdr snapshot (1 s), SQLite, usage files (30 s), Linear (on demand), workspace files read in place. Never copy `_common` or agentic-engineering content; the AE folder is resolved by `AEFolder` (env → bundled `agentic_engineering/`). One Roof authors no agentic-engineering content (LAB-1257): skills, Learn bands/track names/kinds, the course and the hooks come from the packaged deck; routing.json/roles.json are app config in `Resources/agent-routing/`.
+- herdr snapshot (1 s), SQLite, usage files (30 s), Linear (on demand), workspace files read in place. Never copy `_common` or agentic-engineering content; the AE folder is resolved by `AEFolder` (env → bundled `agentic_engineering/`). One Roof authors no agentic-engineering content (LAB-1257): skills, Learn bands/track names/kinds and the hooks come from the packaged deck (1.9.2: no course, LAB-1274); routing.json/roles.json are app config in `Resources/agent-routing/`.
 - Captions and the decision "why" come from the caption engine (shared/ENGINES.md). The model is optional: every engine has a deterministic fallback, and the UI shows the fallback immediately.
 - Write actions that need APIs not yet wired (e.g. Linear comment on handoff) render but stay inert, labelled "not connected", never faked.
 

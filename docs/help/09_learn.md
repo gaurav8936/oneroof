@@ -1,64 +1,49 @@
 # One Roof help: Learn
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-26
 
-> **One line:** Learn (⇧⌘E) puts a short narrated course on agentic engineering, every skill's page and any Learn folders you add inside One Roof, read where they live and searchable in one list, with a player that keeps going while you work.
-
-![Learn: the page list on the left](img/learn.png)
+> **One line:** Learn (⇧⌘E) is the narrated Agentic Engineering deck inside One Roof, in three views (Radio, Writing and All cards), with "How do I…?" answers and a player that keeps going while you work.
 
 ## Goal
 
-Learning how to work with agents should not mean leaving the place where the work happens. Learn shows the material in One Roof but never copies it: each page is read from its folder every time you open it, so an edit there shows up here at once.
+Learning how to work with agents should not mean leaving the place where the work happens. Learn shows the deck that ships with One Roof but never copies or rewrites it: every card, skill, band and track name comes from the Agentic Engineering deck's own repository, packaged when the app is built.
 
 ## Open it
 
-- **⇧⌘E** (View › Learn), **Learn** in the toolbar, or "Learn" in the command palette.
-- **From a skill:** the Learn button on any skill in Foundations › Skills, or pick a skill in the command palette.
-- **Close it:** the terminal button at the top of the list, or ⇧⌘E again.
+- **⇧⌘E** (View › Learn), **Learn** in the places rail, or "Learn" in Search (⌘K).
+- **From a skill:** the Learn button on any skill in Foundations › Skills, or a skill in Search, opens that skill's card.
+- **From a session:** the Plan panel's **Related in Learn** lists the three cards that best match the session's name and objective.
 
-## What is in it
+## The three views
 
-| Section | Where it is read from | What you get |
-|---|---|---|
-| Course | `deck/content/course/` in the bundled package (the deck repository is its only source) | The 12 lessons of the course, from "Start here" to "Voices worth reading". Each lesson has narration: press **Play in One Roof**. |
-| Agentic Engineering | `deck/` in the bundled package | The whole deck: its home and track pages, then every narrated card by track (**Agentic Engineering · <track>**), each a skill an agent can run and a lesson with narration. A waveform icon means the page has narration. |
-| Your Learn folders | the folders you add in Settings › Foundations › Learn folders | Every Markdown page in them, and each folder of narration clips as a playlist. |
+The control at the top right switches between them.
 
-Everything ships inside One Roof, audio included, and works offline. There is no folder to choose: Settings shows what is bundled. One Roof writes none of this material itself: the deck, its bands (Context · Loops · Evidence · Procedure), track names, the course and the hooks all come from the Agentic Engineering deck's repository, packaged at build time.
+- **Radio:** the deck as a radio. Four bands (Context · Loops · Evidence · Procedure) sit on a dial, one line per card. Click a band key or an "On this band" chip to open the band, then pick what to hear. ▶, a line on the dial, ⏭, Play the band and a card's ▶ play. Programmes below play a set of cards in order.
+- **Writing:** posts from the blog, with a broadcast schedule; open one to read it. Posts in your own Learn folders (Settings › Foundations › Learn folders, one folder per post with an `index.md`) join them.
+- **All cards:** every card at a glance, **By band**, **By kind** or **By folder** (the deck's skills folder as it ships: click a folder to list it, a file to read it, double-click a skill to open its card).
 
-One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched, its links and playbook card are hidden, and it does not open in Learn. Your folder's files are not changed. The list is `LearnExclusions` in One Roof.
+A card's page (its **station**) has Listen (scene by scene, with the narration), Transcript and Skill file tabs, and **Play**, **Use in a session ▾** (sends `/skill-name` to a live agent session) and **Open in browser** at the top.
 
-## Browse and read
-
-- **Search:** type in the box at the top. Plain words filter the list by title.
-- **Read:** click a page. Markdown pages render as text; HTML pages show as they would in a browser, with their own pictures and scripts.
-- **Open in browser:** the button at the top of an open page.
-- **Send a skill to a session:** from Foundations › Skills, type `/name` into the selected session.
+Everything ships inside One Roof, audio included, and works offline. One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched (`LearnExclusions`).
 
 ## How do I…? (⌥⌘/)
 
-![Learn answering a "how do I" question: the best matches first, then other matches](img/learn-how-do-i.png)
+Ask a question in your own words and Learn opens the card that answers it best.
 
-Ask a question in your own words and Learn finds the pages that answer it.
+- **Ask:** Help › **How Do I…?** (**⌥⌘/**) puts the cursor in Learn's "How do I…? or search N cards" box. Type a question or a few words: the matching cards light up in All cards, with matching posts beside them.
+- **From Search (⌘K):** the best cards come first; One Roof Help pages that match open on the Help page.
+- **From a session:** the Plan panel's **More: how do I…** asks with the session's objective and opens the best card.
+- **How it ranks:** by the words your question shares with each card's title, subtitle, description, triggers and track. A title word counts more, a word on nearly every card counts for little, small words like "how" and "the" are ignored, and "deploying" matches "deploy". No AI model, nothing leaves the Mac.
 
-- **Ask:** Help › **How Do I…?** (**⌥⌘/**), or "How do I…? (Learn)" in the command palette, opens Learn with the cursor in the box. Type the question.
-- **Best matches** appear at the top of the list, best first, and the best page opens by itself when you ask from a session. Below them come the pages whose title contains what you typed.
-- **How it ranks:** by the words your question shares with each page's title, description and opening text. A title word counts more, and a word that is on nearly every page counts for little. Small words like "how", "do" and "the" are ignored, and "deploying" matches "deploy". There is no AI model and nothing leaves the Mac, so it is instant.
-
-**From a session:** the plan panel of an agent session shows **Related in Learn**, the three pages that best match the session's name and objective (a "Flaky login test" session shows the test-first skill). Click one to open it. **More: how do I…** asks Learn with the session's objective. Plain terminals don't show it, because their name says nothing about the work.
+One Roof's own help is on the **Help** page (Help › One Roof Help), not in Learn.
 
 ## Listen while you work (the player)
 
-![Learn playing a narrated lesson: the parts on the right, the player bar at the bottom, a mini player in the toolbar](img/learn-player.png)
+- **Play:** ▶ on a card, a band or a programme. Each card plays its parts in order, one per narrated scene.
+- **Player bar** (bottom of Learn): the card and the part you are on, previous / play-pause / next, a scrubber, the **speed** (0.75× to 2×, remembered), the **queue** (what plays next), and × to stop. Click the title to open the card.
+- **Keep working:** the audio carries on in any other view. A **mini player** in the toolbar shows what is playing; its title opens the card.
+- **Continue where you left off:** One Roof remembers the part and second for each card.
 
-One Roof has its own player for narration: every course lesson, every folder of narration clips in your Learn folders, and narrated skill pages if your folder has them.
+## The classic window
 
-- **Play:** on a page with narration, press **Play in One Roof** at the top. It plays the page's parts in order, one per section, each named after its section. For a folder of clips, click any part in the list to start from there.
-- **Player bar** (bottom of Learn): the page and the part you are on, previous / play-pause / next, a scrubber, the **speed** (0.75× to 2×, remembered), the **queue** (jump to any part), and × to stop.
-- **Keep working:** the audio carries on when you go back to the terminals or any other view. A **mini player** at the top shows what is playing. Its button pauses, and clicking the title opens that page in Learn again.
-- **Continue where you left off:** One Roof remembers the part and second for each page. The button then says **Continue part 3**. When you hear a page to the end, it starts from the beginning next time.
-- **Previous** goes to the start of the part if you are more than 3 seconds in, and to the part before otherwise.
-
-## Make your own narrated pages
-
-The bundled course is written and narrated in the Agentic Engineering deck's repository (`content/course/`, re-recorded with `scripts/course/make-audio.py`, which needs an `OPENAI_API_KEY`). For your own material, put Markdown pages and folders of `.mp3` clips in a folder and add it under Settings › Foundations › Learn folders.
+In the classic window (the older layout, if you switched back to it), Learn is the older list of pages: the deck's pages and cards, One Roof Help and your Learn folders' Markdown pages and narration folders, with a search box over all of them.

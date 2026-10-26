@@ -5,8 +5,8 @@ import Foundation
 /// development. Since LAB-768 there is no folder choice in Settings.
 ///
 /// 1.9.0 (LAB-1257): One Roof authors no agentic-engineering content. The package holds only the linking script and the
-/// deck (`deck/`: the deck repository at main, packaged by scripts/bundle.sh), and every skill, card, the course
-/// (`deck/content/course`) and the hooks (`deck/hooks`) are read from the deck. The routing rules are One Roof's own
+/// deck (`deck/`: the deck repository at main, packaged by scripts/bundle.sh), and every skill, card and the hooks
+/// (`deck/hooks`) are read from the deck. 1.9.2 (LAB-1274): One Roof has no course any more. The routing rules are One Roof's own
 /// configuration (`agent-routing/` in the app's Resources), not a skill.
 public enum AEFolder {
     public enum Source: String, Sendable { case environment, settings, bundled, missing }
@@ -69,14 +69,6 @@ public enum AEFolder {
             }
         }
         return out
-    }
-
-    /// LAB-1257 · the course (Learn › Pages › Course): `content/course` in the deck, lessons `NN-*.md` with narration in
-    /// `audio/<lesson>/`. Nil without a deck.
-    public static func courseDir(_ ae: String) -> String? {
-        guard let deck = deckRoot(ae) else { return nil }
-        let d = deck + "/content/course"
-        return FileManager.default.fileExists(atPath: d) ? d : nil
     }
 
     /// LAB-1257 · the optional Claude Code hooks, `hooks/` in the deck. Nil without a deck.

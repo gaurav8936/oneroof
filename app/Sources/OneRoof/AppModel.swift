@@ -59,8 +59,11 @@ final class AppModel: ObservableObject {
     @Published var busy: Set<String> = []
     /// A Learn page to open (e.g. a skill's page from Foundations › Skills).
     @Published var learnTarget: String?
-    /// A "how do I…" question for Learn to answer; Learn ranks its pages and opens the best one.
+    /// A "how do I…" question for Learn to answer; Learn ranks its pages and opens the best one (v2: the best card's
+    /// station, LAB-1274).
     @Published var learnQuery: String?
+    /// LAB-1274 · a One Roof Help page for the v2 Help page (B4.1) to open at (Learn has no Pages list any more).
+    @Published var helpTarget: String?
     /// Every Learn page (loaded once, in the background, on first use).
     @Published private(set) var learnItems: [LearnItem] = []
     private var learnDocs: [LearnMatch.Doc] = []
@@ -375,6 +378,30 @@ final class AppModel: ObservableObject {
             let docs = list.map { LearnMatch.Doc(id: $0.id, title: $0.title, text: $0.section + " " + $0.summary) }
             DispatchQueue.main.async { self.learnItems = list; self.learnDocs = docs; self.learnLoading = false }
         }
+    }
+
+    /// LAB-1274 · the bundled deck (Radio · Writing · All cards), read once. Nil when the build has no deck.
+    var learnDeck: LearnDeck? {
+        let root = AEFolder.deckRoot(settings.agenticEngineering.path)
+        if let d = deckCache, d.root == root { return d }
+        deckCache = LearnDeck.load(deck: root)
+        return deckCache
+    }
+    private var deckCache: LearnDeck?
+
+    /// LAB-1274 · the deck cards that best answer `question` (v2: How do I…, Search, the Plan panel), best first.
+    func learnCards(_ question: String, limit: Int = 8) -> [DeckCard] {
+        guard let deck = learnDeck else { return [] }
+        return deck.bestCards(for: question, limit: limit).compactMap { deck.cards[$0] }
+    }
+
+    /// LAB-1274 · open a deck card's station in Learn (v2). Re-set so the same card opens again. `show` false: the
+    /// caller opens Learn itself (e.g. in its own window).
+    func openLearnCard(_ slug: String, show: Bool = true) {
+        guard let deck = learnDeck, deck.cards[slug] != nil else { return }
+        learnTarget = nil
+        learnTarget = deck.htmlPath(slug)
+        if show { learnMode = true }
     }
 
     /// Learn pages that best answer `question`, best first.

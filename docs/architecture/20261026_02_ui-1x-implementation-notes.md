@@ -94,7 +94,7 @@
 
 **Find in Workspace (A10.6)** opens as its own page (no file tree, file tabs or session tabs), titled "Find in Workspace ⇧⌘S"; its ✕, the rail or a result lead back. In v2 the file viewer's pages (Markdown, HTML, folders, search, diffs) take the centre's theme rather than the terminal's, as the handover draws them (C6.1, A10.6).
 
-**Window switcher (LAB-968)** was built in M1/M2 (`V2SessionColumn` switcher and `v2ShowWindowMenu`); Move to iPad stays hidden (LAB-1189).
+**Window switcher (LAB-968)** was built in M1/M2 (`V2SessionColumn` switcher and `v2ShowWindowMenu`); Move to iPad was never built (the owner cancelled the iPad feature on 2026-10-26).
 
 **Deviations, on purpose:**
 - Search's Theme items are the six looks in v2 (the handover's "Theme: all panels Sky Studio"); single-theme-for-all-panels stays under Customize.
@@ -401,3 +401,71 @@ A12.folder.track (doctrine, as LAB-1253_3), A12.folder.skill, A12.folder.file (S
 *Not changed / open.* On a band page the dial's track labels can overlap when a track has one card (Foundations · Vault on
 Context; 1.8.1 layout). Track plain names still come from `LearnDeck` (lane 190a moves them to the catalog; By folder
 reads them through the same API).
+
+## 1.9.2 · Learn is three views (lane 192)
+
+**LAB-1274 · owner decision (2026-10-26).** Learn in the v2 window is exactly **Radio · Writing · All cards** (All cards
+keeps By band / By kind / By folder). The Pages segment and its view are gone, and the Course is removed from One Roof
+entirely. The classic window is out of scope and keeps its page list (LAB-1225 holds its removal); it simply has no
+Course section any more. Learn opens on Radio; without a deck it shows the neutral "not in this build" state (no mode
+control, no search), never Pages.
+
+**Routing (OneRoofCore `LearnRoute.swift`, tested in `LearnRouteTests`).** `LearnDeck.route(target, helpFolder:)` decides
+where a Learn target (a page path in `AppModel.learnTarget`) goes: a deck card's page, or a skill's page / SKILL.md from
+another copy of the deck → the card's station; a One Roof Help page → the window's Help page at that page
+(`AppModel.helpTarget`, read by `V2HelpPage`); a field-manual page → its track's band at the track (home → Radio);
+anything else (an extra-folder page, an old course lesson) → Learn stays where it is. `LearnDeck.bestCards(for:)` ranks
+cards for a question (`LearnMatch` over title, slug, subtitle, description, triggers and the track's plain name, then
+cards that contain every word). How do I… opens the best card's station; an empty question gives the header's search
+field the keyboard; no match shows All cards › How do I… with the question. The header search now lights the
+best-ranked cards when no card contains every word.
+
+**Audit: everything that was reachable only through v2 Learn › Pages.**
+
+| 1.9.1 feature | Where it is in 1.9.2 |
+|---|---|
+| The Pages segment and the Pages list (sidebar, sections, Best matches) | Dropped by owner decision |
+| The Course (12 lessons, narrated from `content/course/audio/`) | Dropped by owner decision: `LearnIndex` course loop, `AEFolder.courseDir`, `LearnItem.audioFolder` removed; `bundle.sh` leaves the deck's `content/course` out; `package-app.sh` no longer requires it; `check.sh` fails if it is packaged |
+| Field manual home and track pages | Dropped by owner decision; a link to one opens Radio (home) or the band at that track |
+| Extra Learn folder pages (Markdown pages, narration folders) | Dropped in the v2 window by owner decision; the folders still feed Writing (posts) and the classic list; Settings says so |
+| A deck card as a page (its HTML in the page view) | The card's station (Listen · Transcript · Skill file); the animated page via Open in browser |
+| Play page / Continue part n | The station's Play in One Roof, every ▶; progress per card kept (CoursePlayer) |
+| Use in a session ▾ | The station's header and By folder's skill and SKILL.md panels |
+| Open in browser | The station's header |
+| Page narration and its queue | Card narration with the up-next queue (LearnAudio, player bar) |
+| "How do I…? or search N pages" | "How do I…? or search N cards" in the header; results in All cards › How do I… |
+| Breadcrumbs (title · section) | The header crumbs of each place (Learn › Radio › band › card …) |
+| How Do I…? (⌥⌘/, palette, Plan's "More: how do I…") | The best card's station (`bestCards`); no question focuses the search field |
+| Search's Learn results (BEST ANSWER, LEARN) | Cards (open the station) plus matching One Roof Help pages (open the Help page) |
+| Plan panel › Related in Learn | The three best cards for the session |
+| Foundations › Skills Learn button, the palette's skills | The card's station (`route`) |
+| Mini player and player-bar title | The playing card's station |
+| One Roof Help in Learn | The Help page (Help › One Roof Help, B4.1); its "Open in Learn" became "Open the file" |
+| Links inside a deck card page | Shown in the browser (Open in browser); field-manual links route as above |
+| ">_" back to terminals in the Pages sidebar | The places rail, ⌘L, ⇧⌘E |
+
+**LAB-1272 · band dial labels.** A track's name is drawn under its first card; with one-card tracks (Foundations then
+Vault on Context) they printed over each other. `DialLabels.place` gives each label its measured text width (SF Mono at the
+dial's size): first row if free, else a second row (the band dial is 112/1200 tall now, was 98), else shortened with "…"
+to the dial's end, else hidden; the full name is a tooltip either way. Checked on all four bands.
+
+**By folder's panel.** With nothing selected it reads "How the table reads": the skills folder as shipped, one row per
+folder (track, then skill), what Name / What it is / Band / Size mean, and click a folder · click a file · double-click a
+skill. By band and By kind keep "How the map reads".
+
+**Also in this lane (owner, via the lead).** *Step button hint:* hovering the toolbar's Focus step button shows, after
+0.6 s, a popover with what a click and a hold do, the keys, and the four steps with the current one marked
+(`V2StepHint`, `StepHintAnchor`: an AppKit tracking area because SwiftUI hover does not reach NSToolbar items; the popover
+ignores the mouse; any click, key or scroll closes it and still goes through). `ONEROOF_SELFTEST_STEPHINT=1` shows it.
+*Plan close button:* the slid-over Plan's "✕" floated over its tab row; the Plan (inspector and slid-over) now ends its
+tab row with a rule and `V2PanelCloseButton` (24 pt, filled at rest, stronger on hover, tooltip "Close panel (⌥⌘P)",
+accent focus ring). *iPad:* the owner cancelled the iPad feature; the MenusV2 comment about Move to iPad is gone.
+
+**Captures** (real-profile copy, Daylight): A12.2 Radio, A12.writing, A12.3 By band, A12.folder (new panel text),
+A12.band × 4 (labels), A12.howdoi (`worktrees` → Worktree lane; "how do I run two agents in parallel" → Agent-sxs),
+a Help-page link from Learn (opens Help at "Learn"), the no-deck state, A1.stephint, the Plan close at Full, slid over
+and at 240 pt. `ONEROOF_SELFTEST_LEARNMODE=pages` now opens Radio.
+
+*Not changed / open.* The classic window's Learn search still says "N pages" (it is a page list). Graphite and Midnight
+not captured. Search results are cards and Help pages only (no posts). The step-hint self-test shows the hint in every
+open window. The hover delay and dismissal were checked in code only (captures cannot hover).

@@ -5,11 +5,12 @@ import OneRoofCore
 // LAB-1233 · Learn in the v2 window, as drawn in the handover's `One Roof Learn.dc.html` (A12.2, 43-A12_2.jpg): one content
 // header (breadcrumb · section on the left; on the right the card's actions, the mode control and "How do I…?" search), then
 // Radio home, a band, a card station (Listen · Transcript · Skill file), Writing and the post reader, programmes and
-// All cards. Today's Learn (A12, LearnView's pages) stays as "Pages" in the same control. Audio goes through CoursePlayer.
+// All cards. 1.9.2 (LAB-1274, owner): the control is exactly Radio · Writing · All cards; the Pages list and the course are
+// gone (the classic window keeps its pages). Audio goes through CoursePlayer.
 
 /// Where Learn is (one per window's Learn view; kept while the window lives).
 final class LearnNav: ObservableObject {
-    enum Place: String { case pages, radio, band, card, post, writing, path, library }
+    enum Place: String { case radio, band, card, post, writing, path, library }
     @Published var place: Place
     @Published var band = "loops"
     @Published var slug = "loops-first"
@@ -27,19 +28,17 @@ final class LearnNav: ObservableObject {
     @Published var focusTrack: String?
     @Published var hover: String?
     @Published var toast = ""
-    /// True when a self-test asked for a place (then Learn does not fall back to Pages without the deck).
-    let pinned: Bool
+    /// LAB-1274 · bumped to give the header's "How do I…?" field the keyboard (How Do I…? with no question).
+    @Published var focusSearch = 0
     private var toastWork: DispatchWorkItem?
     private var sceneCache: [String: [DeckScene]] = [:]
 
-    /// ONEROOF_SELFTEST_LEARNMODE: pages · radio · band[:id[:track]] · card[:slug[:tab]] · writing · post[:slug] · path[:id] ·
+    /// ONEROOF_SELFTEST_LEARNMODE: radio · band[:id[:track]] · card[:slug[:tab]] · writing · post[:slug] · path[:id] ·
     /// library (or map) · search:<text> · folder[:<path from the deck root>] (All cards › By folder, expanded down to it and
     /// selected) · radiokey:<band> / radiochip:<band>:<track> (Radio home, then a click on that band key / chip a moment later).
     init(spec: String? = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LEARNMODE"]) {
-        pinned = spec != nil
         let f = (spec ?? "radio").split(separator: ":", maxSplits: 2).map(String.init)
         switch f.first ?? "radio" {
-        case "pages": place = .pages
         case "band": place = .band; if f.count > 1 { band = f[1] }; if f.count > 2 { focusTrack = f[2] }
         case "folder":
             place = .library; lens = "folder"
@@ -65,7 +64,6 @@ final class LearnNav: ObservableObject {
     /// The mode control's segment for the current place.
     var mode: String {
         switch place {
-        case .pages: return "pages"
         case .radio, .band, .card, .path: return "radio"
         case .writing, .post: return "writing"
         case .library: return "library"
@@ -162,19 +160,17 @@ struct LearnChipStyle: ButtonStyle {
     }
 }
 
-/// Radio · Writing · All cards · Pages.
+/// Radio · Writing · All cards (1.9.2: no Pages segment, LAB-1274).
 struct LearnModeControl: View {
     @ObservedObject var nav: LearnNav
-    var onPages: () -> Void
     @Environment(\.theme) private var t
-    private let items = [("radio", "Radio"), ("writing", "Writing"), ("library", "All cards"), ("pages", "Pages")]
+    static let items = [("radio", "Radio"), ("writing", "Writing"), ("library", "All cards")]
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(items, id: \.0) { id, label in
+            ForEach(Self.items, id: \.0) { id, label in
                 let on = nav.mode == id
                 Button {
                     switch id {
-                    case "pages": onPages()
                     case "writing": nav.go(.writing)
                     case "library": nav.query = ""; nav.libSel = nil; nav.go(.library)
                     default: nav.go(.radio)
@@ -187,7 +183,8 @@ struct LearnModeControl: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(id == "pages" ? "Today's Learn pages: course, field manual, skills, One Roof Help and your Learn folders" : label)
+                .help(label)
+                .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
         .padding(2)
@@ -199,6 +196,7 @@ struct LearnModeControl: View {
 struct LearnSearchField: View {
     @ObservedObject var nav: LearnNav
     let total: Int
+    @FocusState private var focused: Bool
     @Environment(\.theme) private var t
     var body: some View {
         HStack(spacing: 6) {
@@ -208,7 +206,9 @@ struct LearnSearchField: View {
                 if !v.isEmpty { nav.go(.library) } else if nav.place == .library { nav.go(.radio) }
             }))
             .textFieldStyle(.plain).font(.system(size: 12)).foregroundStyle(t.text.color)
+            .focused($focused)
         }
+        .onChange(of: nav.focusSearch) { _, _ in focused = true }
         .padding(.horizontal, 8).frame(width: 220, height: 24)
         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(t.surface.color))
         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(t.separatorStrong.color, lineWidth: 1))
@@ -364,7 +364,7 @@ struct V2LearnRadio: View {
             VStack(spacing: 10) {
                 Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 34)).foregroundStyle(t.text3.color)
                 Text("The narrated deck is not in this build").font(.system(size: 15, weight: .semibold)).foregroundStyle(t.text.color)
-                Text("Radio, Writing and All cards read the Agentic Engineering deck bundled with release builds, and so do the course and the skills. Pages still has One Roof Help and your Learn folders.")
+                Text("Radio, Writing and All cards read the Agentic Engineering deck bundled with release builds, and so do the skills. One Roof Help is under Help › One Roof Help.")
                     .font(.system(size: 12)).foregroundStyle(t.text2.color).multilineTextAlignment(.center).frame(maxWidth: 440)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -605,9 +605,12 @@ struct LearnDial: View {
     @Environment(\.theme) private var t
 
     private struct Mark { var slug: String; var x: CGFloat; var h: CGFloat; var on: Bool }
-    private struct Label { var text: String; var x: CGFloat; var accent: Bool }
+    private struct Label { var text: String; var x: CGFloat; var accent: Bool; var row = 0; var width: CGFloat? = nil; var hidden = false }
 
-    private func layout(_ w: CGFloat) -> ([Mark], [Label]) {
+    /// The labels' type size at scale `s` (the band page's dial is drawn on a 1200-wide grid, Radio's on 680).
+    private func fontSize(_ s: CGFloat) -> CGFloat { 10 * max(1, s * 0.9) }
+
+    private func layout(_ w: CGFloat, _ s: CGFloat) -> ([Mark], [Label]) {
         let bands = only.map { id in LearnDeck.bands.filter { $0.id == id } } ?? LearnDeck.bands
         let gap: CGFloat = 14 * w / 680
         let seg = (w - CGFloat(bands.count - 1) * gap) / CGFloat(bands.count)
@@ -618,6 +621,7 @@ struct LearnDial: View {
             let list = deck.lists[b.id] ?? []
             let step = seg / CGFloat(max(1, list.count - 1))
             let on = only != nil || b.id == tunedBand
+            if only != nil { labels.append(Label(text: "START HERE", x: x0, accent: true)) }
             var lastTrack: String?
             for (j, k) in list.enumerated() {
                 let x = x0 + CGFloat(j) * step
@@ -627,7 +631,18 @@ struct LearnDial: View {
                     labels.append(Label(text: LearnDeck.label(tr).uppercased(), x: x, accent: false)); lastTrack = tr
                 }
             }
-            labels.append(only != nil ? Label(text: "START HERE", x: x0, accent: true) : Label(text: "\(b.n) \(b.title.uppercased())", x: x0, accent: on))
+            if only == nil { labels.append(Label(text: "\(b.n) \(b.title.uppercased())", x: x0, accent: on)) }
+        }
+        // LAB-1272 · the band page names a track under its first card; a short track used to print its name over the next
+        // one. Each label gets its text width: first row, else a second row, else shortened, else hidden (DialLabels).
+        if only != nil {
+            let font = NSFont.monospacedSystemFont(ofSize: fontSize(s), weight: .regular)
+            let widths = labels.map { ceil(($0.text as NSString).size(withAttributes: [.font: font]).width) }
+            let placed = DialLabels.place(zip(labels, widths).map { (Double($0.x), Double($1)) }, total: Double(w), gap: Double(8 * s))
+            for (i, p) in placed.enumerated() {
+                labels[i].row = p.row; labels[i].hidden = p.hidden
+                if p.truncated { labels[i].width = CGFloat(p.width) }
+            }
         }
         return (marks, labels)
     }
@@ -635,8 +650,8 @@ struct LearnDial: View {
     var body: some View {
         let d = t.display
         GeometryReader { g in
-            let (marks, labels) = layout(g.size.width)
             let s = g.size.width / (only != nil ? 1200 : 680)
+            let (marks, labels) = layout(g.size.width, s)
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, _ in
                     for m in marks {
@@ -647,9 +662,20 @@ struct LearnDial: View {
                     }
                 }
                 ForEach(Array(labels.enumerated()), id: \.offset) { _, l in
-                    Text(l.text).font(.system(size: 10 * max(1, s * 0.9), design: .monospaced)).tracking(only != nil ? 0 : 1)
-                        .foregroundStyle(l.accent ? d.accent.color : d.mute.color).fixedSize()
-                        .offset(x: l.x, y: 80 * s)
+                    let y = 80 * s + CGFloat(l.row) * (fontSize(s) + 5)
+                    if l.hidden {
+                        // No room even shortened: the name is still there on hover, over its first card.
+                        Color.clear.frame(width: 10, height: fontSize(s) + 2).contentShape(Rectangle())
+                            .help(l.text.capitalized).offset(x: l.x - 5, y: y)
+                    } else {
+                        Text(l.text).font(.system(size: fontSize(s), design: .monospaced)).tracking(only != nil ? 0 : 1)
+                            .foregroundStyle(l.accent ? d.accent.color : d.mute.color)
+                            .lineLimit(1).truncationMode(.tail)
+                            .fixedSize(horizontal: l.width == nil, vertical: true)
+                            .frame(width: l.width, alignment: .leading)
+                            .help(l.text.capitalized)
+                            .offset(x: l.x, y: y)
+                    }
                 }
             }
             .contentShape(Rectangle())
@@ -659,7 +685,8 @@ struct LearnDial: View {
             }
             .help(deck.cards[tuned]?.title ?? "")
         }
-        .aspectRatio(only != nil ? 1200 / 98 : 680 / 98, contentMode: .fit)
+        // The band page leaves room for a second row of track names (LAB-1272).
+        .aspectRatio(only != nil ? 1200 / 112 : 680 / 98, contentMode: .fit)
     }
 }
 
