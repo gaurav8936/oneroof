@@ -38,17 +38,8 @@ if [ -f "$PKG/deck/content/catalog.json" ]; then
     done
     ok "every role's skill is in the deck"
   fi
-  C="$PKG/deck/content/course"
-  if [ -d "$C" ]; then
-    for l in "$C"/[0-9][0-9]-*.md; do
-      b="$(basename "$l" .md)"; want="$(grep -c '^## ' "$l")"
-      have="$(find "$C/audio/$b" -name '*.mp3' 2>/dev/null | wc -l | tr -d ' ')"
-      [ "$want" = "$have" ] || no "course $b: $want sections but $have audio clips"
-    done
-    ok "$(find "$C" -maxdepth 1 -name '[0-9][0-9]-*.md' | wc -l | tr -d ' ') course lessons"
-  else
-    no "deck has no content/course (the deck repository's main predates LAB-1257)"
-  fi
+  # 1.9.2 (LAB-1274): One Roof has no course; bundle.sh leaves the deck's content/course out.
+  [ -e "$PKG/deck/content/course" ] && no "deck/content/course is packaged: One Roof has no course since 1.9.2 (LAB-1274)" || ok "no course packaged"
 else
   ok "no deck in the source checkout (added when the app is built)"
 fi

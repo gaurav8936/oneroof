@@ -472,7 +472,7 @@ struct V2PlanSlot: View {
             V2InspectorEdgeTab { tab in controller.v2ShowPlanOverlay(tab: tab) }
                 .themed(model.themes.plan, scale: win.textScale)
         } else {
-            PlanPanelView(model: model, win: win)
+            PlanPanelView(model: model, win: win) { controller.togglePlanPanel() }
         }
     }
 }
@@ -483,11 +483,8 @@ struct V2PlanOverlay: View {
     @ObservedObject var win: WindowState
     let controller: MainWindowController
     var body: some View {
-        PlanPanelView(model: model, win: win)
-            .overlay(alignment: .topTrailing) {
-                Button { controller.v2HidePlanOverlay() } label: { Text("✕").ui(11) }
-                    .buttonStyle(.plain).padding(8).help("Hide the Plan (⌥⌘P)").accessibilityLabel("Hide the Plan")
-            }
+        // LAB-1274: the close button sits at the end of the panel's own tab row (it floated over the tabs before).
+        PlanPanelView(model: model, win: win) { controller.v2HidePlanOverlay() }
     }
 }
 

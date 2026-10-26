@@ -1,12 +1,12 @@
 # agentic_engineering
 
 What One Roof bundles for agentic engineering. Since 1.9.0 One Roof authors **no** agentic-engineering content: every
-skill, narrated card, Learn band, the course and the hooks live in the Agentic Engineering deck's own repository, and
+skill, narrated card, Learn band and the hooks live in the Agentic Engineering deck's own repository, and
 every build packages that repository as it is on `main` into the app (`app/scripts/bundle.sh`, `ONEROOF_AE_DECK_REPO`).
 
 ```
 scripts/     sync-skills.sh (links the deck's skills into every agent) · check.sh (release check)
-deck/        added at build time, inside the app only: skills/, content/ (catalog, field manual, course/), hooks/
+deck/        added at build time, inside the app only: skills/, content/ (catalog, field manual; no course since 1.9.2), hooks/
 ```
 
 One Roof's own routing rules (`routing.json`, `roles.json`) are app configuration in `app/Resources/agent-routing/`;

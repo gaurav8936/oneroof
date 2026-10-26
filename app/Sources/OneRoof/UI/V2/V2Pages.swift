@@ -103,7 +103,8 @@ struct V2SettingsPage: View {
     }
 }
 
-/// Help (B4.1): getting started, the help pages, Open in Learn (today's Help in Learn).
+/// Help (B4.1): getting started and the help pages. 1.9.2 (LAB-1274): this is One Roof Help's only home in the v2 window
+/// (Learn has no Pages list); a link to a help page from Learn or Search opens it here (`AppModel.helpTarget`).
 struct V2HelpPage: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -125,10 +126,7 @@ struct V2HelpPage: View {
         let list = pages
         V2PageFrame(crumb: "Help", title: page.map(Self.title) ?? "Help", subtitle: "One Roof runs every coding agent in one place, each saying in plain words what it's doing and what it needs from you.",
                     close: { controller.v2Page = nil }) {
-            RoofButton("Open in Learn") {
-                controller.v2Page = nil
-                model.loadLearn(); if let page { model.learnTarget = page }; model.centre = .learn
-            }
+            if let page { RoofButton("Open the file") { controller.v2Page = nil; model.openInViewer(page) } }
         } content: {
             if list.isEmpty {
                 Text("One Roof Help is not bundled with this build.").ui(13).foregroundStyle(t.text2.color)
@@ -158,6 +156,15 @@ struct V2HelpPage: View {
                 }
             }
         }
+        .onAppear { takeTarget() }
+        .onChange(of: model.helpTarget) { _, _ in takeTarget() }
+    }
+
+    /// A help page asked for from Learn or Search (LAB-1274).
+    private func takeTarget() {
+        guard let target = model.helpTarget else { return }
+        model.helpTarget = nil
+        if FileManager.default.fileExists(atPath: target) { page = target }
     }
 }
 

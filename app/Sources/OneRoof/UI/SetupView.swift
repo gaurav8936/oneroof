@@ -106,7 +106,7 @@ struct SetupView: View {
     @ViewBuilder private var kitSection: some View {
         Section("Agentic engineering") {
             // LAB-768: bundled, nothing to choose.
-            Text("Bundled with One Roof: the course, every skill, and the narrated Agentic Engineering deck (Learn, ⇧⌘E).")
+            Text("Bundled with One Roof: every skill and the narrated Agentic Engineering deck (Learn, ⇧⌘E).")
                 .foregroundStyle(.secondary)
         }
     }

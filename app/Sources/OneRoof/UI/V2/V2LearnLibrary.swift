@@ -214,7 +214,9 @@ struct LearnLibraryPage: View {
     var body: some View {
         let deck = audio.deck
         let q = nav.query.trimmingCharacters(in: .whitespaces)
-        let hits = q.isEmpty ? [] : deck.search(q)
+        // A question ("how do I run two agents at once") rarely has every word in one card: then the best-ranked cards light up.
+        let exact: [String] = q.isEmpty ? [] : deck.search(q)
+        let hits: [String] = q.isEmpty || !exact.isEmpty ? exact : deck.bestCards(for: q, limit: 12)
         let lq = q.lowercased()
         let postHits = q.isEmpty ? [] : posts.filter { ([$0.title, $0.subtitle, $0.summary] + $0.tags).joined(separator: " ").lowercased().contains(lq) }
         let cols = columns
@@ -237,7 +239,7 @@ struct LearnLibraryPage: View {
             }
             reader(hits.count, q, folders: folders).padding(.top, 18)
             if folders {
-                LearnFolderView(model: model, nav: nav, player: player, audio: audio) { intro }.padding(.top, 16)
+                LearnFolderView(model: model, nav: nav, player: player, audio: audio) { folderIntro }.padding(.top, 16)
             } else {
                 HStack(alignment: .top, spacing: 24) { map(cols, hits, q).frame(maxWidth: .infinity); panel(sel, hits, postHits, q).frame(width: 380) }
                 .padding(.top, 16)
@@ -402,6 +404,30 @@ struct LearnLibraryPage: View {
             }
             Text("Hover a square to read it. Click a block to list it here. Click a square to open the card.")
                 .font(.system(size: 12)).foregroundStyle(t.text3.color).padding(.top, 10)
+        }
+    }
+
+    /// LAB-1274 · By folder's panel with nothing selected: how the table reads (By band / By kind keep `intro`).
+    var folderIntro: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            LearnKicker(text: "How the table reads", color: t.text3.color, size: 10)
+            Text("This is the deck's skills folder as it ships inside One Roof. Each row under it is a folder: a track first, then one folder per skill, holding the card, its skill file, its scenes and its narration.")
+                .font(.system(size: 14)).lineSpacing(3).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true).padding(.top, 8).padding(.bottom, 12)
+            ForEach([("Name", "The folder or file. ▸ opens a folder in place."),
+                     ("What it is", "The track's plain name, the card's title, or what a file is for."),
+                     ("Band", "The band of the dial a track's cards play on. Click it to open the band."),
+                     ("Size", "Skills in a track, minutes of a card, clips of narration.")], id: \.0) { k, v in
+                HStack(alignment: .top, spacing: 8) {
+                    Text(k.uppercased()).font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundStyle(t.accentText.color)
+                        .frame(width: 84, alignment: .leading)
+                    Text(v).font(.system(size: 12)).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 8)
+                .overlay(alignment: .top) { Rectangle().fill(t.separator.color).frame(height: 1) }
+            }
+            Text("Click a folder to open it and list it here. Click a file to read it here. Double-click a skill to open its card.")
+                .font(.system(size: 12)).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
         }
     }
 
