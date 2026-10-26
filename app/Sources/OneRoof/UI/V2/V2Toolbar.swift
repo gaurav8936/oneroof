@@ -48,7 +48,9 @@ final class V2ToolbarDelegate: NSObject, NSToolbarDelegate {
         }
         let item = NSToolbarItem(itemIdentifier: id)
         let host = NSHostingView(rootView: view)
-        host.sizingOptions = [.intrinsicContentSize]
+        // The extras (Learn player, Run · Debug) appear and disappear: min/max constraints track the content so the
+        // toolbar re-lays the item out instead of drawing it over Single · Grid · Wall.
+        host.sizingOptions = id == Self.extras ? [.intrinsicContentSize, .minSize, .maxSize] : [.intrinsicContentSize]
         item.view = host
         item.isBordered = false
         item.label = label

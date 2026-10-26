@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.0 — the new window is the One Roof window (26 Oct 2026)
+
+- **One Roof opens in the new window** (LAB-1091, milestone 6). If you never picked a window, you move to it now;
+  Settings › General › Classic layout brings the 0.5.2.9 window back (and stays chosen), and Use the new window…
+  there switches again.
+- **Menus with the new names:** View has Home, Needs You, Sessions ⌘L, Work, Machine, Loops, Learn, Subagents; Single ·
+  Grid · Wall (Grid and Wall arrive in 1.7.0 and 1.8.0); Focus: Step On ⌥⌘F and Step Back ⇧⌥⌘F; Sessions Column,
+  Plan, Files Tab (⌥⌘B opens the Files tab), Changes, Dock ⌃⌘J and Look…. Shortcuts you set under the old names keep
+  working. Edit gains **Copy Session Output** (the shown terminal's screen).
+- **Fixes:** the app no longer crashes on a menu when only a pop-out or Roof window is left open (since 1.2.0, both
+  windows); the editor in the Files tab no longer hides the start of every line; the Learn player and Run · Debug no
+  longer cover Single · Grid · Wall; ⌥⌘C no longer resizes the new window (it brings the terminal forward); the hidden
+  ⌃⌘1–7 place keys no longer clash with Learn's and Loops' shortcuts; a page (Settings, Help) closes when you pick a
+  session from a notification, link or the menu bar; ⇧⌘A opens every session's subagents.
+
 ## 1.5.0 — Settings, Help and Setup in the new window (26 Oct 2026)
 
 - **Settings, Help and Release notes open as pages** over the place you are in (LAB-997, milestone 5 of the new

@@ -64,16 +64,18 @@ final class LookTests: XCTestCase {
         XCTAssertEqual(Place.learn.symbol, "graduationcap")
     }
 
-    func testSettingsKeepUI2OffAndSkyStudioByDefault() throws {
+    func testNewWindowByDefaultFrom160UnlessClassicWasChosen() throws {
         let s = AppSettings()
-        XCTAssertFalse(s.ui2)
+        XCTAssertTrue(s.ui2)
         XCTAssertEqual(s.look, .skyStudio)
         let old = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))   // 0.5.2.9 settings without the keys
-        XCTAssertFalse(old.ui2)
+        XCTAssertTrue(old.ui2, "1.6.0 moves everyone who never chose to the new window")
         XCTAssertNil(old.look, "settings from before 1.0.0 keep their own panel themes")
-        var custom = AppSettings(); custom.look = nil; custom.ui2 = true
-        let back = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(custom))
+        let saved10 = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"ui2":false}"#.utf8))   // 1.0.0-1.5.0 default off
+        XCTAssertTrue(saved10.ui2)
+        var classic = AppSettings(); classic.look = nil; classic.ui2 = false; classic.ui2Chosen = true
+        let back = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(classic))
         XCTAssertNil(back.look)
-        XCTAssertTrue(back.ui2)
+        XCTAssertFalse(back.ui2, "Classic layout, once chosen, stays")
     }
 }

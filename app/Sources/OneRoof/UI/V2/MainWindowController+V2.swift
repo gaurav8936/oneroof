@@ -101,6 +101,8 @@ extension MainWindowController {
         v2InstallPageHost()
         // Anything that changes the centre (a notification, Search, a link) closes the page over it.
         win.$centre.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2Page = nil }.store(in: &v2Bag)
+        // …and so does picking a session (a notification, a oneroof:// link, the menu-bar popover, the hotkey).
+        win.$selectedId.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2Page = nil }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSSplitView.didResizeSubviewsNotification, object: splitView)
             .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2PaintBand() }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
@@ -359,7 +361,7 @@ extension MainWindowController {
                 if e.keyCode == 53, mods.isEmpty, !(self.window?.firstResponder is NSTextView) { self.v2Page = nil; return nil }
                 if e.keyCode == 33, mods == .command { self.v2Page = nil; return nil }   // ⌘[
             }
-            guard e.keyCode == 53, mods.isEmpty else { return e }
+            guard e.keyCode == 53, mods.isEmpty, self.win.place == .sessions else { return e }   // Focus is a Sessions thing
             guard self.win.focusStep == .focus else { return e }
             if self.window?.firstResponder is TerminalSurfaceView { return e }
             self.v2LeaveFocus()
