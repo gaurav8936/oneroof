@@ -39,10 +39,9 @@ extension AppDelegate {
         var at = anchor
         let layouts: [(String, Int)] = [("Single", 1), ("Grid", 2), ("Wall", 3)]
         for (title, n) in layouts {
-            let mi = NSMenuItem(title: title, action: n == 1 ? #selector(v2LayoutSingle(_:)) : (n == 2 ? #selector(v2LayoutGrid(_:)) : nil), keyEquivalent: String(n))
+            let mi = NSMenuItem(title: title, action: n == 1 ? #selector(v2LayoutSingle(_:)) : (n == 2 ? #selector(v2LayoutGrid(_:)) : #selector(v2LayoutWall(_:))), keyEquivalent: String(n))
             mi.keyEquivalentModifierMask = [.command, .option, .control]
             mi.target = self
-            if n == 3 { mi.toolTip = "Wall arrives in 1.8.0" }   // shown, not active yet (CAP-3)
             view.insertItem(mi, at: at); at += 1
         }
         view.insertItem(.separator(), at: at)
@@ -62,6 +61,7 @@ extension AppDelegate {
         focusTerminal(sender)
     }
     @objc func v2LayoutSingle(_ sender: Any?) { if isV2Window { main.win.layout = .single } }
+    @objc func v2LayoutWall(_ sender: Any?) { if isV2Window { main.win.layout = .wall } }
     @objc func v2LayoutGrid(_ sender: Any?) {
         guard isV2Window else { return }
         main.win.layout = .grid

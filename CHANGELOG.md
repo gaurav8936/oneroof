@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.0 — Wall, seat routing rules and Learn Radio (26 Oct 2026)
+
+- **Wall** (⌃⌥⌘3 or the layout control, LAB-1127): every window's live sessions on one page — ten tiles, fifteen on
+  a very wide screen — each with its window, state, Right now line and last terminal lines. Click a tile to open that
+  window on that session; Esc or ‹ Single goes back.
+- **Seat routing rules** in Settings › Seats & accounts: the point at which a running objective step hands off to
+  another agent (and new work skips a seat), and whether reviews go to a different model family. The router already
+  followed these rules; now you can see and change them.
+- **Learn Radio and All cards** (Learn › Radio, All cards): the Agentic Engineering deck as bands you tune into, with a
+  now-playing panel that drives the player (it keeps playing while you work) and each band's narrated cards; All cards
+  is the whole deck by suit and band. Learn's pages stay the first view.
+
 ## 1.7.0 — the composer and Grid (26 Oct 2026)
 
 - **A real composer under every agent's terminal** (LAB-1125, NEW-1): type your message in the box and press ↩; it
