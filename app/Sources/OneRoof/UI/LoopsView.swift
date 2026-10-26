@@ -216,6 +216,7 @@ struct LoopsView: View {
         let last = checks.last
         let isSel = (v2 ? selected : (selected ?? board.loops.first?.id)) == l.id   // v2: nothing open = nothing selected
         return Button { selected = l.id } label: {
+            if v2 { v2Row(l, rs, last) } else {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     StatusDot(status: l.state.pillStatus)
@@ -233,12 +234,31 @@ struct LoopsView: View {
             }
             .padding(.vertical, 7).padding(.horizontal, 8)
             .contentShape(Rectangle())
+            }
         }
         .buttonStyle(PressStyle(radius: Radius.row))
         .hoverHighlight(selected: isSel)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(l.name), \(l.state.label), \(rowRight(l, rs))" + (last.map { $0.checkPassed == true ? ", last check passed" : ", last check failed" } ?? ""))
         .accessibilityAddTraits(isSel ? .isSelected : [])
+    }
+
+    /// v2 row (A9): name and its limits, then when / where it stands, the last check and the state pill.
+    private func v2Row(_ l: Loop, _ rs: [LoopRound], _ last: LoopRound?) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(l.name).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                Text([l.trigger.label, l.limits.label, Workspace.repoLabel(for: l.repoPath)].joined(separator: " · "))
+                    .ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Text(rowRight(l, rs)).ui(12).foregroundStyle(t.text2.color).lineLimit(1).frame(width: 150, alignment: .leading)
+            HealthStrip(results: rs.filter { $0.kind != .stop }.suffix(8).map(\.checkPassed))
+            if let last { CheckGlyph(passed: last.checkPassed == true) }
+            StatusPill(status: l.state.pillStatus, label: l.state.label).frame(width: 96, alignment: .trailing)
+        }
+        .padding(.vertical, 10).padding(.horizontal, 12)
+        .contentShape(Rectangle())
     }
 
     private func rowRight(_ l: Loop, _ rs: [LoopRound]) -> String {
