@@ -38,7 +38,10 @@ final class AppModel: ObservableObject {
     var windowBags: [String: AnyCancellable] = [:]
     /// The owner's theme per panel (Settings, plan panel). `themes` is what the panels draw with.
     @Published var chosenThemes: PanelThemes {
-        didSet { saveThemes(); applyAppearance() }
+        didSet {
+            saveThemes(); applyAppearance()
+            if settings.ui2 { let name = Look.matching(chosenThemes)?.rawValue ?? "custom"; if settings.lookName != name { settings.lookName = name } }
+        }
     }
     @Published private(set) var themes: PanelThemes
 

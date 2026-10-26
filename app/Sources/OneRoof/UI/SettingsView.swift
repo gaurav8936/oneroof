@@ -80,7 +80,29 @@ struct SettingsView: View {
 
     /// Appearance: a grid — Sessions · Files · Terminal · Plan · Centre views × Daylight · Graphite · Midnight and the
     /// pastel light themes Mint · Sky · Lavender · Peach (LAB-601).
-    private var appearance: some View {
+    @ViewBuilder private var appearance: some View {
+        if model.settings.ui2 {
+            V2LooksPicker(model: model) { panelGrid }   // v2 (A10.3): six looks first; this grid under Customize
+        } else {
+            appearance05
+        }
+    }
+
+    private var panelGrid: some View {
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
+            GridRow {
+                Text("")
+                ForEach(ThemeName.panelChoices) { Text($0.label).font(.system(size: 12, weight: .semibold)) }
+            }
+            themeRow("Sessions", \.sidebar)
+            themeRow("Files", \.files)
+            themeRow("Terminal", \.terminal)
+            themeRow("Plan", \.plan)
+            themeRow("Centre views", \.centre)
+        }
+    }
+
+    private var appearance05: some View {
         Form {
             Section {
                 Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {

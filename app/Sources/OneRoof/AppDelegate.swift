@@ -287,9 +287,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var moveMenu = MoveMenu(model: model)
     private lazy var workspaceMenu = WorkspaceListMenu(app: self)
     @objc func clearTerminal(_ sender: Any?) { main.terminalArea.terminalAction("clear_screen") }
-    @objc func showPalette(_ sender: Any?) { PalettePanel.show(over: main.window, items: paletteItems()) }
+    @objc func showPalette(_ sender: Any?) { PalettePanel.show(over: main.window, items: paletteItems(), v2: v2Search()) }
     /// Search with text already typed (the v2 session column's search box).
-    func showPalette(query: String) { PalettePanel.show(over: main.window, items: paletteItems(), query: query) }
+    func showPalette(query: String) { PalettePanel.show(over: main.window, items: paletteItems(), query: query, v2: v2Search()) }
+
+    /// The v2 window's Search (A10.2, A10.5): grouped, with Learn's best answers and ⌘↩ send; nil in the 0.5 window.
+    private func v2Search() -> V2SearchOptions? {
+        guard main.isV2 else { return nil }
+        let m = model
+        m.loadLearn()
+        return V2SearchOptions(model: m,
+            best: { q in m.learnMatches(q, limit: 2).map { li in
+                PaletteItem(title: li.title, subtitle: "Learn · " + li.section + (li.audio || li.audioFolder != nil ? " · card" : ""), symbol: li.audio || li.audioFolder != nil ? "play.fill" : "doc.text",
+                            kind: li.audio || li.audioFolder != nil ? "Listen" : "Read") { m.learnTarget = li.id; m.learnMode = true }
+            } },
+            learn: { q in m.learnMatches(q, limit: 6).map { li in
+                PaletteItem(title: li.title, subtitle: li.section, symbol: "graduationcap", kind: "Learn") { m.learnTarget = li.id; m.learnMode = true }
+            } },
+            sendTarget: m.selected.flatMap { $0.liveAgent != nil ? $0.session.name : nil },
+            send: { text in
+                guard let item = m.selected, let agent = item.liveAgent else { return }
+                if let no = item.status.typingRefusal(name: item.session.name) { m.lastError = no; return }
+                let r = m.runtime
+                DispatchQueue.global().async { try? r.submit(agent, text: text) }
+                m.reveal(item)
+            })
+    }
 
     /// Everything the palette can find: views, actions, sessions, objectives, files in the selected repo, skills.
     private func paletteItems() -> [PaletteItem] {
@@ -345,7 +368,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for r in RoofScope.available(in: m.items) {
             add("Roof window: \(r.scope.title)", "\(r.count) live session\(r.count == 1 ? "" : "s")", "house", "Action") { RoofWindowController.show(r.scope, model: m) }
         }
-        for t in ThemeName.panelChoices {
+        if main.isV2 {   // v2 (A10.5): a theme item sets a whole look
+            for look in Look.allCases {
+                add("Theme: all panels \(look.title)", look.blurb, "paintpalette", "Theme") { m.chosenThemes = look.panelThemes }
+            }
+        }
+        for t in ThemeName.panelChoices where !main.isV2 {
             add("Theme: all panels \(t.label)", "Sessions, files, terminal, plan", "paintpalette", "Theme") {
                 m.chosenThemes = PanelThemes(sidebar: t, files: t, terminal: t, plan: t, centre: t)
             }
@@ -775,6 +803,7 @@ extension AppDelegate: NSMenuItemValidation {
             }
             item.state = ThemeName.allCases[safe: item.tag % 10] == current ? .on : .off
         case #selector(launchSelected(_:)):
+            if main.isV2, PalettePanel.current?.isKeyWindow == true { return false }   // ⌘↩ in Search sends to the session
             return model.selected.map { $0.liveAgent == nil && $0.status != .doNotUse } ?? false
         case #selector(markNext(_:)), #selector(markPlanned(_:)):
             return model.selected.map { !$0.status.isLive } ?? false
