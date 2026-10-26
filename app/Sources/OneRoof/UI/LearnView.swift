@@ -485,7 +485,8 @@ extension LearnView {
         switch lnav.place {
         case .band:
             let b = deck.band(id: lnav.band)
-            return ([home, .init(label: "\(b.n) \(b.title)")], "Band")
+            // LAB-1247: the band is opened from Radio home, so the way back names it.
+            return ([home, .init(label: "Radio") { lnav.go(.radio) }, .init(label: "\(b.n) \(b.title)")], "Band")
         case .card:
             let b = deck.band(of: lnav.slug), c = deck.cards[lnav.slug]
             return ([home, .init(label: "\(b.n) \(b.title)") { lnav.openBand(b.id) }, .init(label: c?.title ?? lnav.slug)],
@@ -499,7 +500,7 @@ extension LearnView {
         case .library:
             var c = [home, LearnCrumbs.Crumb(label: "All cards") { lnav.libSel = nil; lnav.query = "" }]
             if lnav.query.isEmpty, let sel = lnav.libSel { c.append(.init(label: v2BlockName(sel))) }
-            return (c, !lnav.query.isEmpty ? "How do I…" : lnav.lens == "loop" ? "By band" : "By kind")
+            return (c, !lnav.query.isEmpty ? "How do I…" : lnav.lens == "loop" ? "By band" : lnav.lens == "folder" ? "By folder" : "By kind")
         default:
             return ([.init(label: "Learn")], "Agentic Engineering · Radio")
         }
@@ -507,6 +508,12 @@ extension LearnView {
 
     /// "loops:rhythms" → "Daily loops"; "loops:start" → "Start here"; "kind:vault" → "Notes & memory".
     private func v2BlockName(_ id: String) -> String {
+        // By folder: "folder:skills/doctrine" → "doctrine/", a file → its name.
+        if id.hasPrefix("folder:") {
+            let rel = String(id.dropFirst(7)), name = (rel as NSString).lastPathComponent
+            let isDir = deck.flatMap { DeckFolders.entry(rel, in: $0) }?.isDir ?? !name.contains(".")
+            return isDir ? name + "/" : name
+        }
         let tail = String(id.split(separator: ":").last ?? "")
         return tail == "start" ? "Start here" : LearnDeck.trackNames[tail]?.name ?? LearnDeck.label(tail)
     }
