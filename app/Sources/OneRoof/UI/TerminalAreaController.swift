@@ -114,10 +114,12 @@ final class TerminalAreaController: NSViewController {
         view = root
     }
 
-    /// The Subagents column (S02 §1.7): shown when the Plan panel is closed and the session has subagents.
+    /// The Subagents column (S02 §1.7): shown when the Plan panel is closed and the session has subagents. Classic
+    /// window only: the v2 window reaches subagents from the session's Subagents tab (LAB-1240, owner 1.8.2).
     private let column = NSHostingView(rootView: AnyView(EmptyView()))
     private var columnWidth: NSLayoutConstraint!
     var planPanelOpen = true { didSet { if oldValue != planPanelOpen { update() } } }
+    var showsSubagentColumn = true { didSet { if oldValue != showsSubagentColumn, isViewLoaded { update() } } }
     /// Raw stream (⌘R): chapters folded open, the plain v0.1 terminal.
     private var raw = false
     /// Summary expanded/collapsed per pane, when the owner toggled it.
@@ -385,7 +387,7 @@ final class TerminalAreaController: NSViewController {
 
     private func updateColumn(theme: ThemeName) {
         let item = model.item(win.selectedId ?? "")
-        let show = !planPanelOpen && item.map { !(model.subagents[$0.id] ?? []).isEmpty } == true
+        let show = showsSubagentColumn && !planPanelOpen && item.map { !(model.subagents[$0.id] ?? []).isEmpty } == true
         columnWidth.constant = show ? 330 : 0
         column.isHidden = !show
         guard show, let item else { return }
