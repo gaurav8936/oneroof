@@ -375,11 +375,11 @@ struct V2InspectorEdgeTab: View {
     }
 }
 
-/// "Focus · ⌥⌘F steps on · ⇧⌥⌘F steps back · Esc leaves · hover the left edge for sessions" (step 3).
+/// "Focus · ⌥⌘F leaves · ⇧⌥⌘F steps back · hover the left edge for sessions" (step 3).
 struct V2FocusHint: View {
     @Environment(\.theme) private var t
     var body: some View {
-        Text("Focus · ⌥⌘F steps on · ⇧⌥⌘F steps back · Esc leaves · hover the left edge for sessions")
+        Text("Focus · ⌥⌘F leaves · ⇧⌥⌘F steps back · hover the left edge for sessions")
             .ui(11).foregroundStyle(t.text2.color)
             .padding(.horizontal, 12).padding(.vertical, 5)
             .background(Capsule().fill(t.surface.color.opacity(0.92)))
