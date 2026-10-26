@@ -3,7 +3,8 @@ import SwiftUI
 import OneRoofCore
 
 // LAB-1233 · Learn › Writing, the post reader and All cards (the map, and "How do I…" search), as drawn in
-// One Roof Learn.dc.html. Posts come from the owner's Learn folders (LearnPosts); the app ships none.
+// One Roof Learn.dc.html. Posts come from the blog hub (BlogHub, cached) and the owner's Learn folders
+// (LearnPosts); the app ships none.
 
 struct LearnWritingPage: View {
     @ObservedObject var nav: LearnNav
@@ -15,8 +16,9 @@ struct LearnWritingPage: View {
         let notes = posts.filter { $0.series != "Agentic engineering" }
         VStack(alignment: .leading, spacing: 0) {
             LearnKicker(text: "Broadcast schedule")
-            Text("Writing").font(.system(size: 48, weight: .bold)).tracking(-1.4).foregroundStyle(t.text.color).padding(.top, 6).padding(.bottom, 20)
-            if posts.isEmpty { LearnNoPosts() }
+            Text("Writing").font(.system(size: 48, weight: .bold)).tracking(-1.4).foregroundStyle(t.text.color).padding(.top, 6)
+                .padding(.bottom, posts.isEmpty ? 20 : 6)
+            if posts.isEmpty { LearnNoPosts() } else { LearnPostsSource(posts: posts).padding(.bottom, 20) }
             ForEach([("Agentic engineering", "\(series.count) parts", series), ("Field notes", "case studies", notes)], id: \.0) { label, meta, list in
                 if !list.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
@@ -98,6 +100,11 @@ struct LearnPostReader: View {
                 Text("\(p.minutes) min read")
                 Text(p.published ? "Published" : "Scheduled · " + LearnPostRow.day(p.date)).fontWeight(.semibold)
                     .foregroundStyle(p.published ? t.text3.color : t.accentText.color)
+                Spacer(minLength: 0)
+                if let web = URL(string: p.canonical), !p.canonical.isEmpty {
+                    Button { NSWorkspace.shared.open(web) } label: { Text("Open on the web ↗").foregroundStyle(t.accentText.color) }
+                        .buttonStyle(.plain).help(p.canonical)
+                }
             }
             .font(.system(size: 12)).foregroundStyle(t.text2.color)
             .padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)

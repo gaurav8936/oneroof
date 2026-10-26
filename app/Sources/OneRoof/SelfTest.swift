@@ -4,6 +4,11 @@ import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
 ///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
+///   ONEROOF_SELFTEST_WIDTH=<pt>                 the window this wide (1.8.2: narrow-window and toolbar checks)
+///   ONEROOF_SELFTEST_PLACES=learn,sessions,…    open these places 0.6 s apart and write each window frame to
+///                                               <out>.frames.txt (LAB-874: a place change never moves the window);
+///                                               FRAMEDEBUG=1 adds the column widths, the toolbar fit and its visible items
+///   ONEROOF_SELFTEST_RENAME=<text>              with SELECTFIRST: rename that session (long-title toolbar checks)
 ///   ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED=<exported defaults plist> ONEROOF_STORE=<copy of sessions.sqlite>
 ///                                               a real profile's settings and window state, read but never saved
 ///                                               (1.8.1 audit; add ONEROOF_SELFTEST_DEMO=0, ROOFD_DIR=<scratch> to stay off
@@ -42,6 +47,31 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.model.show(v) }
         }
         if let ts = Double(env["ONEROOF_SELFTEST_TEXTSIZE"] ?? "") { app.model.active.setTextScale(ts) }
+        if let width = Double(env["ONEROOF_SELFTEST_WIDTH"] ?? "") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {   // after the first v2 layout has folded its columns
+                guard let w = app.main.window else { return }
+                var f = w.frame; f.size.width = CGFloat(width)
+                w.setFrame(f, display: true)
+            }
+        }
+        if let list = env["ONEROOF_SELFTEST_PLACES"], let out = env["ONEROOF_SELFTEST_OUT"] {
+            let places = list.split(separator: ",").compactMap { Place(rawValue: String($0)) }
+            var lines: [String] = []
+            func frame() -> String {
+                guard let w = app.main.window else { return "-" }
+                let dbg = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_FRAMEDEBUG"] == "1"
+                    ? " fit=\(w.contentView?.fittingSize ?? .zero) panes=\(app.main.splitView.subviews.map { Int($0.frame.width) }) bar=\(app.main.v2Bar) visible=\(w.toolbar?.visibleItems?.map { $0.itemIdentifier.rawValue.replacingOccurrences(of: "oneroof.v2.", with: "") + ":" + ($0.view.map { v in "\(Int(v.convert(v.bounds, to: nil).minX))+\(Int(v.frame.width))" } ?? "-") } ?? [])" : ""
+                return NSStringFromRect(w.frame) + dbg
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { lines.append("start \(frame())") }
+            for (k, p) in places.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2 + Double(k) * 0.6) { app.main.v2Open(p) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.7 + Double(k) * 0.6) {
+                    lines.append("\(p.rawValue) \(frame())")
+                    if k == places.count - 1 { try? lines.joined(separator: "\n").write(toFile: out + ".frames.txt", atomically: true, encoding: .utf8) }
+                }
+            }
+        }
         // P6 (v2): ONEROOF_SELFTEST_PLACE=<home|needsYou|sessions|work|machine|loops|learn>, ONEROOF_SELFTEST_FOCUS=<0-3>,
         // ONEROOF_SELFTEST_LAYOUT=<single|grid|wall>. Place first (it sets its default step), then the step.
         if app.model.settings.ui2, let p = env["ONEROOF_SELFTEST_PLACE"], let place = Place(rawValue: p) { app.model.active.open(place) }
@@ -52,7 +82,11 @@ enum SelfTest {
         // SELECTFIRST=1 selects the window's first session (demo ids are random) so the Plan and session tabs have one.
         if env["ONEROOF_SELFTEST_SELECTFIRST"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                if let first = app.model.items(in: app.model.active).first { app.model.active.selectedId = first.id }
+                if let first = app.model.items(in: app.model.active).first {
+                    app.model.active.selectedId = first.id
+                    // RENAME=<text>: give it a long name (1.8.2 toolbar checks).
+                    if let name = env["ONEROOF_SELFTEST_RENAME"] { var s = first.session; s.name = name; app.model.save(s) }
+                }
             }
         }
         // V2PLAN=1 slides the Plan over the terminal (C7.1); V2EDGE=1 reveals the session column at Focus (C7.2).

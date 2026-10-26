@@ -734,11 +734,65 @@ struct LearnRadioLower: View {
 }
 
 /// What Writing shows when no Learn folder has posts (the app ships none).
+/// LAB-1251: posts come from the blog hub, so this says what the hub did: still loading, answered with no
+/// posts, or could not be reached with no copy saved on this Mac (then: try again).
 struct LearnNoPosts: View {
+    @ObservedObject private var blog = LearnBlogFeed.shared
     @Environment(\.theme) private var t
     var body: some View {
-        Text("No posts yet. Writing lists posts found in your Learn folders (a folder per post with an index.md that has a title and a date). Add a folder in Settings › Learn.")
-            .font(.system(size: 12.5)).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(Self.message(blog.state)).font(.system(size: 12.5)).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            if case .offline = blog.state {
+                Button { blog.refresh(force: true) } label: { Text("Try again").font(.system(size: 12.5)).foregroundStyle(t.accentText.color) }
+                    .buttonStyle(.plain).fixedSize()
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    static func message(_ s: LearnBlogFeed.State) -> String {
+        switch s {
+        case .idle, .loading: return "Loading posts from the \(BlogHub.name)…"
+        case .reached: return "The \(BlogHub.name) has no posts yet."
+        case .offline(let why):
+            return "Can't reach the \(BlogHub.name) (\(why)) and no copy is saved on this Mac yet. Posts show here once One Roof is online."
+        }
+    }
+}
+
+/// Where Writing's posts come from: "From the <Site> blog · updated 10:42", or the saved copy while offline.
+struct LearnPostsSource: View {
+    @ObservedObject private var blog = LearnBlogFeed.shared
+    let posts: [LearnPost]
+    @Environment(\.theme) private var t
+    var body: some View {
+        let hub = posts.contains { !$0.source.isEmpty }
+        let local = posts.contains { $0.source.isEmpty }
+        HStack(spacing: 10) {
+            Text(text(hub: hub, local: local)).font(.system(size: 12)).foregroundStyle(t.text3.color)
+            if case .offline = blog.state {
+                Button { blog.refresh(force: true) } label: { Text("Try again").font(.system(size: 12)).foregroundStyle(t.accentText.color) }
+                    .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func text(hub: Bool, local: Bool) -> String {
+        var parts: [String] = []
+        if hub {
+            switch blog.state {
+            case .offline: parts.append("Offline · the copy saved " + Self.when(blog.savedAt))
+            case .loading, .idle: parts.append("From the \(BlogHub.name) · checking for new posts…")
+            case .reached: parts.append("From the \(BlogHub.name) · updated " + Self.when(blog.savedAt))
+            }
+        }
+        if local { parts.append("plus your Learn folders") }
+        return parts.joined(separator: " · ")
+    }
+
+    static func when(_ d: Date?) -> String {
+        guard let d else { return "earlier" }
+        return Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : d.formatted(date: .abbreviated, time: .shortened)
     }
 }
 

@@ -53,3 +53,70 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertEqual(Set(kept.keys), ["settings", "focusStep.A", "OneRoofPanes.A"])
     }
 }
+
+/// 1.8.2 (LAB-831, LAB-1237, LAB-596): the v2 window goes down to about a third of the screen without growing itself,
+/// and the toolbar's right group never clips.
+final class V2NarrowWindowTests: XCTestCase {
+    /// LAB-831: the minimum is about a third of a laptop screen; the classic window keeps its own.
+    func testV2MinimumIsAboutAThirdOfTheScreen() {
+        XCTAssertLessThanOrEqual(V2Layout.minWindowWidth, 640)
+        XCTAssertEqual(PanelMinimums.windowWidth, 1000, "the classic window is unchanged")
+    }
+
+    /// LAB-596: at every step, the narrowest layout (Plan folded to its edge tab, column at its minimum) fits the
+    /// smallest window, so AppKit never grows the window to make room.
+    func testEveryStepFitsTheSmallestWindow() {
+        for step in FocusStep.allCases {
+            XCTAssertLessThanOrEqual(V2Layout.narrowestFit(step: step), V2Layout.minWindowWidth, "\(step)")
+        }
+    }
+
+    /// LAB-831: the Plan inspector keeps its column at Full only while it fits; never in a third-of-a-screen window.
+    func testPlanFoldsToTheEdgeTabWhenTheWindowIsNarrow() {
+        XCTAssertTrue(V2Layout.planFits(windowWidth: 1000, rail: true, column: 250))
+        XCTAssertTrue(V2Layout.planFits(windowWidth: 1440, rail: true, column: 440))
+        XCTAssertFalse(V2Layout.planFits(windowWidth: 800, rail: true, column: 250))
+        XCTAssertFalse(V2Layout.planFits(windowWidth: 600, rail: true, column: 200))
+        XCTAssertFalse(V2Layout.planFits(windowWidth: 870, rail: true, column: 320), "a wider dragged column folds it sooner")
+        // Judged on the column's chosen width with its minimum, never below it.
+        XCTAssertEqual(V2Layout.planFits(windowWidth: 810, rail: true, column: 100), V2Layout.planFits(windowWidth: 810, rail: true, column: 200))
+    }
+
+    /// LAB-1237: the right group (step button, + New, and Single · Grid · Wall when shown) plus the title always fit
+    /// the room, from a third-of-a-screen window to a wide one.
+    func testToolbarRightGroupNeverClips() {
+        typealias B = V2Layout.Bar
+        for room in stride(from: 240.0, through: 1700, by: 10) {
+            for extras in [0.0, 200] {
+                let f = V2Layout.toolbarFit(room: room, extras: extras)
+                let right = B.trailing + B.new + B.gap + (f.shortcuts ? B.stepFull : B.stepShort) + B.gap
+                    + (f.layoutControl ? B.layout + B.gap : 0) + (extras > 0 ? extras + B.gap : 0)
+                let title = f.titleWidth > 0 ? f.titleWidth + B.titleLead : 0
+                if f.titleWidth > 0 || f.layoutControl || f.shortcuts {
+                    XCTAssertLessThanOrEqual(right + title, room, "room \(room) extras \(extras): \(f)")
+                }
+                XCTAssertTrue(f.titleWidth == 0 || f.titleWidth >= 48, "a title is readable or gone")
+                // More room never takes a piece away: the right group only grows back as the window widens.
+                let more = V2Layout.toolbarFit(room: room + 10, extras: extras)
+                XCTAssertTrue((more.shortcuts || !f.shortcuts) && (more.layoutControl || !f.layoutControl), "room \(room)")
+                XCTAssertFalse(f.shortcuts && !f.layoutControl, "the shortcut labels go before Single · Grid · Wall")
+            }
+        }
+    }
+
+    func testToolbarDegradesInOrder() {
+        let wide = V2Layout.toolbarFit(room: 1400)
+        XCTAssertEqual(wide, .init(titleWidth: 620, subtitle: true, shortcuts: true, layoutControl: true))
+        let mid = V2Layout.toolbarFit(room: 676)   // 1000 pt window at step 1
+        XCTAssertTrue(mid.shortcuts && mid.layoutControl)
+        XCTAssertFalse(mid.subtitle, "the subtitle goes before the shortcuts")
+        let narrow = V2Layout.toolbarFit(room: 276)   // 600 pt window at step 1: step button and + New only
+        XCTAssertEqual(narrow, .init(titleWidth: 0, subtitle: false, shortcuts: false, layoutControl: false))
+    }
+
+    func testToolbarStartsAfterTheIconRowWhenItReachesFurther() {
+        XCTAssertEqual(V2Layout.toolbarStart(divider: 316, placesRow: false), 316 + V2Layout.Bar.sectionLead)
+        XCTAssertEqual(V2Layout.toolbarStart(divider: 200, placesRow: true), V2Layout.Bar.lights + V2Layout.Bar.placesRow + V2Layout.Bar.sectionLead)
+        XCTAssertEqual(V2Layout.toolbarStart(divider: 52, placesRow: false), V2Layout.Bar.lights + V2Layout.Bar.sectionLead, "Focus: after the traffic lights")
+    }
+}

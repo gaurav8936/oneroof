@@ -237,11 +237,11 @@ struct MiniPlayer: View {
         if player.pageId != nil {
             HStack(spacing: 4) {
                 Button { player.toggle() } label: { Image(systemName: player.playing ? "pause.fill" : "play.fill").font(.system(size: 10)) }
-                    .buttonStyle(.plain).help(player.playing ? "Pause" : "Play")
+                    .buttonStyle(.plain).barHelp(player.playing ? "Pause" : "Play")   // in the toolbar: LAB-1236
                 Button(action: openLearn) {
                     Text("\(player.pageTitle) · \(player.index + 1)/\(player.tracks.count)").font(.system(size: 11)).lineLimit(1).frame(maxWidth: 180)
                 }
-                .buttonStyle(.plain).help("Open in Learn")
+                .buttonStyle(.plain).barHelp("Open in Learn")
             }
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(Capsule().fill(Color.accentColor.opacity(0.16)))

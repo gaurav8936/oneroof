@@ -39,18 +39,23 @@ final class V2ToolbarDelegate: NSObject, NSToolbarDelegate {
         let label: String
         switch id {
         case Self.places: view = AnyView(V2Band(model: m, win: w) { V2PlacesSlot(model: m, win: w, controller: controller) }); label = "Places"
-        case Self.title: view = AnyView(V2Band(model: m, win: w, centre: true) { V2TitleView(model: m, win: w, controller: controller) }); label = "Title"
+        case Self.title: view = AnyView(V2Band(model: m, win: w, centre: true, fixed: false) { V2TitleView(model: m, win: w, controller: controller) }); label = "Title"
         case Self.extras: view = AnyView(V2Band(model: m, win: w, centre: true) { V2ToolbarExtras(model: m, win: w) }); label = "Player"
-        case Self.layout: view = AnyView(V2Band(model: m, win: w, centre: true) { V2LayoutControl(win: w) }); label = "Layout"
+        case Self.layout: view = AnyView(V2Band(model: m, win: w, centre: true) { V2LayoutSlot(win: w, controller: controller) }); label = "Layout"
         case Self.step: view = AnyView(V2Band(model: m, win: w, centre: true) { V2StepButton(win: w, controller: controller) }); label = "Focus"
         case Self.new: view = AnyView(V2Band(model: m, win: w, centre: true) { V2NewButton(controller: controller) }); label = "New"
         default: return nil
         }
         let item = NSToolbarItem(itemIdentifier: id)
         let host = NSHostingView(rootView: view)
-        // The extras (Learn player, Run · Debug) appear and disappear: min/max constraints track the content so the
-        // toolbar re-lays the item out instead of drawing it over Single · Grid · Wall.
-        host.sizingOptions = id == Self.extras ? [.intrinsicContentSize, .minSize, .maxSize] : [.intrinsicContentSize]
+        // Every item's width follows its content: the extras (Learn player, Run · Debug) and Single · Grid · Wall
+        // appear and disappear, and the title is sized to the room left (LAB-1237), so min/max constraints track the
+        // content and the toolbar re-lays the items out instead of drawing one over another or past the window edge.
+        host.sizingOptions = [.intrinsicContentSize, .minSize, .maxSize]
+        if id == Self.title {
+            // The toolbar may squeeze the title to its minimum (it truncates) instead of moving items into ».
+            host.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
         item.view = host
         item.isBordered = false
         item.label = label
@@ -64,8 +69,13 @@ private struct V2Band<Content: View>: View {
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
     var centre = false
+    /// The title is not fixed: the toolbar may squeeze it (it truncates) before it moves anything into » (LAB-1237).
+    var fixed = true
     @ViewBuilder var content: () -> Content
-    var body: some View { content().themed(centre ? model.themes.centre : model.themes.sidebar, scale: 1).fixedSize() }
+    var body: some View {
+        let v = content().themed(centre ? model.themes.centre : model.themes.sidebar, scale: 1)
+        if fixed { v.fixedSize() } else { v.fixedSize(horizontal: false, vertical: true) }
+    }
 }
 
 /// The icon row only at step 1 in the Sessions place (elsewhere the rail carries the places).
@@ -87,17 +97,29 @@ struct V2TitleView: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
-    let controller: MainWindowController
+    @ObservedObject var controller: MainWindowController
 
     var body: some View {
         let (title, sub) = Self.text(model: model, win: win, page: controller.v2Page)
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title).ui(14, .bold).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail).frame(maxWidth: 360, alignment: .leading)
-            if let sub { Text(sub).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).frame(maxWidth: 260, alignment: .leading) }
+        let room = controller.v2Bar.titleWidth
+        // LAB-1237: the title takes only the room the right group leaves; it truncates first, the subtitle goes next.
+        if room > 0 {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title).ui(14, .bold).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail).frame(maxWidth: 360, alignment: .leading)
+                if let sub, controller.v2Bar.subtitle { Text(sub).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).frame(maxWidth: 260, alignment: .leading) }
+            }
+            .frame(minWidth: 40, maxWidth: CGFloat(room) - 8, alignment: .leading)
+            .padding(.leading, 8)
+            .barHelp(sub.map { title + "  " + $0 } ?? title)
+            .accessibilityElement(children: .combine)
+            .onChange(of: title) { kick() }
+        } else {
+            Color.clear.frame(width: 1, height: 1)
         }
-        .padding(.leading, 8)
-        .accessibilityElement(children: .combine)
     }
+
+    /// A new title may fit where an item went into » before (LAB-1237).
+    private func kick() { DispatchQueue.main.async { [weak controller] in controller?.v2KickToolbar() } }
 
     @MainActor static func text(model: AppModel, win: WindowState, page: String?) -> (String, String?) {
         if let page { return (page, nil) }
@@ -130,7 +152,7 @@ struct V2LayoutControl: View {
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.surface.color : .clear))
                 }
                 .buttonStyle(.plain)
-                .help(l == .single ? "Single (⌃⌥⌘1)" : (l == .grid ? "Grid: up to four live sessions side by side (⌃⌥⌘2)" : "Wall: every window's live sessions (⌃⌥⌘3)"))
+                .barHelp(l == .single ? "Single (⌃⌥⌘1)" : (l == .grid ? "Grid: every live session, two across (scrolls) (⌃⌥⌘2)" : "Wall: every window's live sessions (⌃⌥⌘3)"))
                 .accessibilityLabel(l.title + (ready ? "" : ", not available yet"))
             }
         }
@@ -139,11 +161,21 @@ struct V2LayoutControl: View {
     }
 }
 
-/// "⤢ Sessions ⌥⌘F": the Focus ladder button. Click steps on; press and hold lists the four steps.
+/// Single · Grid · Wall while the toolbar has room for it (LAB-1237); narrower, the View menu (⌃⌥⌘1-3) has them.
+private struct V2LayoutSlot: View {
+    @ObservedObject var win: WindowState
+    @ObservedObject var controller: MainWindowController
+    var body: some View {
+        if controller.v2Bar.layoutControl { V2LayoutControl(win: win) } else { Color.clear.frame(width: 1, height: 1) }
+    }
+}
+
+/// "⤢ Sessions ⌥⌘F": the Focus ladder button. Click steps on; press and hold lists the four steps. The shortcut label
+/// goes when the toolbar is narrow (LAB-1237); the tooltip keeps it.
 struct V2StepButton: View {
     @Environment(\.theme) private var t
     @ObservedObject var win: WindowState
-    let controller: MainWindowController
+    @ObservedObject var controller: MainWindowController
 
     var body: some View {
         let focus = win.focusStep == .focus
@@ -153,7 +185,7 @@ struct V2StepButton: View {
                 Button("\(s.rawValue) · \(s.title)") { controller.v2SetStep(s) }
             }
         } label: {
-            Text((focus ? "" : "⤢ ") + label + " ⌥⌘F").ui(11, focus ? .semibold : .regular)
+            Text((focus ? "" : "⤢ ") + label + (controller.v2Bar.shortcuts ? " ⌥⌘F" : "")).ui(11, focus ? .semibold : .regular).lineLimit(1)
         } primaryAction: {
             controller.v2StepOn()
         }
@@ -162,7 +194,7 @@ struct V2StepButton: View {
         .padding(.horizontal, 9).frame(height: 22)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(focus ? t.accent.color : t.surface.color))
         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(focus ? .clear : t.separator.color, lineWidth: 1))
-        .help(focus ? "Leave Focus (⌥⌘F). Press and hold for the four steps." : "Focus ladder: step on ⌥⌘F, step back ⇧⌥⌘F. Press and hold for the four steps.")
+        .barHelp(focus ? "Leave Focus (⌥⌘F). Press and hold for the four steps." : "Focus ladder: step on ⌥⌘F, step back ⇧⌥⌘F. Press and hold for the four steps.")
         .accessibilityLabel("Focus step: \(win.focusStep.title)")
     }
 }
@@ -189,7 +221,7 @@ struct V2NewButton: View {
         .padding(.horizontal, 10).frame(height: 22)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.accent.color))
         .padding(.trailing, 6)
-        .help("New session (⌘N); hold for terminal, window, objective, work item")
+        .barHelp("New session (⌘N); hold for terminal, window, objective, work item")
         .accessibilityLabel("New session")
     }
 }
@@ -208,4 +240,24 @@ struct V2ToolbarExtras: View {
             if win.centre == .editor { RunControls(model: model, win: win) }
         }
     }
+}
+
+// MARK: Tooltips in the toolbar
+
+/// LAB-1236: SwiftUI's `.help` shows no tooltip inside an NSToolbar item (SwiftUI's tooltips follow mouse-moved events,
+/// which the title bar does not pass to a hosted view), so toolbar content also carries an AppKit tooltip: a
+/// click-through NSView whose `toolTip` AppKit shows from its own tracking rect. `.help` stays for VoiceOver.
+struct BarToolTip: NSViewRepresentable {
+    let text: String
+    func makeNSView(context: Context) -> ClickThroughView { let v = ClickThroughView(); v.toolTip = text; return v }
+    func updateNSView(_ v: ClickThroughView, context: Context) { if v.toolTip != text { v.toolTip = text } }
+
+    final class ClickThroughView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }   // clicks and drags reach the control underneath
+    }
+}
+
+extension View {
+    /// `.help` plus an AppKit tooltip, for views shown in the toolbar (LAB-1236).
+    func barHelp(_ text: String) -> some View { help(text).overlay(BarToolTip(text: text)) }
 }

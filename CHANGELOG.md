@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.8.2 — Backlog fixes: subagents, toolbar, Grid, Writing, busy terminals (26 Oct 2026)
+
+- **The Subagents column is gone** (LAB-1240). It opened on its own beside the terminal with no way to close it; open a
+  session's Subagents tab instead. The classic window keeps its column.
+- **The toolbar no longer clips Focus or + New** (LAB-1237). The title truncates first, then the shortcut labels and
+  Single · Grid · Wall step aside (still in the View menu).
+- **The window goes down to 600 pt**, about a third of the screen (LAB-831). The Plan folds to its edge tab when it no
+  longer fits; the session tabs and the status dock shorten instead of spilling over. Switching places never resizes
+  the window (LAB-874), and a dragged session-column or Plan width is kept reliably (LAB-829).
+- **Tooltips on every toolbar icon** (LAB-1236), including the place icons, which had none in the title bar.
+- **Grid shows every live session, two across** (LAB-1239), as many rows as needed, and scrolls; ⌥⌘arrows scroll the
+  focused tile into view. Back on Single, a session picked in the Grid now shows its own pane.
+- The terminal pane header no longer shows loose shortcut text (LAB-826); the shortcuts are in tooltips and menus.
+- While you read an earlier step, a second **Back to current** floats at the bottom of the terminal (LAB-825).
+- **A busy terminal says so** (LAB-861): when a program other than the shell is in front (a local web server, say), the
+  pane header shows "running: <command>" with a Stop button that sends Ctrl-C.
+- **Learn › Writing fills in from the Zibajoon blog** (LAB-1251): the same hub the sites read, saved on this Mac so posts,
+  the broadcast schedule and each band's posts show at once and offline. Posts in your Learn folders still appear and
+  win on the same name. Diagrams and charts are drawn only on the web version, linked from each post.
+- **Machine lists Chrome's open tabs by window** (LAB-853), with title and site, and folds the anonymous "Tab or site"
+  processes into one row with their total memory. If One Roof isn't allowed to read the browser yet, one line says why.
+
 ## 1.8.1 — Learn as designed, and fixes from a real profile (26 Oct 2026)
 
 - ⌥⌘F leaves Focus again at step 3, so a window can no longer stay stuck in Focus with no dock or session list.
