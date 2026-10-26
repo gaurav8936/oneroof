@@ -104,6 +104,7 @@ struct LoopsView: View {
     @State private var selected: String?
     @State private var editing: LoopDraft?
     @State private var confirmDelete: Loop?
+    @Environment(\.v2Window) private var v2
 
     var body: some View {
         FleetPage(title: "Loops", subtitle: subtitle) {
@@ -119,7 +120,21 @@ struct LoopsView: View {
             if let e = board.error {
                 Text(e).ui(12.5).foregroundStyle(t.needsText.color).textSelection(.enabled)
             }
-            if board.loops.isEmpty {
+            if v2 {
+                // v2 (A9, C5.1): the loops beside Tonight; a loop opens as its own page with ‹ Loops back.
+                if let s = selected, board.loops.contains(where: { $0.id == s }) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Button { selected = nil } label: { Text("‹ Loops").ui(12.5, .semibold).foregroundStyle(t.accentText.color) }
+                            .buttonStyle(.plain).keyboardShortcut("[", modifiers: .command).help("Back to the loops (⌘[)")
+                        detail.frame(maxWidth: .infinity)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: 18) {
+                        if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
+                        V2TonightPanel(model: model, board: board).frame(width: 250)
+                    }
+                }
+            } else if board.loops.isEmpty {
                 empty
             } else {
                 HStack(alignment: .top, spacing: 18) {
@@ -199,7 +214,7 @@ struct LoopsView: View {
         let rs = board.rounds[l.id] ?? []
         let checks = rs.filter { $0.kind != .stop }
         let last = checks.last
-        let isSel = (selected ?? board.loops.first?.id) == l.id
+        let isSel = (v2 ? selected : (selected ?? board.loops.first?.id)) == l.id   // v2: nothing open = nothing selected
         return Button { selected = l.id } label: {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
@@ -288,6 +303,7 @@ struct LoopDetail: View {
     var delete: () -> Void
     @Environment(\.theme) private var t
     @State private var open: Set<String> = []
+    @Environment(\.v2Window) private var v2
 
     var body: some View {
         let l = loop
@@ -308,6 +324,7 @@ struct LoopDetail: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     actions(l)
+                    if v2 { V2LoopFences(loop: l) }   // NEW-24: what this loop can and cannot do
                     Hairline()
                     roundsTable(l)
                 }

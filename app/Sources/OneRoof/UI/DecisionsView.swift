@@ -11,7 +11,10 @@ struct DecisionsView: View {
     @State private var selected: String?
     @State private var reply = ""
     @State private var undoRule: Decision?
+    @Environment(\.v2Window) private var v2
     @FocusState private var replyFocused: Bool
+    /// v2 (C2.2, NEW-19): the rules and today's decisions page, from the footer.
+    @State private var showRules = false
 
     /// A row in the list: an agent's prompt or an objective's plan.
     enum Entry: Identifiable, Equatable {
@@ -42,6 +45,14 @@ struct DecisionsView: View {
     }
 
     var body: some View {
+        Group {
+            if v2 && showRules { V2RulesPage(model: model) { showRules = false } } else { queue }
+        }
+        .onDisappear { showRules = false }                                     // back to the queue next time
+        .onChange(of: model.openDecisions.count) { old, new in if new > old { showRules = false } }   // a new decision shows
+    }
+
+    private var queue: some View {
         HStack(spacing: 0) {
             list.frame(width: 340)
             Rectangle().fill(t.separator.color).frame(width: 1)
@@ -66,7 +77,7 @@ struct DecisionsView: View {
         let today = model.decisions.filter { !$0.isOpen && Calendar.current.isDateInToday($0.answeredAt ?? .distantPast) }
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Decisions").ui(24, .semibold).foregroundStyle(t.text.color)
+                Text(v2 ? "Needs you" : "Decisions").ui(24, .semibold).foregroundStyle(t.text.color)
                 if !list.isEmpty { Text("\(list.count) waiting").ui(13, .semibold).foregroundStyle(t.needsText.color) }
             }
             .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
@@ -77,8 +88,16 @@ struct DecisionsView: View {
                 .padding(.horizontal, 12)
             }
             Hairline().padding(.horizontal, 12)
-            Text("Earlier today · \(today.count) decided · \(model.decisionRuleCount) rules learned").ui(12).foregroundStyle(t.text3.color)
+            if v2 {
+                Button { showRules = true } label: {
+                    Text("Earlier today · \(today.count) decided · \(model.decisionRuleCount) rules learned ›").ui(12).foregroundStyle(t.accentText.color)
+                }
+                .buttonStyle(.plain).help("Your always-allow rules and what you decided today")
                 .padding(.horizontal, 18).padding(.vertical, 12)
+            } else {
+                Text("Earlier today · \(today.count) decided · \(model.decisionRuleCount) rules learned").ui(12).foregroundStyle(t.text3.color)
+                    .padding(.horizontal, 18).padding(.vertical, 12)
+            }
         }
         .background(t.sidebar.color)
     }

@@ -12,6 +12,7 @@ struct ResourcesView: View {
     @ObservedObject var res: ResourceMonitor
     @Environment(\.theme) private var t
     @State private var sort = ResourcesView.lastSort
+    @Environment(\.v2Window) private var v2
 
     static var lastSort: ResourceSort = .heaviest
 
@@ -22,13 +23,14 @@ struct ResourcesView: View {
     var body: some View {
         let snap = res.snapshot
         let groups = ResourceBoard.group(rows(snap), windows: model.windows.map { ($0.id, $0.name) }, sort: sort)
-        FleetPage(title: "Resources", subtitle: subtitle(snap)) {
+        FleetPage(title: v2 ? "Machine" : "Resources", subtitle: subtitle(snap)) {
             HStack(spacing: 10) {
                 Text("Sort").ui(12.5).foregroundStyle(t.text2.color)
                 Segmented(options: [(ResourceSort.heaviest, "Heaviest"), (.name, "Name")], selection: $sort)
                     .accessibilityLabel("Sort sessions")
             }
         } content: {
+            if v2 { v2Body(snap, groups) } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18, pinnedViews: []) {
                     summary(snap)
@@ -43,6 +45,7 @@ struct ResourcesView: View {
                     ForEach(groups) { g in windowCard(g) }
                 }
                 .padding(.bottom, 8)
+            }
             }
         }
         .onChange(of: sort) { _, v in Self.lastSort = v }
@@ -70,6 +73,65 @@ struct ResourcesView: View {
             let home = model.workspaceId(of: i)
             return open.contains(home) ? home : nil
         }, title: { live[$0]?.title })
+    }
+
+    // MARK: v2 (A8): four meters, then This Mac by app | One Roof itself + sessions (this window first)
+
+    private func v2Body(_ snap: ResourceSnapshot, _ groups: [ResourceWindowGroup]) -> some View {
+        let total = res.history.points(ResourceHistory.totalKey)
+        let mine = groups.filter { $0.id == win.id } + groups.filter { $0.id != win.id }   // this window first, the rest as sorted
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                v2Meter("One Roof memory", ResourceFormat.bytes(snap.footprint), "\(snap.processCount) processes", tint: nil) {
+                    Sparkline(values: total.map { Double($0.footprint) }, color: t.accent).frame(height: 26)
+                }
+                v2Meter("One Roof CPU", ResourceFormat.cpu(snap.cpu), "last 10 minutes", tint: nil) {
+                    Sparkline(values: total.map(\.cpu), color: t.statusRunning, floor: 100).frame(height: 26)
+                }
+                if let m = snap.mac {
+                    v2Meter("This Mac", "\(ResourceFormat.bytes(m.used)) of \(ResourceFormat.bytes(m.total))", "Memory \(m.label) · swap \(ResourceFormat.bytes(m.swapUsed))", tint: pressureColour(m.pressure)) {
+                        Meter(fraction: Double(m.used) / Double(max(m.total, 1)), colour: pressureColour(m.pressure) ?? t.accent)
+                    }
+                }
+                v2Meter("roofd", snap.daemon.map { ResourceFormat.bytes($0.footprint) } ?? "not found",
+                        snap.daemon.map { d in (d.started.map { "up " + ResourceFormat.uptime(Date().timeIntervalSince($0)) + " · " } ?? "") + "\(snap.sessions.count) sessions" } ?? "the session manager is not running", tint: nil) {
+                    if let d = snap.daemon { HeadroomBar(headroom: snap.daemonHeadroom, footprint: d.footprint) }
+                }
+            }
+            HStack(alignment: .top, spacing: 14) {
+                ScrollView { MacAppsCard(res: res).padding(.bottom, 8) }
+                    .frame(maxWidth: .infinity)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        ownProcesses(snap)
+                        if groups.isEmpty {
+                            Card(padding: 16) {
+                                Text("No sessions are running. Running sessions show here with their memory and CPU.")
+                                    .ui(13).foregroundStyle(t.text2.color).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        ForEach(mine) { g in windowCard(g) }
+                        Text("roofd warns at 1.0 GB and ends a session at 2.0 GB.").ui(11.5).foregroundStyle(t.text3.color)
+                    }
+                    .padding(.bottom, 8)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func v2Meter<Below: View>(_ label: String, _ value: String, _ note: String, tint: RGB?, @ViewBuilder below: () -> Below) -> some View {
+        let below = below()
+        return Card(padding: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                MicroLabel(label)
+                Text(value).ui(20, .semibold).monospacedDigit().foregroundStyle((tint ?? t.text).color).lineLimit(1).minimumScaleFactor(0.8)
+                Text(note).ui(11.5).foregroundStyle((tint ?? t.text3).color).lineLimit(1)
+                below
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Summary strip
