@@ -469,3 +469,45 @@ and at 240 pt. `ONEROOF_SELFTEST_LEARNMODE=pages` now opens Radio.
 *Not changed / open.* The classic window's Learn search still says "N pages" (it is a page list). Graphite and Midnight
 not captured. Search results are cards and Help pages only (no posts). The step-hint self-test shows the hint in every
 open window. The hover delay and dismissal were checked in code only (captures cannot hover).
+
+## 1.9.3 · window frame, Linear projects, seats button, Focus wrap (lane 193b)
+
+**LAB-1281 · the window "resized" on Learn.** Reproduced first: the places check (`ONEROOF_SELFTEST_PLACES`) now also logs
+every window resize, all main windows and a `result:` line, takes `ONEROOF_SELFTEST_FRAME=x,y,w,h | left | right |
+tile-left | tile-right` (tile = macOS window tiling, the owner's half-screen layout) and `ONEROOF_SELFTEST_PLAYCARD=<slug>@muted`
+(a card playing, player bar and toolbar mini player showing). On a real-profile copy, switching Sessions ↔ Learn ↔ Home ↔
+Needs you ↔ Work never changed the frame, tiled left or right, at the right half (1720 × 1415), 1440 × 900, 1280 × 800,
+1000 and 800 wide. What the owner saw is exactly the first-launch size, 1700 × 1000 (also in LAB-874's screenshots): **no
+main window's frame was ever saved.** `MainWindowController` named the frame on the window before
+`super.init(window:)`, and NSWindowController replaces that name with its own empty one (pinned in
+`WindowFrameMemoryTests`; the owner's defaults have no `NSWindow Frame OneRoofMain*` key, while pop-outs, which name the
+frame after init, do). So every launch, every release install, put each workspace window (the owner keeps a second one
+named "Learn") back at 1700 × 1000, and a window tiled to half the screen fell back to that size when macOS untiled it.
+Fix: the name is set on the controller after init (`windowFrameAutosaveName`, never in self-tests or fresh profiles),
+`shouldCascadeWindows = false` (the first-launch cascade stays ours). *Not reproducible in a capture:* the untile itself
+(a title-bar drag); the save across a relaunch (self-tests never save frames).
+
+**LAB-1255 · projects not refreshed from Linear.** `loadWorkstreams` fetched once (only when the list was empty). It now
+has the issues' rule (`LinearClient.isStale`: never loaded, forced, or older than `maxAge`, 30 s), is called again when
+a main window becomes key (only once a list was loaded, so a Mac without a Linear key gets no error) and when the New
+session sheet opens (10 s); the list is replaced only when it changed. `issues(project:)` reads every page (100 a page,
+`pageInfo` / `endCursor`) up to `LinearClient.issuesCap` (1,000), stops on a cursor that does not move, and drops
+duplicate ids; 1.9.2 read the first 150 only. Fixture tests in `LinearRefreshTests`; a read-only live fetch from the dev
+build (`ONEROOF_SELFTEST_WORK=<code or name part>` now writes `<out>.work.txt`) listed 187 projects with the current name
+"(CURRENT) LAB-ONEROOF-UI-REDESIGN-v1.8-Full" and 324 of its issues.
+
+**LAB-1266 · the rail's seat bars.** `V2RailSeats` (step 2) is one button: each bar has its seat's mono label (C1 · C2 ·
+CX · KM · GM, only the seats this Mac has), one tooltip for the block ("Seats: usage this window — open Seats &
+accounts"), click opens Settings › Seats & accounts (as the dock's chips do), hover and pressed fills from the selection
+token, the accent focus ring, VoiceOver reads "Seats: C1 7%, C2 0%, …". `ONEROOF_SELFTEST_CLICK=x,y` clicks the window
+(checked: the click opens the pane).
+
+**LAB-1235 · Focus button wraps.** A click on the step button goes to `FocusStep.clicked`: 0 → 1 → 2 → 3 → 0 (three clicks
+from Full reach Focus; from Focus a click goes to Full). ⌥⌘F is unchanged (steps on; at Focus it leaves to the step
+before), ⇧⌥⌘F steps back, Esc leaves Focus when the terminal does not have the keyboard. The hint's Click row reads "Next
+step: <step>" at every step (Full at Focus); its key row at Focus reads "Leave Focus · ⇧⌥⌘F back · Esc leaves too".
+`ONEROOF_SELFTEST_STEPCLICKS=<n>` clicks it n times.
+
+*Seen, not changed:* on the real-profile copy the Files panel (180 pt, the file tree) stays open beside every place and at
+Focus; it follows that window's saved panel state (⌥⌘B closes it).
+

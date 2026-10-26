@@ -47,6 +47,17 @@ final class LookTests: XCTestCase {
         XCTAssertEqual(FocusStep.sessions.next.next.previous.previous, .sessions)
     }
 
+    /// LAB-1235: clicks cycle 0 → 1 → 2 → 3 → 0; three clicks from Full reach Focus.
+    func testStepButtonClickCyclesAndWrapsToFull() {
+        XCTAssertEqual(FocusStep.full.clicked, .sessions)
+        XCTAssertEqual(FocusStep.sessions.clicked, .wide)
+        XCTAssertEqual(FocusStep.wide.clicked, .focus)
+        XCTAssertEqual(FocusStep.focus.clicked, .full)
+        XCTAssertEqual(FocusStep.full.clicked.clicked.clicked, .focus)
+        for s in FocusStep.allCases { XCTAssertEqual(s.clicked.clicked.clicked.clicked, s) }
+        XCTAssertEqual(FocusStep.focus.next, .focus, "⌥⌘F's ladder still stops at Focus (the window leaves it to the step before)")
+    }
+
     func testFocusLadderPanels() {
         XCTAssertTrue(FocusStep.full.showsRail && FocusStep.full.showsInspector && FocusStep.full.showsDock)
         XCTAssertTrue(FocusStep.sessions.showsIconRow && FocusStep.sessions.showsDockLine && FocusStep.sessions.showsInspectorTab)
