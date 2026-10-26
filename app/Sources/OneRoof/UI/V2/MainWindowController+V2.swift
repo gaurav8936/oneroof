@@ -102,7 +102,18 @@ extension MainWindowController {
         // Anything that changes the centre (a notification, Search, a link) closes the page over it.
         win.$centre.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2Page = nil }.store(in: &v2Bag)
         // …and so does picking a session (a notification, a oneroof:// link, the menu-bar popover, the hotkey).
-        win.$selectedId.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2Page = nil }.store(in: &v2Bag)
+        // (not the Wall: it watches every session, and background launches and exits change the selection)
+        win.$selectedId.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            if self?.v2Page != "All windows" { self?.v2Page = nil }
+        }.store(in: &v2Bag)
+        // Wall (A4.2) is the "All windows" page; leaving it (Esc, ⌘[, a place, a tile) goes back to Single.
+        win.$layout.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] l in
+            guard let self else { return }
+            if l == .wall { self.v2ShowPage("All windows") } else if self.v2Page == "All windows" { self.v2Page = nil }
+        }.store(in: &v2Bag)
+        $v2Page.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] p in
+            if p != "All windows", self?.win.layout == .wall { self?.win.layout = .single }
+        }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSSplitView.didResizeSubviewsNotification, object: splitView)
             .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2PaintBand() }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)

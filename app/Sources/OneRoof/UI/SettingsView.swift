@@ -23,7 +23,7 @@ struct SettingsView: View {
         switch p {
         case 0: v2General
         case 1: appearance
-        case 2: agents
+        case 2: VStack(spacing: 0) { v2Routing; agents }
         case 3: Form { notifications }.formStyle(.grouped)
         case 4: v2Model
         case 5: v2Foundations
@@ -96,6 +96,28 @@ struct SettingsView: View {
         model.settings.ui2Chosen = true
         Prefs.defaults.synchronize()
         NSApp.terminate(nil)
+    }
+
+    /// Seats & accounts › Routing (NEW-6): the rules the router and the objective runner already follow, made visible
+    /// and adjustable. Steps rotate to another seat (after a handoff) when theirs passes the hand-off point.
+    private var v2Routing: some View {
+        let file = RoutingPolicy.load(agenticEngineering: model.settings.agenticEngineering.path)
+        return Form {
+            Section("Routing") {
+                Stepper(value: Binding(get: { model.settings.handOffAt > 0 ? model.settings.handOffAt : Int(file.skipFiveHour) },
+                                       set: { model.settings.handOffAt = $0 }), in: 50...100, step: 5) {
+                    Text("Hand off before a limit: at \(model.settings.handOffAt > 0 ? model.settings.handOffAt : Int(file.skipFiveHour))% of a seat's 5-hour window")
+                }
+                Text("A running objective step past this point asks its agent for a handoff between turns, then restarts on another vendor's agent (up to twice per step). New work skips seats past this point (and past \(Int(file.skipSevenDay))% of the 7-day window).")
+                    .font(.caption).foregroundStyle(.secondary)
+                if model.settings.handOffAt > 0 { Button("Use the routing file's value (\(Int(file.skipFiveHour))%)") { model.settings.handOffAt = 0 } }
+                Toggle("Prefer a different model family for review", isOn: $model.settings.reviewOtherFamily)
+                Text("A review step goes to another vendor's agent than the one that wrote the code (e.g. Codex reviews Claude's work).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 250)
     }
 
     private var v2Model: some View {
