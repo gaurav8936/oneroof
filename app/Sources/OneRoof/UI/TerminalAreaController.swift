@@ -228,8 +228,8 @@ final class TerminalAreaController: NSViewController {
             }
             let item = leaf.session.flatMap { model.item($0) }
             let focused = leaf.id == focusedPane
-            let tall = body.bounds.height >= 520 && !multi
-            let expanded = summaryOverride[leaf.id] ?? tall
+            // LAB-1270: the summary starts as its one-line strip, so the terminal gets the room; ▾ opens the card.
+            let expanded = summaryOverride[leaf.id] ?? false
             let leafId = leaf.id
             let liveSurface = item.flatMap(\.liveAgent).map { !model.poppedOut.contains($0) && (refused[$0] ?? 0) < 2 } ?? false
             let runningCmd = liveSurface ? item.flatMap { running[$0.id] } : nil

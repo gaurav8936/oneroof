@@ -35,11 +35,9 @@ struct PaneTop: View {
                 } else {
                     SummaryStrip(model: model, item: item, onExpand: onToggleSummary)
                 }
+                // LAB-1270: no rows of finished steps here any more: each new one grew the band and moved the terminal.
+                // The steps (with calls and duration) are in the card's fixed-height step list.
                 if !raw {
-                    let chs = (model.chapters[item.id] ?? []).filter { $0.ended != nil }
-                    ForEach(chs.suffix(expanded ? 3 : 2), id: \.index) { c in
-                        ChapterRow(chapter: c, open: openChapter == c.index) { onChapter(c.index) }
-                    }
                     // Rewound to a step (LAB-259): one click back to the live bottom of the terminal.
                     if let open = openChapter, let c = (model.chapters[item.id] ?? []).first(where: { $0.index == open }) {
                         RewindBar(chapter: c) { onChapter(open) }
@@ -197,38 +195,42 @@ struct SummaryCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         MicroLabel("You asked" + (item.session.launchedAt.map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""))
-                        Text(asked.isEmpty ? "—" : asked).ui(14).foregroundStyle(t.text.color).lineLimit(3)
+                        Text(asked.isEmpty ? "—" : asked).ui(14).foregroundStyle(t.text.color).lineLimit(2, reservesSpace: true)
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         let age = ageText(model.lastActiveDate(item))
                         MicroLabel(age.isEmpty ? "Right now" : "Right now · \(age) ago")
-                        Text(c.now ?? c.text).ui(14, .medium).foregroundStyle(t.now.color).lineLimit(2)
+                        Text(c.now ?? c.text).ui(14, .medium).foregroundStyle(t.now.color).lineLimit(2, reservesSpace: true)
                             .animation(Motion.fast, value: c.text)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 let steps = stepList(c)
-                if !steps.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 6) {
-                            MicroLabel("Steps · \(c.step ?? 0) of \(c.steps ?? steps.count)")
-                            Spacer()
-                            if let open = openChapter {
-                                Button { onChapter(open) } label: {
-                                    Label("Current", systemImage: "arrow.down.to.line").ui(11, .medium)
-                                }
-                                .buttonStyle(.plain).foregroundStyle(t.accent.color)
-                                .help("Back to the current step, at the bottom of the terminal")
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        MicroLabel(steps.isEmpty ? "Steps" : "Steps · \(c.step ?? 0) of \(c.steps ?? steps.count)")
+                        Spacer()
+                        if let open = openChapter {
+                            Button { onChapter(open) } label: {
+                                Label("Current", systemImage: "arrow.down.to.line").ui(11, .medium)
                             }
-                        }
-                        if usesChapters {
-                            StepList(steps: steps, maxVisible: 6, selected: openChapter, onTap: onChapter)
-                        } else {
-                            StepList(steps: steps, maxVisible: 6)
+                            .buttonStyle(.plain).foregroundStyle(t.accent.color)
+                            .help("Back to the current step, at the bottom of the terminal")
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // LAB-1270: always the same height (Self.stepRows rows, scrolling past that), so a new step never
+                    // moves the terminal below.
+                    if steps.isEmpty {
+                        Text("No steps yet").ui(13).foregroundStyle(t.text3.color)
+                            .frame(maxWidth: .infinity, minHeight: StepList.height(rows: Self.stepRows),
+                                   maxHeight: StepList.height(rows: Self.stepRows), alignment: .topLeading)
+                    } else if usesChapters {
+                        StepList(steps: steps, maxVisible: Self.stepRows, selected: openChapter, onTap: onChapter, fixedHeight: true)
+                    } else {
+                        StepList(steps: steps, maxVisible: Self.stepRows, fixedHeight: true)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.vertical, 16).padding(.horizontal, 20)
@@ -247,41 +249,14 @@ struct SummaryCard: View {
             }
         }
         let chs = model.chapters[item.id] ?? []
-        return chs.map { ch in StepList.Step(id: ch.index, title: ch.title, note: ch.ended == nil ? "in progress" : nil,
-                                             state: ch.ended == nil ? .now : .done) }
-    }
-}
-
-/// A finished step over the scrollback (COMPONENTS ChapterRow): ✓ · "n · Title" · summary · calls · duration.
-struct ChapterRow: View {
-    @Environment(\.theme) private var t
-    let chapter: Chapter
-    let open: Bool
-    var onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 10) {
-                Text("✓").ui(13, .semibold).foregroundStyle(t.statusColor(.done).color).frame(width: 22)
-                (Text("\(chapter.index + 1) · \(chapter.title)").foregroundColor(t.text.color).fontWeight(.semibold)
-                 + Text(chapter.summary.isEmpty ? "" : " · " + chapter.summary).foregroundColor(t.text2.color))
-                    .ui(13).lineLimit(1)
-                Spacer()
-                Text("\(chapter.toolCalls) calls · \(duration) \(open ? "▾" : "▸")").ui(11.5, mono: true).foregroundStyle(t.text3.color)
-            }
-            .padding(.vertical, 9).padding(.horizontal, 20)
-            .background(t.terminal.background.color)
-            .overlay(alignment: .bottom) { Hairline() }
-            .contentShape(Rectangle())
+        return chs.map { ch in
+            let note = ch.ended.map { "\(ch.toolCalls) calls · " + CaptionEngine.ageText($0.timeIntervalSince(ch.started)) } ?? "in progress"
+            return StepList.Step(id: ch.index, title: ch.title, note: note, state: ch.ended == nil ? .now : .done)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Chapter \(chapter.index + 1), \(chapter.title), \(chapter.toolCalls) calls")
     }
 
-    private var duration: String {
-        guard let e = chapter.ended else { return "" }
-        return CaptionEngine.ageText(e.timeIntervalSince(chapter.started))
-    }
+    /// LAB-1270: the open card is capped at about seven rows in all (header, then five steps beside you asked / right now).
+    static let stepRows = 5
 }
 
 /// Shown while the terminal is rewound to a step (LAB-259): which step, and the way back to the live bottom.
