@@ -3,6 +3,7 @@ import SwiftUI
 import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
+///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
 ///   ONEROOF_SELFTEST_SELECT=<session id>      select that agent's row after launch
 ///   ONEROOF_SELFTEST_TYPE=<text>                type text (+ Return) into the focused terminal via synthetic NSEvents
 ///   ONEROOF_SELFTEST_THEMES=sidebar,terminal,plan   e.g. "light,dark,dim"
@@ -37,6 +38,11 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.model.show(v) }
         }
         if let ts = Double(env["ONEROOF_SELFTEST_TEXTSIZE"] ?? "") { app.model.active.setTextScale(ts) }
+        // P6 (v2): ONEROOF_SELFTEST_PLACE=<home|needsYou|sessions|work|machine|loops|learn>, ONEROOF_SELFTEST_FOCUS=<0-3>,
+        // ONEROOF_SELFTEST_LAYOUT=<single|grid|wall>. Place first (it sets its default step), then the step.
+        if let p = env["ONEROOF_SELFTEST_PLACE"], let place = Place(rawValue: p) { app.model.active.open(place) }
+        if let l = env["ONEROOF_SELFTEST_LAYOUT"], let layout = SessionLayout(rawValue: l) { app.model.active.layout = layout }
+        if let f = Int(env["ONEROOF_SELFTEST_FOCUS"] ?? ""), let step = FocusStep(rawValue: f) { app.model.active.focusStep = step }
         if env["ONEROOF_SELFTEST_DEMO"] == "1" { seedDemo(app.model) }
         if env["ONEROOF_SELFTEST_FOUNDATIONS"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.showFoundations(nil) } }
         if let w = env["ONEROOF_SELFTEST_WORK"] {

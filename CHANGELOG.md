@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0 — One Roof 1: groundwork for the new window (26 Oct 2026)
+
+- **Version numbers are now 1.x.y** (LAB-1209): 1 is the major release, x the milestone, y a fix or a smaller step
+  inside it. This build is milestone 0 of the new window; 1.1.0 to 1.6.0 follow, and 1.6.0 turns the new window on.
+- **Nothing changes on screen yet.** This release adds the groundwork for the new One Roof window behind a setting
+  that is off: looks (six presets that set every panel at once), the Focus ladder, places, and per-window memory of
+  each (LAB-921).
+- Everything One Roof 0.5.2.9 does is written down as a checklist the new window must keep, line by line.
+
 ## 0.5.2.9 — Agentic Engineering cards play as animated explainers (25 Oct 2026)
 
 - **Every card in Learn is new** (LAB-918, from Agentic Engineering 0.2.0). Each of the 156 cards now plays as a short
