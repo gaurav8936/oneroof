@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0 — the composer and Grid (26 Oct 2026)
+
+- **A real composer under every agent's terminal** (LAB-1125, NEW-1): type your message in the box and press ↩; it
+  goes to the agent as if typed in the terminal. ⇧↩ adds a line, ↑ brings back what you sent, ⌃↩ runs it as a shell
+  command (Claude's ! mode), ⌘. interrupts, and each session keeps its draft. While an agent waits on a decision the
+  composer holds your text instead of sending it (Enter would answer the prompt): answer the card first.
+- **Grid** (NEW-2, ⌃⌥⌘2 or the layout control): up to four live sessions of the window side by side, six on a wide
+  window, each with its own terminal, composer and focus ring; ⌥⌘arrows move between tiles; Single puts your own panes
+  back. Wall arrives in 1.8.0.
+- The classic window stays available (Settings › General › Classic layout); its removal waits for your call (LAB-1225).
+
 ## 1.6.0 — the new window is the One Roof window (26 Oct 2026)
 
 - **One Roof opens in the new window** (LAB-1091, milestone 6). If you never picked a window, you move to it now;

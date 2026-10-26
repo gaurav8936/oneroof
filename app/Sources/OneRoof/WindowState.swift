@@ -79,7 +79,8 @@ final class WindowState: ObservableObject, Identifiable {
         if !SelfTest.isActive {
             let d = Prefs.defaults
             if let v = d.object(forKey: "focusStep." + id) as? Int, let f = FocusStep(rawValue: v) { focusStep = f }
-            if let v = d.string(forKey: "layout." + id), let l = SessionLayout(rawValue: v) { layout = l }
+            // Grid and Wall are built from live sessions; a relaunch starts in Single (your panes), never empty tiles.
+            if let v = d.string(forKey: "layout." + id), let l = SessionLayout(rawValue: v), l == .single { layout = l }
             if let v = d.string(forKey: "place." + id), let p = Place(rawValue: v) { place = p }
         }
     }

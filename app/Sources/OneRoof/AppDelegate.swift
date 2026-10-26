@@ -772,6 +772,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(v2LayoutSingle(_:)):
+            item.state = main?.win.layout == .single ? .on : .off; return isV2Window
+        case #selector(v2LayoutGrid(_:)):
+            item.state = main?.win.layout == .grid ? .on : .off; return isV2Window
         case #selector(copySessionOutput(_:)):
             return main?.terminalArea.visibleText()?.isEmpty == false
         case #selector(v2SplitEditor(_:)):
