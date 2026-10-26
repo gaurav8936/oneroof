@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.1 — fixes from a real profile (26 Oct 2026)
+
+- ⌥⌘F leaves Focus again at step 3, so a window can no longer stay stuck in Focus with no dock or session list.
+- A window you had in 0.5.2.9 opens once at Full, with the Plan and the full dock showing, instead of folding them away.
+- Sessions comes back at the step you left it at after you visit Home, Work or another place (it reset to step 1).
+- The selected session always shows in the list, even when it is past the first four exited ones.
+- The Files and Changes tabs, ⌥⌘R and Review Changes open the repo the session works in, not the workspace root it
+  started in ("not in a git repo").
+- A coloured window shows its colour again: a stripe under the toolbar.
+- The session column and Plan keep the width you drag them to.
+
 ## 1.8.0 — Wall, seat routing rules and Learn Radio (26 Oct 2026)
 
 - **Wall** (⌃⌥⌘3 or the layout control, LAB-1127): every window's live sessions on one page — ten tiles, fifteen on

@@ -376,7 +376,7 @@ struct SessionContextMenu: View {
             Button("Open in New Window") { PopOutWindowController.popOut(it, model: model) }
             Button("Roof Window for \(Workspace.repoLabel(for: it.session.repoPath))") { RoofWindowController.show(.repo(it.session.repoPath), model: model) }
         }
-        Button("Review Changes") { model.reveal(it); model.openDiff(it.session.repoPath) }
+        Button("Review Changes") { model.reveal(it); model.openDiff(model.workRepo(it)) }
         Button("Terminal Here") { model.newTerminal(in: it.session.repoPath) }
         Button("Show Folder in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: it.session.repoPath)) }
         if v2 {

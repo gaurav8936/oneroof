@@ -290,8 +290,9 @@ struct V2DockLine: View {
                 }
             }
             .buttonStyle(.plain).help(model.runtimeState)
-            Text("·").ui(11).foregroundStyle(t.text3.color)
-            ForEach(AgentMark.available(V2Seats.marks).filter { usage[$0] != nil }, id: \.self) { m in
+            let seats = AgentMark.available(V2Seats.marks).filter { usage[$0] != nil }
+            if !seats.isEmpty { Text("·").ui(11).foregroundStyle(t.text3.color) }   // no dangling dot without seats
+            ForEach(seats, id: \.self) { m in
                 Text("\(m.mono) \(usage[m]?.worst.map { "\(Int($0))%" } ?? "–")").ui(11).foregroundStyle(t.text2.color)
                     .lineLimit(1).fixedSize().help(V2SeatChip.help(m, usage[m]))
             }

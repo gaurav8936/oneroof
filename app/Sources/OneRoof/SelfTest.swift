@@ -4,6 +4,10 @@ import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
 ///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
+///   ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED=<exported defaults plist> ONEROOF_STORE=<copy of sessions.sqlite>
+///                                               a real profile's settings and window state, read but never saved
+///                                               (1.8.1 audit; add ONEROOF_SELFTEST_DEMO=0, ROOFD_DIR=<scratch> to stay off
+///                                               the installed app's roofd, CFFIXED_USER_HOME=<scratch> for App Support)
 ///   ONEROOF_SELFTEST_SELECT=<session id>      select that agent's row after launch
 ///   ONEROOF_SELFTEST_TYPE=<text>                type text (+ Return) into the focused terminal via synthetic NSEvents
 ///   ONEROOF_SELFTEST_THEMES=sidebar,terminal,plan   e.g. "light,dark,dim"

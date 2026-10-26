@@ -115,7 +115,14 @@ extension MainWindowController {
             if p != "All windows", self?.win.layout == .wall { self?.win.layout = .single }
         }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSSplitView.didResizeSubviewsNotification, object: splitView)
-            .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2PaintBand() }.store(in: &v2Bag)
+            .receive(on: DispatchQueue.main).sink { [weak self] n in
+                self?.v2PaintBand()
+                // A divider the owner dragged (setPosition from the layout also names a divider, but not mid-drag):
+                // keep that width for this window (1.8.1).
+                if let i = n.userInfo?["NSSplitViewDividerIndex"] as? Int, NSApp.currentEvent?.type == .leftMouseDragged {
+                    self?.v2RememberWidth(divider: i)
+                }
+            }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
             .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2PaintBand() }.store(in: &v2Bag)
         v2InstallEscape()
@@ -146,7 +153,7 @@ extension MainWindowController {
         // Outside Sessions the rail stays at every step, so Needs you is always visible (audit D2).
         let showRail = step == .full || step == .wide || !sessions
         let side = sideItemRef, plan = planItemRef
-        let columnWidth: CGFloat = step == .focus ? 52 : (step == .sessions ? 280 : 250)
+        let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth))
         let planMode: (collapsed: Bool, edge: Bool) = !sessions || step == .focus ? (true, false) : (step == .full ? (false, false) : (false, true))
         v2PlanEdge = planMode.edge
 
@@ -173,7 +180,7 @@ extension MainWindowController {
             let railW: CGFloat = showRail ? 66 : 0
             if sessions && !side.isCollapsed { sv.setPosition(railW + columnWidth, ofDividerAt: 1) }
             if !plan.isCollapsed {
-                let w: CGFloat = planMode.edge ? 28 : 270
+                let w: CGFloat = planMode.edge ? 28 : CGFloat(V2Layout.planWidth(saved: self.win.planWidth))
                 sv.setPosition(sv.bounds.width - w, ofDividerAt: 3)
             }
             self.v2PaintBand()
@@ -186,6 +193,13 @@ extension MainWindowController {
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; v2DockHeight?.animator().constant = dockShown ? 50 : 0 }
         } else { v2DockHeight?.constant = dockShown ? 50 : 0 }
         window?.toolbar?.items.forEach { $0.view?.needsLayout = true }
+    }
+
+    /// After a drag: the session column (divider 1) at steps 0-2, the Plan inspector (divider 3) at Full.
+    func v2RememberWidth(divider i: Int) {
+        guard win.place == .sessions, v2Page == nil else { return }
+        if i == 1, win.focusStep != .focus, !sideItemRef.isCollapsed { win.columnWidth = Double(sideItemRef.viewController.view.frame.width) }
+        if i == 3, win.focusStep == .full, !planItemRef.isCollapsed, !v2PlanEdge { win.planWidth = Double(planItemRef.viewController.view.frame.width) }
     }
 
     /// The toolbar band takes the colour of the column under each part of it.
