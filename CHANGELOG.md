@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.1 — A steady terminal: the summary band no longer moves it (26 Oct 2026)
+
+- **The terminal stops jumping** (LAB-1270). The session summary above the terminal grew with every finished step
+  (rows under the card, a step list growing to six, "Right now" wrapping between one and two lines), so the terminal
+  moved up and down while an agent worked. The summary now starts as its one-line strip in every pane (Summary ▾
+  opens it, ▴ closes it), and the open card is one fixed height, about seven rows: the header, then five steps
+  beside You asked and Right now; more steps scroll inside the list. The rows of finished steps under the card are
+  gone; each step in the list shows its calls and duration instead.
+- Releases are notarized with an App Store Connect API key when one is set, so they no longer depend on a keychain
+  profile.
+
 ## 1.9.0 — One source for agentic engineering; Learn home navigation; All cards by folder (26 Oct 2026)
 
 - **One source for agentic engineering** (LAB-1257). One Roof no longer writes any agentic-engineering content of its
