@@ -62,8 +62,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Step review (LAB-260): Claude reads each finished step of the session on screen. Off by default: every step it
     /// reviews is one more model call on the owner's Claude account.
     public var stepReview: Bool
-    /// One Roof 1.x v2 window (LAB-ONEROOF-UI-REDESIGN, P2). Off: the 0.5 layout. On by default from 1.6.0.
+    /// One Roof 1.x v2 window (LAB-ONEROOF-UI-REDESIGN). Off: the classic 0.5 layout. On by default from 1.6.0.
     public var ui2: Bool
+    /// True once the owner picked a window (Classic layout / Use the new window). Until then 1.6.0 moves them to v2.
+    public var ui2Chosen: Bool
     /// The look that set every panel theme (P2), saved by name; "custom" = the owner customised panels one by one.
     public var lookName: String
     /// v2 General › Done when required (NEW-30): New session cannot launch without a Done when. Off = today's "optional".
@@ -75,7 +77,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public init() {
-        ui2 = false
+        ui2 = true
+        ui2Chosen = false
         lookName = Look.skyStudio.rawValue
         doneWhenRequired = false
         stepReview = false
@@ -128,6 +131,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         scheduledRuns = try c.decodeIfPresent(Bool.self, forKey: .scheduledRuns) ?? fresh.scheduledRuns
         stepReview = try c.decodeIfPresent(Bool.self, forKey: .stepReview) ?? fresh.stepReview
         ui2 = try c.decodeIfPresent(Bool.self, forKey: .ui2) ?? fresh.ui2
+        ui2Chosen = try c.decodeIfPresent(Bool.self, forKey: .ui2Chosen) ?? false
+        if !ui2Chosen { ui2 = true }   // 1.6.0: the new window by default, unless the owner chose the classic one
         // Settings saved before 1.0.0 have no look: keep the owner's per-panel themes ("custom") rather than
         // replace them with Sky Studio when the v2 window is first turned on. New installs start on Sky Studio.
         lookName = try c.decodeIfPresent(String.self, forKey: .lookName) ?? "custom"
