@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.9.3 — Table view, remembered windows, fresh Linear projects (26 Oct 2026)
+
+- **Table view replaces Wrap** (LAB-1286, LAB-1271). A pane's **Table** button (also View › Table View) shows the
+  session formatted: prose wraps to the pane, and every table is a real table with aligned columns that scrolls
+  sideways when it is wider than the pane. Claude sessions read their transcript, so replies appear exactly as
+  written, with one short line per tool call; other terminals have their Markdown and box-drawing tables found and
+  drawn as tables. Back to live, Table again, or Esc while the view has the keyboard returns to the terminal; Esc in
+  the terminal still goes to the agent. The session tabs' "Split ⌘D · Raw ⌘R · Wrap" text is now Split, Raw and
+  Table buttons with the keys in their tooltips.
+- **One Roof remembers where each window was** (LAB-1281). No main window's position or size was ever saved, so after
+  every launch or update windows came back at 1700 × 1000, and a half-screen window could snap back to that shape.
+  Opening Learn never changes the window's frame.
+- **The project list refreshes from Linear** (LAB-1255): every 30 seconds, when a window comes to the front and when
+  you open New session, so renamed and new projects show up. A project's issues are read in full (up to 1,000).
+- The seat bars at the foot of the rail are labelled and open Settings › Seats & accounts (LAB-1266).
+- Clicking the Focus button at Focus now goes round to Full; ⌥⌘F still leaves Focus.
+
 ## 1.9.2 — Learn is three views; clearer Focus button and Plan close (26 Oct 2026)
 
 - **Learn is now three views: Radio, Writing and All cards** (by band, by kind or by folder) (LAB-1274). The Pages
