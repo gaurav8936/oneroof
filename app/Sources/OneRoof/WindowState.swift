@@ -55,13 +55,33 @@ final class WindowState: ObservableObject, Identifiable {
     @Published var statusFilter: StatusChip?
     /// UI text scale, 0.85–1.3 in 0.05 steps (⌘+ ⌘− ⌘0), per window (S00.W.2).
     @Published var textScale: Double = 1
+    /// v2 window (P1): the Focus ladder step, the layout and the place, per window, kept across relaunches.
+    @Published var focusStep: FocusStep = .sessions { didSet { save(focusStep.rawValue, "focusStep") } }
+    @Published var layout: SessionLayout = .single { didSet { save(layout.rawValue, "layout") } }
+    @Published var place: Place = .sessions { didSet { save(place.rawValue, "place") } }
     /// Sessions currently showing in a centre pane (set by the terminal area).
     var visibleInPanes: Set<String> = []
 
     init(id: String, name: String, colour: String? = nil) {
         self.id = id; self.name = name; self.colour = colour
         textScale = SelfTest.isActive ? 1 : (Prefs.defaults.object(forKey: "textScale." + id) as? Double ?? 1)
+        if !SelfTest.isActive {
+            let d = Prefs.defaults
+            if let v = d.object(forKey: "focusStep." + id) as? Int, let f = FocusStep(rawValue: v) { focusStep = f }
+            if let v = d.string(forKey: "layout." + id), let l = SessionLayout(rawValue: v) { layout = l }
+            if let v = d.string(forKey: "place." + id), let p = Place(rawValue: v) { place = p }
+        }
     }
+
+    private func save(_ value: Any, _ key: String) {
+        if !SelfTest.isActive { Prefs.defaults.set(value, forKey: key + "." + id) }
+    }
+
+    /// Open a place at its default step (FOCUS_LADDER.md: Sessions at 1, the other places at 0).
+    func open(_ p: Place) { place = p; focusStep = p.defaultStep }
+    /// ⌥⌘F steps on (0 → 1 → 2 → 3), ⇧⌥⌘F steps back; Esc in Focus returns to the step before it.
+    func stepOn() { focusStep = focusStep.next }
+    func stepBack() { focusStep = focusStep.previous }
 
     /// Rename the window (LAB-509): the big name in its toolbar, its NSWindow title (Mission Control, Window menu) and
     /// Window › Workspaces. Saved with the workspace. False when the name is empty (the old one stays).
