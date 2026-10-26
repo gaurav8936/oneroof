@@ -17,9 +17,12 @@ struct OverviewView: View {
 
     static var initialRail: String { ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_RAILTAB"] ?? "feed" }
 
+    @Environment(\.v2Window) private var v2
+
     var body: some View {
         FleetPage(title: "All windows", subtitle: subtitle) {
             RoofButton("+ New work item") { NotificationCenter.default.post(name: .newWorkItem, object: nil); model.show(.work, in: win) }
+            if v2 { RoofButton("+ New objective") { NotificationCenter.default.post(name: .newObjective, object: nil) } }   // A5
             // LAB-593: Board and Decisions are top-level tabs (and ⌘ shortcuts) already; only Subagents lives here.
             Segmented(options: [(CentreView.overview, "Overview"), (.subagents, "Subagents")],
                       selection: Binding(get: { .overview }, set: { model.show($0, in: win) }))
@@ -249,6 +252,7 @@ struct OverviewView: View {
                                 Text(w.wsId ?? "").ui(11.5, .semibold, mono: true).foregroundStyle(t.accentText.color)
                                 Spacer()
                                 if live > 0 { Text("\(live) live").ui(11, .semibold).foregroundStyle(t.statusColor(.running).color) }
+                                if v2, !tickets.isEmpty { Text("\(done * 100 / tickets.count)%").ui(11, .semibold).foregroundStyle(t.text2.color) }   // NEW-23
                             }
                             Text(w.title).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                             if !tickets.isEmpty {

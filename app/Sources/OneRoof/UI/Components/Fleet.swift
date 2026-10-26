@@ -3,8 +3,15 @@ import OneRoofCore
 
 /// The frame of a fleet view (Overview, Board, Decisions, Subagents): desk gradient, padding 22×28, a 28/600 title
 /// with a subtitle, and a control on the right.
+/// True inside the One Roof 1 (v2) window's centre: pages draw flat, on the centre's colour, as the handover does.
+private struct V2WindowKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var v2Window: Bool { get { self[V2WindowKey.self] } set { self[V2WindowKey.self] = newValue } }
+}
+
 struct FleetPage<Trailing: View, Content: View>: View {
     @Environment(\.theme) private var t
+    @Environment(\.v2Window) private var v2
     let title: String
     let subtitle: String
     @ViewBuilder var trailing: () -> Trailing
@@ -24,7 +31,7 @@ struct FleetPage<Trailing: View, Content: View>: View {
         }
         .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(LinearGradient(colors: [t.desk.top.color, t.desk.bottom.color], startPoint: .top, endPoint: .bottom))
+        .background(v2 ? AnyShapeStyle(t.window.color) : AnyShapeStyle(LinearGradient(colors: [t.desk.top.color, t.desk.bottom.color], startPoint: .top, endPoint: .bottom)))
     }
 }
 

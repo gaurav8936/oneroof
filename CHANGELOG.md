@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.0 — the places, part 1, in the new window (26 Oct 2026)
+
+- **Places redrawn** (LAB-973, milestone 4 of the new window; still off by default): Home, Needs you, Work, Machine
+  and Loops sit flat on the window's colour with white cards, as in the design.
+- **Machine:** four meters (One Roof memory, CPU, this Mac, roofd), then this Mac by app beside One Roof itself and the
+  sessions (this window's first). Sort, Quit, End and leftovers are all still there.
+- **Loops:** the loops beside a **Tonight** panel (scheduled sessions and nightly loops, + Schedule a session, what
+  ran last night); a loop opens as its own page (‹ Loops or ⌘[ back) with its **fences**: what is enforced and what the
+  loop is only told.
+- **Needs you › Rules:** click "Earlier today · n decided · m rules learned" to see your always-allow rules (Remove)
+  and what you decided today.
+- **Home:** + New objective beside + New work item; active projects show their done percentage.
+- With the setting off, nothing changes. Next: 1.4.1 finishes the places (Work, the planner, plan approval, rows).
+
 ## 1.3.0 — Looks, Search and the row menu in the new window (26 Oct 2026)
 
 - **Looks** (LAB-962, milestone 3 of the new window; still off by default): Settings › Appearance opens on six looks —
