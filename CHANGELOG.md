@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.9.0 — One source for agentic engineering; Learn home navigation; All cards by folder (26 Oct 2026)
+
+- **One source for agentic engineering** (LAB-1257). One Roof no longer writes any agentic-engineering content of its
+  own. Every build packages the Agentic Engineering deck from its repository's main branch: every skill and card, the
+  12-lesson course and the two hooks. Learn's bands (Context · Loops · Evidence · Procedure), plain track names and By
+  kind groups now come from the deck's catalog; Learn looks and works exactly as before. The 17 older starter skills
+  are gone (six were stale copies that could override the deck's newer versions), and skill linking only ever links
+  the deck's skills. The routing rules are One Roof's own settings; your copies in `~/.config/oneroof/agent-routing/`
+  still win.
+- **Learn's Radio home is the way in** (LAB-1247). Clicking a band key opens that band's page, so you choose what to
+  hear before anything plays, and each "On this band" chip opens the band at that track. Playback starts only from
+  the play controls; the band page has a breadcrumb back to Radio.
+- **All cards › By folder** (LAB-1253): the skills folder exactly as this build packages it, with each folder's band
+  and size. Select a folder to play it or list its cards, a skill to see its files and send it to a session, or a
+  file to read SKILL.md, spec.json or video.yaml right there.
+
 ## 1.8.2 — Backlog fixes: subagents, toolbar, Grid, Writing, busy terminals (26 Oct 2026)
 
 - **The Subagents column is gone** (LAB-1240). It opened on its own beside the terminal with no way to close it; open a
