@@ -314,3 +314,44 @@ text landed in the right pane each time.
 scrolled to the bottom tile after three Focus Pane Down), Single after Grid, the running marker on a terminal running
 `python3 -m http.server`, the classic split window, and the pill (forced on for the capture). Daylight chrome with the
 Midnight terminal only.
+
+## 1.8.2 · Writing from the blog hub, Chrome tab names (lane 182c)
+
+**LAB-1251 · Learn › Writing was empty.** 1.8.1 read posts only from Learn folders (`LearnPosts.scan`), and the
+author's posts live on the blog hub that his sites read. Owner decision: One Roof reads the hub. `OneRoofCore/BlogHub.swift`
+fetches `GET <hub>/blog/api/posts?site=<site>` and each `GET …/posts/<slug>?site=<site>` (public, no key) with
+URLSession, plus the post's images under `/blog/assets/<slug>/`. The hub serves the body as **HTML only** (no Markdown
+field: the reply is `{post: meta, html, toc, words, needs, newer, older}`), so a small HTML reader in the same file turns
+it into Markdown the app's viewer already renders: paragraphs, headings (anchor links dropped), nested and ordered
+lists, block quotes, callouts (`bl-callout` → a quote with its title in bold), figures (image + italic caption), tables,
+code (`bl-code`, language kept, highlight spans dropped), KaTeX (its TeX source as inline code). The site-only
+**diagrams and charts (`bl-stepdiagram`, `bl-chart`) are still not drawn**: each becomes one italic line, "Diagram: <its
+title>. Drawn on the web version (open it).", linking to the post's canonical page. Each post is saved as
+`~/Library/Caches/OneRoof/blog/<slug>/index.md` (frontmatter: title, date, subtitle, summary, status, series, tags,
+minutes, canonical, source) with its images beside it, so `LearnPosts` reads the cache like any Learn folder and
+Writing, the post reader, band posts and the broadcast schedule fill in, offline too. Learn folders still merge in and
+win on the same slug. `LearnBlogFeed` (app) refreshes the cache in the background when Learn opens (at most every ten
+minutes, or on Try again); a sync never throws, keeps a post's saved copy when that post fails, and removes only folders
+it wrote (marker `.from-hub`) when the hub stops listing them. Empty states now say what happened: loading, the blog has
+no posts, or "Can't reach the blog (why) and no copy is saved on this Mac yet" with Try again; Writing shows "From the
+<Site> blog · updated <time>" or "Offline · the copy saved <time>". The post reader gains "Open on the web ↗".
+The hub's address is written once (`BlogHub.defaultBase`), overridable with the `learn.blogHubURL` default (or
+`ONEROOF_BLOG_HUB` for self-tests); the site is named like the hub's domain (`learn.blogHubSite` overrides), and the
+page copy uses that name, so the neutral-sources test allows exactly that one address. `ONEROOF_BLOG_CACHE` points a
+self-test at a scratch cache. Not done: the fetch runs on Learn open, not at app start (AppDelegate is lane A's file in
+1.8.2; the cache makes the second open instant); the hub's `links` list and hero image are not shown.
+
+**LAB-853 · Chrome in "This Mac, by app" was 78 rows called "Tab or site".** macOS does not tell another app which
+renderer process belongs to which tab, and Chrome's scripting does not either (its Task Manager is the only place that
+pairs them). So instead of naming processes: the browser's open tabs (LAB-554's AppleScript reader, `BrowserTabs`) are
+listed **by window** (Window n · k tabs, the front tab dotted, title on the left and site on the right; first 12 per
+window with Show all), with **By site** (1.8.1's view) one click away; and the renderer processes fold into one row,
+"78 tabs or sites · 14 GB", which opens to the old rows (each can still be ended). On appearing, the section asks macOS
+**without prompting** (`AEDeterminePermissionToAutomateTarget`, askUserIfNeeded = false) whether One Roof may already
+read the browser: allowed → the tabs load at once; not asked yet → one line ("To name each tab, One Roof asks Chrome for
+its open tabs; macOS asks you once to allow it.") and **Show tab names**; refused → where to allow it, with Open
+Automation settings. A browser that answers with no tabs says so. Verified only with fixtures: unit tests on the parser,
+window grouping, permission codes and renderer totals, and self-test captures with `ONEROOF_SELFTEST_MACFIXTURE=
+tabs|sites|notasked|denied` (`SelfTestMacFixture.swift`: a Chrome group with 78 renderers and three windows of tabs, run
+through `BrowserTabs.parse`; the fixture never sends an Apple Event). The real permission check and tab read were not
+run against the owner's Chrome from the session (macOS would prompt the owner as One Roof).

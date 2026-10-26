@@ -62,6 +62,49 @@ final class BrowserTabsTests: XCTestCase {
         XCTAssertTrue(BrowserTabs.showScript(app: "Safari", family: .safari, tab: t).contains("set current tab of w to tab 3 of w"))
     }
 
+    /// LAB-853: what the list script prints for Chrome with two windows (window 1201 in front) → tabs by window.
+    func testTabsGroupByWindowInTheBrowsersOrder() {
+        let fs = "\u{1F}", rs = "\u{1E}"
+        func rec(_ w: String, _ i: Int, _ id: String, _ active: Bool, _ url: String, _ title: String) -> String {
+            [w, "\(i)", id, active ? "true" : "false", url, title].joined(separator: fs) + rs
+        }
+        let out = rec("1201", 1, "11", false, "https://linear.app/zibajoon/project/x", "Project · Linear")
+            + rec("1201", 2, "12", true, "https://github.com/gaurav8936/oneroof/pulls", "Pull requests")
+            + rec("1187", 1, "21", true, "https://mail.google.com/mail/u/0/#inbox", "Inbox (3) · Gmail")
+            + rec("1201", 3, "13", false, "chrome://settings/", "Settings")
+            + rec("1187", 2, "22", false, "about:blank", "")
+            + "garbage" + rs
+        let tabs = BrowserTabs.parse(out)
+        XCTAssertEqual(tabs.count, 5)
+        let w = BrowserTabs.windows(tabs)
+        XCTAssertEqual(w.map(\.windowId), ["1201", "1187"])
+        XCTAssertEqual(w.map(\.number), [1, 2])
+        XCTAssertEqual(w[0].tabs.map(\.title), ["Project · Linear", "Pull requests", "Settings"])
+        XCTAssertEqual(w[0].tabs.map(\.site), ["linear.app", "github.com", "Browser pages"])
+        XCTAssertEqual(w[0].front?.tabId, "12")
+        XCTAssertEqual(w[1].tabs.map(\.site), ["mail.google.com", "Blank tab"])
+        XCTAssertEqual(BrowserTabs.windows([]), [])
+    }
+
+    func testAutomationPermissionFromStatus() {
+        XCTAssertEqual(BrowserTabs.permission(status: 0), .granted)
+        XCTAssertEqual(BrowserTabs.permission(status: -1744), .notAsked)
+        XCTAssertEqual(BrowserTabs.permission(status: -1743), .denied)
+        XCTAssertEqual(BrowserTabs.permission(status: -600), .notRunning)
+        XCTAssertEqual(BrowserTabs.permission(status: -50), .unknown(-50))
+    }
+
+    /// The 78 anonymous "Tab or site" rows fold into one: how many and their memory together.
+    func testRenderersCountAndMemory() {
+        var procs = (0..<78).map { MacProc(pid: Int32(1000 + $0), ppid: 900, name: "Google Chrome Helper (Renderer)", path: "/x",
+                                           kind: BrowserTabs.rendererKind, footprint: 10 << 20) }
+        procs.append(MacProc(pid: 901, ppid: 900, name: "Google Chrome Helper (GPU)", path: "/x", kind: "GPU", footprint: 500 << 20))
+        let r = BrowserTabs.renderers(procs)
+        XCTAssertEqual(r.count, 78)
+        XCTAssertEqual(r.bytes, 780 << 20)
+        XCTAssertEqual(BrowserTabs.renderers([]).count, 0)
+    }
+
     /// The scripts compile against the real browsers' dictionaries (macOS only, when the browser is installed).
     func testScriptsCompile() throws {
         #if os(macOS)
