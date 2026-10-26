@@ -78,7 +78,10 @@ struct DecisionsView: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(v2 ? "Needs you" : "Decisions").ui(24, .semibold).foregroundStyle(t.text.color)
-                if !list.isEmpty { Text("\(list.count) waiting").ui(13, .semibold).foregroundStyle(t.needsText.color) }
+                if !list.isEmpty {
+                    if v2 { Text("\(list.count)").ui(24, .regular).foregroundStyle(t.text3.color) }   // A6.1 "Needs you 1"
+                    else { Text("\(list.count) waiting").ui(13, .semibold).foregroundStyle(t.needsText.color) }
+                }
             }
             .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
             ScrollView {
@@ -188,12 +191,21 @@ struct DecisionsView: View {
                 .onSubmit { send(d, .reply) }
             HStack(spacing: 10) {
                 RoofButton("Allow once ↩", .primary) { send(d, .allowOnce) }.keyboardShortcut(.defaultAction)
-                if !d.pattern.hasPrefix("ask:") { RoofButton("Always allow \(d.pattern) in \(d.repo)") { send(d, .always) } }
+                if !d.pattern.hasPrefix("ask:") {
+                    if v2 {   // A6.1: short label; what it allows is in the tooltip
+                        RoofButton("Always allow this") { send(d, .always) }.help("Always allow \(d.pattern) in \(d.repo)")
+                    } else {
+                        RoofButton("Always allow \(d.pattern) in \(d.repo)") { send(d, .always) }
+                    }
+                }
                 RoofButton("Deny esc") { send(d, .deny) }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button { step(1) } label: { Text("Next decision ⌘]").ui(12.5).foregroundStyle(t.text2.color) }
                     .buttonStyle(.plain).keyboardShortcut("]", modifiers: .command)
                 Button { step(-1) } label: { EmptyView() }.buttonStyle(.plain).keyboardShortcut("[", modifiers: .command).frame(width: 0)
+            }
+            if v2 {
+                Text("This waits until you choose. ↩ allow once · esc deny · ⌘] next decision · ⌘[ previous").ui(11.5).foregroundStyle(t.text3.color)
             }
         }
         .padding(.horizontal, 34).padding(.vertical, 26)

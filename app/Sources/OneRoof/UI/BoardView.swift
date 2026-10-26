@@ -25,9 +25,12 @@ struct BoardView: View {
         var progress: Double?
     }
 
+    @Environment(\.v2Window) private var v2
+
     var body: some View {
         FleetPage(title: "Board", subtitle: "All windows · group by \(grouping) · ⌘B") {
-            Segmented(options: [("status", "All windows"), ("agent", "By agent"), ("workstream", "By project")], selection: $grouping)
+            Segmented(options: v2 ? [("status", "Status"), ("agent", "Agent"), ("workstream", "Project")]
+                                  : [("status", "All windows"), ("agent", "By agent"), ("workstream", "By project")], selection: $grouping)
         } content: {
             GeometryReader { g in
                 let cols = columns
