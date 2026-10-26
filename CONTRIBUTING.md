@@ -27,7 +27,8 @@ bash tools/terminal-basics.sh          # real app: drag-select, copy, paste in a
 - Keep it neutral: no personal paths, account names or company-specific names in code, docs or screenshots.
   `tools/release-check.sh` and the guard tests in `app/Tests/OneRoofCoreTests/NeutralTests.swift` check this.
 - UI changes: include a screenshot taken in demo mode (`app/scripts/selftest-shot.sh <name> ONEROOF_SELFTEST_DEMO=1`).
-- New skills for `agentic_engineering/`: one folder per skill, under a page long, then run its `scripts/check.sh`.
+- Skills, course lessons and hooks are not written here: they live in the Agentic Engineering deck's own repository,
+  which the app packages at build time. `agentic_engineering/` holds only the linking script and its check.
 
 ## Licence
 

@@ -163,9 +163,9 @@ enum LearnIndex {
                       helpFolder: String? = AppResources.helpFolder) -> [LearnItem] {
         let fm = FileManager.default
         var out: [LearnItem] = []
-        // The course (bundled package): course/NN-*.md, narration in course/audio/<lesson>/.
-        let course = ae + "/course"
-        for f in ((try? fm.contentsOfDirectory(atPath: course)) ?? []).sorted()
+        // The course, from the bundled deck (LAB-1257): content/course/NN-*.md, narration in content/course/audio/<lesson>/.
+        let course = AEFolder.courseDir(ae) ?? ""
+        for f in (course.isEmpty ? [] : (try? fm.contentsOfDirectory(atPath: course)) ?? []).sorted()
         where f.hasSuffix(".md") && f.first?.isNumber == true {
             let path = course + "/" + f
             let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
@@ -173,7 +173,7 @@ enum LearnIndex {
             let base = (f as NSString).deletingPathExtension
             let clips = course + "/audio/" + base
             let audio = ((try? fm.contentsOfDirectory(atPath: clips)) ?? []).contains { $0.hasSuffix(".mp3") }
-            out.append(LearnItem(title: meta["title"] ?? base, section: "Course", path: path, root: ae, audio: audio,
+            out.append(LearnItem(title: meta["title"] ?? base, section: "Course", path: path, root: AEFolder.deckRoot(ae) ?? ae, audio: audio,
                                  summary: (meta["summary"] ?? "") + " " + String(MarkdownPage.body(text).prefix(1200)),
                                  audioFolder: audio ? clips : nil))
         }

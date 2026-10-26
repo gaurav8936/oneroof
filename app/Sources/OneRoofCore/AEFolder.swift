@@ -1,8 +1,13 @@
 import Foundation
 
-/// Where One Roof reads its agentic-engineering material (skills, routing rules, roles, course, the deck) from: the copy
-/// bundled with the app (`agentic_engineering/` in the app's Resources, or in the source checkout when run from a build
-/// folder). `ONEROOF_AE_PATH` overrides it for development. Since LAB-768 there is no folder choice in Settings.
+/// Where One Roof reads its agentic-engineering material from: the copy bundled with the app (`agentic_engineering/` in
+/// the app's Resources, or in the source checkout when run from a build folder). `ONEROOF_AE_PATH` overrides it for
+/// development. Since LAB-768 there is no folder choice in Settings.
+///
+/// 1.9.0 (LAB-1257): One Roof authors no agentic-engineering content. The package holds only the linking script and the
+/// deck (`deck/`: the deck repository at main, packaged by scripts/bundle.sh), and every skill, card, the course
+/// (`deck/content/course`) and the hooks (`deck/hooks`) are read from the deck. The routing rules are One Roof's own
+/// configuration (`agent-routing/` in the app's Resources), not a skill.
 public enum AEFolder {
     public enum Source: String, Sendable { case environment, settings, bundled, missing }
 
@@ -30,10 +35,9 @@ public enum AEFolder {
         return candidates.first { isPackage($0) }
     }
 
-    /// A folder counts if it has a skills/ tree.
+    /// A folder counts if it has the linking script or a deck (the bundled package, or the deck repository itself).
     public static func isPackage(_ path: String) -> Bool {
-        var dir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path + "/skills", isDirectory: &dir) && dir.boolValue
+        FileManager.default.fileExists(atPath: path + "/scripts/sync-skills.sh") || deckRoot(path) != nil
     }
 
     /// `setting` is the Settings value; "" means "use the bundled copy".
@@ -67,22 +71,36 @@ public enum AEFolder {
         return out
     }
 
-    /// LAB-768 · your own routing rules: `~/.config/oneroof/agent-routing/<name>` wins over the bundled copy, so the rules stay
-    /// editable now that there is no folder choice. `name` is "routing.json" or "roles.json".
-    public static func routingFile(_ ae: String, _ name: String, home: String = NSHomeDirectory()) -> String? {
-        let mine = home + "/.config/oneroof/agent-routing/" + name
-        if FileManager.default.fileExists(atPath: mine) { return mine }
-        return routingDir(ae).map { $0 + "/" + name }
+    /// LAB-1257 · the course (Learn › Pages › Course): `content/course` in the deck, lessons `NN-*.md` with narration in
+    /// `audio/<lesson>/`. Nil without a deck.
+    public static func courseDir(_ ae: String) -> String? {
+        guard let deck = deckRoot(ae) else { return nil }
+        let d = deck + "/content/course"
+        return FileManager.default.fileExists(atPath: d) ? d : nil
     }
 
-    /// The folder holding routing.json and roles.json: `skills/<any group>/agent-routing`.
-    public static func routingDir(_ ae: String) -> String? {
-        let fm = FileManager.default
-        for group in ((try? fm.contentsOfDirectory(atPath: ae + "/skills")) ?? []).sorted() {
-            let d = ae + "/skills/" + group + "/agent-routing"
-            if fm.fileExists(atPath: d + "/routing.json") || fm.fileExists(atPath: d + "/roles.json") { return d }
-        }
-        return nil
+    /// LAB-1257 · the optional Claude Code hooks, `hooks/` in the deck. Nil without a deck.
+    public static func hooksDir(_ ae: String) -> String? {
+        guard let deck = deckRoot(ae) else { return nil }
+        let d = deck + "/hooks"
+        return FileManager.default.fileExists(atPath: d) ? d : nil
+    }
+
+    /// LAB-768 · your own routing rules: `~/.config/oneroof/agent-routing/<name>` wins over One Roof's own copy, so the
+    /// rules stay editable. `name` is "routing.json" or "roles.json". `ae` is kept for callers; the rules are app
+    /// configuration (LAB-1257), not part of the agentic-engineering package.
+    public static func routingFile(_ ae: String, _ name: String, home: String = NSHomeDirectory(),
+                                   bundled: String? = AEFolder.routingBundled) -> String? {
+        let mine = home + "/.config/oneroof/agent-routing/" + name
+        if FileManager.default.fileExists(atPath: mine) { return mine }
+        guard let dir = bundled, FileManager.default.fileExists(atPath: dir + "/" + name) else { return nil }
+        return dir + "/" + name
+    }
+
+    /// One Roof's own routing rules (routing.json, roles.json): `agent-routing/` in the app's Resources, else
+    /// `app/Resources/agent-routing` in the source checkout (debug builds and tests).
+    public static var routingBundled: String? {
+        AppResources.path(bundled: "agent-routing", checkout: "app/Resources/agent-routing")
     }
 
     static func expand(_ p: String) -> String { (p as NSString).expandingTildeInPath }

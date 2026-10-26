@@ -2,7 +2,7 @@
 
 **Status:** LIVE · **Date:** 2026-10-19
 
-> **One line:** One Roof shows how full each seat is, suggests an agent by rules from your agentic engineering folder plus each seat's remaining capacity, can use a small on-device model to sort a task into a kind, and moves a step to another agent when its seat runs out.
+> **One line:** One Roof shows how full each seat is, suggests an agent by One Roof's routing rules plus each seat's remaining capacity, can use a small on-device model to sort a task into a kind, and moves a step to another agent when its seat runs out.
 
 ## Goal
 
@@ -27,7 +27,7 @@ A seat is one subscription an agent runs on.
 ## How a choice is made
 
 1. **What kind of task?** A plan step already has a kind (research, design, code, review, test, docs, chore), or the on-device model reads the name and objective and picks one. Without the model, the kind is "code".
-2. **Rules for that kind** come from `skills/fleet/agent-routing/routing.json` in your agentic engineering folder: an ordered list of agents per kind. The bundled rules are:
+2. **Rules for that kind** come from One Roof's own `agent-routing/routing.json` (in the app's Resources; yours in `~/.config/oneroof/agent-routing/` win): an ordered list of agents per kind. The bundled rules are:
 
    | Kind | Tried in this order |
    |---|---|
@@ -51,7 +51,7 @@ Every suggestion says why, in one line:
 - `review → Codex (12% of 5 h)`: kind review, Codex first, with its use.
 - `… · skipped: both Claude seats near their limit`: what was passed over and why.
 
-You see it as **Suggested:** in the New session sheet and on each step card in an objective (Suggest, Route all steps). Roles (from `roles.json` next to `routing.json`, for example a second-opinion review on Codex) fill agent and model directly.
+You see it as **Suggested:** in the New session sheet and on each step card in an objective (Suggest, Route all steps). Roles (from `roles.json` next to `routing.json`, for example a code review on Codex) fill agent and model directly.
 
 ## The on-device model
 
@@ -73,4 +73,4 @@ During an objective run, a step on a Claude or Codex seat that passes the limit 
 
 ## Change the rules
 
-To change the rules, copy `routing.json` or `roles.json` from the bundled `skills/fleet/agent-routing/` (Settings › Foundations › **Show**) into `~/.config/oneroof/agent-routing/` and edit your copy: a file there wins over the bundled one. One Roof reads the files on every suggestion, so the next click uses the new rules.
+To change the rules, copy `routing.json` or `roles.json` from the app's `Contents/Resources/agent-routing/` (Settings › Foundations › **Show**, then one folder up) into `~/.config/oneroof/agent-routing/` and edit your copy: a file there wins over the bundled one. One Roof reads the files on every suggestion, so the next click uses the new rules.

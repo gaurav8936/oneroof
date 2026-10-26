@@ -1,47 +1,32 @@
 # agentic_engineering
 
-The starter set of agentic-engineering skills, a short narrated course, and two hooks that ship with One Roof. It is
-self-contained: nothing here depends on any other repository.
+What One Roof bundles for agentic engineering. Since 1.9.0 One Roof authors **no** agentic-engineering content: every
+skill, narrated card, Learn band, the course and the hooks live in the Agentic Engineering deck's own repository, and
+every build packages that repository as it is on `main` into the app (`app/scripts/bundle.sh`, `ONEROOF_AE_DECK_REPO`).
 
 ```
-course/      12 short lessons (Markdown) + narration in course/audio/<lesson>/
-skills/      17 skills, one folder each: skills/<group>/<name>/SKILL.md
-  session/   where-are-we · last-call · next-session-handoff
-  plan/      plan-objective · write-the-spec
-  build/     test-first · show-the-evidence · second-opinion
-  fleet/     agent-routing (routing.json, roles.json) · fan-out-or-not · parallel-worktrees · bounded-loops
-  guard/     ask-before-irreversible · keep-secrets-out
-  ship/      ship-domain
-  learn/     capture-gotchas · repo-map
-hooks/       optional Claude Code hooks (reminders only)
-scripts/     sync-skills.sh · make-audio.py · check.sh
+scripts/     sync-skills.sh (links the deck's skills into every agent) · check.sh (release check)
+deck/        added at build time, inside the app only: skills/, content/ (catalog, field manual, course/), hooks/
 ```
+
+One Roof's own routing rules (`routing.json`, `roles.json`) are app configuration in `app/Resources/agent-routing/`;
+copies in `~/.config/oneroof/agent-routing/` win.
 
 ## Use it
 
 ```bash
 agentic_engineering/scripts/sync-skills.sh --dry-run   # shows the links it would make
-agentic_engineering/scripts/sync-skills.sh             # links every skill into each agent's skills folder
+agentic_engineering/scripts/sync-skills.sh             # links every deck skill into each agent's skills folder
 ```
 
-Then ask any agent for a skill by name ("where are we", "use the test-first skill"). In One Roof, Learn (⌘⇧E) shows
-the course and every skill; the planner uses `plan-objective`, and routing reads `skills/fleet/agent-routing/`.
+Only deck skills are linked, so nothing in the app can win over the deck on a name clash; links to skills that are gone
+are removed. A real folder, or a link to someone's own copy of a skill, is never replaced.
 
 ## Which folder One Roof reads
 
-One Roof looks for its agentic-engineering folder in this order:
+1. the `ONEROOF_AE_PATH` environment variable, if set (for development, e.g. a checkout of the deck repository);
+2. this bundled copy (inside the app, or next to it in a source checkout).
 
-1. the `ONEROOF_AE_PATH` environment variable, if set;
-2. Settings › Foundations › Agentic engineering, if you chose a folder;
-3. this bundled copy (inside the app, or next to it in a source checkout).
+## Change a skill, a lesson or a hook
 
-Point it at your own skills repository to use your own set; switch back with "Use bundled".
-
-## Add or change a skill
-
-1. Create `skills/<group>/<name>/SKILL.md` with frontmatter `name` (same as the folder), `description` (one sentence:
-   what it does and when), `runtime: [shared]` and `triggers`.
-2. Keep it under a page: purpose, steps, a short example, and what never to do.
-3. Run `scripts/check.sh`, then `scripts/sync-skills.sh`.
-
-Edit a lesson, then run `scripts/make-audio.py` (needs `OPENAI_API_KEY`); only edited sections are re-recorded.
+Change it in the deck repository and merge it to `main`; the next One Roof build carries it.
