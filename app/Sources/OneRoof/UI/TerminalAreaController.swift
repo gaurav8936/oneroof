@@ -77,7 +77,9 @@ final class TerminalAreaController: NSViewController {
 
     deinit {
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        if let tableEscMonitor { NSEvent.removeMonitor(tableEscMonitor) }
         foregroundTimer?.invalidate()
+        tableTimer?.invalidate()
     }
 
     override func loadView() {
@@ -140,6 +142,11 @@ final class TerminalAreaController: NSViewController {
         foregroundTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
             self.pollForeground()
+        }
+        // LAB-1286: View › Table View and the session tabs' Table, for the focused pane of this window.
+        NotificationCenter.default.addObserver(forName: .tableView, object: nil, queue: .main) { [weak self] n in
+            guard let self, (n.object as? String) == self.win.id else { return }
+            self.toggleTable(self.focusedPane)
         }
         NotificationCenter.default.addObserver(forName: .rawStream, object: nil, queue: .main) { [weak self] n in
             guard let self, (n.object as? String) == self.win.id else { return }
@@ -239,8 +246,8 @@ final class TerminalAreaController: NSViewController {
                                       onChapter: { [weak self] i in self?.toggleChapter(leafId, i, item) },
                                       onZoom: { [weak self] in self?.focus(pane: leafId); self?.toggleZoom() },
                                       onClose: { [weak self] in self?.closePane(leafId) },
-                                      reading: reading.contains(leafId),
-                                      onReading: liveSurface ? { [weak self] in self?.toggleReading(leafId) } : nil,
+                                      table: formatted[leafId] != nil,
+                                      onTable: liveSurface ? { [weak self] in self?.toggleTable(leafId) } : nil,
                                       onNewTerminal: { [weak self] in self?.newTerminal(in: item?.session.repoPath) },
                                       running: runningCmd,
                                       onStop: runningCmd == nil ? nil : { [weak self] in if let item { self?.stopForeground(item) } })))
@@ -256,7 +263,7 @@ final class TerminalAreaController: NSViewController {
                 let sv = surface(agent: agent, cwd: item.session.repoPath, theme: theme, size: pv.surfaceSize(fallback: body.bounds.size))
                 pv.show(surface: sv)
                 shown.insert(agent)
-                pv.setReading(reading.contains(leaf.id) ? ReadingText.prepare(sv.allText() ?? "") : nil, theme: theme)
+                pv.setFormatted(formattedView(leafId, theme: theme))
                 // LAB-825: viewing an earlier step and not at the live bottom: a second way back, at the bottom.
                 if let open = openChapter[leafId], !raw, sv.atScrollBottom != true {
                     pv.setFloat(AnyView(BackToCurrentPill { [weak self] in self?.toggleChapter(leafId, open, item) }.themed(theme)))
@@ -286,13 +293,18 @@ final class TerminalAreaController: NSViewController {
                 pv.setBottom(nil)
                 pv.setOverlay(nil)
                 pv.setFloat(nil)
-                pv.setReading(nil, theme: theme)
+                pv.setFormatted(nil)
                 pv.show(placeholder: AnyView(PanePlaceholder(item: item, model: model, emptyPane: multi && item == nil,
                                                              onNewTerminal: { [weak self] in self?.newTerminal(in: nil) }).themed(theme)))
             }
         }
-        reading.formIntersection(ids)
-        syncReadingTimer()
+        for id in formatted.keys where !ids.contains(id) { formatted[id] = nil }
+        syncTableTimer()
+        let tableOn = formatted[focusedPane] != nil
+        if tableOn != postedTable {
+            postedTable = tableOn
+            NotificationCenter.default.post(name: .tableViewChanged, object: win.id, userInfo: ["on": tableOn])
+        }
         win.visibleInPanes = zoomed.flatMap { tree.leaf($0)?.session }.map { [$0] } ?? Set(tree.leaves.compactMap(\.session))
         // Surfaces not in any pane stay alive, hidden, so switching back is instant.
         for (name, s) in surfaces where !shown.contains(name) {
@@ -564,31 +576,147 @@ final class TerminalAreaController: NSViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.pollForeground() }
     }
 
-    // MARK: Wrap for reading (LAB-657)
+    // MARK: Table view (LAB-1286; replaced Wrap, LAB-657)
 
-    /// Panes showing their terminal's text re-wrapped at word boundaries instead of the live surface.
-    private var reading = Set<String>()
-    private var readingTimer: Timer?
+    /// Panes showing their session formatted (text wraps, tables are tables) instead of the live terminal.
+    private var formatted: [String: FormattedFeed] = [:]
+    private var tableTimer: Timer?
+    private var tableEscMonitor: Any?
+    private var postedTable = false
 
-    func toggleReading(_ pane: String) {
-        if reading.contains(pane) { reading.remove(pane) } else { reading.insert(pane) }
+    /// Whether the pane shows its Table view (self-test, menus).
+    func showsTable(_ pane: String) -> Bool { formatted[pane] != nil }
+
+    func toggleTable(_ pane: String) {
+        if formatted[pane] != nil {
+            formatted[pane] = nil
+            update()
+            focusTerminal()
+            return
+        }
+        formatted[pane] = FormattedFeed()
+        refreshTable(pane)
         update()
-        if !reading.contains(pane) { focusTerminal() }
+        // The view takes the keyboard, so Esc can bring the terminal back; typing goes to the terminal again on Back.
+        if let pv = paneViews[pane], let host = pv.formattedHost { view.window?.makeFirstResponder(host) }
     }
 
-    /// While a pane reads, its text follows the terminal once a second.
-    private func syncReadingTimer() {
-        if reading.isEmpty { readingTimer?.invalidate(); readingTimer = nil; return }
-        guard readingTimer == nil else { return }
-        readingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.refreshReading() }
+    /// Esc while a Table view has the keyboard: back to the live terminal. Never while the terminal has it (Esc is the
+    /// agent's). Called by the v2 window's Esc handling first, and by this controller's own key monitor.
+    func escapeTable() -> Bool {
+        guard let fr = view.window?.firstResponder as? NSView, !(fr is TerminalSurfaceView) else { return false }
+        guard let (id, _) = paneViews.first(where: { pv in pv.value.formattedHost.map { fr === $0 || fr.isDescendant(of: $0) } ?? false }),
+              formatted[id] != nil else { return false }
+        toggleTable(id)
+        return true
     }
 
-    private func refreshReading() {
-        let theme = model.themes.terminal
-        for id in reading {
-            guard let pv = paneViews[id], let sid = tree.leaf(id)?.session, let agent = model.item(sid)?.liveAgent,
-                  let s = surfaces[agent] else { continue }
-            pv.setReading(ReadingText.prepare(s.allText() ?? ""), theme: theme)
+    private func viewTableMonitor() {
+        guard tableEscMonitor == nil else { return }
+        tableEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard let self, e.window === self.view.window, e.keyCode == 53,
+                  e.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty else { return e }
+            return self.escapeTable() ? nil : e
+        }
+    }
+
+    /// Self-test: scroll every horizontally scrollable table of the shown Table views to its left or right end.
+    func scrollTables(toEnd: Bool) {
+        func walk(_ v: NSView) {
+            if let sv = v as? NSScrollView, let doc = sv.documentView, doc.frame.width > sv.contentView.bounds.width + 1 {
+                let x = toEnd ? doc.frame.width - sv.contentView.bounds.width : 0
+                sv.contentView.scroll(to: NSPoint(x: x, y: sv.contentView.bounds.origin.y))
+                sv.reflectScrolledClipView(sv.contentView)
+            }
+            v.subviews.forEach(walk)
+        }
+        for pv in paneViews.values { if let h = pv.formattedHost, !h.isHidden { walk(h) } }
+    }
+
+    /// Self-test: what the Table views show.
+    func tableProbe() -> String {
+        let fr = view.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "-"
+        let panes = formatted.map { id, f -> String in
+            var kinds: [String: Int] = [:]
+            for i in f.items {
+                let k: String
+                switch i {
+                case .prompt: k = "prompt"
+                case .reply: k = "reply"
+                case .tool: k = "tool"
+                case .text: k = "text"
+                case .table(let h, _, let r): k = "table\(h.count)x\(r.count)"
+                }
+                kinds[k, default: 0] += 1
+            }
+            return "\(id == focusedPane ? "focused" : "other"): \(f.source == .transcript ? "transcript" : "terminal") \(kinds.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))"
+        }
+        return "table=\(formatted[focusedPane] != nil) keyboard=\(fr) " + panes.joined(separator: " | ")
+    }
+
+    /// Self-test: the focused terminal's whole text as libghostty's read_text gives it.
+    func focusedAllText() -> String? {
+        guard let sid = tree.leaf(focusedPane)?.session, let agent = model.item(sid)?.liveAgent, let s = surfaces[agent] else { return nil }
+        return s.allText()
+    }
+
+    private func formattedView(_ pane: String, theme: ThemeName) -> AnyView? {
+        guard let feed = formatted[pane] else { return nil }
+        return AnyView(FormattedPaneView(feed: feed, t: theme.tokens, scale: CGFloat(win.textScale),
+                                         onBack: { [weak self] in self?.toggleTable(pane) }))
+    }
+
+    /// While a pane shows its Table view, it follows the session every 2 s (cheap: nothing is read again unless the
+    /// transcript file or the terminal text changed).
+    private func syncTableTimer() {
+        if formatted.isEmpty {
+            tableTimer?.invalidate(); tableTimer = nil
+            if let m = tableEscMonitor { NSEvent.removeMonitor(m); tableEscMonitor = nil }
+            return
+        }
+        viewTableMonitor()
+        guard tableTimer == nil else { return }
+        tableTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            for id in self.formatted.keys { self.refreshTable(id) }
+        }
+    }
+
+    /// The transcript a pane's Table view reads: a Claude session's conversation file (found by the engines), or the
+    /// self-test fixture (`ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>`); nil = the terminal's text.
+    private func transcriptPath(_ item: BoardItem) -> String? {
+        if SelfTest.isActive, let p = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_TRANSCRIPT"] { return p }
+        guard item.session.agent == .claude else { return nil }
+        return model.engines.transcriptPath(item.id)
+    }
+
+    private func refreshTable(_ pane: String) {
+        guard let feed = formatted[pane], !feed.busy, let sid = tree.leaf(pane)?.session, let item = model.item(sid) else { return }
+        if let path = transcriptPath(item), let a = try? FileManager.default.attributesOfItem(atPath: path) {
+            let key = "\(path)|\((a[.size] as? NSNumber)?.intValue ?? 0)|\((a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
+            guard key != feed.lastKey else { return }
+            feed.lastKey = key
+            feed.busy = true
+            DispatchQueue.global(qos: .userInitiated).async {
+                let jsonl = EngineHub.tail(path, bytes: 4 << 20).map { String(decoding: $0, as: UTF8.self) } ?? ""
+                let items = TranscriptFormat.items(jsonl: jsonl)
+                DispatchQueue.main.async { feed.busy = false; feed.set(items, source: .transcript) }
+            }
+            return
+        }
+        // Self-test: ONEROOF_SELFTEST_TERMTEXT=<file> stands in for the terminal's text (a locked screen has no GPU, so no
+        // libghostty surface to read).
+        let fixture = SelfTest.isActive ? ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_TERMTEXT"]
+            .flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } : nil
+        guard let agent = item.liveAgent, let s = surfaces[agent] else { return }
+        // libghostty's read_text gives logical lines (rows it soft-wrapped come back joined), so no rejoin is needed.
+        let text = fixture ?? s.allText() ?? ""
+        guard "t:" + text != feed.lastKey else { return }
+        feed.lastKey = "t:" + text
+        feed.busy = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let items = TerminalFormat.items(text)
+            DispatchQueue.main.async { feed.busy = false; feed.set(items, source: .terminal) }
         }
     }
 
@@ -658,7 +786,7 @@ final class TerminalAreaController: NSViewController {
     func debugState() -> String {
         "shown=\(shownAgent ?? "-") surfaces=\(surfaces.keys.sorted()) panes=\(tree.leaves.map { $0.session ?? "-" }) " +
         "sel=\(win.selectedId ?? "-") live=\(model.items.compactMap(\.liveAgent)) popped=\(model.poppedOut.sorted()) " +
-        "hasSurface=\(surfaces.values.map { $0.surface != nil })"
+        "hasSurface=\(surfaces.values.map { $0.surface != nil }) ghostty=\(GhosttyRuntime.shared.initError ?? "ok")"
     }
 
     func visibleText() -> String? {
@@ -757,7 +885,8 @@ final class PaneView: NSView {
     /// LAB-825: a pill floating at the bottom centre of the terminal (Back to current).
     private var float: NSHostingView<AnyView>?
     private var placeholder: NSHostingView<AnyView>?
-    private var readingView: ReadingView?
+    /// LAB-1286: the Table view over the terminal (nil = the live terminal).
+    private(set) var formattedHost: FormattedHostView?
     private let content = NSView()
     override var isFlipped: Bool { true }
 
@@ -823,17 +952,21 @@ final class PaneView: NSView {
         surface.isHidden = false
     }
 
-    /// Wrap for reading (LAB-657): the terminal's text over the surface, or nil for the live terminal.
-    func setReading(_ text: String?, theme: ThemeName) {
-        guard let text else { readingView?.isHidden = true; return }
-        let r = readingView ?? ReadingView()
-        if readingView == nil {
-            if let overlay { addSubview(r, positioned: .below, relativeTo: overlay) } else { addSubview(r) }
-            readingView = r
-            needsLayout = true
+    /// The Table view (LAB-1286) over the surface, or nil for the live terminal.
+    func setFormatted(_ view: AnyView?) {
+        guard let view else {
+            if let h = formattedHost, !h.isHidden {
+                if let w = window, let fr = w.firstResponder as? NSView, fr === h || fr.isDescendant(of: h) { w.makeFirstResponder(nil) }
+                h.isHidden = true
+            }
+            return
         }
-        r.isHidden = false
-        r.show(text, theme: theme)
+        if let h = formattedHost { h.rootView = view; h.isHidden = false; return }
+        let h = FormattedHostView(rootView: view)
+        h.sizingOptions = []
+        if let overlay { addSubview(h, positioned: .below, relativeTo: overlay) } else { addSubview(h) }
+        formattedHost = h
+        needsLayout = true
     }
 
     func show(placeholder view: AnyView) {
@@ -868,7 +1001,7 @@ final class PaneView: NSView {
         }
         content.frame = NSRect(x: inset, y: y, width: w, height: max(0, bounds.height - y - bottomH - inset))
         for v in content.subviews { v.frame = content.bounds }
-        readingView?.frame = content.frame
+        formattedHost?.frame = content.frame
         if let overlay, !overlay.isHidden {
             // LAB-716: measured at the pane's width, so a question that wraps gets the rows it needs.
             let h = min(Self.height(of: overlay, width: w), content.frame.height)
@@ -880,46 +1013,6 @@ final class PaneView: NSView {
             let base = overlay.map { $0.isHidden ? content.frame.maxY : $0.frame.minY } ?? content.frame.maxY
             float.frame = NSRect(x: inset + max(0, (w - s.width) / 2), y: max(content.frame.minY, base - s.height), width: min(s.width, w), height: s.height)
         }
-    }
-}
-
-/// Wrap for reading (LAB-657): a read-only, selectable text view of the terminal's text, wrapped at word boundaries to
-/// the pane's width, in the terminal theme. It stays at the bottom while new output arrives, unless scrolled up.
-final class ReadingView: NSScrollView {
-    private let text = NSTextView()
-    private var shown = ""
-
-    init() {
-        super.init(frame: .zero)
-        hasVerticalScroller = true
-        autohidesScrollers = true
-        drawsBackground = true
-        text.isEditable = false
-        text.isSelectable = true
-        text.isRichText = false
-        text.textContainerInset = NSSize(width: 14, height: 10)
-        text.textContainer?.widthTracksTextView = true
-        text.isVerticallyResizable = true
-        text.isHorizontallyResizable = false
-        text.minSize = .zero
-        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        text.autoresizingMask = [.width]
-        text.font = .monospacedSystemFont(ofSize: 12.5, weight: .regular)
-        text.setAccessibilityLabel("Terminal text, wrapped for reading")
-        documentView = text
-    }
-    required init?(coder: NSCoder) { fatalError("not supported") }
-
-    func show(_ s: String, theme: ThemeName) {
-        let t = theme.tokens
-        backgroundColor = t.terminal.background.nsColor
-        text.backgroundColor = t.terminal.background.nsColor
-        text.textColor = t.text.nsColor
-        guard s != shown else { return }
-        let atBottom = shown.isEmpty || contentView.bounds.maxY >= text.frame.height - 24
-        shown = s
-        text.string = s
-        if atBottom { text.scrollToEndOfDocument(nil) }
     }
 }
 

@@ -16,8 +16,8 @@ struct PaneTop: View {
     var onChapter: (Int) -> Void
     var onZoom: () -> Void
     var onClose: () -> Void
-    var reading = false
-    var onReading: (() -> Void)? = nil
+    var table = false
+    var onTable: (() -> Void)? = nil
     var onNewTerminal: (() -> Void)? = nil
     /// LAB-861: the program the pane's keys go to when it is not the shell or the session's agent, and its Stop.
     var running: String? = nil
@@ -27,7 +27,7 @@ struct PaneTop: View {
         let term = model.themes.terminal.tokens
         VStack(spacing: 0) {
             PaneHeader(model: model, item: item, focused: focused, split: split, onZoom: onZoom, onClose: onClose,
-                       reading: reading, onReading: onReading, onNewTerminal: onNewTerminal, running: running, onStop: onStop)
+                       table: table, onTable: onTable, onNewTerminal: onNewTerminal, running: running, onStop: onStop)
             if let item, item.session.agent.isAgent, item.liveAgent != nil {
                 if expanded {
                     SummaryCard(model: model, item: item, openChapter: openChapter, onChapter: onChapter, onCollapse: onToggleSummary)
@@ -59,9 +59,9 @@ struct PaneHeader: View {
     let split: Bool
     var onZoom: () -> Void
     var onClose: () -> Void
-    /// Wrap for reading (LAB-657): nil hides the toggle (no live terminal in the pane).
-    var reading = false
-    var onReading: (() -> Void)? = nil
+    /// Table view (LAB-1286, replaced Wrap): nil hides the toggle (no live terminal in the pane).
+    var table = false
+    var onTable: (() -> Void)? = nil
     /// LAB-745: a new plain terminal in this pane's folder.
     var onNewTerminal: (() -> Void)? = nil
     /// LAB-861: "running: <command>" with Stop (Ctrl-C) while the pane's foreground program is not its shell.
@@ -99,24 +99,23 @@ struct PaneHeader: View {
                 .help("New terminal: a plain shell in this session's folder, shown here (⌘T opens one in your projects folder; right-click the terminal for more). Split this pane: ⌘D right, ⇧⌘D down")
                 .accessibilityLabel("New terminal in this folder")
             }
-            if let onReading {
-                Button(action: onReading) {
+            if let onTable {
+                Button(action: onTable) {
                     HStack(spacing: 4) {
-                        Image(systemName: reading ? "checkmark" : "text.justify.left").font(.system(size: 9.5, weight: .bold))
-                        Text("Wrap").ui(11.5, .medium)
+                        Image(systemName: table ? "checkmark" : "tablecells").font(.system(size: 9.5, weight: .bold))
+                        Text("Table").ui(11.5, .medium)
                     }
-                    .foregroundStyle(reading ? t.text.color : t.text2.color)
+                    .foregroundStyle(table ? t.text.color : t.text2.color)
                     .padding(.vertical, 2).padding(.horizontal, 7)
-                    .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(reading ? t.surface.color : .clear))
+                    .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(table ? t.surface.color : .clear))
                     .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color))
                     .contentShape(Rectangle())
                     .fixedSize()
                 }
                 .buttonStyle(.plain)
-                .help(reading
-                      ? "Wrap is on: this is a read-only copy of the terminal's text, re-wrapped at word boundaries and kept up to date. Click to go back to the live terminal and type."
-                      : "Wrap for reading: show this terminal's text, scrollback included, re-wrapped at word boundaries to the pane's width, so long lines such as compiler errors read cleanly. Read-only and live; click again for the terminal. (The terminal itself wraps long lines at its edge, letter by letter, and re-wraps them when the pane is resized.)")
-                .accessibilityLabel(reading ? "Wrap for reading on, back to the live terminal" : "Wrap for reading")
+                .help(table ? "Back to the live terminal (Esc while the formatted view has the keyboard)"
+                            : FormattedPaneView.tooltip)
+                .accessibilityLabel(table ? "Table view on, back to the live terminal" : "Table view")
             }
             Button { NotificationCenter.default.post(name: .panelCommand, object: "focus") } label: { Image(systemName: "rectangle.inset.filled").font(.system(size: 11)).foregroundStyle(t.text2.color) }
                 .buttonStyle(.plain).help("Focus: terminal only, both side panels hidden (⌥⌘F); again to bring them back")

@@ -232,6 +232,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if model.centre == .editor { NotificationCenter.default.post(name: .runFile, object: [model.active.id]) }
         else { NotificationCenter.default.post(name: .rawStream, object: model.active.id) }
     }
+    /// LAB-1286: the focused pane shows its session formatted (text wraps, tables are tables), or the live terminal.
+    @objc func toggleTableView(_ sender: Any?) { NotificationCenter.default.post(name: .tableView, object: model.active.id) }
     @objc func debugFile(_ sender: Any?) { NotificationCenter.default.post(name: .runFile, object: [model.active.id, "debug"]) }
     @objc func askAgentAboutSelection(_ sender: Any?) { NotificationCenter.default.post(name: .askAboutSelection, object: model.active.id) }
     @objc func saveFile(_ sender: Any?) { NotificationCenter.default.post(name: .saveFile, object: model.active.id) }
@@ -680,6 +682,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             view.addItem(v2item)
         }
         view.addItem(item("Raw Stream / Run", #selector(toggleRawStream(_:)), "r"))
+        view.addItem(item("Table View", #selector(toggleTableView(_:)), ""))   // LAB-1286: was the pane's Wrap button
         view.addItem(item("Debug", #selector(debugFile(_:)), "r", [.command, .shift]))
         viewItem.submenu = view
 

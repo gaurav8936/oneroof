@@ -26,7 +26,7 @@ public struct SizeSettle: Sendable {
     public static let intervalMicros: UInt32 = 25_000
 }
 
-/// LAB-657: the text a terminal pane shows in "Wrap for reading": the terminal's scrollback and screen as plain text
+/// LAB-657 (Wrap, now the Table view's terminal source, LAB-1286): a terminal's scrollback and screen as plain text
 /// (libghostty already joins lines it soft-wrapped at the edge), tidied so a word-wrapping text view can lay it out
 /// at the pane's width: trailing spaces off, no blank tail, runs of blank lines cut to one, the last `maxLines` kept.
 public enum ReadingText {
