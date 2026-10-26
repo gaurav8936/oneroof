@@ -7,7 +7,9 @@ final class NeutralSourceTests: XCTestCase {
     /// Words that name the author's own workspace. Only the legacy-migration file may contain them.
     static let banned = ["gabblegrid", "hypothesys", "zibajoon", "agencium", "mindmesh", "labs-data",
                          "labs-agentic-engineering", "/labs/oneroof/", "gaurav", "ganarasi", "linear-commit-hook"]
-    static let allowed = ["io.github.gaurav8936.oneroof", "github.com/gaurav8936/oneroof"]
+    /// The app's own bundle id and repository, and the blog hub Learn › Writing reads (LAB-1251, owner decision; its
+    /// address is written once, in BlogHub.defaultBase, and can be changed in the defaults).
+    static let allowed = ["io.github.gaurav8936.oneroof", "github.com/gaurav8936/oneroof", "\"https://console.zibajoon.com\""]
 
     func testSourcesNameNoAuthorSpecificFoldersOrNames() throws {
         // Tests/OneRoofCoreTests/NeutralTests.swift → app/Sources

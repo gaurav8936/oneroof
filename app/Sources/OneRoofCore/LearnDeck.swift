@@ -301,10 +301,11 @@ public struct DeckSkill: Equatable, Sendable {
     }
 }
 
-// MARK: Writing (posts found in Learn folders)
+// MARK: Writing (posts from the blog hub and the Learn folders)
 
-/// A post: a `<folder>/index.md` with a title and a date in its frontmatter, found in one of the owner's Learn folders
-/// (the app ships no posts of its own).
+/// A post: a `<folder>/index.md` with a title and a date in its frontmatter. 1.8.2 (LAB-1251): the owner's posts come
+/// from the blog hub, cached as such folders by `BlogHub.sync`; posts in the owner's Learn folders still merge
+/// in (a Learn folder wins on the same slug). The app ships no posts of its own.
 public struct LearnPost: Equatable, Sendable, Identifiable {
     public var id: String { slug }
     public var slug: String
@@ -319,10 +320,19 @@ public struct LearnPost: Equatable, Sendable, Identifiable {
     public var minutes: Int
     /// The post's `## ` headings, for "In this post".
     public var sections: [String]
+    /// The post's web address (hub posts), else "".
+    public var canonical: String = ""
+    /// The blog's name ("<Site> blog") for posts read from the hub's cache, else "" (a Learn folder).
+    public var source: String = ""
     public var published: Bool { status == "published" }
 }
 
 public enum LearnPosts {
+    /// Learn folders first, then the hub's cache: a Learn folder's post wins on the same slug.
+    public static func all(folders: [String], hubCache: String? = BlogHub.cacheDir) -> [LearnPost] {
+        scan(folders + (hubCache.map { [$0] } ?? []))
+    }
+
     public static func scan(_ folders: [String]) -> [LearnPost] {
         let fm = FileManager.default
         var out: [LearnPost] = [], seen = Set<String>()
@@ -355,7 +365,8 @@ public enum LearnPosts {
         let tags = (meta["tags"] ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "[]")).split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         return LearnPost(slug: slug, file: file, title: title, subtitle: meta["subtitle"] ?? "", summary: meta["summary"] ?? "",
                          date: String(date.prefix(10)), status: meta["status"] ?? "", series: meta["series"] ?? "", tags: tags,
-                         minutes: max(1, Int((Double(words) / 230).rounded())), sections: heads)
+                         minutes: Int(meta["minutes"] ?? "").flatMap { $0 > 0 ? $0 : nil } ?? max(1, Int((Double(words) / 230).rounded())),
+                         sections: heads, canonical: meta["canonical"] ?? "", source: meta["source"] ?? "")
     }
 
     /// AIRED · NEXT · n DAYS · SCHEDULED, as the broadcast schedule labels a post on `today` (yyyy-MM-dd).

@@ -167,6 +167,7 @@ struct LearnListen: View {
                 .frame(width: 30, height: 30).background(Circle().fill(t.surface.color)).overlay(Circle().strokeBorder(t.separatorStrong.color, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .help(name == "chevron.left" ? "Previous scene" : "Next scene")   // LAB-1236: icon-only buttons say what they do
     }
 }
 

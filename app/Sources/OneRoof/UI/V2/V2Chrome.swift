@@ -130,8 +130,17 @@ struct V2PlaceButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(place.title + " (⌃⌘\(place.controlKey))")
+        // The icon row sits in the toolbar, where only an AppKit tooltip shows (LAB-1236); the rail is in the window.
+        .modifier(PlaceHelp(text: place.title + " (⌃⌘\(place.controlKey))", inToolbar: !labelled))
         .accessibilityLabel(place.title + (badge > 0 ? ", \(badge) waiting" : "") + (selected ? ", selected" : ""))
+    }
+}
+
+private struct PlaceHelp: ViewModifier {
+    let text: String
+    let inToolbar: Bool
+    func body(content: Content) -> some View {
+        if inToolbar { content.barHelp(text) } else { content.help(text) }
     }
 }
 
@@ -194,23 +203,38 @@ struct V2Dock: View {
 
     var body: some View {
         let usage = V2Seats.usage(model)
-        HStack(spacing: 14) {
-            ForEach(AgentMark.available(V2Seats.marks), id: \.self) { m in
-                Button { controller.v2OpenSettings(tab: 2) } label: { V2SeatChip(mark: m, usage: usage[m]) }.buttonStyle(.plain)
-            }
-            Spacer(minLength: 12)
-            V2DockStatus(model: model, controller: controller)
-            Button { controller.v2Open(.machine) } label: {
-                Text(V2DockMac.text(resources.snapshot)).ui(11).foregroundStyle(t.text2.color).lineLimit(1).fixedSize()
-            }
-            .buttonStyle(.plain).help("This Mac: One Roof's memory and CPU (Machine)")
-            V2DockPill(title: "Needs you", count: V2Counts.needsYou(model), urgent: true) { controller.v2Open(.needsYou) }
-            V2DockPill(title: "Tonight", count: V2Counts.tonight(model), urgent: false) { controller.v2Open(.loops) }
+        // A narrow window (LAB-831): compact seat chips, then no Mac line, then no seats (Settings › Seats and the
+        // Machine place have them); the status and the two pills always show, nothing spills past the edges.
+        ViewThatFits(in: .horizontal) {
+            ForEach(0..<4) { level in row(usage: usage, level: level) }
         }
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(t.control.color)
         .overlay(alignment: .top) { Rectangle().fill(t.separator.color).frame(height: 1) }
+    }
+}
+
+extension V2Dock {
+    /// The dock at a narrowness level: 0 everything, 1 compact seats, 2 no Mac line, 3 status and pills only.
+    private func row(usage: [AgentMark: SeatUsage], level: Int) -> some View {
+        HStack(spacing: level == 0 ? 14 : 10) {
+            if level < 3 {
+                ForEach(AgentMark.available(V2Seats.marks), id: \.self) { m in
+                    Button { controller.v2OpenSettings(tab: 2) } label: { V2SeatChip(mark: m, usage: usage[m], compact: level >= 1) }.buttonStyle(.plain)
+                }
+            }
+            Spacer(minLength: level == 3 ? 0 : 12)
+            V2DockStatus(model: model, controller: controller)
+            if level < 2 {
+                Button { controller.v2Open(.machine) } label: {
+                    Text(V2DockMac.text(resources.snapshot)).ui(11).foregroundStyle(t.text2.color).lineLimit(1).fixedSize()
+                }
+                .buttonStyle(.plain).help("This Mac: One Roof's memory and CPU (Machine)")
+            }
+            V2DockPill(title: "Needs you", count: V2Counts.needsYou(model), urgent: true) { controller.v2Open(.needsYou) }
+            V2DockPill(title: "Tonight", count: V2Counts.tonight(model), urgent: false) { controller.v2Open(.loops) }
+        }
     }
 }
 

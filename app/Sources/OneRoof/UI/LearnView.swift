@@ -21,6 +21,8 @@ struct LearnView: View {
     @State private var deck: LearnDeck?
     @State private var posts: [LearnPost] = []
     @State private var appeared = false
+    /// LAB-1251: the owner's posts come from the blog hub (BlogHub, cached), plus any in Learn folders.
+    @ObservedObject private var blog = LearnBlogFeed.shared
 
     var body: some View {
         if model.settings.ui2 { v2Body } else { pagesBody }
@@ -334,12 +336,14 @@ extension LearnView {
         .onChange(of: model.learnQuery) { _, q in if q != nil { lnav.place = .pages }; takeQuestion() }
         .onChange(of: model.learnItems.count) { _, _ in takeQuestion() }
         .onChange(of: model.settings.learnFolders) { _, _ in v2LoadPosts() }
+        .onChange(of: blog.revision) { _, _ in v2LoadPosts() }
     }
 
     private func v2Appear() {
         model.loadLearn()
         if deck == nil { deck = LearnDeck.load(deck: AEFolder.deckRoot(model.settings.agenticEngineering.path)) }
         v2LoadPosts()
+        blog.refresh()
         guard !appeared else { takeQuestion(); return }
         appeared = true
         if deck == nil && !lnav.pinned { lnav.place = .pages }
@@ -350,7 +354,7 @@ extension LearnView {
     private func v2LoadPosts() {
         let folders = model.settings.learnFolders
         DispatchQueue.global(qos: .userInitiated).async {
-            let found = LearnPosts.scan(folders)
+            let found = LearnPosts.all(folders: folders, hubCache: BlogHub.cacheDir)
             DispatchQueue.main.async { posts = found }
         }
     }

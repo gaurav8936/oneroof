@@ -114,17 +114,20 @@ extension MainWindowController {
         $v2Page.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] p in
             if p != "All windows", self?.win.layout == .wall { self?.win.layout = .single }
         }.store(in: &v2Bag)
+        // Posted on the main thread: handled at once, so the mouse event that caused it is still the current one (a
+        // queued handler ran after the drag and often missed it, so a dragged width was not kept, LAB-829).
         NotificationCenter.default.publisher(for: NSSplitView.didResizeSubviewsNotification, object: splitView)
-            .receive(on: DispatchQueue.main).sink { [weak self] n in
+            .sink { [weak self] n in
                 self?.v2PaintBand()
                 // A divider the owner dragged (setPosition from the layout also names a divider, but not mid-drag):
                 // keep that width for this window (1.8.1).
-                if let i = n.userInfo?["NSSplitViewDividerIndex"] as? Int, NSApp.currentEvent?.type == .leftMouseDragged {
+                if let i = n.userInfo?["NSSplitViewDividerIndex"] as? Int,
+                   [.leftMouseDragged, .leftMouseUp].contains(NSApp.currentEvent?.type) {
                     self?.v2RememberWidth(divider: i)
                 }
             }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
-            .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2PaintBand() }.store(in: &v2Bag)
+            .sink { [weak self] _ in self?.v2PaintBand(); self?.v2FitPlanToWidth() }.store(in: &v2Bag)
         v2InstallEscape()
         // The session tabs' Wrap: read the focused pane's text re-wrapped (LAB-657), in this window only.
         NotificationCenter.default.publisher(for: V2SessionTabs.wrap).receive(on: DispatchQueue.main).sink { [weak self] n in
@@ -154,7 +157,10 @@ extension MainWindowController {
         let showRail = step == .full || step == .wide || !sessions
         let side = sideItemRef, plan = planItemRef
         let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth))
-        let planMode: (collapsed: Bool, edge: Bool) = !sessions || step == .focus ? (true, false) : (step == .full ? (false, false) : (false, true))
+        // At Full the inspector takes its column only while it fits; a narrower window gets the edge tab (LAB-831).
+        let fits = v2PlanFits(step: step, column: Double(columnWidth))
+        v2PlanFitsLast = fits
+        let planMode: (collapsed: Bool, edge: Bool) = !sessions || step == .focus ? (true, false) : (step == .full && fits ? (false, false) : (false, true))
         v2PlanEdge = planMode.edge
 
         let apply = {
@@ -195,10 +201,26 @@ extension MainWindowController {
         window?.toolbar?.items.forEach { $0.view?.needsLayout = true }
     }
 
-    /// After a drag: the session column (divider 1) at steps 0-2, the Plan inspector (divider 3) at Full.
+    /// Whether the Plan inspector fits in its column at this step (LAB-831; only Full shows it there).
+    func v2PlanFits(step: FocusStep, column: Double) -> Bool {
+        guard let w = window?.frame.width else { return true }
+        return V2Layout.planFits(windowWidth: Double(w), rail: step == .full || step == .wide, column: column)
+    }
+
+    /// A window resize that crosses the Plan's fit at Full folds it to the edge tab or brings it back (LAB-831).
+    /// Only the columns move: the window keeps the size you gave it (LAB-596).
+    func v2FitPlanToWidth() {
+        guard win.place == .sessions, v2Page == nil, win.focusStep == .full else { return }
+        let fits = v2PlanFits(step: .full, column: V2Layout.columnWidth(step: .full, saved: win.columnWidth))
+        guard fits != v2PlanFitsLast else { return }
+        v2ApplyLayout(animated: false)
+    }
+
+    /// After a drag: the session column (divider 1, or 2 beside the folded Files item) at steps 0-2, the Plan
+    /// inspector (divider 3) at Full.
     func v2RememberWidth(divider i: Int) {
         guard win.place == .sessions, v2Page == nil else { return }
-        if i == 1, win.focusStep != .focus, !sideItemRef.isCollapsed { win.columnWidth = Double(sideItemRef.viewController.view.frame.width) }
+        if i == 1 || i == 2, win.focusStep != .focus, !sideItemRef.isCollapsed { win.columnWidth = Double(sideItemRef.viewController.view.frame.width) }
         if i == 3, win.focusStep == .full, !planItemRef.isCollapsed, !v2PlanEdge { win.planWidth = Double(planItemRef.viewController.view.frame.width) }
     }
 
@@ -212,6 +234,30 @@ extension MainWindowController {
             segs.append((v.frame.maxX, colours[i]))
         }
         backdropRef.segments = segs
+        v2FitToolbar()
+    }
+
+    /// The toolbar's room right of the column (LAB-1237): published only when the fit changes.
+    func v2FitToolbar() {
+        guard let window else { return }
+        let centreX = centreItemRef.viewController.view.convert(CGPoint.zero, to: nil).x
+        let start = V2Layout.toolbarStart(divider: Double(centreX), placesRow: win.focusStep == .sessions && win.place == .sessions)
+        let extras = window.toolbar?.items.first { $0.itemIdentifier == V2ToolbarDelegate.extras }?.view?.fittingSize.width ?? 0
+        let fit = V2Layout.toolbarFit(room: Double(window.frame.width) - start, extras: Double(extras))
+        if fit != v2Bar { v2Bar = fit; DispatchQueue.main.async { [weak self] in self?.v2KickToolbar() } }
+    }
+
+    /// NSToolbar measures an item once it moved into » and never again, so after a window shrink with a long title
+    /// the title, Single · Grid · Wall (and in 1.8.1 the right group) stayed hidden or clipped although the title then
+    /// got shorter (LAB-1237). Invalidating the items' sizes and re-laying the toolbar view out brings them back.
+    func v2KickToolbar() {
+        guard let tb = window?.toolbar else { return }
+        tb.items.forEach { $0.view?.invalidateIntrinsicContentSize() }
+        for item in tb.items {   // the first item view still in the toolbar leads to the toolbar view
+            var v = item.view?.superview
+            while let s = v, !String(describing: type(of: s)).contains("NSToolbarView") { v = s.superview }
+            if let v { v.needsLayout = true; return }
+        }
     }
 
     func v2ApplyThemes(_ t: PanelThemes) {
@@ -263,6 +309,8 @@ extension MainWindowController {
     func v2TogglePlan() {
         guard win.place == .sessions else { return }
         switch win.focusStep {
+        case .full where v2PlanEdge:   // too narrow for the inspector column (LAB-831): slide it over instead
+            if v2PlanOverlay == nil { v2ShowPlanOverlay() } else { v2HidePlanOverlay() }
         case .full:
             planItemRef.animator().isCollapsed.toggle()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.v2PaintBand() }
