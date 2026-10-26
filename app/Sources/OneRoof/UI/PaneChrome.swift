@@ -331,6 +331,12 @@ struct ApprovalCard: View {
                 if !unread {
                     key("Always allow", help: "Yes, and the agent stops asking for this (its \u{201C}always\u{201D} / \u{201C}don't ask again\u{201D} option). One Roof also remembers it for \(decision.pattern) in \(decision.repo).") {
                         model.answer(decision, .always)
+                        if model.settings.ui2 {   // v2: Undo on the terminal card for 5 s, as in Needs you (CAP-26)
+                            let d = decision
+                            let w = model.active.id   // the window whose card was clicked
+                            model.v2UndoRule = (d, w)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if model.v2UndoRule?.decision == d { model.v2UndoRule = nil } }
+                        }
                     }
                 }
                 key("Deny", help: "No: the agent does not do it and waits for what you say next.") { model.answer(decision, .deny) }

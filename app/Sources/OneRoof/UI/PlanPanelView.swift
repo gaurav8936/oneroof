@@ -156,6 +156,39 @@ struct PlanDetail: View {
     /// squeezed sideways). Last come tighter margins, then icons with the chosen tab's name, then icons alone, and the
     /// bar is clipped to the panel's width whatever happens.
     private var tabBar: some View {
+        Group {
+            if model.settings.ui2 { v2TabBar } else { tabBar05 }
+        }
+    }
+
+    /// v2 (handover A3): one segmented control of text tabs — Plan · Ticket · Notes · Files · Usage.
+    private var v2TabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(PlanTab.allCases, id: \.self) { tb in
+                let on = tab == tb
+                Button { commit(); tab = tb } label: {
+                    Text(v2Label(tb)).ui(11.5, on ? .semibold : .regular).foregroundStyle(on ? t.text.color : t.text2.color)
+                        .lineLimit(1).minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity).frame(height: 22)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.surface.color : .clear)
+                            .shadow(color: on ? t.separator.color : .clear, radius: 0.5, y: 0.5))
+                }
+                .buttonStyle(.plain)
+                .help(label(tb))
+                .accessibilityLabel(label(tb))
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.control.color))
+        .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+    }
+
+    private func v2Label(_ tb: PlanTab) -> String {
+        switch tb { case .plan: return "Plan"; case .ticket: return "Ticket"; case .notes: return "Notes"; case .artifacts: return "Files"; case .resources: return "Usage" }
+    }
+
+    private var tabBar05: some View {
         ViewThatFits(in: .horizontal) {
             tabRow(spacing: 16, style: .full)
             tabRow(spacing: 9, style: .full)

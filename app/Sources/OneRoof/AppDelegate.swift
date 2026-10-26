@@ -390,6 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func togglePlanPanel(_ sender: Any?) { main.togglePlanPanel() }
     @objc func toggleFocus(_ sender: Any?) { main.toggleFocus() }
     @objc func v2StepBack(_ sender: Any?) { if main.isV2 { main.v2StepBack() } }
+    @objc func v2SplitEditor(_ sender: Any?) { NotificationCenter.default.post(name: .v2SplitEditor, object: model.active.id) }
     @objc func v2ToggleDock(_ sender: Any?) { if main.isV2 { main.v2ToggleDock() } }
     @objc func v2OpenPlace(_ sender: Any?) {
         guard main.isV2, let raw = (sender as? NSMenuItem)?.representedObject as? String, let p = Place(rawValue: raw) else { return }
@@ -614,7 +615,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // One Roof 1.x v2 window keys (shared/SHORTCUTS.md): hidden until the A11 menus land in 1.6.0; they only act in a
         // v2 window. ⇧⌥⌘F Focus step back · ⌃⌘J dock full ↔ line · ⌃⌘1-7 places.
         for v2item in [item("Focus: Step Back", #selector(v2StepBack(_:)), "f", [.command, .option, .shift]),
-                       item("Dock", #selector(v2ToggleDock(_:)), "j", [.command, .control])]
+                       item("Dock", #selector(v2ToggleDock(_:)), "j", [.command, .control]),
+                       item("Split Editor", #selector(v2SplitEditor(_:)), "\\", [.command])]
                       + Place.allCases.map({ p -> NSMenuItem in
                           let i = item(p.title, #selector(v2OpenPlace(_:)), String(p.controlKey), [.command, .control])
                           i.representedObject = p.rawValue
@@ -726,6 +728,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(v2SplitEditor(_:)):
+            return main.isV2 && model.active.centre == .editor   // otherwise ⌘\ goes on to the terminal
         case #selector(toggleBoard(_:)):
             item.state = model.boardMode ? .on : .off
         case #selector(toggleLearn(_:)):

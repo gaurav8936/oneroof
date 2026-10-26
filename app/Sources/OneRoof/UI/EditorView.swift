@@ -50,6 +50,8 @@ final class EditorState: ObservableObject {
     @Published var dockTab: String?
     @Published var inspectorTab = "outline"
     @Published var askFor: AskRequest?
+    /// Split editor (⌘\, CAP-18): the file shown in a second pane beside the current one; nil = one pane.
+    @Published var split: String?
 
     struct DockRun: Identifiable, Equatable {
         var id: String
@@ -122,8 +124,25 @@ private struct EditorBody: View {
             VStack(spacing: 0) {
                 tabBar
                 if let c = claim { claimBanner(c) }
-                CodeEditor(model: model, state: state, path: path, theme: t.name, line: win.viewerLine)
-                    .id(path)
+                HStack(spacing: 0) {
+                    CodeEditor(model: model, state: state, path: path, theme: t.name, line: win.viewerLine)
+                        .id(path)
+                    if model.settings.ui2, let other = state.split, other != path, FileKind.of(other) == .text {
+                        Rectangle().fill(t.separator.color).frame(width: 1)
+                        VStack(spacing: 0) {
+                            HStack(spacing: 6) {
+                                Text((other as NSString).lastPathComponent).ui(11.5, .semibold).foregroundStyle(t.text2.color)
+                                Text("read-only · open its tab to edit").ui(10.5).foregroundStyle(t.text3.color)
+                                Spacer()
+                                Button { state.split = nil } label: { Image(systemName: "xmark").ui(9).foregroundStyle(t.text3.color) }
+                                    .buttonStyle(.plain).help("Close the split (⌘\\)")
+                            }
+                            .padding(.horizontal, 10).frame(height: 24).background(t.toolbar.color)
+                            CodeEditor(model: model, state: state, path: other, theme: t.name, line: nil, readOnly: true)
+                                .id("split:" + other)
+                        }
+                    }
+                }
                 if state.dockOpen {
                     RunDock(model: model, win: win, state: state, height: $dockHeight)
                         .frame(height: dockHeight)
@@ -151,6 +170,11 @@ private struct EditorBody: View {
             guard (n.object as? String) == win.id else { return }
             NotificationCenter.default.post(name: .editorAsk, object: path)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .v2SplitEditor)) { n in
+            guard (n.object as? String) == win.id, model.settings.ui2 else { return }
+            toggleSplit()
+        }
+        .onChange(of: path) { _, p in if state.split == p { state.split = nil } }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in flushQueuedSave() }
         .sheet(item: $state.askFor) { req in AskAgentSheet(model: model, request: req) { state.askFor = nil }.themed(t.name) }
         .onAppear(perform: loadProblems)
@@ -172,11 +196,28 @@ private struct EditorBody: View {
                     .help("Preview shows the page formatted; Source edits it")
                     .padding(.trailing, 10)
             }
-            Text("Split editor ⌘\\").ui(11.5).foregroundStyle(t.text3.color).padding(.trailing, 12)
+            if model.settings.ui2 {
+                Button { toggleSplit() } label: {
+                    Text(state.split == nil ? "Split editor ⌘\\" : "Unsplit ⌘\\").ui(11.5).foregroundStyle(t.text2.color)
+                }
+                .buttonStyle(.plain)
+                .help("Show another open file beside this one (⌘\\)")
+                .padding(.trailing, 12)
+            } else {
+                Text("Split editor ⌘\\").ui(11.5).foregroundStyle(t.text3.color).padding(.trailing, 12)   // 0.5 window: unchanged
+            }
         }
         .frame(height: 34)
         .background(t.toolbar.color)
         .overlay(alignment: .bottom) { Hairline() }
+    }
+
+    /// ⌘\: split with the previously opened file (or another open tab); again to go back to one pane.
+    private func toggleSplit() {
+        if state.split != nil { state.split = nil; return }
+        let others = state.tabs.filter { $0 != path && FileKind.of($0) == .text }
+        state.split = others.last
+        if state.split == nil { status = "Open a second code or text file in a tab to split the editor." }
     }
 
     private func claimBanner(_ c: FileClaim) -> some View {
@@ -284,6 +325,8 @@ struct CodeEditor: NSViewRepresentable {
     let path: String
     let theme: ThemeName
     var line: Int?
+    /// The split editor's second pane is for reading: saving, claims and Take over stay with the main file.
+    var readOnly = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -314,7 +357,8 @@ struct CodeEditor: NSViewRepresentable {
         code.textContainerInset = NSSize(width: 6, height: 8)
         code.delegate = context.coordinator
         code.onAsk = { [weak coordinator = context.coordinator] in coordinator?.ask() }
-        code.string = state.texts[path] ?? ""
+        code.string = state.texts[path] ?? ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "")
+        code.isEditable = !readOnly
         let gutter = GutterView(scrollView: scroll, orientation: .verticalRuler)
         gutter.clientView = code
         gutter.onToggle = { [weak coordinator = context.coordinator] l in coordinator?.toggleBreakpoint(l) }
