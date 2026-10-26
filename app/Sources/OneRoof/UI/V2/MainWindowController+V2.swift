@@ -129,11 +129,6 @@ extension MainWindowController {
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
             .sink { [weak self] _ in self?.v2PaintBand(); self?.v2FitPlanToWidth() }.store(in: &v2Bag)
         v2InstallEscape()
-        // The session tabs' Wrap: read the focused pane's text re-wrapped (LAB-657), in this window only.
-        NotificationCenter.default.publisher(for: V2SessionTabs.wrap).receive(on: DispatchQueue.main).sink { [weak self] n in
-            guard let self, n.object as? String == self.win.id else { return }
-            self.terminalArea.toggleReading(self.terminalArea.focusedPane)
-        }.store(in: &v2Bag)
         DispatchQueue.main.async { [weak self] in self?.v2ApplyLayout(animated: false) }
     }
 
@@ -438,6 +433,8 @@ extension MainWindowController {
                 if e.keyCode == 53, mods.isEmpty, !(self.window?.firstResponder is NSTextView) { self.v2Page = nil; return nil }
                 if e.keyCode == 33, mods == .command { self.v2Page = nil; return nil }   // ⌘[
             }
+            // LAB-1286: Esc in a pane's Table view (when it has the keyboard) goes back to the live terminal first.
+            if e.keyCode == 53, mods.isEmpty, self.terminalArea.escapeTable() { return nil }
             guard e.keyCode == 53, mods.isEmpty, self.win.place == .sessions else { return e }   // Focus is a Sessions thing
             guard self.win.focusStep == .focus else { return e }
             if self.window?.firstResponder is TerminalSurfaceView { return e }
