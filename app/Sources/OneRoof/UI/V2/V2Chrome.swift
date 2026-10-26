@@ -400,3 +400,27 @@ struct V2FocusHintSlot: View {
 final class PassThroughHostingView: NSHostingView<AnyView> {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
+
+/// The Always-allow Undo toast on the terminal card (CAP-26): "Always allow <pattern> in <repo> · Undo".
+struct V2UndoToastSlot: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    let windowId: String
+    var body: some View {
+        if let u = model.v2UndoRule, u.window == windowId {
+            let d = u.decision
+            HStack(spacing: 12) {
+                Text("Always allow \(d.pattern) in \(d.repo)").ui(12.5).foregroundStyle(t.text.color).lineLimit(1)
+                Button { model.removeRule(pattern: d.pattern, repo: d.repo); model.v2UndoRule = nil } label: {
+                    Text("Undo").ui(12.5, .semibold).foregroundStyle(t.accentText.color)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .background(Capsule().fill(t.surface.color))
+            .overlay(Capsule().strokeBorder(t.separator.color, lineWidth: 1))
+        } else {
+            Color.clear.frame(width: 1, height: 1)
+        }
+    }
+}

@@ -20,6 +20,7 @@ struct ReviewChangesView: View {
     @State private var messageTouched = false
     @State private var moveTicket = true
     @State private var askHandoff = true
+    @State private var v2Note: String?
     @State private var status: String?
     @State private var confirmRevert: DiffHunk?
     @State private var hoverHunk: String?
@@ -85,6 +86,59 @@ struct ReviewChangesView: View {
     // MARK: Files
 
     private func fileList(_ s: DiffSnapshot) -> some View {
+        VStack(spacing: 0) {
+            fileList05(s)
+            if model.settings.ui2 { v2Actions(s) }
+        }
+    }
+
+    /// v2 Changes tab (handover A2.2, CAP-17): Ask <agent> to commit · Discard… under the file list.
+    @ViewBuilder private func v2Actions(_ s: DiffSnapshot) -> some View {
+        let target = model.reviewTarget(repo: s.repo)   // the session the message goes to (sendReview)
+        let agent = target?.account ?? target?.session.agent.displayName ?? "the agent"
+        VStack(alignment: .leading, spacing: 6) {
+            Hairline()
+            HStack(spacing: 8) {
+                Button { let r = model.sendReview("Please commit the \(s.files.count) changed file\(s.files.count == 1 ? "" : "s") in this repo with a clear message (tag it with the ticket). Don't push.", repo: s.repo)
+                         v2Note = r.hasPrefix("Comment sent") ? "Asked \(agent) to commit (it won't push)." : r } label: {
+                    Text("Ask \(agent) to commit").ui(12, .semibold).foregroundStyle(t.onAccent.color)
+                        .frame(maxWidth: .infinity).frame(height: 26)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.accent.color))
+                }
+                .buttonStyle(.plain).disabled(target?.liveAgent == nil)
+                .help(target?.liveAgent == nil ? "No live agent in this repo" : "Sends a message asking the session's agent to commit (it never pushes)")
+                Button { v2Discard(s) } label: {
+                    Text("Discard…").ui(12).foregroundStyle(t.text.color).padding(.horizontal, 10).frame(height: 26)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
+                }
+                .buttonStyle(.plain).help("Throw away the changes to tracked files (asks first; new files are kept)")
+            }
+            if let v2Note { Text(v2Note).ui(11).foregroundStyle(t.text3.color).lineLimit(2) }
+        }
+        .padding(.horizontal, 12).padding(.bottom, 10)
+    }
+
+    /// Discard asks first, names what goes, and restores tracked files only (git restore --staged --worktree).
+    private func v2Discard(_ s: DiffSnapshot) {
+        // Only edits to files the last commit has (modified, deleted). New files — untracked, staged-new, the new side
+        // of a rename — and binaries are never touched: git restore would delete a staged new file.
+        let tracked = s.files.filter { $0.change == .modified || $0.change == .deleted }.map(\.path)
+        let kept = s.files.count - tracked.count
+        guard !tracked.isEmpty else { v2Note = "Only new, renamed or binary files here; nothing to discard."; return }
+        let a = NSAlert()
+        a.messageText = "Discard changes to \(tracked.count) file\(tracked.count == 1 ? "" : "s")?"
+        a.informativeText = "Their last committed version comes back and these edits are gone. This can't be undone from One Roof."
+            + (kept > 0 ? " \(kept) new, renamed or binary file\(kept == 1 ? " is" : "s are") kept as they are." : "")
+        a.alertStyle = .warning
+        a.addButton(withTitle: "Discard"); a.addButton(withTitle: "Cancel")
+        a.buttons.first?.hasDestructiveAction = true
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        let (code, out) = Foundations.run("/usr/bin/git", ["restore", "--staged", "--worktree", "--"] + tracked, cwd: s.repo)
+        v2Note = code == 0 ? "Discarded \(tracked.count) file\(tracked.count == 1 ? "" : "s")." : "git restore failed: " + (out.split(separator: "\n").first.map(String.init) ?? "")
+        reload()
+    }
+
+    private func fileList05(_ s: DiffSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("\(s.files.count) FILES · +\(s.added) −\(s.removed)").ui(11, .semibold).tracking(0.5).foregroundStyle(t.text3.color)
                 .padding(.horizontal, 16).padding(.vertical, 12)

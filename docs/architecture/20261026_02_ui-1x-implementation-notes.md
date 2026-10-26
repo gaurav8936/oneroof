@@ -57,3 +57,27 @@
 - P3 (`railFill`): not needed; the rail uses its theme's `control` token and reads clearly in all six looks.
 
 **Independent audit of M1 (before landing): build, tests and release check green; nothing changes with ui2 off. Fixed from its findings:** the v2 window saves its split layout under its own name (`OneRoofSplitV2…`, it has a rail item 0.5's does not); outside Sessions the rail stays at Focus so Needs you is always visible; the 28 pt edge tab no longer counts as an open Plan, so the Subagents column beside the terminal shows at steps 1-2 as in 0.5; the centre un-collapses on any place change and the Editor still opens the file tree beside it until the Files tab arrives; Plan tab requests carry the window id; the Esc monitor is removed when the window closes; the v2 self-test hooks do nothing with ui2 off; the edge strips never take clicks; the edge reveal waits before hiding (menus and popovers over it); at Focus the right edge (and ⌥⌘P) slides the Plan over. The handover starter's placeholder views (about 1,250 lines) were removed in M1: every v2 view is written against the real model, screen by screen.
+
+## M2 · 1.2.0 · session tabs and the Plan inspector
+
+**Session tabs (A2.0)** replace the 0.5 centre strip in the v2 window (`UI/V2/V2SessionTabs.swift`): Terminal → the terminal card, Files → the Editor centre, Changes n → Review changes for the session's repo (count from the repo's git stat), Subagents n → the session's subagents. They show whenever the centre is one of those four views, in any place (an Editor or Review reached from Overview or a link keeps its way back). Split ⌘D and Raw ⌘R send today's actions; Wrap toggles reading mode (LAB-657) on the focused pane of that window only.
+
+**Files (A2.1, A2.4, C6.1)** is `V2FilesTab`: today's `FileBrowserView` at 220 pt beside today's `EditorView`, with the LAB-799 file tabs above (`V2FileTabs`, unsaved dot kept; a file opened from search or a link shows as a tab too; closing the last tab leaves the tree and "Pick a file"). The Editor no longer opens the separate Files panel in v2; ⌥⌘B still toggles it.
+
+**Split editor ⌘\ (CAP-18)** shows a second open text file beside the main one, read-only (saving, claims and Take over stay with the main file, so an agent's claim can never be bypassed from the second pane); ⌘\ again closes it. The key is a hidden menu item enabled only when the v2 window's centre is the Editor, so ⌘\ in a terminal is untouched. In the 0.5 window the label stays as it was.
+
+**Changes (A2.2, CAP-17)** is today's Review changes (file list · diff · Checks and Commit, kept whole) with **Ask <agent> to commit** (a message to the repo's live session asking it to commit and not push) and **Discard…** under the file list. Discard asks first and runs `git restore --staged --worktree` on modified and deleted files only: staged-new files, the new side of a rename and binaries are never passed to git (restore would delete a staged new file); the dialog says how many are kept.
+
+**Subagents (A2.3, C6.2)** is `V2SubagentsTab`: a card per subagent (status dot, name, model · tokens · age, Asked:, Doing:/Done:, right-click Ask the parent to stop) and FILES TOUCHED. Trace ▸ (one subagent) and Whole trace ▸ open today's `SubagentTraceView` with ‹ Subagents back; picking another session returns to the cards. Outside Sessions (Overview, Window menu) the trace view opens as in 0.5.
+
+**Plan inspector (A3)**: in the v2 window the tab bar is one segmented row of text tabs, Plan · Ticket · Notes · Files · Usage (`PlanPanelView.v2TabBar`); the tabs' content is today's, which already holds every field A3.1-A3.6 shows. The 0.5 icon bar is unchanged with the setting off.
+
+**Undo on the terminal card (CAP-26)**: Always allow on a terminal approval card shows "Always allow <pattern> in <repo> · Undo" for 5 s on that window's card.
+
+**Deviations, on purpose:**
+- Changes keeps 0.5's Checks and Commit column (the handover draws two columns); dropping it would lose Commit ⌘↩ and the handoff ask. The diff header does not yet say "by <agent> · step n" (the step-to-file link is not recorded per hunk).
+- The Editor keeps its own file header (name, folder, Preview/Source, Split editor) under the file tabs, so Files has two thin rows where the mockup has one.
+- Split ⌘D · Raw ⌘R · Wrap are dimmed outside the Terminal tab: they act on terminals.
+- "Pick a file" (Files with no file open) is new text; the mockup always shows a file.
+
+**Independent audit of M2 (before landing): nothing changes with ui2 off; build and 563 tests green. Fixed from its findings:** Discard no longer touches staged-new, renamed or binary files (it deleted a staged new file in a scratch repo); the split pane is read-only and resets when its file becomes the main one, and ⌘\ is a validated menu key; file tabs show the unsaved dot again; the session tabs show outside Sessions; Files reopens the file you were on and closing the last tab stays on Files; Ask to commit is enabled and labelled from the session it sends to; Subagents has ‹ Subagents and Whole trace ▸ and resets on a new session; the Undo toast shows only in the window where Always allow was clicked.
