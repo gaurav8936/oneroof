@@ -118,7 +118,7 @@ struct SkillsTab: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 TextField("Search \(skills.count) skills", text: $query).textFieldStyle(.roundedBorder)
-                Text("from \(model.settings.agenticEngineering.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))/skills")
+                Text("from \(FoundationPaths(agenticEngineering: model.settings.agenticEngineering.path).skills.replacingOccurrences(of: NSHomeDirectory(), with: "~"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }

@@ -28,7 +28,7 @@ On a fresh install One Roof opens a setup window. You can open it again any time
 |---|---|
 | Projects folder | The folder that holds your repos. The default projects folder is `~/Projects` if it exists, otherwise your home folder. Agents start here. |
 | Shared folder | Where your rules, handoffs and gotchas live. The default is `_common` inside your projects folder. **Create it** makes the folder for you. You can skip this step. |
-| Agentic engineering | Bundled with the app: the skills, routing rules, course and the narrated Agentic Engineering deck. Nothing to choose. |
+| Agentic engineering | Bundled with the app: the narrated Agentic Engineering deck with every skill, the course and the hooks, plus One Roof's routing rules. Nothing to choose. |
 | Agents detected | Which of `claude`, `codex`, `kimi`, `gemini` and `agy` are installed, and whether each is signed in. Nothing to do here except notice what is missing. |
 | Linear API key | Optional. Only needed for the Work view and tickets ([Work and tickets](04_work-and-tickets.md)). It is saved to `~/.config/oneroof/linear-api-key`. |
 

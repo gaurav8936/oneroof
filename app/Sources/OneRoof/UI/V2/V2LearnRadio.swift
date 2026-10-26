@@ -18,8 +18,13 @@ final class LearnNav: ObservableObject {
     @Published var post = ""
     @Published var path = "vibe-to-prod"
     @Published var query = ""
-    @Published var lens = "loop"            // All cards: by band · by kind
+    @Published var lens = "loop"            // All cards: by band · by kind · by folder
+    /// The selected block (by band / by kind), or "folder:<path from the deck root>" (by folder).
     @Published var libSel: String?
+    /// By folder: the expanded folders (paths from the deck root).
+    @Published var folderOpen: Set<String> = []
+    /// LAB-1247: the band page scrolls to (and marks) this track when opened from an "On this band" chip.
+    @Published var focusTrack: String?
     @Published var hover: String?
     @Published var toast = ""
     /// True when a self-test asked for a place (then Learn does not fall back to Pages without the deck).
@@ -27,14 +32,26 @@ final class LearnNav: ObservableObject {
     private var toastWork: DispatchWorkItem?
     private var sceneCache: [String: [DeckScene]] = [:]
 
-    /// ONEROOF_SELFTEST_LEARNMODE: pages · radio · band[:id] · card[:slug[:tab]] · writing · post[:slug] · path[:id] ·
-    /// library (or map) · search:<text>.
+    /// ONEROOF_SELFTEST_LEARNMODE: pages · radio · band[:id[:track]] · card[:slug[:tab]] · writing · post[:slug] · path[:id] ·
+    /// library (or map) · search:<text> · folder[:<path from the deck root>] (All cards › By folder, expanded down to it and
+    /// selected) · radiokey:<band> / radiochip:<band>:<track> (Radio home, then a click on that band key / chip a moment later).
     init(spec: String? = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LEARNMODE"]) {
         pinned = spec != nil
         let f = (spec ?? "radio").split(separator: ":", maxSplits: 2).map(String.init)
         switch f.first ?? "radio" {
         case "pages": place = .pages
-        case "band": place = .band; if f.count > 1 { band = f[1] }
+        case "band": place = .band; if f.count > 1 { band = f[1] }; if f.count > 2 { focusTrack = f[2] }
+        case "folder":
+            place = .library; lens = "folder"
+            if f.count > 1 {
+                let rel = f.dropFirst().joined(separator: ":")
+                folderOpen = Set(DeckFolders.ancestors(of: rel) + [rel]); libSel = "folder:" + rel
+            }
+        case "radiokey", "radiochip":
+            place = .radio
+            let route: LearnRadioRoute = f.first == "radiokey" ? .bandKey(f.count > 1 ? f[1] : "context")
+                : .chip(band: f.count > 1 ? f[1] : "context", track: f.count > 2 ? f[2] : "vault")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { [weak self] in self?.follow(route, play: { _ in }) }
         case "card": place = .card; if f.count > 1 { slug = f[1] }; if f.count > 2 { tab = f[2] }
         case "writing": place = .writing
         case "post": place = .post; if f.count > 1 { post = f[1] }
@@ -57,7 +74,15 @@ final class LearnNav: ObservableObject {
 
     func go(_ p: Place) { place = p }
     func openCard(_ slug: String, tab: String = "listen", scene: Int = 0) { self.slug = slug; self.tab = tab; self.scene = scene; place = .card }
-    func openBand(_ id: String) { band = id; place = .band }
+    func openBand(_ id: String, track: String? = nil) { band = id; focusTrack = track; place = .band }
+
+    /// LAB-1247: what a click on Radio home does (`LearnRadioRoute`): band keys and chips navigate, play controls play.
+    func follow(_ route: LearnRadioRoute, play: (String) -> Void) {
+        switch route {
+        case .openBand(let id, let track): openBand(id, track: track)
+        case .play(let k): slug = k; play(k)
+        }
+    }
     func openPost(_ slug: String) { post = slug; place = .post }
 
     func flash(_ text: String) {
@@ -323,24 +348,37 @@ struct V2LearnRadio: View {
                         case .post: LearnPostReader(nav: nav, player: player, audio: audio, posts: posts)
                         case .writing: LearnWritingPage(nav: nav, posts: posts)
                         case .path: LearnPathPage(nav: nav, player: player, audio: audio)
-                        case .library: LearnLibraryPage(nav: nav, player: player, audio: audio, posts: posts)
+                        case .library: LearnLibraryPage(model: model, nav: nav, player: player, audio: audio, posts: posts)
                         default: LearnRadioHome(model: model, nav: nav, player: player, audio: audio, posts: posts)
                         }
                     }
                     .id("top")
                     .frame(maxWidth: .infinity)
                 }
-                .onChange(of: nav.place) { _, _ in proxy.scrollTo("top", anchor: .top) }
+                .onChange(of: nav.place) { _, _ in scroll(proxy) }
+                .onChange(of: nav.focusTrack) { _, _ in if nav.place == .band { scroll(proxy) } }
+                .onAppear { if nav.place == .band, nav.focusTrack != nil { scroll(proxy) } }
                 .onChange(of: nav.slug) { _, _ in proxy.scrollTo("top", anchor: .top) }
             }
         } else {
             VStack(spacing: 10) {
                 Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 34)).foregroundStyle(t.text3.color)
                 Text("The narrated deck is not in this build").font(.system(size: 15, weight: .semibold)).foregroundStyle(t.text.color)
-                Text("Radio, Writing and All cards read the Agentic Engineering deck bundled with release builds. Pages still has the course, the skills and One Roof Help.")
+                Text("Radio, Writing and All cards read the Agentic Engineering deck bundled with release builds, and so do the course and the skills. Pages still has One Roof Help and your Learn folders.")
                     .font(.system(size: 12)).foregroundStyle(t.text2.color).multilineTextAlignment(.center).frame(maxWidth: 440)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+extension V2LearnRadio {
+    /// To the top, or (a band opened from a chip) to that track's group once it is laid out.
+    func scroll(_ proxy: ScrollViewProxy) {
+        if nav.place == .band, let tr = nav.focusTrack {
+            DispatchQueue.main.async { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(LearnRadioRoute.anchor(track: tr), anchor: .top) } }
+        } else {
+            proxy.scrollTo("top", anchor: .top)
         }
     }
 }
@@ -470,13 +508,11 @@ struct LearnRadioPanel: View {
                     .shadow(color: d.keyEdge.color, radius: 0, y: on ? 1 : 3))
                 .offset(y: on ? 2 : 0)
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) { nav.openBand(b.id) }
-                .onTapGesture {
-                    guard let first = list.first else { return }
-                    nav.slug = first
-                    if player.pageId != nil { audio.play(first, then: list) }
-                }
-                .help("\(b.title): \(b.sub). Double-click to open the band.")
+                // LAB-1247 (owner): a band key opens the band (pick what to hear there); it never starts playback.
+                .onTapGesture { nav.follow(.bandKey(b.id)) { _ in } }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Open the \(b.title) band")
+                .help("Open the \(b.title) band: \(b.sub)")
             }
             LearnKnob(fraction: deck.dial.count > 1 ? Double(deck.dial.firstIndex(of: tuned) ?? 0) / Double(deck.dial.count - 1) : 0)
                 .frame(width: 84, height: 84).frame(width: 100, alignment: .trailing)
@@ -490,9 +526,15 @@ struct LearnRadioPanel: View {
             ForEach(band.tracks, id: \.self) { tr in
                 let n = list.filter { deck.cards[$0]?.track == tr }.count
                 if n > 0 {
-                    (Text(LearnDeck.label(tr) + " ").foregroundColor(t.text.color) + Text("\(n)").foregroundColor(t.text3.color))
-                        .font(.system(size: 12)).padding(.horizontal, 10).padding(.vertical, 2)
-                        .overlay(Capsule().strokeBorder(t.separatorStrong.color, lineWidth: 1))
+                    // LAB-1247: a chip opens the band page at that track.
+                    Button { nav.follow(.chip(band: band.id, track: tr)) { _ in } } label: {
+                        (Text(LearnDeck.label(tr) + " ").foregroundColor(t.text.color) + Text("\(n)").foregroundColor(t.text3.color))
+                            .font(.system(size: 12)).padding(.horizontal, 10).padding(.vertical, 2)
+                            .overlay(Capsule().strokeBorder(t.separatorStrong.color, lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open the \(band.title) band at \(LearnDeck.label(tr))")
                 }
             }
             Spacer(minLength: 8)
@@ -543,8 +585,7 @@ struct LearnNowPlaying: View {
             }
             .frame(height: 2).padding(.top, 14)
             LearnDial(deck: deck, tuned: tuned, only: nil) { k in
-                nav.slug = k
-                audio.play(k, then: audio.bandFrom(k))
+                nav.follow(.dial(k)) { audio.play($0, then: audio.bandFrom($0)) }
             }
             .padding(.top, 14)
         }

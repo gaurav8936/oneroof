@@ -56,16 +56,16 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   haiku; Kimi: its two coding models; any name works). Defaults per agent live in Settings › Agents.
 - **Settings (⌘,):** General (Dock badge, startup check switch for I6, roofd status), Appearance (the three panel
   themes), Agents (default account, model, extra arguments), Foundations (the projects folder, the agentic-engineering and shared
-  folders One Roof reads from; it never copies them). The agentic-engineering folder is a setting: `ONEROOF_AE_PATH`
-  wins, then the folder chosen here (Choose…), then the copy bundled with the app (`agentic_engineering/`, Use
-  bundled). A chosen folder that disappears falls back to the bundled copy.
+  folders One Roof reads from; it never copies them). Agentic engineering is the copy bundled with the app
+  (`agentic_engineering/`: the linking script plus the deck, packaged from the deck's repository at main, with every
+  skill, the course and the hooks); `ONEROOF_AE_PATH` overrides it for development.
 - **Stickers, colours and icons ("Apple meets terminal", I5).** Bold stickers with icons (Next, WIP, Important,
   Blocked, Review, Idea, Bug, Research, Shipped, Do not use, or any word of your own, which keeps its colour) that pop
   on a light or dark sidebar; a colour per row; an emoji or the agent's logo; pinned sessions on top; double-click a
   name to rename; time since last active. Right-click for the menu with stickers, colour swatches and emoji inline;
   ••• opens the colourful menu: one row of action buttons, sticker chips, colour swatches and emoji, all one click. Settings › Appearance switches stickers between Bold and Soft.
 - **Objectives with visible planning (⌘⇧O, I7).** Type an objective (what, done when, repo, urgency, budget). A
-  planner session (Claude, in a terminal you can watch) uses the `plan-objective` skill from the agentic-engineering folder
+  planner session (Claude, in a terminal you can watch) uses the deck's `plan-objective` skill
   to write a plan file (Markdown + a `oneroof-plan` JSON block) next to the project's docs. The plan shows as step
   cards: change agent, account, model or order, delete steps, then Approve. One Roof runs ready steps as sessions,
   at most 3 at a time, in dependency order; each step writes a `.done` / `.failed` marker and the next steps start.
@@ -93,8 +93,8 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   `~/Library/Application Support/One Roof/sessions.sqlite`.
 
 - **Orchestrator (I8).** Seat gauges (Claude1/2 from the status line, Codex from its logs) on the Launchpad and in
-  the sidebar. A router reads `routing.json` and `roles.json` in place from the agentic-engineering folder
-  (`skills/*/agent-routing/`):
+  the sidebar. A router reads One Roof's own `routing.json` and `roles.json` (`Resources/agent-routing/`; yours in
+  `~/.config/oneroof/agent-routing/` win):
   kind → agent and model, budget, skip seats near their limit, the emptier Claude seat, reviews off the author.
   Suggest / Route all in the plan view; Suggest agent and Role in Plan a session. An on-device model (Qwen3
   1.7B, Apache-2.0, via llama.cpp, `brew install llama.cpp`, model file set in Settings › Foundations; Arch-Router 1.5B
@@ -198,7 +198,7 @@ as done and sets `migratedFromLegacy`.
 brew install zig@0.15
 xcodebuild -downloadComponent MetalToolchain   # Xcode 26 required by Ghostty
 scripts/build-ghosttykit.sh                    # Ghostty v1.3.1 → ~/Library/Caches/oneroof/ghostty (135 MB, not in git; ONEROOF_GHOSTTY_DIR overrides)
-scripts/bundle.sh release                      # → build/One Roof.app (ad-hoc signed; bundles agentic_engineering, docs/help, README, release notes)
+scripts/bundle.sh release                      # → build/One Roof.app (ad-hoc signed; bundles agentic_engineering + the deck (ONEROOF_AE_DECK_REPO), agent-routing, docs/help, README, release notes)
 scripts/install.sh                             # → /Applications/One Roof.app
 swift test                                     # unit tests (OneRoofCore)
 ```

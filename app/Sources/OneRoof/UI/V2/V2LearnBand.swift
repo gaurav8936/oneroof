@@ -69,7 +69,10 @@ struct LearnBandPage: View {
             group("Start here", "the four cards to hear first", "\(key.count) cards", key, list)
             ForEach(b.tracks, id: \.self) { tr in
                 let ks = list.filter { deck.cards[$0]?.track == tr && !b.key.contains($0) }
-                if !ks.isEmpty { group(LearnDeck.label(tr), deck.tracks[tr]?.intro ?? "", "\(ks.count) cards", ks, list) }
+                if !ks.isEmpty {
+                    group(LearnDeck.label(tr), deck.tracks[tr]?.intro ?? "", "\(ks.count) cards", ks, list, marked: nav.focusTrack == tr)
+                        .id(LearnRadioRoute.anchor(track: tr))
+                }
             }
         }
         .padding(.horizontal, 40).padding(.top, 28).padding(.bottom, 48)
@@ -109,7 +112,8 @@ struct LearnBandPage: View {
         }
     }
 
-    private func group(_ label: String, _ intro: String, _ meta: String, _ ks: [String], _ queue: [String]) -> some View {
+    /// `marked`: the track an "On this band" chip opened the page at (LAB-1247), drawn with an accent rule.
+    private func group(_ label: String, _ intro: String, _ meta: String, _ ks: [String], _ queue: [String], marked: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(spacing: 0) {
                 HStack(alignment: .firstTextBaseline) {
@@ -119,7 +123,7 @@ struct LearnBandPage: View {
                     Text(meta).font(.system(size: 12)).foregroundStyle(t.text3.color)
                 }
                 .padding(.bottom, 6)
-                Rectangle().fill(t.separatorStrong.color).frame(height: 1)
+                Rectangle().fill(marked ? t.accent.color : t.separatorStrong.color).frame(height: marked ? 2 : 1)
             }
             ForEach(ks, id: \.self) { k in
                 LearnCardRow(slug: k, audio: audio, player: player, queue: queue) { nav.openCard(k) }

@@ -355,3 +355,49 @@ window grouping, permission codes and renderer totals, and self-test captures wi
 tabs|sites|notasked|denied` (`SelfTestMacFixture.swift`: a Chrome group with 78 renderers and three windows of tabs, run
 through `BrowserTabs.parse`; the fixture never sends an Apple Event). The real permission check and tab read were not
 run against the owner's Chrome from the session (macOS would prompt the owner as One Roof).
+
+## 1.9.0 · Learn home navigation, All cards by folder (lane 190b)
+
+**LAB-1247 · Radio home is the navigation — deviation from the handover.** The prototype (`One Roof Learn.dc.html`,
+`presets[].pick` / `.open`) tunes on a band key's click (and plays when something is loaded) and opens the band only on a
+double-click; its "On this band" chips are plain labels. Owner (2026-10-26): the home page is the primary navigation; a
+click on a band must open that band's content so you pick what to hear before anything plays. So a **band key click opens
+the band page** (no tuning, no playback; the double-click is gone), and **each chip is a button that opens the band page
+scrolled to that track**, whose heading gets an accent rule (`LearnNav.focusTrack`, anchor `track:<id>`). Playback starts
+only from play controls: the ▶ key, a line on the dial, ⏭ (when something is loaded, as before), Play the band, a
+programme's Play, a card's ▶. The rule is `LearnRadioRoute` in OneRoofCore (`bandKey` / `chip` → `openBand`, `dial` →
+`play`; tested) and `LearnNav.follow`. The way back: the band's breadcrumb is now **Learn › Radio › 01 Context** (Learn and
+Radio both return to Radio home). Kept as designed: the dial (click a line to tune and play), the knob (follows the tuned
+card), the ▶ / speed / ⏭ keys, the pressed key showing the tuned card's band, "Open the … band →".
+
+**LAB-1253 · All cards › By folder.** A third lens beside By band / By kind (`nav.lens == "folder"`, remembered per window
+like the other two). It is the deck's skills folder **as packaged in this build** (`Contents/Resources/agentic_engineering/
+deck/skills/`, the same layout as the deck repository's `skills/`), read from disk by `DeckFolders` (OneRoofCore,
+`LearnFolders.swift`; tested on a fixture deck): root `skills/` (the folder's own name, taken from the catalog's paths, no
+author or repository name), track folders → skill folders → files, folders first then files in Finder order, hidden files
+left out, any folder expandable (the audio folder down to its voice folder). Columns: NAME · WHAT IT IS (track plain name,
+card title, or the file's role: `<slug>_audio/` Narration, `<slug>.html` The card, `SKILL.md` Skill definition,
+`spec.json` Scenes and narration, `video.yaml` Video render, README.md The index of every folder) · BAND (track folders,
+a link to the band page) · SIZE (skill folders on disk, catalog minutes, audio files counted on disk). Click a folder:
+it opens (click again to close) and the right panel shows it: path and band eyebrow, name, plain name and question,
+the track's intro, **Play all N** and the track's cards in folder order, each with ▶ and minutes (LAB-1253_3). A skill
+folder: the card's title, subtitle and description, Play, Open the card →, Use in a session ▾, Open in Terminal, and its
+files. A file: its role, Open the card →, Open in Terminal, Show in Finder, Use in a session ▾ for SKILL.md, and the
+file's text (SKILL.md, spec.json, video.yaml, README, first 200 KB, selectable). The dark strip shows the card under the
+pointer, else the card playing (as LAB-1253_3), else "HOVER A ROW". A search still lights the band map.
+
+*Deviations.* A **single click on a skill folder opens it and shows it in the panel**; a **double-click** (or Open the card
+→, or a click on its `.html`) opens the card station. Opening the station on a single click would leave the tree and
+hide the skill's files, which LAB-1253_3 shows expanded. Open in Terminal starts a plain terminal session in that folder
+(inside the app bundle: read-only) and shows the terminals. The panel's "How the map reads" intro is the other views'
+text (LAB-1253_2 shows the same).
+
+**Captures** (real-profile copy, `scripts/ui2-screens.tsv`): A12.radiokey (Radio home, a click on Context 3.5 s in, with a
+paused card loaded: the band page opens, the player stays paused on its card), A12.radiochip (Context › Vault), A12.folder,
+A12.folder.track (doctrine, as LAB-1253_3), A12.folder.skill, A12.folder.file (SKILL.md text). New
+`ONEROOF_SELFTEST_LEARNMODE` values: `folder[:<path from the deck root>]`, `radiokey:<band>`, `radiochip:<band>:<track>`,
+`band:<id>:<track>`. Daylight only.
+
+*Not changed / open.* On a band page the dial's track labels can overlap when a track has one card (Foundations · Vault on
+Context; 1.8.1 layout). Track plain names still come from `LearnDeck` (lane 190a moves them to the catalog; By folder
+reads them through the same API).

@@ -2,9 +2,9 @@ import Foundation
 
 // LAB-1233 · Learn Radio (handover A12.2): the Agentic Engineering deck as read from the bundled `content/catalog.json`,
 // arranged on the four bands of the dial (Context · Loops · Evidence · Procedure) the way the Learn prototype draws them.
-// Everything here is read where it lives; nothing is copied or made up. The band names, their one-line definitions,
-// their "start here" cards and the plain track names are the design's editorial layer over the catalog (the catalog has
-// suits and tracks, not bands); a card the catalog does not have is simply left out.
+// Everything here is read where it lives; nothing is copied or made up. Since 1.9.0 (LAB-1257) the bands, their one-line
+// definitions, "start here" cards and posts, the plain track names and the By-kind groups come from the catalog too
+// (the deck repository's manual.yaml is their only source); a card the catalog does not have is simply left out.
 
 public struct DeckCard: Equatable, Sendable {
     public struct Section: Equatable, Sendable { public var title: String; public var scenes: Int }
@@ -58,58 +58,55 @@ public struct LearnDeck: Sendable {
 
     public var count: Int { cards.count }
 
-    // MARK: The design's bands (One Roof Learn.dc.html, PARTS / TI / KINDS)
+    /// The four bands of the dial, read from the catalog's `bands` (LAB-1257: the deck repository's manual.yaml is their
+    /// only source). Empty for an older deck that has none.
+    public var bands: [DeckBand] = []
+    /// Plain name and the question each track answers, from the catalog's tracks (`name`, `question`).
+    public var trackNames: [String: (name: String, question: String)] = [:]
+    /// All cards › By kind, from the catalog's `kinds`.
+    public var kinds: [(title: String, sub: String, tracks: [String])] = []
 
-    public static let bands: [DeckBand] = [
-        DeckBand(id: "context", n: "01", zone: "BEFORE THE WORK", title: "Context", sub: "What the agent knows at the first prompt",
-                 def: "Every session starts cold. What it knows is whatever it loaded: instruction files, notes, the last handoff. Context is a structure on disk, designed once and then enforced.",
-                 tracks: ["foundations", "vault", "influences"], key: ["context-as-structure", "knowledge-notes", "docs-phonebook", "the-2x2-map"],
-                 posts: ["agentic-engineering", "one-workspace"]),
-        DeckBand(id: "loops", n: "02", zone: "BEFORE THE WORK", title: "Loops", sub: "A unit of work with a stop condition",
-                 def: "Hand the agent a loop, not a task: a goal written as an end state, a check that runs without a person, and a condition that says stop, whether or not it succeeded.",
-                 tracks: ["rhythms", "pipeline", "model-craft", "modality"], key: ["loops-first", "done-when", "feedback-loop", "orchestration"],
-                 posts: ["loops-with-a-stop-condition", "one-roof-builds-one-roof"]),
-        DeckBand(id: "evidence", n: "03", zone: "AFTER THE WORK", title: "Evidence", sub: "Proof the unit is done",
-                 def: "Agents report success in the same fluent voice whether or not they succeeded. Separate the claim from the proof, and put the proof where the agent can't write it.",
-                 tracks: ["ship", "debug", "safety"], key: ["evidence-check", "test-first", "smoke-prod", "audit-trail"],
-                 posts: ["evidence-not-confidence", "one-roof-builds-one-roof"]),
-        DeckBand(id: "procedure", n: "04", zone: "AFTER THE WORK", title: "Procedure", sub: "What the next session inherits",
-                 def: "A lesson that lives in one session dies with it. Written as a skill, it reaches every agent at its next start; narrated as a card, it teaches a person the same thing.",
-                 tracks: ["doctrine", "comms", "infra", "play"], key: ["compounding-instincts", "gotcha-log", "decision-record", "spawn-doctrine"],
-                 posts: ["one-library-every-agent"]),
-    ]
+    // MARK: The deck in use (LAB-1257)
 
-    /// Plain names and the question each track answers (handover GAPS D6: the catalog does not carry them yet).
-    public static let trackNames: [String: (name: String, question: String)] = [
-        "foundations": ("Big ideas", "What makes agentic engineering different?"),
-        "vault": ("Notes & memory", "Where does what we know live?"),
-        "influences": ("People worth hearing", "Whose thinking is this built on?"),
-        "rhythms": ("Daily loops", "What runs every session and every night?"),
-        "pipeline": ("Ticket to merged PR", "How does work move from idea to code?"),
-        "model-craft": ("Working with models", "How do I get more out of the model itself?"),
-        "modality": ("Beyond text", "Voice, vision, documents, computer use."),
-        "ship": ("Shipping", "How do I know it is live, and right?"),
-        "debug": ("Debugging", "Something's wrong. Where?"),
-        "safety": ("Guardrails", "What stops an agent doing damage?"),
-        "doctrine": ("How we work", "The rules a team of agents follows."),
-        "comms": ("Messages & channels", "How agents talk to people."),
-        "infra": ("Dev environment", "Repos, git, worktrees, planning."),
-        "play": ("Walkthroughs", "Low-stakes animated tours. No grading."),
-    ]
+    // Views draw the bands, track names and kinds without a deck in hand (`LearnDeck.bands`), so the deck `load` read
+    // last publishes them here. Nothing is built in: before a deck loads, or with a deck that has no bands, they are empty.
+    private final class Current: @unchecked Sendable {
+        let lock = NSLock()
+        var bands: [DeckBand] = []
+        var trackNames: [String: (name: String, question: String)] = [:]
+        var kinds: [(title: String, sub: String, tracks: [String])] = []
+    }
+    private static let current = Current()
 
-    /// All cards › By kind.
-    public static let kinds: [(title: String, sub: String, tracks: [String])] = [
-        ("Ideas & rules", "The thinking, and the rules that follow from it", ["foundations", "doctrine"]),
-        ("Skills agents run", "Procedures you can hand to an agent today", ["rhythms", "pipeline", "ship", "debug", "safety", "model-craft", "modality", "comms", "vault", "infra"]),
-        ("People", "The voices the ideas come from", ["influences"]),
-        ("Walkthroughs", "Tours, for fun", ["play"]),
-    ]
+    /// Make `deck` the one the static accessors describe (done by `load`).
+    public static func use(_ deck: LearnDeck) {
+        current.lock.lock(); defer { current.lock.unlock() }
+        current.bands = deck.bands; current.trackNames = deck.trackNames; current.kinds = deck.kinds
+    }
+
+    /// The bands of the deck in use.
+    public static var bands: [DeckBand] { current.lock.lock(); defer { current.lock.unlock() }; return current.bands }
+    /// Plain track names and questions of the deck in use.
+    public static var trackNames: [String: (name: String, question: String)] {
+        current.lock.lock(); defer { current.lock.unlock() }; return current.trackNames
+    }
+    /// By-kind groups of the deck in use.
+    public static var kinds: [(title: String, sub: String, tracks: [String])] {
+        current.lock.lock(); defer { current.lock.unlock() }; return current.kinds
+    }
+    /// The band a card without one is drawn on: the second band (Loops) as the design does, else a neutral empty band.
+    public static var fallbackBand: DeckBand { fallback(bands) }
+    static func fallback(_ bands: [DeckBand]) -> DeckBand {
+        bands.count > 1 ? bands[1] : bands.first ?? DeckBand(id: "", n: "", zone: "", title: "", sub: "", def: "", tracks: [], key: [], posts: [])
+    }
 
     // MARK: Loading
 
     public static func load(deck: String?) -> LearnDeck? {
-        guard let deck, let d = FileManager.default.contents(atPath: deck + "/content/catalog.json") else { return nil }
-        return parse(d, root: deck)
+        guard let deck, let d = FileManager.default.contents(atPath: deck + "/content/catalog.json"),
+              let parsed = parse(d, root: deck) else { return nil }
+        use(parsed)
+        return parsed
     }
 
     public static func parse(_ data: Data, root: String) -> LearnDeck? {
@@ -126,9 +123,22 @@ public struct LearnDeck: Sendable {
                                    estSeconds: c["est_seconds"] as? Int ?? 0)
         }
         var tracks: [String: DeckTrack] = [:]
+        var trackNames: [String: (name: String, question: String)] = [:]
         for t in j["tracks"] as? [[String: Any]] ?? [] {
             guard let id = t["id"] as? String else { continue }
             tracks[id] = DeckTrack(id: id, suit: t["suit"] as? String ?? "", intro: t["intro"] as? String ?? "", cards: strs(t["cards"]))
+            if let name = t["name"] as? String, !name.isEmpty { trackNames[id] = (name, t["question"] as? String ?? "") }
+        }
+        // LAB-1257 · bands and By-kind groups, as the deck repository's manual.yaml defines them.
+        let bands = (j["bands"] as? [[String: Any]] ?? []).compactMap { b -> DeckBand? in
+            guard let id = b["id"] as? String else { return nil }
+            return DeckBand(id: id, n: b["n"] as? String ?? "", zone: b["zone"] as? String ?? "", title: b["title"] as? String ?? id,
+                            sub: b["subtitle"] as? String ?? "", def: b["definition"] as? String ?? "", tracks: strs(b["tracks"]),
+                            key: strs(b["start_here"]), posts: strs(b["posts"]))
+        }
+        let kinds = (j["kinds"] as? [[String: Any]] ?? []).compactMap { k -> (title: String, sub: String, tracks: [String])? in
+            guard let title = k["title"] as? String else { return nil }
+            return (title, k["subtitle"] as? String ?? "", strs(k["tracks"]))
         }
         let suits = (j["suits"] as? [[String: Any]] ?? []).compactMap { s -> DeckSuit? in
             guard let id = s["id"] as? String else { return nil }
@@ -152,13 +162,13 @@ public struct LearnDeck: Sendable {
         }
         let dial = bands.flatMap { lists[$0.id] ?? [] }
         return LearnDeck(root: root, version: j["version"] as? String ?? "", cards: cards, tracks: tracks, suits: suits, paths: paths,
-                         partOf: partOf, lists: lists, dial: dial)
+                         partOf: partOf, lists: lists, dial: dial, bands: bands, trackNames: trackNames, kinds: kinds)
     }
 
     // MARK: Lookups
 
-    public func band(of slug: String) -> DeckBand { Self.bands.first { $0.id == partOf[slug] } ?? Self.bands[1] }
-    public func band(id: String) -> DeckBand { Self.bands.first { $0.id == id } ?? Self.bands[1] }
+    public func band(of slug: String) -> DeckBand { bands.first { $0.id == partOf[slug] } ?? Self.fallback(bands) }
+    public func band(id: String) -> DeckBand { bands.first { $0.id == id } ?? Self.fallback(bands) }
     public func htmlPath(_ slug: String) -> String { root + "/" + (cards[slug]?.html ?? "") }
     public func specPath(_ slug: String) -> String { root + "/" + (cards[slug]?.spec ?? "") }
     public func skillPath(_ slug: String) -> String { root + "/" + (cards[slug]?.skill ?? "") }

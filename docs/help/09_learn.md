@@ -20,12 +20,11 @@ Learning how to work with agents should not mean leaving the place where the wor
 
 | Section | Where it is read from | What you get |
 |---|---|---|
-| Course | `course/` in the bundled package | The 12 lessons of the course, from "Start here" to "Voices worth reading". Each lesson has narration: press **Play in One Roof**. |
+| Course | `deck/content/course/` in the bundled package (the deck repository is its only source) | The 12 lessons of the course, from "Start here" to "Voices worth reading". Each lesson has narration: press **Play in One Roof**. |
 | Agentic Engineering | `deck/` in the bundled package | The whole deck: its home and track pages, then every narrated card by track (**Agentic Engineering · <track>**), each a skill an agent can run and a lesson with narration. A waveform icon means the page has narration. |
-| Skills | each skill's `SKILL.md` in the package | One page per One Roof skill (session, plan, build, fleet, guard, ship, learn). A skill that also has a narrated card is shown once, as the card. |
 | Your Learn folders | the folders you add in Settings › Foundations › Learn folders | Every Markdown page in them, and each folder of narration clips as a playlist. |
 
-Everything ships inside One Roof, audio included, and works offline. There is no folder to choose: Settings shows what is bundled.
+Everything ships inside One Roof, audio included, and works offline. There is no folder to choose: Settings shows what is bundled. One Roof writes none of this material itself: the deck, its bands (Context · Loops · Evidence · Procedure), track names, the course and the hooks all come from the Agentic Engineering deck's repository, packaged at build time.
 
 One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched, its links and playbook card are hidden, and it does not open in Learn. Your folder's files are not changed. The list is `LearnExclusions` in One Roof.
 
@@ -62,4 +61,4 @@ One Roof has its own player for narration: every course lesson, every folder of 
 
 ## Make your own narrated pages
 
-The bundled course is narrated with `scripts/make-audio.py` in the agentic engineering folder (it needs an `OPENAI_API_KEY`; only edited sections are re-recorded). For your own material, put Markdown pages and folders of `.mp3` clips in a folder and add it under Settings › Foundations › Learn folders.
+The bundled course is written and narrated in the Agentic Engineering deck's repository (`content/course/`, re-recorded with `scripts/course/make-audio.py`, which needs an `OPENAI_API_KEY`). For your own material, put Markdown pages and folders of `.mp3` clips in a folder and add it under Settings › Foundations › Learn folders.

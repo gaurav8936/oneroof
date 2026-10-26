@@ -530,28 +530,35 @@ final class LocalModelTests: XCTestCase {
 }
 
 final class RoleTests: XCTestCase {
-    func testRolesReadFromTheBundledPackage() throws {
-        let ae = try XCTUnwrap(AEFolder.bundled, "agentic_engineering/ is next to app/ in the checkout")
-        let roles = Role.load(agenticEngineering: ae)
+    /// LAB-1257: roles are One Roof's own configuration (app/Resources/agent-routing) and name skills of the deck.
+    func testRolesReadFromTheAppsRoutingRules() throws {
+        let roles = Role.load(agenticEngineering: "/nonexistent")
         XCTAssertGreaterThanOrEqual(roles.count, 8)
         let review = roles.first { $0.id == "review" }
-        XCTAssertEqual(review?.skill, "second-opinion")
+        XCTAssertEqual(review?.skill, "code-review-agent")
         XCTAssertEqual(review?.agent, .codex)
         XCTAssertTrue(review?.opening(repo: "acme/web", workstream: nil).contains("acme/web") ?? false)
-        // Every role names a skill that exists in the package.
-        let names = Set(Foundations.skills(FoundationPaths(agenticEngineering: ae)).map(\.name))
-        for r in roles { XCTAssertTrue(names.contains(r.skill), r.skill) }
+        // None of the removed starter skills (they predate the deck) is named any more.
+        let gone: Set = ["write-the-spec", "second-opinion", "keep-secrets-out", "repo-map", "show-the-evidence", "bounded-loops",
+                         "fan-out-or-not", "parallel-worktrees", "ask-before-irreversible", "capture-gotchas", "agent-routing"]
+        for r in roles { XCTAssertFalse(gone.contains(r.skill), r.skill) }
     }
 }
 
 final class AEFolderTests: XCTestCase {
-    func temp(_ name: String, routing: String? = nil) throws -> String {
+    /// A package: the linking script (what the bundled agentic_engineering/ holds since LAB-1257).
+    func temp(_ name: String) throws -> String {
         let d = NSTemporaryDirectory() + "oneroof-ae-\(name)-" + UUID().uuidString
-        try FileManager.default.createDirectory(atPath: d + "/skills/x", withIntermediateDirectories: true)
-        if let routing {
-            try FileManager.default.createDirectory(atPath: d + "/skills/" + routing, withIntermediateDirectories: true)
-            try #"{"kinds": {"research": [{"agent": "codex"}]}}"#.write(toFile: d + "/skills/" + routing + "/routing.json", atomically: true, encoding: .utf8)
-        }
+        try FileManager.default.createDirectory(atPath: d + "/scripts", withIntermediateDirectories: true)
+        try "#!/bin/bash\n".write(toFile: d + "/scripts/sync-skills.sh", atomically: true, encoding: .utf8)
+        return d
+    }
+
+    func routing(_ name: String) throws -> String {
+        let d = NSTemporaryDirectory() + "oneroof-routing-\(name)-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: d, withIntermediateDirectories: true)
+        try #"{"kinds": {"research": [{"agent": "codex"}]}}"#.write(toFile: d + "/routing.json", atomically: true, encoding: .utf8)
+        try #"{"roles": []}"#.write(toFile: d + "/roles.json", atomically: true, encoding: .utf8)
         return d
     }
 
@@ -564,12 +571,19 @@ final class AEFolderTests: XCTestCase {
         // A setting that no longer exists falls back to the bundled copy rather than breaking routing and Learn.
         XCTAssertEqual(AEFolder.resolve(setting: "/nope/gone", environment: [:], bundled: bundled).source, .bundled)
         XCTAssertEqual(AEFolder.resolve(setting: "", environment: [:], bundled: nil).source, .missing)
+        // ONEROOF_AE_PATH may point straight at the deck repository (a catalog, no app script).
+        let repo = NSTemporaryDirectory() + "oneroof-deckrepo-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: repo + "/content", withIntermediateDirectories: true)
+        try "{}".write(toFile: repo + "/content/catalog.json", atomically: true, encoding: .utf8)
+        XCTAssertEqual(AEFolder.resolve(setting: "", environment: ["ONEROOF_AE_PATH": repo], bundled: bundled).source, .environment)
+        XCTAssertFalse(AEFolder.isPackage(NSTemporaryDirectory() + "nothing-" + UUID().uuidString))
     }
 
     func testDeckIsFoundInsideThePackageOrAtItsRoot() throws {
         let fm = FileManager.default
         let pkg = try temp("pkg"), deck = pkg + "/deck"
         XCTAssertNil(AEFolder.deckRoot(pkg))
+        XCTAssertNil(AEFolder.courseDir(pkg))
         try fm.createDirectory(atPath: deck + "/content", withIntermediateDirectories: true)
         try "{}".write(toFile: deck + "/content/catalog.json", atomically: true, encoding: .utf8)
         for (track, slug, page) in [("rhythms", "day-recap", true), ("rhythms", "no-page", false), ("ship", "pr-lifecycle", true)] {
@@ -579,29 +593,77 @@ final class AEFolderTests: XCTestCase {
         XCTAssertEqual(AEFolder.deckRoot(pkg), deck)
         XCTAssertEqual(AEFolder.deckCards(deck).map { "\($0.track)/\($0.slug)" }, ["rhythms/day-recap", "ship/pr-lifecycle"])
         XCTAssertEqual(AEFolder.deckRoot(deck), deck)   // ONEROOF_AE_PATH straight at the deck repository
+        // LAB-1257: the course and the hooks are read from the deck; the skills One Roof lists are the deck's.
+        XCTAssertNil(AEFolder.courseDir(pkg))
+        try fm.createDirectory(atPath: deck + "/content/course/audio", withIntermediateDirectories: true)
+        try fm.createDirectory(atPath: deck + "/hooks", withIntermediateDirectories: true)
+        XCTAssertEqual(AEFolder.courseDir(pkg), deck + "/content/course")
+        XCTAssertEqual(AEFolder.hooksDir(pkg), deck + "/hooks")
+        XCTAssertEqual(FoundationPaths(agenticEngineering: pkg).skills, deck + "/skills")
+        XCTAssertEqual(FoundationPaths(agenticEngineering: deck).skills, deck + "/skills")
     }
 
-    func testYourOwnRoutingFileWinsOverTheBundledOne() throws {
-        let pkg = try temp("pkg", routing: "fleet/agent-routing"), home = try temp("home")
-        XCTAssertEqual(AEFolder.routingFile(pkg, "routing.json", home: home), pkg + "/skills/fleet/agent-routing/routing.json")
+    func testCourseIsListedFromTheDeck() throws {
+        let fm = FileManager.default
+        let pkg = try temp("course"), c = pkg + "/deck/content/course"
+        try fm.createDirectory(atPath: c + "/audio/01-start-here", withIntermediateDirectories: true)
+        try "{}".write(toFile: pkg + "/deck/content/catalog.json", atomically: true, encoding: .utf8)
+        try "---\ntitle: Start here\n---\n# Start here\n\n## One\n\nText.\n".write(toFile: c + "/01-start-here.md", atomically: true, encoding: .utf8)
+        try "x".write(toFile: c + "/README.md", atomically: true, encoding: .utf8)
+        try Data().write(to: URL(fileURLWithPath: c + "/audio/01-start-here/01-one.mp3"))
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: AEFolder.courseDir(pkg)!).filter { $0.first?.isNumber == true }, ["01-start-here.md"])
+    }
+
+    func testYourOwnRoutingFileWinsOverTheAppsOwn() throws {
+        let pkg = try temp("pkg"), home = try temp("home"), app = try routing("app")
+        XCTAssertEqual(AEFolder.routingFile(pkg, "routing.json", home: home, bundled: app), app + "/routing.json")
         try FileManager.default.createDirectory(atPath: home + "/.config/oneroof/agent-routing", withIntermediateDirectories: true)
         try "{}".write(toFile: home + "/.config/oneroof/agent-routing/routing.json", atomically: true, encoding: .utf8)
-        XCTAssertEqual(AEFolder.routingFile(pkg, "routing.json", home: home), home + "/.config/oneroof/agent-routing/routing.json")
-        XCTAssertEqual(AEFolder.routingFile(pkg, "roles.json", home: home), pkg + "/skills/fleet/agent-routing/roles.json")
+        XCTAssertEqual(AEFolder.routingFile(pkg, "routing.json", home: home, bundled: app), home + "/.config/oneroof/agent-routing/routing.json")
+        XCTAssertEqual(AEFolder.routingFile(pkg, "roles.json", home: home, bundled: app), app + "/roles.json")
+        XCTAssertNil(AEFolder.routingFile(pkg, "roles.json", home: try temp("empty"), bundled: nil))
     }
 
-    func testRoutingFolderIsFoundInAnyGroup() throws {
-        let new = try temp("new", routing: "fleet/agent-routing")
-        XCTAssertTrue(AEFolder.routingDir(new)?.hasSuffix("fleet/agent-routing") ?? false)
-        XCTAssertEqual(Router.suggest(kind: "research", usage: [], policy: RoutingPolicy.load(agenticEngineering: new)).agent, .codex)
-        XCTAssertNil(AEFolder.routingDir(try temp("none")))
+    func testAppRoutingRulesAreFoundAndRead() throws {
+        let dir = try XCTUnwrap(AEFolder.routingBundled, "app/Resources/agent-routing in the checkout")
+        XCTAssertTrue(dir.hasSuffix("agent-routing"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir + "/routing.json"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir + "/roles.json"))
+        XCTAssertEqual(Router.suggest(kind: "research", usage: [], policy: RoutingPolicy.load(agenticEngineering: "/nonexistent")).agent, .kimi)
     }
 
     func testBundledPackageIsComplete() throws {
         let ae = try XCTUnwrap(AEFolder.bundled)
-        XCTAssertGreaterThanOrEqual(Foundations.skills(FoundationPaths(agenticEngineering: ae)).count, 17)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ae + "/scripts/sync-skills.sh"))
+        // LAB-1257: the app ships no agentic-engineering content of its own.
+        for d in ["skills", "course", "hooks"] { XCTAssertFalse(FileManager.default.fileExists(atPath: ae + "/" + d), d) }
         XCTAssertEqual(RoutingPolicy.kindDescriptions(agenticEngineering: ae)["chore"]?.hasPrefix("Housekeeping"), true)
         XCTAssertEqual(CourseAudio.title(slugFile: "03-check-after-every-hop.mp3"), "Check after every hop")
+    }
+
+    /// sync-skills.sh links only deck skills (nothing in the app can win over the deck) and drops links to removed skills.
+    func testSyncSkillsLinksOnlyTheDeck() throws {
+        let fm = FileManager.default
+        let ae = try XCTUnwrap(AEFolder.bundled)
+        let pkg = NSTemporaryDirectory() + "oneroof-sync-" + UUID().uuidString, home = pkg + "-home"
+        try fm.createDirectory(atPath: pkg + "/scripts", withIntermediateDirectories: true)
+        try fm.copyItem(atPath: ae + "/scripts/sync-skills.sh", toPath: pkg + "/scripts/sync-skills.sh")
+        for (dir, name) in [("deck/skills/session", "last-call"), ("skills/session", "last-call"), ("skills/build", "show-the-evidence")] {
+            try fm.createDirectory(atPath: "\(pkg)/\(dir)/\(name)", withIntermediateDirectories: true)
+            try "---\nname: \(name)\n---\n".write(toFile: "\(pkg)/\(dir)/\(name)/SKILL.md", atomically: true, encoding: .utf8)
+        }
+        try fm.createDirectory(atPath: home + "/.claude/skills", withIntermediateDirectories: true)
+        let real = try XCTUnwrap(realpath(pkg, nil).map { p in defer { free(p) }; return String(cString: p) })   // pwd -P, as the script sees it
+        try fm.createSymbolicLink(atPath: home + "/.claude/skills/gone", withDestinationPath: real + "/skills/old/gone")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = [pkg + "/scripts/sync-skills.sh"]
+        p.environment = ["HOME": home, "PATH": "/usr/bin:/bin"]
+        try p.run(); p.waitUntilExit()
+        XCTAssertEqual(p.terminationStatus, 0)
+        XCTAssertEqual(try fm.destinationOfSymbolicLink(atPath: home + "/.claude/skills/last-call"), real + "/deck/skills/session/last-call")
+        XCTAssertFalse(fm.fileExists(atPath: home + "/.claude/skills/show-the-evidence"), "an app skill is never linked")
+        XCTAssertNil(try? fm.destinationOfSymbolicLink(atPath: home + "/.claude/skills/gone"), "a dead link into the package goes")
     }
 }
 
