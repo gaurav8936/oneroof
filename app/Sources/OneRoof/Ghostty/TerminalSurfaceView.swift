@@ -36,6 +36,10 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
     /// Right-click › New Terminal Here (false) / Split Right with New Terminal (true) (LAB-745). Without it the menu
     /// still offers File › New Terminal.
     var onNewTerminal: ((Bool) -> Void)?
+    /// LAB-825: whether the viewport is at the live bottom (libghostty SCROLLBAR), reported when it changes.
+    var onScrollBottom: ((Bool) -> Void)?
+    /// The last value reported to `onScrollBottom` (main thread).
+    var atScrollBottom: Bool?
 
     /// `size`: where the surface will be shown (LAB-606), so its program starts at the right number of rows and
     /// columns instead of libghostty's default until the first layout.

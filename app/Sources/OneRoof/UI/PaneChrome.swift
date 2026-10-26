@@ -19,12 +19,15 @@ struct PaneTop: View {
     var reading = false
     var onReading: (() -> Void)? = nil
     var onNewTerminal: (() -> Void)? = nil
+    /// LAB-861: the program the pane's keys go to when it is not the shell or the session's agent, and its Stop.
+    var running: String? = nil
+    var onStop: (() -> Void)? = nil
 
     var body: some View {
         let term = model.themes.terminal.tokens
         VStack(spacing: 0) {
             PaneHeader(model: model, item: item, focused: focused, split: split, onZoom: onZoom, onClose: onClose,
-                       reading: reading, onReading: onReading, onNewTerminal: onNewTerminal)
+                       reading: reading, onReading: onReading, onNewTerminal: onNewTerminal, running: running, onStop: onStop)
             if let item, item.session.agent.isAgent, item.liveAgent != nil {
                 if expanded {
                     SummaryCard(model: model, item: item, openChapter: openChapter, onChapter: onChapter, onCollapse: onToggleSummary)
@@ -63,12 +66,15 @@ struct PaneHeader: View {
     var onReading: (() -> Void)? = nil
     /// LAB-745: a new plain terminal in this pane's folder.
     var onNewTerminal: (() -> Void)? = nil
+    /// LAB-861: "running: <command>" with Stop (Ctrl-C) while the pane's foreground program is not its shell.
+    var running: String? = nil
+    var onStop: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
             if let item {
                 AgentBadge(item: item, size: 18, status: false)
-                Text(item.session.name).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                Text(item.session.name).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1).layoutPriority(1)
                 if item.session.agent.isAgent {
                     Text(meta(item)).ui(12).foregroundStyle(t.text2.color).lineLimit(1)
                 } else {
@@ -83,14 +89,16 @@ struct PaneHeader: View {
             } else {
                 Text(split ? "Empty pane" : "No session selected").ui(12.5).foregroundStyle(t.text2.color)
             }
+            if let running { RunningChip(command: running, onStop: onStop) }
             Spacer(minLength: 8)
-            Text("⌘D ⇧⌘D ⇧⌘↩").ui(11, mono: true).foregroundStyle(t.text3.color).lineLimit(1)
+            // LAB-826: no informational shortcut text here; the keys are in the buttons' tooltips and the menus.
             if let onNewTerminal {
                 Button(action: onNewTerminal) {
                     Label("Terminal", systemImage: "plus").labelStyle(.titleAndIcon).ui(11.5, .medium).foregroundStyle(t.text2.color)
+                        .fixedSize()
                 }
                 .buttonStyle(.plain)
-                .help("New terminal: a plain shell in this session's folder, shown here (⌘T opens one in your projects folder; right-click the terminal for more)")
+                .help("New terminal: a plain shell in this session's folder, shown here (⌘T opens one in your projects folder; right-click the terminal for more). Split this pane: ⌘D right, ⇧⌘D down")
                 .accessibilityLabel("New terminal in this folder")
             }
             if let onReading {
@@ -104,6 +112,7 @@ struct PaneHeader: View {
                     .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(reading ? t.surface.color : .clear))
                     .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color))
                     .contentShape(Rectangle())
+                    .fixedSize()
                 }
                 .buttonStyle(.plain)
                 .help(reading
@@ -294,6 +303,62 @@ struct RewindBar: View {
         .padding(.vertical, 7).padding(.horizontal, 20)
         .background(t.terminal.background.color)
         .overlay(alignment: .bottom) { Hairline() }
+    }
+}
+
+/// LAB-825: the same way back as the RewindBar, floating at the bottom of the terminal while an earlier step is shown
+/// and the terminal is not at its live bottom (where the eye is after scrolling on through the step).
+struct BackToCurrentPill: View {
+    @Environment(\.theme) private var t
+    var onCurrent: () -> Void
+
+    var body: some View {
+        Button(action: onCurrent) {
+            Label("Back to current", systemImage: "arrow.down.to.line").ui(12, .medium)
+                .foregroundStyle(t.onAccent.color)
+                .padding(.vertical, 6).padding(.horizontal, 14)
+                .background(Capsule().fill(t.accent.color))
+                .overlay(Capsule().strokeBorder(t.separatorStrong.color))
+                .shadow(color: t.text.color.opacity(0.25), radius: 6, y: 2)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Scroll to the bottom: the step in progress now")
+        .accessibilityLabel("Back to current step")
+        .padding(.bottom, 12)
+    }
+}
+
+/// LAB-861: the pane's keys go to a program, not the shell: "● running: npm run dev  Stop".
+struct RunningChip: View {
+    @Environment(\.theme) private var t
+    let command: String
+    var onStop: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(t.statusColor(.running).color).frame(width: 6, height: 6)
+            Text("running:").ui(11, mono: true).foregroundStyle(t.text2.color).fixedSize()
+            Text(command).ui(11, mono: true).foregroundStyle(t.text.color)
+                .lineLimit(1).truncationMode(.middle).frame(minWidth: 40)
+            if let onStop {
+                Button(action: onStop) {
+                    Text("Stop").ui(11, .semibold).foregroundStyle(t.needsText.color)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color))
+                        .contentShape(Rectangle())
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+                .help("Stop \(command): sends Ctrl-C (⌃C) to it, as if typed in the terminal")
+                .accessibilityLabel("Stop \(command)")
+            }
+        }
+        .padding(.leading, 7).padding(.trailing, onStop == nil ? 7 : 3).padding(.vertical, 2)
+        .background(Capsule().fill(t.statusColor(.running).color.opacity(0.16)))
+        .help("What you type in this terminal goes to \(command), not to the shell")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Running \(command)")
     }
 }
 

@@ -267,3 +267,50 @@ should come from the catalog (handover GAPS D6). Audio-to-scene order assumes on
 `__TTS__` order (GAPS G2). Only Daylight was captured; Graphite and Midnight follow the tokens but were not looked at.
 The Radio panel and header were not checked at narrow window widths (the header can crowd below ~1250 pt).
 
+
+## 1.8.2 · terminal area
+
+**Grid (LAB-1239) — deviation from handover A4 / A4.1.** The handover draws Grid as 2 × 2 tiles, 3 × 2 above 1440 pt,
+capped at four or six live sessions (1.7.0 built it that way). Owner decision (2026-10-26): Grid is **always two
+columns and as many rows as needed** — every live (not popped-out) session of the window, the selected one first, then
+needs-you, running, the rest — and **scrolls vertically** when the rows do not fit. `PaneNode.grid(_:columns:)` builds
+the rows (an odd count leaves the last tile empty; nothing live = one row of two empty tiles); `GridMetrics` holds the
+row count, the minimum tile height (330 pt: header, Right now line, two step rows, composer and a few terminal lines)
+and the scroll math. `TerminalAreaController` now hosts the pane area in a `PaneScrollView` whose document is the
+area: exactly the viewport in Single and Wall (no scrolling, no bounce), taller in the Grid when the rows need it. A
+wheel over a terminal still scrolls that terminal; over a tile's header, Right now line or the scroller it scrolls the
+Grid. Moving the focus (⌥⌘arrows, a click, a pick in the column) scrolls the focused tile into view. Focus ring,
+split, close, zoom (fills the viewport), Group by ⌘1-⌘6 and Single restoring your panes are unchanged; the Find bar
+moved over the scroll view so it stays put. Fixed on the way: back on Single, a session chosen in the Grid that your
+panes do not show now fills the focused pane (1.8.1 showed the old pane under the new session's name). Not changed:
+the toolbar's Grid tooltip still says "up to four live sessions" (V2Toolbar, another lane's file).
+
+**Pane header (LAB-826).** The plain "⌘D ⇧⌘D ⇧⌘↩" text is gone. The keys stay in the menus and tooltips: + Terminal
+names ⌘D / ⇧⌘D for splitting, Maximize ⇧⌘↩, Close ⌥⌘W, Focus ⌥⌘F. The + Terminal and Wrap buttons no longer wrap
+when the header is narrow.
+
+**Back to current at the bottom (LAB-825).** While a pane shows an earlier step, a floating "Back to current" pill sits
+at the bottom centre of the terminal (above the approval card when one shows) as well as the RewindBar at the top; it
+does the same thing. It hides when the terminal reports its viewport at the live bottom: libghostty's SCROLLBAR action
+(total, offset, len), handled in `GhosttyRuntime` and passed to `TerminalSurfaceView.onScrollBottom` only when it
+changes. Opening a step marks the surface "not at bottom" first, so the pill shows even before the first report.
+
+**What the keys go to (LAB-861).** Every 2 s, only while the window is on screen and only for the panes in view, the
+terminal area asks roofd for each live pane's foreground process group (`runtime.processes(pane:)`, off the main
+thread; the same call the account probe uses). `ForegroundProgram.label` (OneRoofCore, tested) returns nothing when
+the shell is in the foreground (also while prompt hooks run), when only shells are, or when the session shows an agent
+(an agent session, or a terminal where the owner started one) and that agent is in the foreground; otherwise the
+group leader's command ("npm run dev", "Python -m http.server 3953"). The pane header then shows "● running: <command>"
+with **Stop**, which sends Ctrl-C to the pane through roofd (the program decides; a server normally quits) and looks
+again after 0.6 s. Headers redraw only when a marker changes.
+
+**Split panes and the keyboard (LAB-824, recheck).** Not broken: a click calls `makeFirstResponder` on the clicked
+surface (`TerminalSurfaceView.mouseDown`) and the click monitor focuses its pane; ⌥⌘arrows and a pick go through
+`focus(pane:)` → `render`, which makes the newly shown pane's surface first responder. Checked with a self-test that
+types real key events (no `focusTerminal` call) after Split Right, ⌥⌘← and ⌥⌘→, in the v2 and classic windows: the
+text landed in the right pane each time.
+
+**Captures** (self-test scripts with their own ROOFD_DIR): Grid with 5 and 7 plain terminals (3 rows fitting, 4 rows
+scrolled to the bottom tile after three Focus Pane Down), Single after Grid, the running marker on a terminal running
+`python3 -m http.server`, the classic split window, and the pill (forced on for the capture). Daylight chrome with the
+Midnight terminal only.

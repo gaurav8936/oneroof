@@ -170,6 +170,16 @@ final class GhosttyRuntime {
             let body = n.body.map { String(cString: $0) } ?? ""
             DispatchQueue.main.async { view.onDesktopNotification?(title, body) }
             return true
+        case GHOSTTY_ACTION_SCROLLBAR:
+            // LAB-825: total rows, first row shown, rows shown. At the bottom when the viewport ends at the last row.
+            let b = action.action.scrollbar
+            let bottom = b.offset &+ b.len >= b.total
+            DispatchQueue.main.async {
+                guard view.atScrollBottom != bottom else { return }
+                view.atScrollBottom = bottom
+                view.onScrollBottom?(bottom)
+            }
+            return true
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
             DispatchQueue.main.async { view.onProcessExit?(false) }
             return true
