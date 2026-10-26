@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             options: [.userInitiatedAllowingIdleSystemSleep], reason: "One Roof watches agent sessions")
         if let err = GhosttyRuntime.shared.initError { model.lastError = "Terminal engine: \(err)" }
         NSApp.mainMenu = buildMenu()
+        if model.settings.ui2 { v2AdjustMenus(NSApp.mainMenu) }   // A11: the One Roof 1 menu names (MENUS.md)
         applyShortcuts()
         NotificationCenter.default.addObserver(forName: .shortcutsChanged, object: nil, queue: .main) { [weak self] _ in self?.applyShortcuts() }
         ShortcutBridge.onHotKey = { [weak self] in self?.toggleFromHotKey() }
@@ -159,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func newObjective(_ sender: Any?) { main.newObjective() }
     @objc func newTerminalInRepo(_ sender: Any?) { model.newTerminal(in: model.selected?.session.repoPath) }
     @objc func showSettings(_ sender: Any?) {
-        if main.isV2 { main.v2ShowSettings(pane: Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0); return }   // B1.x page
+        if isV2Window { main.v2ShowSettings(pane: Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0); return }   // B1.x page
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(model: model, tab: Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0)
         }
@@ -219,7 +220,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func showResources(_ sender: Any?) { model.centre = model.centre == .resources ? .workspace : .resources }
     @objc func showDecisions(_ sender: Any?) { model.centre = model.centre == .decisions ? .workspace : .decisions }
-    @objc func showSubagents(_ sender: Any?) { model.centre = model.centre == .subagents ? .workspace : .subagents }
+    @objc func showSubagents(_ sender: Any?) {
+        // v2 (MENUS.md, Home › Subagents ⇧⌘A): the trace of every session's subagents, not one session's cards.
+        if isV2Window, model.centre != .subagents { model.active.traceFocus = nil; model.active.v2Trace = true }
+        model.centre = model.centre == .subagents ? .workspace : .subagents
+    }
     /// Loops (LAB-678): work that repeats until a check passes, or nightly; run by roofd.
     @objc func showLoops(_ sender: Any?) { model.centre = model.centre == .loops ? .workspace : .loops }
     /// ⌘R: Run in the Editor, Raw stream in a session (SHORTCUTS: context-dependent).
@@ -270,18 +275,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWindow(for: w)
     }
     @objc func openHelp(_ sender: Any?) {
-        if main.isV2 { main.v2ShowPage("Help"); return }   // B4.1 page (Open in Learn keeps today's Help in Learn)
+        if isV2Window { main.v2ShowPage("Help"); return }   // B4.1 page (Open in Learn keeps today's Help in Learn)
         guard let page = AppResources.helpStartPage() else { model.lastError = "One Roof Help is not bundled with this build."; return }
         model.loadLearn()
         model.learnTarget = page
         model.centre = .learn
     }
     @objc func showShortcuts(_ sender: Any?) {
-        if main.isV2 { main.v2ShowSettings(pane: 7); return }
+        if isV2Window { main.v2ShowSettings(pane: 7); return }
         settingsWindow = nil; showSettingsTab(4)
     }
     @objc func openReleaseNotes(_ sender: Any?) {
-        if main.isV2, AppResources.releaseNotes != nil { main.v2ShowPage("Release notes"); return }   // B4.2 page
+        if isV2Window, AppResources.releaseNotes != nil { main.v2ShowPage("Release notes"); return }   // B4.2 page
         openBundled(AppResources.releaseNotes, "Release notes")
     }
     private func openBundled(_ path: String?, _ what: String) {
@@ -289,7 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     func showSettingsTab(_ tab: Int) {
         // v2: 0.5 tab numbers → panes (0 General, 1 Appearance, 2 Agents → Seats, 3 Foundations, 4 Shortcuts, 5 Captions → model)
-        if main.isV2 { main.v2ShowSettings(pane: [0: 0, 1: 1, 2: 2, 3: 5, 4: 7, 5: 4][tab] ?? 0); return }
+        if isV2Window { main.v2ShowSettings(pane: [0: 0, 1: 1, 2: 2, 3: 5, 4: 7, 5: 4][tab] ?? 0); return }
         if settingsWindow == nil { settingsWindow = SettingsWindowController(model: model, tab: tab) }
         settingsWindow?.showWindow(nil)
         settingsWindow?.window?.makeKeyAndOrderFront(nil)
@@ -303,7 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The v2 window's Search (A10.2, A10.5): grouped, with Learn's best answers and ⌘↩ send; nil in the 0.5 window.
     private func v2Search() -> V2SearchOptions? {
-        guard main.isV2 else { return nil }
+        guard isV2Window else { return nil }
         let m = model
         m.loadLearn()
         return V2SearchOptions(model: m,
@@ -378,12 +383,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for r in RoofScope.available(in: m.items) {
             add("Roof window: \(r.scope.title)", "\(r.count) live session\(r.count == 1 ? "" : "s")", "house", "Action") { RoofWindowController.show(r.scope, model: m) }
         }
-        if main.isV2 {   // v2 (A10.5): a theme item sets a whole look
+        if isV2Window {   // v2 (A10.5): a theme item sets a whole look
             for look in Look.allCases {
                 add("Theme: all panels \(look.title)", look.blurb, "paintpalette", "Theme") { m.chosenThemes = look.panelThemes }
             }
         }
-        for t in ThemeName.panelChoices where !main.isV2 {
+        for t in ThemeName.panelChoices where !isV2Window {
             add("Theme: all panels \(t.label)", "Sessions, files, terminal, plan", "paintpalette", "Theme") {
                 m.chosenThemes = PanelThemes(sidebar: t, files: t, terminal: t, plan: t, centre: t)
             }
@@ -427,11 +432,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleSidebarPanel(_ sender: Any?) { main.toggleSidebar() }
     @objc func togglePlanPanel(_ sender: Any?) { main.togglePlanPanel() }
     @objc func toggleFocus(_ sender: Any?) { main.toggleFocus() }
-    @objc func v2StepBack(_ sender: Any?) { if main.isV2 { main.v2StepBack() } }
+    @objc func v2StepBack(_ sender: Any?) { if isV2Window { main.v2StepBack() } }
     @objc func v2SplitEditor(_ sender: Any?) { NotificationCenter.default.post(name: .v2SplitEditor, object: model.active.id) }
-    @objc func v2ToggleDock(_ sender: Any?) { if main.isV2 { main.v2ToggleDock() } }
+    @objc func v2ToggleDock(_ sender: Any?) { if isV2Window { main.v2ToggleDock() } }
     @objc func v2OpenPlace(_ sender: Any?) {
-        guard main.isV2, let raw = (sender as? NSMenuItem)?.representedObject as? String, let p = Place(rawValue: raw) else { return }
+        guard isV2Window, let raw = (sender as? NSMenuItem)?.representedObject as? String, let p = Place(rawValue: raw) else { return }
         main.v2Open(p)
     }
     @objc func toggleFiles(_ sender: Any?) { main.toggleFiles() }
@@ -650,13 +655,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(.separator())
         view.addItem(item("Focus: Terminal Only", #selector(toggleFocus(_:)), "f", [.command, .option]))
         view.addItem(item("Focus Terminal", #selector(focusTerminal(_:)), "l"))
-        // One Roof 1.x v2 window keys (shared/SHORTCUTS.md): hidden until the A11 menus land in 1.6.0; they only act in a
-        // v2 window. ⇧⌥⌘F Focus step back · ⌃⌘J dock full ↔ line · ⌃⌘1-7 places.
+        // One Roof 1.x v2 window keys (shared/SHORTCUTS.md): ⇧⌥⌘F Focus step back · ⌃⌘J dock full ↔ line · ⌘\\ split editor
+        // (shown by v2AdjustMenus from 1.6.0) · ⌃⌘1-7 places (hidden aliases). Only in the v2 window.
         for v2item in [item("Focus: Step Back", #selector(v2StepBack(_:)), "f", [.command, .option, .shift]),
                        item("Dock", #selector(v2ToggleDock(_:)), "j", [.command, .control]),
                        item("Split Editor", #selector(v2SplitEditor(_:)), "\\", [.command])]
                       + Place.allCases.map({ p -> NSMenuItem in
-                          let i = item(p.title, #selector(v2OpenPlace(_:)), String(p.controlKey), [.command, .control])
+                          // Own title: shortcut overrides are keyed by title, and "Learn", "Loops", "Home"… are visible items too.
+                          let i = item("Open \(p.title)", #selector(v2OpenPlace(_:)), String(p.controlKey), [.command, .control])
                           i.representedObject = p.rawValue
                           return i
                       }) where model.settings.ui2 {
@@ -766,8 +772,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(copySessionOutput(_:)):
+            return main?.terminalArea.visibleText()?.isEmpty == false
         case #selector(v2SplitEditor(_:)):
-            return main.isV2 && model.active.centre == .editor   // otherwise ⌘\ goes on to the terminal
+            return isV2Window && model.active.centre == .editor   // otherwise ⌘\ goes on to the terminal
         case #selector(toggleBoard(_:)):
             item.state = model.boardMode ? .on : .off
         case #selector(toggleLearn(_:)):
@@ -813,7 +821,7 @@ extension AppDelegate: NSMenuItemValidation {
             }
             item.state = ThemeName.allCases[safe: item.tag % 10] == current ? .on : .off
         case #selector(launchSelected(_:)):
-            if main.isV2, PalettePanel.current?.isKeyWindow == true { return false }   // ⌘↩ in Search sends to the session
+            if isV2Window, PalettePanel.current?.isKeyWindow == true { return false }   // ⌘↩ in Search sends to the session
             return model.selected.map { $0.liveAgent == nil && $0.status != .doNotUse } ?? false
         case #selector(markNext(_:)), #selector(markPlanned(_:)):
             return model.selected.map { !$0.status.isLive } ?? false

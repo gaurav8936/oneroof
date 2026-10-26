@@ -32,7 +32,8 @@ enum Prefs {
             if SelfTest.isActive {
                 if d.data(forKey: "settings") == nil,
                    let v = LegacyMigration.migratedValues(target: d, legacy: LegacyMigration.legacyValues()),
-                   let data = v["settings"] as? Data, let st = try? JSONDecoder().decode(AppSettings.self, from: data) {
+                   let data = v["settings"] as? Data, var st = try? JSONDecoder().decode(AppSettings.self, from: data) {
+                    st.ui2 = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_UI2"] == "1"   // same rule as below
                     return st
                 }
             } else {
@@ -43,7 +44,8 @@ enum Prefs {
         if let data = d.data(forKey: "settings"), let saved = try? JSONDecoder().decode(AppSettings.self, from: data) { st = saved }
         // P6: ONEROOF_SELFTEST_UI2=1 turns the v2 window setting on (the window itself arrives in 1.1.0); ONEROOF_SELFTEST_LOOK=<skyStudio|mintGarden|…> picks a look.
         let env = ProcessInfo.processInfo.environment
-        if let v = env["ONEROOF_SELFTEST_UI2"] { st.ui2 = v == "1" }
+        // Self-tests keep testing the classic window unless they ask for the new one (ONEROOF_SELFTEST_UI2=1).
+        if SelfTest.isActive { st.ui2 = env["ONEROOF_SELFTEST_UI2"] == "1" }
         if let v = env["ONEROOF_SELFTEST_LOOK"], let l = Look(rawValue: v) { st.look = l }
         return st
     }
