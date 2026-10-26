@@ -38,7 +38,11 @@ final class WindowState: ObservableObject, Identifiable {
     let id: String
     @Published var name: String
     @Published var colour: String?
-    @Published var centre: CentreView = .workspace
+    /// v2: the centre and the place stay in step here, synchronously (a place opens its view; a view opened from a
+    /// menu, such as ⇧⌘L Overview, moves the place). Views of a session (editor, review …) keep the place.
+    @Published var centre: CentreView = .workspace {
+        didSet { if let p = centre.place, p != place { place = p } }
+    }
     @Published var selectedId: String?
     /// A file or folder in the centre (Editor, or the viewer for Markdown, images, HTML and folders).
     @Published var viewerPath: String?
@@ -58,7 +62,12 @@ final class WindowState: ObservableObject, Identifiable {
     /// v2 window (P1): the Focus ladder step, the layout and the place, per window, kept across relaunches.
     @Published var focusStep: FocusStep = .sessions { didSet { save(focusStep.rawValue, "focusStep") } }
     @Published var layout: SessionLayout = .single { didSet { save(layout.rawValue, "layout") } }
-    @Published var place: Place = .sessions { didSet { save(place.rawValue, "place") } }
+    @Published var place: Place = .sessions {
+        didSet {
+            save(place.rawValue, "place")
+            if centre.place != place, !(place == .sessions && centre.place == nil) { centre = place.centre }
+        }
+    }
     /// Sessions currently showing in a centre pane (set by the terminal area).
     var visibleInPanes: Set<String> = []
 

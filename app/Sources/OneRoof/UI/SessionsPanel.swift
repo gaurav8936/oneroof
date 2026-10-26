@@ -388,7 +388,7 @@ struct SessionContextMenu: View {
 }
 
 /// LAB-598: a run terminal's row sits under its agent's row, indented, with ↳.
-private struct RunTerminalIndent: ViewModifier {
+struct RunTerminalIndent: ViewModifier {
     let isRun: Bool
     let colour: Color
     func body(content: Content) -> some View {
