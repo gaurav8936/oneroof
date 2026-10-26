@@ -122,15 +122,15 @@ struct V2LayoutControl: View {
         HStack(spacing: 0) {
             ForEach(SessionLayout.allCases, id: \.self) { l in
                 let on = win.layout == l
-                let ready = l == .single
-                Button { if ready { win.layout = l } } label: {
+                let ready = l != .wall   // Grid since 1.7.0; Wall arrives in 1.8.0
+                Button { if ready { win.layout = l; if l == .grid, win.focusStep < .wide { win.focusStep = l.defaultStep } } } label: {
                     Text(l.title).ui(11, on ? .semibold : .regular)
                         .foregroundStyle(ready ? (on ? t.text.color : t.text2.color) : t.text3.color)
                         .padding(.horizontal, 9).frame(height: 22)
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.surface.color : .clear))
                 }
                 .buttonStyle(.plain)
-                .help(ready ? "Single (⌃⌥⌘1)" : (l == .grid ? "Grid arrives in One Roof 1.7.0 (⌃⌥⌘2)" : "Wall arrives in One Roof 1.8.0 (⌃⌥⌘3)"))
+                .help(l == .single ? "Single (⌃⌥⌘1)" : (l == .grid ? "Grid: up to four live sessions side by side (⌃⌥⌘2)" : "Wall arrives in One Roof 1.8.0 (⌃⌥⌘3)"))
                 .accessibilityLabel(l.title + (ready ? "" : ", not available yet"))
             }
         }

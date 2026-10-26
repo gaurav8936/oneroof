@@ -39,11 +39,10 @@ extension AppDelegate {
         var at = anchor
         let layouts: [(String, Int)] = [("Single", 1), ("Grid", 2), ("Wall", 3)]
         for (title, n) in layouts {
-            let mi = NSMenuItem(title: title, action: n == 1 ? #selector(v2LayoutSingle(_:)) : nil, keyEquivalent: String(n))
+            let mi = NSMenuItem(title: title, action: n == 1 ? #selector(v2LayoutSingle(_:)) : (n == 2 ? #selector(v2LayoutGrid(_:)) : nil), keyEquivalent: String(n))
             mi.keyEquivalentModifierMask = [.command, .option, .control]
             mi.target = self
-            if n == 1 { mi.state = .on }
-            if n > 1 { mi.toolTip = n == 2 ? "Grid arrives in 1.7.0" : "Wall arrives in 1.8.0" }   // shown, not active yet (CAP-2, CAP-3)
+            if n == 3 { mi.toolTip = "Wall arrives in 1.8.0" }   // shown, not active yet (CAP-3)
             view.insertItem(mi, at: at); at += 1
         }
         view.insertItem(.separator(), at: at)
@@ -62,7 +61,12 @@ extension AppDelegate {
         if isV2Window { main.v2Open(.sessions) }
         focusTerminal(sender)
     }
-    @objc func v2LayoutSingle(_ sender: Any?) {}   // Single is the only layout until Grid (1.7.0); kept for the key and the check mark
+    @objc func v2LayoutSingle(_ sender: Any?) { if isV2Window { main.win.layout = .single } }
+    @objc func v2LayoutGrid(_ sender: Any?) {
+        guard isV2Window else { return }
+        main.win.layout = .grid
+        if main.win.focusStep < .wide { main.win.focusStep = SessionLayout.grid.defaultStep }
+    }
     @objc func v2ShowLook(_ sender: Any?) { if isV2Window { main.v2ShowLooks() } else { showSettingsTab(1) } }
 
     /// Edit › Copy Session Output (NEW-13): the text on the shown session's terminal screen.
