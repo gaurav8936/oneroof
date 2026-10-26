@@ -62,8 +62,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Step review (LAB-260): Claude reads each finished step of the session on screen. Off by default: every step it
     /// reviews is one more model call on the owner's Claude account.
     public var stepReview: Bool
+    /// One Roof 1.x v2 window (LAB-ONEROOF-UI-REDESIGN, P2). Off: the 0.5 layout. On by default from 1.6.0.
+    public var ui2: Bool
+    /// The look that set every panel theme (P2), saved by name; "custom" = the owner customised panels one by one.
+    public var lookName: String
+    /// The look, or nil when the panels were customised one by one.
+    public var look: Look? {
+        get { Look(rawValue: lookName) }
+        set { lookName = newValue?.rawValue ?? "custom" }
+    }
 
     public init() {
+        ui2 = false
+        lookName = Look.skyStudio.rawValue
         stepReview = false
         captionsModel = true
         scheduledRuns = false
@@ -113,6 +124,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         captionsModel = try c.decodeIfPresent(Bool.self, forKey: .captionsModel) ?? fresh.captionsModel
         scheduledRuns = try c.decodeIfPresent(Bool.self, forKey: .scheduledRuns) ?? fresh.scheduledRuns
         stepReview = try c.decodeIfPresent(Bool.self, forKey: .stepReview) ?? fresh.stepReview
+        ui2 = try c.decodeIfPresent(Bool.self, forKey: .ui2) ?? fresh.ui2
+        // Settings saved before 1.0.0 have no look: keep the owner's per-panel themes ("custom") rather than
+        // replace them with Sky Studio when the v2 window is first turned on. New installs start on Sky Studio.
+        lookName = try c.decodeIfPresent(String.self, forKey: .lookName) ?? "custom"
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath
