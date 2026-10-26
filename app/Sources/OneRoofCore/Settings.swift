@@ -66,6 +66,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var ui2: Bool
     /// The look that set every panel theme (P2), saved by name; "custom" = the owner customised panels one by one.
     public var lookName: String
+    /// v2 General › Done when required (NEW-30): New session cannot launch without a Done when. Off = today's "optional".
+    public var doneWhenRequired: Bool
     /// The look, or nil when the panels were customised one by one.
     public var look: Look? {
         get { Look(rawValue: lookName) }
@@ -75,6 +77,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public init() {
         ui2 = false
         lookName = Look.skyStudio.rawValue
+        doneWhenRequired = false
         stepReview = false
         captionsModel = true
         scheduledRuns = false
@@ -128,6 +131,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // Settings saved before 1.0.0 have no look: keep the owner's per-panel themes ("custom") rather than
         // replace them with Sky Studio when the v2 window is first turned on. New installs start on Sky Studio.
         lookName = try c.decodeIfPresent(String.self, forKey: .lookName) ?? "custom"
+        doneWhenRequired = try c.decodeIfPresent(Bool.self, forKey: .doneWhenRequired) ?? false
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath

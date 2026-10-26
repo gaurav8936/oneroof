@@ -44,6 +44,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     var v2BeforeFocus: FocusStep = .sessions
     /// A page over the current place (Settings, Help …, M5); the rail then highlights no place (LAB-1084).
     @Published var v2Page: String?
+    /// Which Settings pane the v2 Settings page shows (B1.x).
+    @Published var v2SettingsPane = 0
+    var v2PageHost: NSView?
     var v2OnPage: Bool { v2Page != nil }
     /// The dock is folded into the session column's line (step 1) rather than shown full.
     @Published var v2DockFolded = true

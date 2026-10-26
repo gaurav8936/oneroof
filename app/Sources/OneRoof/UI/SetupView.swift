@@ -15,6 +15,8 @@ struct SetupView: View {
     @State private var agents: [AgentRow] = []
     @State private var tools: [CheckResult] = []
     @State private var error: String?
+    /// v2 Setup step: 0 agents, 1 folders and tools, 2 kit, look and Linear.
+    @State private var step = 0
 
     struct AgentRow: Identifiable {
         var id: String { command }
@@ -31,93 +33,141 @@ struct SetupView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Set up One Roof").font(.system(size: 20, weight: .bold))
-                Text("Pick the folders One Roof works in. Everything here can be changed later in Settings › Foundations.")
+                Text(!model.settings.ui2 ? "Pick the folders One Roof works in. Everything here can be changed later in Settings › Foundations."
+                     : ["Agents on this Mac. Install any later; One Roof finds them on your PATH.", "Pick the folders One Roof works in.",
+                        "The kit, your look and Linear."][step] + " Everything here can be changed later in Settings › Foundations.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 8)
             Form {
-                Section("Projects folder") {
-                    folderRow(text: $projects, placeholder: Workspace.defaultProjectsRoot().tilde,
-                              message: "Choose the folder that holds your repos")
-                    note("Agents start here; a session can start in one of its repos instead. In use: \(projectsInUse.tilde)",
-                         warn: !Workspace.folderExists(projectsInUse))
-                }
-                Section("Shared rules and docs (optional)") {
-                    if sharedSkipped {
-                        HStack {
-                            Text("Skipped: handoffs, gotchas and the workspace checks stay off.").foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Use one") { sharedSkipped = false }
-                        }
-                    } else {
-                        folderRow(text: $shared, placeholder: Workspace.resolveShared(setting: "", projects: projectsInUse).tilde,
-                                  message: "Choose the folder with your shared rules, handoffs and gotchas") {
-                            if !Workspace.folderExists(sharedInUse) {
-                                Button("Create it") { create(sharedInUse) }
-                            }
-                            Button("Skip") { sharedSkipped = true; shared = "" }
-                        }
-                        note(Workspace.folderExists(sharedInUse) ? "In use: \(sharedInUse.tilde)"
-                             : "Not found: \(sharedInUse.tilde). Create it, choose another folder, or skip.",
-                             warn: !Workspace.folderExists(sharedInUse))
+                if model.settings.ui2 {
+                    // v2 (B3.1-B3.3, LAB-1195): three steps, every field of today's form.
+                    switch step {
+                    case 0: agentsSection
+                    case 1: projectsSection; sharedSection; toolsSection
+                    default: kitSection; lookSection; linearSection
                     }
-                }
-                Section("Agentic engineering") {
-                    // LAB-768: bundled, nothing to choose.
-                    Text("Bundled with One Roof: the course, every skill, and the narrated Agentic Engineering deck (Learn, ⇧⌘E).")
-                        .foregroundStyle(.secondary)
-                }
-                Section("Required tools") {
-                    if tools.isEmpty {
-                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Checking git…").foregroundStyle(.secondary) }
-                    }
-                    ForEach(tools) { c in
-                        HStack(spacing: 8) {
-                            Image(systemName: c.level == .ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                                .foregroundStyle(c.level == .ok ? Color.green : Color.red)
-                            Text(c.title).frame(width: 110, alignment: .leading)
-                            Text(c.detail).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
-                            Spacer()
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                    if tools.contains(where: { $0.id == "tool-git" && $0.level != .ok }) {
-                        note("You can start now, but diffs and review need git: install it, then reopen One Roof.", warn: true)
-                    }
-                }
-                Section("Agents on this Mac") {
-                    if agents.isEmpty {
-                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Looking for agents…").foregroundStyle(.secondary) }
-                    }
-                    ForEach(agents) { a in
-                        HStack(spacing: 8) {
-                            Image(systemName: a.installed ? "checkmark.circle.fill" : "xmark.circle")
-                                .foregroundStyle(a.installed ? Color.green : Color.secondary)
-                            Text(a.title).frame(width: 110, alignment: .leading)
-                            Text(a.detail).foregroundStyle(.secondary).lineLimit(3).truncationMode(.middle)
-                            Spacer()
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                    note("Install any agent CLI later; One Roof finds it on your PATH.", warn: false)
-                }
-                Section("Linear (optional)") {
-                    SecureField("Linear API key", text: $linearKey, prompt: Text(model.linear.hasKey ? "already connected" : "lin_api_…"))
-                    note("Saved to \(LinearClient.keyPath.tilde), readable only by you. LINEAR_API_KEY in the environment also works.",
-                         warn: false)
+                } else {
+                    projectsSection; sharedSection; kitSection; toolsSection; agentsSection; linearSection
                 }
             }
             .formStyle(.grouped)
             HStack {
                 if let error { Text(error).font(.callout).foregroundStyle(.red).lineLimit(2) }
                 Spacer()
-                Button("Start") { start() }.keyboardShortcut(.defaultAction).controlSize(.large)
+                if model.settings.ui2 {
+                    Text("Step \(step + 1) of 3").font(.callout).foregroundStyle(.secondary)
+                    if step > 0 { Button("Back") { step -= 1 }.controlSize(.large) }
+                    if step < 2 { Button("Continue") { step += 1 }.keyboardShortcut(.defaultAction).controlSize(.large) }
+                    else { Button("Open One Roof") { start() }.keyboardShortcut(.defaultAction).controlSize(.large) }
+                } else {
+                    Button("Start") { start() }.keyboardShortcut(.defaultAction).controlSize(.large)
+                }
             }
             .padding(.horizontal, 24).padding(.vertical, 14)
         }
         .frame(width: 640, height: 800)
         .onAppear(perform: load)
+    }
+
+    @ViewBuilder private var projectsSection: some View {
+        Section("Projects folder") {
+            folderRow(text: $projects, placeholder: Workspace.defaultProjectsRoot().tilde,
+                      message: "Choose the folder that holds your repos")
+            note("Agents start here; a session can start in one of its repos instead. In use: \(projectsInUse.tilde)",
+                 warn: !Workspace.folderExists(projectsInUse))
+        }
+    }
+
+    @ViewBuilder private var sharedSection: some View {
+        Section("Shared rules and docs (optional)") {
+            if sharedSkipped {
+                HStack {
+                    Text("Skipped: handoffs, gotchas and the workspace checks stay off.").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Use one") { sharedSkipped = false }
+                }
+            } else {
+                folderRow(text: $shared, placeholder: Workspace.resolveShared(setting: "", projects: projectsInUse).tilde,
+                          message: "Choose the folder with your shared rules, handoffs and gotchas") {
+                    if !Workspace.folderExists(sharedInUse) {
+                        Button("Create it") { create(sharedInUse) }
+                    }
+                    Button("Skip") { sharedSkipped = true; shared = "" }
+                }
+                note(Workspace.folderExists(sharedInUse) ? "In use: \(sharedInUse.tilde)"
+                     : "Not found: \(sharedInUse.tilde). Create it, choose another folder, or skip.",
+                     warn: !Workspace.folderExists(sharedInUse))
+            }
+        }
+    }
+
+    @ViewBuilder private var kitSection: some View {
+        Section("Agentic engineering") {
+            // LAB-768: bundled, nothing to choose.
+            Text("Bundled with One Roof: the course, every skill, and the narrated Agentic Engineering deck (Learn, ⇧⌘E).")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var toolsSection: some View {
+        Section("Required tools") {
+            if tools.isEmpty {
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Checking git…").foregroundStyle(.secondary) }
+            }
+            ForEach(tools) { c in
+                HStack(spacing: 8) {
+                    Image(systemName: c.level == .ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                        .foregroundStyle(c.level == .ok ? Color.green : Color.red)
+                    Text(c.title).frame(width: 110, alignment: .leading)
+                    Text(c.detail).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
+                    Spacer()
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if tools.contains(where: { $0.id == "tool-git" && $0.level != .ok }) {
+                note("You can start now, but diffs and review need git: install it, then reopen One Roof.", warn: true)
+            }
+        }
+    }
+
+    @ViewBuilder private var agentsSection: some View {
+        Section("Agents on this Mac") {
+            if agents.isEmpty {
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Looking for agents…").foregroundStyle(.secondary) }
+            }
+            ForEach(agents) { a in
+                HStack(spacing: 8) {
+                    Image(systemName: a.installed ? "checkmark.circle.fill" : "xmark.circle")
+                        .foregroundStyle(a.installed ? Color.green : Color.secondary)
+                    Text(a.title).frame(width: 110, alignment: .leading)
+                    Text(a.detail).foregroundStyle(.secondary).lineLimit(3).truncationMode(.middle)
+                    Spacer()
+                }
+                .accessibilityElement(children: .combine)
+            }
+            note("Install any agent CLI later; One Roof finds it on your PATH.", warn: false)
+        }
+    }
+
+    @ViewBuilder private var linearSection: some View {
+        Section("Linear (optional)") {
+            SecureField("Linear API key", text: $linearKey, prompt: Text(model.linear.hasKey ? "already connected" : "lin_api_…"))
+            note("Saved to \(LinearClient.keyPath.tilde), readable only by you. LINEAR_API_KEY in the environment also works.",
+                 warn: false)
+        }
+    }
+
+    /// v2 step 3: the look (A10.3) — one tap sets every panel; Settings › Appearance changes it later.
+    @ViewBuilder private var lookSection: some View {
+        Section("Look") {
+            Picker("Look", selection: Binding(get: { Look.matching(model.chosenThemes) }, set: { if let l = $0 { model.chosenThemes = l.panelThemes } })) {
+                if Look.matching(model.chosenThemes) == nil { Text("Your own mix").tag(Look?.none) }
+                ForEach(Look.allCases) { Text($0.title).tag(Look?.some($0)) }
+            }
+            note("Sets every panel at once. Change it any time in Settings › Appearance.", warn: false)
+        }
     }
 
     @ViewBuilder

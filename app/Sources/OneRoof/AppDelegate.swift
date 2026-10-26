@@ -159,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func newObjective(_ sender: Any?) { main.newObjective() }
     @objc func newTerminalInRepo(_ sender: Any?) { model.newTerminal(in: model.selected?.session.repoPath) }
     @objc func showSettings(_ sender: Any?) {
+        if main.isV2 { main.v2ShowSettings(pane: Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0); return }   // B1.x page
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(model: model, tab: Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0)
         }
@@ -269,17 +270,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWindow(for: w)
     }
     @objc func openHelp(_ sender: Any?) {
+        if main.isV2 { main.v2ShowPage("Help"); return }   // B4.1 page (Open in Learn keeps today's Help in Learn)
         guard let page = AppResources.helpStartPage() else { model.lastError = "One Roof Help is not bundled with this build."; return }
         model.loadLearn()
         model.learnTarget = page
         model.centre = .learn
     }
-    @objc func showShortcuts(_ sender: Any?) { settingsWindow = nil; showSettingsTab(4) }
-    @objc func openReleaseNotes(_ sender: Any?) { openBundled(AppResources.releaseNotes, "Release notes") }
+    @objc func showShortcuts(_ sender: Any?) {
+        if main.isV2 { main.v2ShowSettings(pane: 7); return }
+        settingsWindow = nil; showSettingsTab(4)
+    }
+    @objc func openReleaseNotes(_ sender: Any?) {
+        if main.isV2, AppResources.releaseNotes != nil { main.v2ShowPage("Release notes"); return }   // B4.2 page
+        openBundled(AppResources.releaseNotes, "Release notes")
+    }
     private func openBundled(_ path: String?, _ what: String) {
         if let path { openPath(path) } else { model.lastError = "\(what) are not bundled with this build." }
     }
     func showSettingsTab(_ tab: Int) {
+        // v2: 0.5 tab numbers → panes (0 General, 1 Appearance, 2 Agents → Seats, 3 Foundations, 4 Shortcuts, 5 Captions → model)
+        if main.isV2 { main.v2ShowSettings(pane: [0: 0, 1: 1, 2: 2, 3: 5, 4: 7, 5: 4][tab] ?? 0); return }
         if settingsWindow == nil { settingsWindow = SettingsWindowController(model: model, tab: tab) }
         settingsWindow?.showWindow(nil)
         settingsWindow?.window?.makeKeyAndOrderFront(nil)
