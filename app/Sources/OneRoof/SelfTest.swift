@@ -4,6 +4,10 @@ import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
 ///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
+///   ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED=<exported defaults plist> ONEROOF_STORE=<copy of sessions.sqlite>
+///                                               a real profile's settings and window state, read but never saved
+///                                               (1.8.1 audit; add ONEROOF_SELFTEST_DEMO=0, ROOFD_DIR=<scratch> to stay off
+///                                               the installed app's roofd, CFFIXED_USER_HOME=<scratch> for App Support)
 ///   ONEROOF_SELFTEST_SELECT=<session id>      select that agent's row after launch
 ///   ONEROOF_SELFTEST_TYPE=<text>                type text (+ Return) into the focused terminal via synthetic NSEvents
 ///   ONEROOF_SELFTEST_THEMES=sidebar,terminal,plan   e.g. "light,dark,dim"
@@ -102,8 +106,15 @@ enum SelfTest {
         if env["ONEROOF_SELFTEST_FILES"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.main.toggleFiles() } }
         if let l = env["ONEROOF_SELFTEST_LEARN"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                if l != "1" { app.model.learnTarget = l }
+                if l.hasPrefix("/") { app.model.learnTarget = l }
                 app.model.learnMode = true
+            }
+            // LAB-1233: ONEROOF_SELFTEST_LEARN=<page title> opens that Learn page once the index has loaded.
+            if l != "1", !l.hasPrefix("/") {
+                app.model.loadLearn()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    if let it = app.model.learnItems.first(where: { $0.title == l }) { app.model.learnTarget = it.id }
+                }
             }
         }
         if let v = env["ONEROOF_SELFTEST_VIEW"] {
@@ -145,6 +156,8 @@ enum SelfTest {
                 app.model.learnTarget = it.id
                 app.model.player.rate = 1.5
                 app.model.player.play(pageId: it.id, title: it.title, tracks: it.tracks())
+                // LAB-1233: "<title>@paused" loads the page into the player and pauses at once (captures without sound).
+                if spec.hasSuffix("@paused") { app.model.player.pause() }
                 if spec.hasSuffix("@terminals") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.model.goTerminals() } }
             }
         }

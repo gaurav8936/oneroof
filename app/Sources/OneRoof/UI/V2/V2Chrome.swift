@@ -290,8 +290,9 @@ struct V2DockLine: View {
                 }
             }
             .buttonStyle(.plain).help(model.runtimeState)
-            Text("·").ui(11).foregroundStyle(t.text3.color)
-            ForEach(AgentMark.available(V2Seats.marks).filter { usage[$0] != nil }, id: \.self) { m in
+            let seats = AgentMark.available(V2Seats.marks).filter { usage[$0] != nil }
+            if !seats.isEmpty { Text("·").ui(11).foregroundStyle(t.text3.color) }   // no dangling dot without seats
+            ForEach(seats, id: \.self) { m in
                 Text("\(m.mono) \(usage[m]?.worst.map { "\(Int($0))%" } ?? "–")").ui(11).foregroundStyle(t.text2.color)
                     .lineLimit(1).fixedSize().help(V2SeatChip.help(m, usage[m]))
             }
@@ -375,11 +376,11 @@ struct V2InspectorEdgeTab: View {
     }
 }
 
-/// "Focus · ⌥⌘F steps on · ⇧⌥⌘F steps back · Esc leaves · hover the left edge for sessions" (step 3).
+/// "Focus · ⌥⌘F leaves · ⇧⌥⌘F steps back · hover the left edge for sessions" (step 3).
 struct V2FocusHint: View {
     @Environment(\.theme) private var t
     var body: some View {
-        Text("Focus · ⌥⌘F steps on · ⇧⌥⌘F steps back · Esc leaves · hover the left edge for sessions")
+        Text("Focus · ⌥⌘F leaves · ⇧⌥⌘F steps back · hover the left edge for sessions")
             .ui(11).foregroundStyle(t.text2.color)
             .padding(.horizontal, 12).padding(.vertical, 5)
             .background(Capsule().fill(t.surface.color.opacity(0.92)))

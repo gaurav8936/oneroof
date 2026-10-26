@@ -13,8 +13,23 @@ enum Prefs {
     static let defaults: UserDefaults = {
         guard freshProfile, let d = UserDefaults(suiteName: freshSuite) else { return .standard }
         d.removePersistentDomain(forName: freshSuite)
+        if let seed = seedValues { for (k, v) in seed { d.set(v, forKey: k) } }
         return d
     }()
+
+    /// Test only (1.8.1 real-profile audit): ONEROOF_PROFILE_SEED=<plist> imports an exported defaults domain into the
+    /// emptied fresh suite, so a self-test starts with someone's real settings and window state. Honoured only with a
+    /// fresh profile: it can never write the app's own defaults domain.
+    static let seedValues: [String: Any]? = {
+        guard freshProfile, let path = ProcessInfo.processInfo.environment["ONEROOF_PROFILE_SEED"],
+              let data = FileManager.default.contents(atPath: path),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return nil }
+        return SeedFilter.keep(plist)
+    }()
+
+    /// A seeded run reads the saved per-window state (step, layout, place, panes, first launch) that self-tests
+    /// otherwise ignore; it still never saves anything.
+    static var seeded: Bool { seedValues != nil }
 
     /// The session store for a fresh profile (a new file each launch), unless ONEROOF_STORE names one.
     static var freshStorePath: String? {

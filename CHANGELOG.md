@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.8.1 — Learn as designed, and fixes from a real profile (26 Oct 2026)
+
+- ⌥⌘F leaves Focus again at step 3, so a window can no longer stay stuck in Focus with no dock or session list.
+- A window you had in 0.5.2.9 opens once at Full, with the Plan and the full dock showing, instead of folding them away.
+- Sessions comes back at the step you left it at after you visit Home, Work or another place (it reset to step 1).
+- The selected session always shows in the list, even when it is past the first four exited ones.
+- The Files and Changes tabs, ⌥⌘R and Review Changes open the repo the session works in, not the workspace root it
+  started in ("not in a git repo").
+- A coloured window shows its colour again: a stripe under the toolbar.
+- The session column and Plan keep the width you drag them to.
+- **Learn redrawn to the design** (LAB-1233): one header across the top of Learn (where you are on the left; the card's
+  actions, Radio · Writing · All cards · Pages and "How do I…? or search" on the right), with no separate band above it.
+  Radio is now the dial: the dot-grid speaker with play, speed and next keys, a dark now-playing display with the whole
+  deck drawn as a dial you can click to tune in, the four bands (Context, Loops, Evidence, Procedure) as keys, the knob,
+  and the programmes. New: each band's own page, a card station with Listen (scene by scene, following the narration),
+  Transcript and Skill file tabs, programmes that play in order, All cards as a map (by band or by kind) with search,
+  and Writing with a post reader for posts found in your Learn folders. Pages (today's Learn) keeps every feature and
+  now sits in the panel theme with Play page, Use in a session ▾ and Open in browser in the header.
+- **Tests no longer touch your running roofd.** A self-test or fresh-profile run gets its own roofd folder and never
+  registers the background item, and the capture script unregisters its test bundle afterwards. Before, a test build
+  could take over the installed app's daemon (your sessions kept running, but were served by the test build).
+- **Deck cards play again.** The bundled 0.2.0 deck wrote its narration list in a form Learn did not recognise, so a
+  card's Play did nothing; it plays now. Playing a band or a programme queues the cards that follow (shown under Up
+  next in the player's queue).
+
 ## 1.8.0 — Wall, seat routing rules and Learn Radio (26 Oct 2026)
 
 - **Wall** (⌃⌥⌘3 or the layout control, LAB-1127): every window's live sessions on one page — ten tiles, fifteen on

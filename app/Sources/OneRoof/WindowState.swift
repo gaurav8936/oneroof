@@ -62,7 +62,18 @@ final class WindowState: ObservableObject, Identifiable {
     /// UI text scale, 0.85–1.3 in 0.05 steps (⌘+ ⌘− ⌘0), per window (S00.W.2).
     @Published var textScale: Double = 1
     /// v2 window (P1): the Focus ladder step, the layout and the place, per window, kept across relaunches.
-    @Published var focusStep: FocusStep = .sessions { didSet { save(focusStep.rawValue, "focusStep") } }
+    @Published var focusStep: FocusStep = .sessions {
+        didSet {
+            save(focusStep.rawValue, "focusStep")
+            if place == .sessions, sessionsStep != focusStep { sessionsStep = focusStep; save(focusStep.rawValue, "sessionsStep") }
+        }
+    }
+    /// The step the Sessions place was last at (1.8.1): coming back from Home, Work… returns to it instead of resetting
+    /// to step 1, so a Plan or dock you opened at Full does not fold away each time you visit another place.
+    private(set) var sessionsStep: FocusStep?
+    /// v2 column widths you dragged (1.8.1; 0.5.2.9 kept its panel widths, v2 reset them on every step and launch).
+    var columnWidth: Double? { didSet { if let w = columnWidth { save(w, "v2.columnWidth") } } }
+    var planWidth: Double? { didSet { if let w = planWidth { save(w, "v2.planWidth") } } }
     @Published var layout: SessionLayout = .single { didSet { save(layout.rawValue, "layout") } }
     @Published var place: Place = .sessions {
         didSet {
@@ -75,13 +86,21 @@ final class WindowState: ObservableObject, Identifiable {
 
     init(id: String, name: String, colour: String? = nil) {
         self.id = id; self.name = name; self.colour = colour
-        textScale = SelfTest.isActive ? 1 : (Prefs.defaults.object(forKey: "textScale." + id) as? Double ?? 1)
-        if !SelfTest.isActive {
+        let readSaved = !SelfTest.isActive || Prefs.seeded   // a seeded test profile reads (never saves) window state
+        textScale = readSaved ? (Prefs.defaults.object(forKey: "textScale." + id) as? Double ?? 1) : 1
+        if readSaved {
             let d = Prefs.defaults
-            if let v = d.object(forKey: "focusStep." + id) as? Int, let f = FocusStep(rawValue: v) { focusStep = f }
+            // 1.8.1: a window from 0.5.2.9 (its classic pane layout is saved) opens once at Full, nothing hidden.
+            let saved = d.object(forKey: "focusStep." + id) as? Int
+            focusStep = V2Layout.initialStep(saved: saved, existedBefore: d.object(forKey: TerminalAreaController.panesKey(id)) != nil)
+            if saved == nil { save(focusStep.rawValue, "focusStep") }   // decided once; later launches read it back
+            sessionsStep = (d.object(forKey: "sessionsStep." + id) as? Int).flatMap(FocusStep.init(rawValue:))
             // Grid and Wall are built from live sessions; a relaunch starts in Single (your panes), never empty tiles.
             if let v = d.string(forKey: "layout." + id), let l = SessionLayout(rawValue: v), l == .single { layout = l }
             if let v = d.string(forKey: "place." + id), let p = Place(rawValue: v) { place = p }
+            if sessionsStep == nil, place == .sessions { sessionsStep = focusStep }
+            columnWidth = d.object(forKey: "v2.columnWidth." + id) as? Double
+            planWidth = d.object(forKey: "v2.planWidth." + id) as? Double
         }
     }
 
@@ -90,7 +109,7 @@ final class WindowState: ObservableObject, Identifiable {
     }
 
     /// Open a place at its default step (FOCUS_LADDER.md: Sessions at 1, the other places at 0).
-    func open(_ p: Place) { place = p; focusStep = p.defaultStep }
+    func open(_ p: Place) { place = p; focusStep = V2Layout.openingStep(p, sessionsStep: sessionsStep) }
     /// ⌥⌘F steps on (0 → 1 → 2 → 3), ⇧⌥⌘F steps back; Esc in Focus returns to the step before it.
     func stepOn() { focusStep = focusStep.next }
     func stepBack() { focusStep = focusStep.previous }

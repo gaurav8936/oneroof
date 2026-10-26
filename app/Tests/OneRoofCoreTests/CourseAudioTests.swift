@@ -24,6 +24,17 @@ final class CourseAudioTests: XCTestCase {
         XCTAssertEqual(CourseAudio.tracks(page: dir + "/missing.html"), [])
     }
 
+    /// LAB-1233: the deck (0.2.0) writes `window.__TTS__ = {` with spaces; its narration must still be found.
+    func testSkillPageTracksWithSpacedAssignment() throws {
+        let dir = NSTemporaryDirectory() + "course-\(UUID().uuidString)"
+        let audio = dir + "/demo_audio/openai"
+        try FileManager.default.createDirectory(atPath: audio, withIntermediateDirectories: true)
+        for n in ["2", "1"] { FileManager.default.createFile(atPath: audio + "/\(n).mp3", contents: Data([0])) }
+        let html = "<script>\nwindow.__TTS__ = {\"openai\": {\"2\": \"demo_audio/openai/2.mp3\", \"1\": \"demo_audio/openai/1.mp3\"}};\n  var BANK = window.__TTS__ || {};\n</script>"
+        try html.write(toFile: dir + "/demo.html", atomically: true, encoding: .utf8)
+        XCTAssertEqual(CourseAudio.tracks(page: dir + "/demo.html").map { ($0.path as NSString).lastPathComponent }, ["2.mp3", "1.mp3"])
+    }
+
     func testFolderTracksAndTitles() throws {
         XCTAssertEqual(CourseAudio.title(slugFile: "what-s-next-extending-the-mvp-f9ee69e0b8df.mp3"), "What's next extending the MVP")
         XCTAssertEqual(CourseAudio.title(slugFile: "run-it-here-25b510a792dd.mp3"), "Run it here")
