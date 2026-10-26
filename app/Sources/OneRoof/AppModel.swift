@@ -599,8 +599,14 @@ final class AppModel: ObservableObject {
 
     /// Router suggestion for a step, with the policy read in place from the agentic-engineering folder.
     func route(kind: String?, budget: String, avoid: AgentKind? = nil) -> RouteSuggestion {
-        Router.suggest(kind: kind, budget: budget, usage: seats,
-                       policy: RoutingPolicy.load(agenticEngineering: settings.agenticEngineering.path), avoid: avoid)
+        Router.suggest(kind: kind, budget: budget, usage: seats, policy: routingPolicy(), avoid: avoid)
+    }
+
+    /// routing.json (or the built-in rules) with the owner's Settings › Seats & accounts routing rules on top (NEW-6).
+    func routingPolicy() -> RoutingPolicy {
+        var p = RoutingPolicy.load(agenticEngineering: settings.agenticEngineering.path)
+        if settings.handOffAt > 0 { p.skipFiveHour = Double(settings.handOffAt) }
+        return p
     }
 
     /// Task text → kind (on-device model) → router suggestion. Calls back on the main thread.

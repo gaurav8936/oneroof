@@ -15,6 +15,7 @@ struct V2PageHost: View {
             case "Settings": V2SettingsPage(model: model, controller: controller)
             case "Help": V2HelpPage(model: model, controller: controller)
             case "Release notes": V2ReleaseNotesPage(model: model, controller: controller)
+            case "All windows": V2WallPage(model: model, win: win, controller: controller)
             default: Color.clear
             }
         }
