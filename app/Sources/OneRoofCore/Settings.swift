@@ -70,6 +70,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var lookName: String
     /// v2 General › Done when required (NEW-30): New session cannot launch without a Done when. Off = today's "optional".
     public var doneWhenRequired: Bool
+    /// Seat routing (NEW-6): hand a running step to another seat at this % of its 5-hour window; 0 = routing.json's value.
+    public var handOffAt: Int
+    /// Seat routing (NEW-6): a review step goes to a different model family from the one that wrote the code.
+    public var reviewOtherFamily: Bool
     /// The look, or nil when the panels were customised one by one.
     public var look: Look? {
         get { Look(rawValue: lookName) }
@@ -81,6 +85,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         ui2Chosen = false
         lookName = Look.skyStudio.rawValue
         doneWhenRequired = false
+        handOffAt = 0
+        reviewOtherFamily = true
         stepReview = false
         captionsModel = true
         scheduledRuns = false
@@ -137,6 +143,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // replace them with Sky Studio when the v2 window is first turned on. New installs start on Sky Studio.
         lookName = try c.decodeIfPresent(String.self, forKey: .lookName) ?? "custom"
         doneWhenRequired = try c.decodeIfPresent(Bool.self, forKey: .doneWhenRequired) ?? false
+        handOffAt = try c.decodeIfPresent(Int.self, forKey: .handOffAt) ?? 0
+        reviewOtherFamily = try c.decodeIfPresent(Bool.self, forKey: .reviewOtherFamily) ?? true
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath

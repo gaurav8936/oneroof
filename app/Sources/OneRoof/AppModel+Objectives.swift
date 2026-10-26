@@ -139,7 +139,7 @@ extension AppModel {
     private func rotateIfNeeded(_ o: inout Objective) {
         guard let plan = o.plan else { return }
         let runDir = o.runDir(common: settings.sharedFolder)
-        let policy = RoutingPolicy.load(agenticEngineering: settings.agenticEngineering.path)
+        let policy = routingPolicy()
         for step in plan.steps where PlanRunner.state(of: step, in: o) == .running {
             guard let sid = o.stepSessions[step.id], let item = item(sid) else { continue }
             let handoff = runDir + "/" + step.id + ".handoff"

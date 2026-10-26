@@ -189,7 +189,7 @@ struct ObjectiveView: View {
     private func routeAll(_ o: Objective, _ plan: Plan) {
         var lastCoder: AgentKind?
         for step in plan.steps {
-            let r = model.route(kind: step.kind, budget: o.budget, avoid: step.kind == "review" ? lastCoder : nil)
+            let r = model.route(kind: step.kind, budget: o.budget, avoid: step.kind == "review" && model.settings.reviewOtherFamily ? lastCoder : nil)
             var s = step
             s.agent = r.agent.rawValue; s.account = r.account; s.model = r.model
             model.updateStep(model.currentObjective ?? o, s)

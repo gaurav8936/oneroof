@@ -15,7 +15,33 @@ struct LearnView: View {
 
     var current: LearnItem? { items.first { $0.id == (selected ?? model.learnTarget) } }
 
+    /// v2 (A12.2): Pages (today's Learn, the default) · Radio · All cards.
+    @State private var v2Mode = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LEARNMODE"] ?? "pages"
+
     var body: some View {
+        VStack(spacing: 0) {
+            if model.settings.ui2 {
+                HStack {
+                    Picker("", selection: $v2Mode) { Text("Pages").tag("pages"); Text("Radio").tag("radio"); Text("All cards").tag("map") }
+                        .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    Spacer()
+                }
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(t.window.color)
+                Divider()
+            }
+            if model.settings.ui2 && v2Mode != "pages" {
+                V2LearnRadio(model: model, player: model.player, map: v2Mode == "map", open: { id in selected = id; v2Mode = "pages" })
+            } else {
+                pagesBody
+            }
+        }
+        // A link, Search's Learn result or How do I… while Radio or All cards shows: go to Pages, where they open.
+        .onChange(of: model.learnTarget) { _, t in if t != nil, v2Mode != "pages" { selected = t; v2Mode = "pages" } }
+        .onChange(of: model.learnQuery) { _, q in if q != nil, v2Mode != "pages" { v2Mode = "pages" } }
+    }
+
+    private var pagesBody: some View {
         VStack(spacing: 0) {
         HStack(spacing: 0) {
             nav.frame(width: 300)
