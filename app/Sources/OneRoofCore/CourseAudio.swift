@@ -1,7 +1,8 @@
 import Foundation
 
-/// The course audio for Learn's player: narrated skill pages (the agentic-engineering folder, one clip per
-/// scene) and the narration folders of extra Learn folders. Read where it lives; never copied.
+/// The audio for Learn's player: narrated deck cards (one clip per scene, listed in the card page's `__TTS__`) and the
+/// narration folders of extra Learn folders (classic window). Read where it lives; never copied. (The name is older than
+/// 1.9.2, which removed the course itself, LAB-1274.)
 public struct CourseTrack: Equatable, Sendable {
     public var title: String
     public var path: String       // absolute .mp3
@@ -59,7 +60,7 @@ public enum CourseAudio {
     /// "what-s-next-extending-the-mvp-f9ee69e0b8df.mp3" → "What's next extending the MVP".
     public static func title(slugFile name: String) -> String {
         var slug = (name as NSString).deletingPathExtension
-        // "03-check-after-every-hop" (course clips) → "check-after-every-hop"
+        // "03-check-after-every-hop" (numbered clips in a narration folder) → "check-after-every-hop"
         if let dash = slug.firstIndex(of: "-"), slug[..<dash].count == 2, slug[..<dash].allSatisfy(\.isNumber) {
             slug = String(slug[slug.index(after: dash)...])
         }

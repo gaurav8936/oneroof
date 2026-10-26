@@ -6,13 +6,18 @@ import OneRoofCore
 struct PlanPanelView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
+    /// v2 (LAB-1274): how this panel closes (the inspector folds, the slid-over Plan slides away); drawn as a real button
+    /// at the end of the tab row.
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
         Content(model: model, win: win).themed(model.themes.plan, scale: win.textScale)
+            .environment(\.planClose, onClose.map(PlanClose.init))
     }
 
     private struct Content: View {
         @Environment(\.theme) private var t
+        @Environment(\.planClose) private var planClose
         @ObservedObject var model: AppModel
         @ObservedObject var win: WindowState
 
@@ -21,6 +26,9 @@ struct PlanPanelView: View {
                 if let item = model.item(win.selectedId ?? "") {
                     PlanDetail(item: item, model: model, win: win).id(item.id)
                 } else {
+                    if let close = planClose {   // no tab row without a session: the close button on its own row
+                        HStack { Spacer(); V2PanelCloseButton(action: close.run) }.padding(.horizontal, 12).padding(.top, 10)
+                    }
                     ScrollView { today.padding(16).frame(maxWidth: .infinity, alignment: .leading) }
                 }
                 Hairline()
@@ -77,6 +85,7 @@ enum PlanTab: String, CaseIterable { case plan, ticket, notes, artifacts, resour
 
 struct PlanDetail: View {
     @Environment(\.theme) private var t
+    @Environment(\.planClose) private var planClose
     let item: BoardItem
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
@@ -161,8 +170,20 @@ struct PlanDetail: View {
         }
     }
 
-    /// v2 (handover A3): one segmented control of text tabs — Plan · Ticket · Notes · Files · Usage.
+    /// v2 (handover A3): one segmented control of text tabs — Plan · Ticket · Notes · Files · Usage; then, set apart by a
+    /// rule, the panel's close button (LAB-1274).
     private var v2TabBar: some View {
+        HStack(spacing: 8) {
+            v2Tabs
+            if let close = planClose {
+                Rectangle().fill(t.separator.color).frame(width: 1, height: 16)
+                V2PanelCloseButton(action: close.run)
+            }
+        }
+        .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+    }
+
+    private var v2Tabs: some View {
         HStack(spacing: 0) {
             ForEach(PlanTab.allCases, id: \.self) { tb in
                 let on = tab == tb
@@ -181,7 +202,6 @@ struct PlanDetail: View {
         }
         .padding(2)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.control.color))
-        .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
     }
 
     private func v2Label(_ tb: PlanTab) -> String {
@@ -405,12 +425,17 @@ struct PlanDetail: View {
     }
 
     @ViewBuilder private func relatedInLearn(_ it: BoardItem) -> some View {
-        let related = it.session.agent.isAgent ? model.learnMatches(it.session.name + " " + it.session.objective, limit: 3) : []
+        let question = it.session.name + " " + it.session.objective
+        // LAB-1274 · the v2 window's Learn is Radio · Writing · All cards: related answers are deck cards (their station).
+        let v2 = model.settings.ui2
+        let related: [(id: String, title: String, audio: Bool, open: () -> Void)] = !it.session.agent.isAgent ? []
+            : v2 ? model.learnCards(question, limit: 3).map { c in (c.slug, c.title, true, { model.openLearnCard(c.slug, show: false); model.show(.learn, in: win) }) }
+            : model.learnMatches(question, limit: 3).map { r in (r.id, r.title, r.audio, { model.learnTarget = r.id; model.show(.learn, in: win) }) }
         if !related.isEmpty {
             field("Related in Learn") {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(related) { r in
-                        Button { model.learnTarget = r.id; model.show(.learn, in: win) } label: {
+                    ForEach(related, id: \.id) { r in
+                        Button { r.open() } label: {
                             Text((r.audio ? "▸ " : "") + r.title).ui(12.5).foregroundStyle(t.accentText.color).lineLimit(1)
                         }.buttonStyle(.plain)
                     }
@@ -732,6 +757,55 @@ struct TicketBox: View {
                 let q = IssueQuality.assess(r.issue)
                 DispatchQueue.main.async { quality = q }
             }
+        }
+    }
+}
+
+// MARK: - v2 close button (LAB-1274)
+
+/// How the Plan panel closes, handed down to its tab row.
+struct PlanClose { let run: () -> Void }
+private struct PlanCloseKey: EnvironmentKey { static let defaultValue: PlanClose? = nil }
+extension EnvironmentValues {
+    var planClose: PlanClose? {
+        get { self[PlanCloseKey.self] }
+        set { self[PlanCloseKey.self] = newValue }
+    }
+}
+
+/// LAB-1274 (owner): the Plan's close "✕" was a bare glyph floating over the tab row. Now a real button: a 24 pt target with
+/// a filled rounded square at rest, stronger on hover and press, the ✕ at a readable size, a tooltip with the key, and the
+/// accent focus ring when it has the keyboard (Tab with keyboard navigation on; it never takes focus by itself).
+struct V2PanelCloseButton: View {
+    @Environment(\.theme) private var t
+    var help = "Close panel (⌥⌘P)"
+    let action: () -> Void
+    @State private var hover = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(hover ? t.text.color : t.text2.color)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(CloseStyle(hover: hover))
+        .focused($focused)
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(t.accent.color, lineWidth: 2).padding(-2).opacity(focused ? 1 : 0))
+        .onHover { hover = $0 }
+        .help(help)
+        .accessibilityLabel("Close the Plan panel")
+    }
+
+    private struct CloseStyle: ButtonStyle {
+        @Environment(\.theme) private var t
+        let hover: Bool
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(configuration.isPressed ? t.selection.color : hover ? t.selection.color.opacity(0.5) : t.control.color))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
         }
     }
 }

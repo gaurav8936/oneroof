@@ -35,7 +35,7 @@ Launching an agent while a check is red shows a choice: **Open Foundations**, **
 | Skills | The skills of the bundled Agentic Engineering deck must be linked into every agent's skills folder (One Roof ships no skills of its own, so the deck's version is always the one linked). | Red: a link is missing or stale (from `scripts/sync-skills.sh --dry-run`). | Fix runs `scripts/sync-skills.sh` from the bundled agentic engineering folder. |
 | MCP servers | One MCP server list for all agents. | Uses `scripts/mcp/sync-mcp.py` in your shared folder. Red: its check fails. Amber: the script, or a recent enough Python, is not there. | Fix runs the script, or `brew install python@3.12`. Without the script, ignore it. |
 | Agents | Each agent CLI (`claude`, `codex`, `kimi`, `gemini`, `agy`) is installed and signed in. Claude2 is checked only if you have a second Claude config. | Amber: not on your PATH, or no login found. | Install or sign in to that CLI from a terminal. |
-| Agentic engineering | The Agentic Engineering deck (every skill, the course, the hooks), bundled with One Roof. | Red: the bundled package is missing (reinstall One Roof). | Reinstall from the download page. |
+| Agentic engineering | The Agentic Engineering deck (every skill, card and the hooks), bundled with One Roof. | Red: the bundled package is missing (reinstall One Roof). | Reinstall from the download page. |
 | On-device router model | Suggestions use it to sort a task into a kind. | Amber: `llama-server` or the model file is missing, or the model is still Arch-Router (its licence restricts commercial use). | Fix runs `brew install llama.cpp`; **Get the model** on the row downloads and checks the model (also in Settings; [Seats and routing](07_seats-router-and-on-device-model.md)). Without it, routing uses the rules alone. |
 
 **Fix** buttons open a plain One Roof terminal in your projects folder and run the command there, so you see what it does. One Roof never fixes anything silently.
@@ -44,7 +44,7 @@ Launching an agent while a check is red shows a choice: **Open Foundations**, **
 
 ![Foundations › Skills](img/foundations-skills.png)
 
-- **Skills:** every skill in the bundled deck, searchable, with its group and description and which agent skill folders have it (CL, CO, KI, GM). Per skill: type `/name` into the selected session (not sent), open its `SKILL.md`, or open it in Learn.
+- **Skills:** every skill in the bundled deck, searchable, with its group and description and which agent skill folders have it (CL, CO, KI, GM). Per skill: type `/name` into the selected session (not sent), open its `SKILL.md`, or open its card in Learn.
 - **Hooks & rules:** the rules every agent reads, and every Claude hook with its event, matcher and script. Codex, Kimi and Antigravity have no hooks; the kit reaches them through PATH stand-ins and the doors.
 - **Memory:** **Latest handoff per project** from `docs/next-session-handoff/` in your shared folder (**Resume** plans a Claude session that reads it and continues), recent gotchas from `docs/gotchas/`, and `MEMORY.md`. Empty when you have no shared folder.
 
@@ -57,7 +57,7 @@ The folders One Roof reads. It only reads them; skills, hooks and routing rules 
 | Projects folder | The folder that holds your repos. Agents start here. | `ONEROOF_PROJECTS` |
 | Agentic engineering | What is bundled (the number of narrated cards) and **Show** to open it in Finder. Nothing to choose since 0.5.2.7. | `ONEROOF_AE_PATH` (development only) |
 | Shared folder | Your rules, handoffs and gotchas (default `_common` in your projects folder). | `ONEROOF_SHARED` |
-| Learn folders | Extra folders shown in Learn: any folder of Markdown pages, and folders of narration clips. **Add…** and **Remove**. | |
+| Learn folders | Extra folders for Learn: posts in them (one folder per post, with an `index.md`) join Learn › Writing; in the classic window their Markdown pages and narration folders are Learn pages too. **Add…** and **Remove**. | |
 | On-device model | The path of the routing model file. | |
 
 An environment variable, when set, wins over the setting. The first-run setup (One Roof › Setup…) asks for the first three.

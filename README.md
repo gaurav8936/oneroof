@@ -134,7 +134,7 @@ on a line to send it back to the agent, then commit.
 
 ### Your roadmap and a coach, built in. <sub>Work · Learn</sub>
 Work shows your projects and tickets by phase, with the session working on each one. Learn is an
-agentic-engineering coach: the narrated Agentic Engineering deck (every card and skill), a 12-lesson course and two
+agentic-engineering coach: the narrated Agentic Engineering deck (every card and skill) and two
 optional hooks, all packaged from the deck's own repository at build time. Listen in the app, or send a skill straight to a session.
 
 | | |
@@ -148,11 +148,11 @@ optional hooks, all packaged from the deck's own repository at build time. Liste
 | Part | Folder | What it is |
 |---|---|---|
 | **One Roof app** | [`app/`](app/) | The macOS app (Swift, libghostty terminals, roofd sessions) |
-| **Agentic engineering linking** | [`agentic_engineering/`](agentic_engineering/) | The script that links the bundled deck's skills into every agent; the deck itself (skills, course, hooks) is packaged from its own repository when the app is built |
+| **Agentic engineering linking** | [`agentic_engineering/`](agentic_engineering/) | The script that links the bundled deck's skills into every agent; the deck itself (skills, cards, hooks) is packaged from its own repository when the app is built |
 | **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | One launch folder, one memory, one rulebook for every agent, plus `roof swarm` for parallel agents in git worktrees. Works with or without the app |
 | **Website** | [`site/`](site/) | The launch page, published at [gaurav8936.github.io/oneroof](https://gaurav8936.github.io/oneroof/) |
 
-> **Early release (1.9.1).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
+> **Early release (1.9.2).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
 > especially in first-run setup and agent detection on machines unlike ours. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with what you find; see [CONTRIBUTING.md](CONTRIBUTING.md).
 > Known limits: Apple silicon only; the optional on-device model needs `brew install llama.cpp` (the model itself is one click: **Get the model**).
@@ -213,7 +213,7 @@ oneroof fixes this with the simplest controls that work, layered so a mistake ha
   and a short `READ-FIRST.md` must-read list.
 - **Handoffs in git**: the `next-session-handoff`, `last-call` and `where-are-we` skills write and read session
   bridges that any agent can resume from.
-- **The Agentic Engineering deck, built in**: every narrated card and skill, a 12-lesson course and two optional hooks,
+- **The Agentic Engineering deck, built in**: every narrated card and skill and two optional hooks,
   packaged from the deck's own repository when the app is built (One Roof authors none of it). Skills are linked into
   every agent by [`agentic_engineering/scripts/sync-skills.sh`](agentic_engineering/scripts/sync-skills.sh).
 - **One skills folder for every agent**: `roof sync-skills` links each skill into Claude's, Codex's, Hermes's and

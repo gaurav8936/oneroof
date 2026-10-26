@@ -26,7 +26,8 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_LINK=<oneroof:// url>       follow a link as if macOS had opened it
 ///   ONEROOF_SELFTEST_SEARCH=<text>              open Search in Workspace with that query
 ///   ONEROOF_SELFTEST_DIFF=<path>                open the code review panel for the repo containing <path>
-///   ONEROOF_SELFTEST_HOWDOI=<question>         ask Learn "how do I…" (opens the best page)
+///   ONEROOF_SELFTEST_STEPHINT=1                 show the toolbar Focus step button's hover hint (LAB-1274)
+///   ONEROOF_SELFTEST_HOWDOI=<question>         ask Learn "how do I…" (v2: the best card's station; classic: the best page)
 ///   ONEROOF_SELFTEST_PLAY=<page title>[@terminals]  play that Learn page's narration (then show the terminals)
 ///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
 ///   ONEROOF_SELFTEST_KIND=session|ticket|defect|workstream   ONEROOF_SELFTEST_TEAM=<key>   ONEROOF_SELFTEST_PROJECT=<code>   New session sheet starting state
@@ -91,6 +92,10 @@ enum SelfTest {
         }
         // V2PLAN=1 slides the Plan over the terminal (C7.1); V2EDGE=1 reveals the session column at Focus (C7.2).
         if env["ONEROOF_SELFTEST_V2PLAN"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.main.v2ShowPlanOverlay() } }
+        // LAB-1274: the toolbar step button's hover hint, shown without a mouse.
+        if env["ONEROOF_SELFTEST_STEPHINT"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { NotificationCenter.default.post(name: StepHintAnchor.HintAnchorView.show, object: nil) }
+        }
         if env["ONEROOF_SELFTEST_V2EDGE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.main.v2ShowEdgeReveal() } }
         if env["ONEROOF_SELFTEST_DEMO"] == "1" { seedDemo(app.model) }
         if env["ONEROOF_SELFTEST_FOUNDATIONS"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.showFoundations(nil) } }

@@ -42,13 +42,14 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
 # The bundled agentic-engineering package: the skill-linking script only (AEFolder; no folder choice since LAB-768).
-# 1.9.0 (LAB-1257): One Roof authors no agentic-engineering content; skills, cards, the course and the hooks all come from
-# the deck below. The routing rules are One Roof's own configuration (Resources/agent-routing, overridable in
+# 1.9.0 (LAB-1257): One Roof authors no agentic-engineering content; skills, cards and the hooks all come from the deck
+# below. 1.9.2 (LAB-1274): One Roof has no course; the deck's content/course (if its main still has one) is not packaged.
+# The routing rules are One Roof's own configuration (Resources/agent-routing, overridable in
 # ~/.config/oneroof/agent-routing/).
 rsync -a --delete --exclude '.DS_Store' ../agentic_engineering/ "$APP/Contents/Resources/agentic_engineering/"
 rsync -a --delete --exclude '.DS_Store' Resources/agent-routing/ "$APP/Contents/Resources/agent-routing/"
-# LAB-768 · plus the whole Agentic Engineering deck (every skill, narrated card, track page and its audio, the course and the
-# hooks) as published: the deck repository (ONEROOF_AE_DECK_REPO, a git checkout) at origin/main, into agentic_engineering/deck.
+# LAB-768 · plus the whole Agentic Engineering deck (every skill, narrated card, track page and its audio, and the hooks)
+# as published: the deck repository (ONEROOF_AE_DECK_REPO, a git checkout) at origin/main, into agentic_engineering/deck.
 # ONEROOF_AE_DECK_REF overrides the ref for local test builds only (e.g. a commit not yet on main); releases use origin/main
 # (tools/package-app.sh refuses anything else). Built from source without it, One Roof runs without the deck.
 AE_DECK_REPO="${ONEROOF_AE_DECK_REPO:-}"
@@ -58,9 +59,10 @@ if [ -n "$AE_DECK_REPO" ] && git -C "$AE_DECK_REPO" rev-parse -q --verify "$AE_D
   DECK="$APP/Contents/Resources/agentic_engineering/deck"; rm -rf "$DECK"; mkdir -p "$DECK"
   # hooks/ joined the deck repository with LAB-1257; an older main has none.
   PARTS=(skills content); git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:hooks" 2>/dev/null && PARTS+=(hooks)
-  git -C "$AE_DECK_REPO" archive "$AE_DECK_REF" "${PARTS[@]}" | tar -x -C "$DECK"
+  git -C "$AE_DECK_REPO" archive "$AE_DECK_REF" "${PARTS[@]}" | tar -x --exclude 'content/course' -C "$DECK"
+  rm -rf "$DECK/content/course"
   printf '%s\n' "$AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")" > "$DECK/.deck-ref"
-  echo "deck: $(find "$DECK/skills" -name SKILL.md | wc -l | tr -d ' ') skills, $(find "$DECK/skills" -name '*.mp3' | wc -l | tr -d ' ') clips, $(find "$DECK/content/course" -maxdepth 1 -name '[0-9]*.md' 2>/dev/null | wc -l | tr -d ' ') course lessons from the deck repository at $AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")"
+  echo "deck: $(find "$DECK/skills" -name SKILL.md | wc -l | tr -d ' ') skills, $(find "$DECK/skills" -name '*.mp3' | wc -l | tr -d ' ') clips from the deck repository at $AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")"
 else
   echo "deck: ONEROOF_AE_DECK_REPO not set to a checkout with $AE_DECK_REF; bundling without the deck"
 fi

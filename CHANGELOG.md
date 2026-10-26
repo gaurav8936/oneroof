@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.2 — Learn is three views; clearer Focus button and Plan close (26 Oct 2026)
+
+- **Learn is now three views: Radio, Writing and All cards** (by band, by kind or by folder) (LAB-1274). The Pages
+  list and the Course are gone; the deck's skills are all still here. Every link into Learn opens what these views
+  show: a skill or Search result opens its card, How Do I…? (⌥⌘/) opens the best-matching card, and One Roof Help opens
+  on the Help page.
+- Track names under a band's dial no longer print over each other (LAB-1272), and All cards › By folder explains its
+  table.
+- **The Focus step button explains itself** (LAB-1284): hover it and a hint shows what a click and a hold do and lists
+  the four steps, with the current one marked.
+- **The Plan panel has a clear close button** (LAB-1285): a round ✕ at the end of its tabs, "Close panel (⌥⌘P)".
+
 ## 1.9.1 — A steady terminal: the summary band no longer moves it (26 Oct 2026)
 
 - **The terminal stops jumping** (LAB-1270). The session summary above the terminal grew with every finished step

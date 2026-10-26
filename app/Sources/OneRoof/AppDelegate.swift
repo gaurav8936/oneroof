@@ -275,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWindow(for: w)
     }
     @objc func openHelp(_ sender: Any?) {
-        if isV2Window { main.v2ShowPage("Help"); return }   // B4.1 page (Open in Learn keeps today's Help in Learn)
+        if isV2Window { main.v2ShowPage("Help"); return }   // B4.1 page: One Roof Help's home in the v2 window (LAB-1274)
         guard let page = AppResources.helpStartPage() else { model.lastError = "One Roof Help is not bundled with this build."; return }
         model.loadLearn()
         model.learnTarget = page
@@ -312,13 +312,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let m = model
         m.loadLearn()
         return V2SearchOptions(model: m,
-            best: { q in m.learnMatches(q, limit: 2).map { li in
-                PaletteItem(title: li.title, subtitle: "Learn · " + li.section + (li.audio || li.audioFolder != nil ? " · card" : ""), symbol: li.audio || li.audioFolder != nil ? "play.fill" : "doc.text",
-                            kind: li.audio || li.audioFolder != nil ? "Listen" : "Read") { m.learnTarget = li.id; m.learnMode = true }
+            // LAB-1274 · Learn has no Pages list in this window: answers are deck cards (they open the card's station) and
+            // One Roof Help pages (they open the Help page at that page).
+            best: { q in m.learnCards(q, limit: 2).map { c in
+                PaletteItem(title: c.title, subtitle: "Learn · " + (m.learnDeck.map { $0.band(of: c.slug).title + " · " } ?? "") + "card",
+                            symbol: "play.fill", kind: "Listen") { m.openLearnCard(c.slug) }
             } },
-            learn: { q in m.learnMatches(q, limit: 6).map { li in
-                PaletteItem(title: li.title, subtitle: li.section, symbol: "graduationcap", kind: "Learn") { m.learnTarget = li.id; m.learnMode = true }
-            } },
+            learn: { q in
+                let cards = m.learnCards(q, limit: 6).map { c in
+                    PaletteItem(title: c.title, subtitle: "Learn · " + c.subtitle, symbol: "graduationcap", kind: "Learn") { m.openLearnCard(c.slug) }
+                }
+                let help = m.learnMatches(q, limit: 12).filter { $0.section == "One Roof Help" }.prefix(2).map { li in
+                    PaletteItem(title: li.title, subtitle: "One Roof Help", symbol: "questionmark.circle", kind: "Help") { [weak self] in
+                        m.helpTarget = li.path; self?.openHelp(nil)
+                    }
+                }
+                return cards + help
+            },
             sendTarget: m.selected.flatMap { $0.liveAgent != nil ? $0.session.name : nil },
             send: { text in
                 guard let item = m.selected, let agent = item.liveAgent else { return }
@@ -353,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         add("Board", "Kanban of every session", "rectangle.split.3x1", "View") { m.boardMode = true }
         add("Work", "Projects, roadmap, tickets", "list.bullet.rectangle", "View") { m.workMode = true }
-        add("Learn", "Course, skills, Help, your Learn folders", "graduationcap", "View") { m.learnMode = true }
+        add("Learn", isV2Window ? "Radio, Writing, All cards" : "Skills, Help, your Learn folders", "graduationcap", "View") { m.learnMode = true }
         add("Foundations", "Startup check, skills, hooks, memory", "checkmark.shield", "View") { [weak self] in self?.showFoundations(nil) }
         add("Settings", "Themes, agents, accounts, foundations", "gearshape", "View") { [weak self] in self?.showSettings(nil) }
         add("Plan a session", "⌘N", "plus.circle", "Action") { [weak self] in self?.main.newSession() }

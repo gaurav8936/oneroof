@@ -53,7 +53,7 @@ Press **⌘K** (⌘P works too), or click the search box in the toolbar, and typ
 - **Themes:** set all panels to one theme.
 - **Sessions, objectives and projects** by name.
 - **Files** tracked in the selected session's repo (up to 4,000), which open in the viewer.
-- **Skills**, which open their Learn page.
+- **Skills**, which open their card in Learn.
 
 Letters can be spread out ("rvch" finds Review changes); runs of letters and word starts rank higher. **↑ / ↓** move, **Return** runs the item, clicking elsewhere closes the palette.
 
@@ -95,7 +95,7 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | ⌘B | View › Board | Kanban of every session |
 | ⌘I | View › Decisions | Every agent waiting on you |
 | ⇧⌘A | View › Subagents | Timeline of Claude subagents |
-| ⇧⌘E | View › Learn | The course, skills and your Learn folders |
+| ⇧⌘E | View › Learn | The narrated deck: Radio, Writing, All cards |
 | ⇧⌘W | View › Work: Projects and Roadmap | Projects, milestones, tickets |
 | ⌘+ / ⌘− / ⌘0 | View › Bigger Text / Smaller Text / Actual Size | Text size |
 | ⌥⌘S | View › Toggle Sidebar | Show or hide the sessions panel |

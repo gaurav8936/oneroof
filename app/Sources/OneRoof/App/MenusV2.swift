@@ -94,7 +94,6 @@ struct MenuSpecV2 {
         sub("Roof Windows", []), i("Foundations", "app.foundations"), sep, i("Bring All to Front", "window.front")]
         + (0..<9).map { n in i("Workspace \(n + 1)", "workspace.\(n + 1)", K.workspaces[n], hidden: true) }
 
-    // Move to iPad (NEW-7) stays out of the menus until the iPad app exists (LAB-1189).
     static let help: [V2Item] = [
         i("One Roof Help", "help.open"), i("How Do I…?", "help.howDoI", K.howDoI), i("Keyboard Shortcuts", "help.shortcuts"),
         i("Release Notes", "help.releaseNotes"), sep, i("One Roof README", "help.readme"), i("Help Pages Folder", "help.folder")]
