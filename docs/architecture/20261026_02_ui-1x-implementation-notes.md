@@ -81,3 +81,24 @@
 - "Pick a file" (Files with no file open) is new text; the mockup always shows a file.
 
 **Independent audit of M2 (before landing): nothing changes with ui2 off; build and 563 tests green. Fixed from its findings:** Discard no longer touches staged-new, renamed or binary files (it deleted a staged new file in a scratch repo); the split pane is read-only and resets when its file becomes the main one, and ⌘\ is a validated menu key; file tabs show the unsaved dot again; the session tabs show outside Sessions; Files reopens the file you were on and closing the last tab stays on Files; Ask to commit is enabled and labelled from the session it sends to; Subagents has ‹ Subagents and Whole trace ▸ and resets on a new session; the Undo toast shows only in the window where Always allow was clicked.
+
+## M3 · 1.3.0 · Looks, sheets and overlays
+
+**Looks (A10.3, CAP-5).** In the v2 window Settings › Appearance is `V2LooksPicker`: six preview cards from `Look.panelThemes` (rail colour, centre with a terminal block, Plan strip); a click sets `chosenThemes` to the look, and `AppModel` keeps `settings.lookName` in step (the matching look or "custom") whenever the panels change, from any place (Customize, View menus, Search, Plan panel). Customize each panel… shows today's per-panel grid (opens by itself when the panels are a custom mix). Text size 85–130 % (⌘+ ⌘− ⌘0), Follow macOS (with its Dark Mode note), Fill rows with their colour, Sticker style and the window's colour (LAB-590) follow. The 0.5 Appearance page is unchanged with the setting off.
+
+**Search ⌘K (A10.2, A10.5).** `V2SearchPalette` takes today's palette items unchanged and groups them by source in the handover's order, Best answer first: Learn's two best pages for the text (Listen for a narrated card, Read for a page), then Views, Actions, Windows, Decisions, Roof windows, Theme (in v2 the six looks), Sessions, Objectives, Projects, Repo files (selected repo, up to 4,000), Skills, Learn. Each group shows 5 (3 with no text) and "Show all n" opens the rest, so every match 0.5's flat list reached is still reachable. ↑↓ ↩ Esc as before; **⌘↩ sends the typed text to the selected session** (refused while it works, as typing is); while Search has the keyboard, File › Launch's ⌘↩ yields to it. The palette observes the model, so Learn's answers appear once its index has loaded. How do I ⌥⌘/ still opens Learn as in 0.5.
+
+**New session (A10.1, CAP-14).** Today's NewSessionSheet already has every control the v2.4 screen lists (Team · Project · Issues with New… last, attachments, Similar ticket, Suggested + Use it, the seven agent cards, Model · Repo · Start in, Done when, Opening message, Advanced: arguments, Role, Resume, Own git worktree (not connected), When: Now · Next · Tonight · Nightly · Every · On demand, Save as planned); kept as is. Team/Project/Issues and Similar ticket show when Linear is connected.
+
+**Row right-click (A10.4, LAB-1086).** `SessionContextMenu` in v2 adds Rename…, Schedule ▸ (Tonight 2:00 AM, Nightly, On Demand), Interrupt and Send Handoff (live agent), gathers the copies under Copy ▸ (Folder Path, Session ID, Link, Attach Command) and ends Close Agent… · Delete (red) · Remove Exited Sessions…. Every item acts on the row's own session directly (never through the selection), so it is right from Overview and from a window that is not in front.
+
+**Find in Workspace (A10.6)** opens as its own page (no file tree, file tabs or session tabs), titled "Find in Workspace ⇧⌘S"; its ✕, the rail or a result lead back. In v2 the file viewer's pages (Markdown, HTML, folders, search, diffs) take the centre's theme rather than the terminal's, as the handover draws them (C6.1, A10.6).
+
+**Window switcher (LAB-968)** was built in M1/M2 (`V2SessionColumn` switcher and `v2ShowWindowMenu`); Move to iPad stays hidden (LAB-1189).
+
+**Deviations, on purpose:**
+- Search's Theme items are the six looks in v2 (the handover's "Theme: all panels Sky Studio"); single-theme-for-all-panels stays under Customize.
+- NEW-14's permission mode, budget, window and objective fields are not on New session (they were never in 0.5.2.9; arguments carry a permission mode).
+- The toolbar keeps the session's title over Find in Workspace; the page's own header says "Find in Workspace ⇧⌘S".
+
+**Independent audit of M3 (before landing): nothing changes with ui2 off; build and 563 tests green. Fixed from its findings:** row-menu items act on the row's session directly (they went through the active window's selection, so from Overview an Interrupt could hit another session) and no longer change what the window shows; Search groups have "Show all n"; Learn answers appear when the index finishes loading; ⌘↩ in Search no longer launches a planned session; `lookName` follows any panel change; Copy ▸ Session ID only for a live agent and no duplicate Working Directory; Appearance keeps 0.5's help lines; Search's theme items are looks.

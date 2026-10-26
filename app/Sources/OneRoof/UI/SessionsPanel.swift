@@ -289,6 +289,7 @@ struct SessionContextMenu: View {
         }
         Button(it.status == .doNotUse ? "Use Again" : "Do Not Use") { model.toggleSticker(it, "dnu") }
         Button(it.session.pinned ? "Unpin" : "Pin") { model.togglePin(it) }
+        if v2 { Button("Rename…") { rename(it) } }
         if it.status != .doNotUse {
             Button(it.session.ticket == nil ? "Attach Issue…" : "Add Issue…") {
                 win?.selectedId = it.id
@@ -310,6 +311,17 @@ struct SessionContextMenu: View {
                     Divider()
                     Button("Stop Repeating") { model.unschedule(it) }
                 }
+            }
+        }
+        if v2 {   // A10.4: the Session-menu items the row menu lacked
+            Menu("Schedule") {
+                Button("Tonight 2:00 AM") { model.schedule(it, hour: 2, minute: 0, nightly: false) }
+                Button("Nightly at 2:00 AM") { model.schedule(it, hour: 2, minute: 0, nightly: true) }
+                Button("On Demand") { model.unschedule(it) }
+            }
+            if it.liveAgent != nil {
+                Button("Interrupt") { model.interrupt(it) }
+                Button("Send Handoff") { model.askForHandoff(it) }
             }
         }
         Divider()
@@ -367,23 +379,55 @@ struct SessionContextMenu: View {
         Button("Review Changes") { model.reveal(it); model.openDiff(it.session.repoPath) }
         Button("Terminal Here") { model.newTerminal(in: it.session.repoPath) }
         Button("Show Folder in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: it.session.repoPath)) }
-        Button("Copy Folder Path") {
+        if v2 {
+            Menu("Copy") { copyItems(it) }
+        } else {
+            copyItems(it)
+        }
+        Divider()
+        if it.liveAgent != nil { Button("Close Agent…") { model.confirmClose(it) } }
+        if v2 {
+            if !it.adopted { Button("Delete", role: .destructive) { model.delete(it) } }
+            Button("Remove Exited Sessions…") { NSApp.sendAction(#selector(AppDelegate.removeExited(_:)), to: nil, from: nil) }
+        } else if !it.adopted { Button("Delete") { model.delete(it) } }
+    }
+
+    private var v2: Bool { model.settings.ui2 }
+
+    /// Rename… on the row's own session (the Session menu's item acts on the selected one).
+    private func rename(_ it: BoardItem) {
+        DispatchQueue.main.async {
+            let a = NSAlert()
+            a.messageText = "Rename session"
+            let f = NSTextField(string: it.session.name)
+            f.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+            a.accessoryView = f
+            a.addButton(withTitle: "Rename"); a.addButton(withTitle: "Cancel")
+            if a.runModal() == .alertFirstButtonReturn { model.rename(it, f.stringValue) }
+        }
+    }
+
+    private func copy(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    }
+
+    @ViewBuilder private func copyItems(_ it: BoardItem) -> some View {
+        Button(v2 ? "Folder Path" : "Copy Folder Path") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(it.session.launchDirectory, forType: .string)
         }
-        Button("Copy Link to Session") {
+        if v2, let a = it.liveAgent { Button("Session ID") { copy(a) } }   // the folder is Folder Path (same as Working Directory)
+        Button(v2 ? "Link to Session" : "Copy Link to Session") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(RoofLink.link(session: it.id), forType: .string)
         }
         if let a = it.liveAgent {
-            Button("Copy Attach Command") {
+            Button(v2 ? "Attach Command" : "Copy Attach Command") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(model.runtime.attachCommand(a), forType: .string)
             }
         }
-        Divider()
-        if it.liveAgent != nil { Button("Close Agent…") { model.confirmClose(it) } }
-        if !it.adopted { Button("Delete") { model.delete(it) } }
     }
 }
 

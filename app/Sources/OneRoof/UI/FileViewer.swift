@@ -15,7 +15,9 @@ struct FileViewer: View {
     /// The editor's unsaved text for this file: Markdown previews it; HTML says the page shows the saved file.
     var unsaved: String? = nil
     @State private var reload = 0
-    var t: ThemeTokens { model.themes.terminal.tokens }
+    /// v2: pages (Markdown, HTML, search, folders) take the centre's theme, as in the handover (C6.1, A10.6).
+    private var theme: ThemeName { model.settings.ui2 ? model.themes.centre : model.themes.terminal }
+    var t: ThemeTokens { theme.tokens }
 
     var body: some View {
         let path = self.path ?? model.viewerPath ?? ""
@@ -31,7 +33,7 @@ struct FileViewer: View {
             content(path).id(path + "#\(model.viewerLine ?? 0)")
         }
         .background(t.background.color)
-        .environment(\.colorScheme, model.themes.terminal.colorScheme)
+        .environment(\.colorScheme, theme.colorScheme)
     }
 
     private func header(_ rawPath: String) -> some View {
@@ -42,7 +44,7 @@ struct FileViewer: View {
                 .buttonStyle(.borderless).disabled(model.viewerHistory.count < 2).help("Back")
             Image(systemName: FileKind.of(rawPath).symbol).foregroundStyle(t.secondaryText.color)
             Text(isDiff ? "Review changes · " + (path as NSString).lastPathComponent
-                 : rawPath == FileKind.searchPath ? "Search in Workspace" : (path as NSString).lastPathComponent).font(.system(size: 13, weight: .bold)).foregroundStyle(t.text.color)
+                 : rawPath == FileKind.searchPath ? (model.settings.ui2 ? "Find in Workspace ⇧⌘S" : "Search in Workspace") : (path as NSString).lastPathComponent).font(.system(size: 13, weight: .bold)).foregroundStyle(t.text.color)
             Text(rawPath == FileKind.searchPath ? "" : path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).font(.system(size: 11))
                 .foregroundStyle(t.secondaryText.color).lineLimit(1).truncationMode(.middle)
             Spacer()

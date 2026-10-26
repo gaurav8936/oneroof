@@ -31,10 +31,12 @@ struct CommandPalette: View {
     let items: [PaletteItem]
     let close: () -> Void
     @State private var query: String
+    /// v2 Search (A10.2, A10.5): the best Learn answers for the typed text, and ⌘↩ to send it to a session.
+    var v2: V2SearchOptions?
 
     /// `query`: text to start with (the v2 session column's search box passes what was typed).
-    init(items: [PaletteItem], query: String = "", close: @escaping () -> Void) {
-        self.items = items; self.close = close; _query = State(initialValue: query)
+    init(items: [PaletteItem], query: String = "", v2: V2SearchOptions? = nil, close: @escaping () -> Void) {
+        self.items = items; self.close = close; self.v2 = v2; _query = State(initialValue: query)
     }
     @State private var index = 0
     @FocusState private var focused: Bool
@@ -46,8 +48,12 @@ struct CommandPalette: View {
     }
 
     var body: some View {
+        if let v2 { V2SearchPalette(items: items, options: v2, query: $query, close: close) } else { body05 }
+    }
+
+    private var body05: some View {
         let r = results
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "command").foregroundStyle(.secondary)
                 TextField("Search actions, sessions, objectives, files, skills…", text: $query)
@@ -106,7 +112,7 @@ final class PalettePanel: NSPanel {
 
     static var current: PalettePanel?
 
-    static func show(over window: NSWindow?, items: [PaletteItem], query: String = "") {
+    static func show(over window: NSWindow?, items: [PaletteItem], query: String = "", v2: V2SearchOptions? = nil) {
         current?.close()
         let p = PalettePanel(contentRect: NSRect(x: 0, y: 0, width: 640, height: 440),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -115,7 +121,7 @@ final class PalettePanel: NSPanel {
         p.backgroundColor = .clear
         p.isOpaque = false
         p.hasShadow = true
-        let host = NSHostingView(rootView: CommandPalette(items: items, query: query, close: { PalettePanel.current?.close(); PalettePanel.current = nil })
+        let host = NSHostingView(rootView: CommandPalette(items: items, query: query, v2: v2, close: { PalettePanel.current?.close(); PalettePanel.current = nil })
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous)))
         p.contentView = host
         if let w = window {

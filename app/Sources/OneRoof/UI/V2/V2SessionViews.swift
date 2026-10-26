@@ -15,7 +15,17 @@ struct V2FilesTab: View {
         self.model = model; self.win = win; self.state = EditorState.of(win.id)
     }
 
+    /// Find in Workspace and a diff link fill the centre on their own (A10.6): no tree, no file tabs.
+    private var standalone: Bool {
+        guard let p = win.viewerPath else { return false }
+        return p == FileKind.searchPath || p.hasPrefix(FileKind.diffPrefix)
+    }
+
     var body: some View {
+        if standalone { EditorView(model: model, win: win) } else { filesBody }
+    }
+
+    private var filesBody: some View {
         HStack(spacing: 0) {
             FileBrowserView(model: model, win: win).frame(width: 220)
             Rectangle().fill(model.themes.centre.tokens.separator.color).frame(width: 1)
