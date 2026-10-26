@@ -568,6 +568,7 @@ struct CentreThemed<Content: View>: View {
     var body: some View {
         content()
             .themed(model.themes.centre, scale: win.textScale)
+            .environment(\.v2Window, model.settings.ui2)
             .background(model.themes.centre.tokens.window.color)
     }
 }

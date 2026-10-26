@@ -102,3 +102,24 @@
 - The toolbar keeps the session's title over Find in Workspace; the page's own header says "Find in Workspace ⇧⌘S".
 
 **Independent audit of M3 (before landing): nothing changes with ui2 off; build and 563 tests green. Fixed from its findings:** row-menu items act on the row's session directly (they went through the active window's selection, so from Overview an Interrupt could hit another session) and no longer change what the window shows; Search groups have "Show all n"; Learn answers appear when the index finishes loading; ⌘↩ in Search no longer launches a planned session; `lookName` follows any panel change; Copy ▸ Session ID only for a live agent and no duplicate Working Directory; Appearance keeps 0.5's help lines; Search's theme items are looks.
+
+## M4 · 1.4.0 · the places, part 1 (1.4.1 finishes M4)
+
+**How it is built.** The place views stay today's views; in the v2 window they read a SwiftUI environment flag `\.v2Window` (set by `CentreThemed`) and change layout only where the handover differs. `FleetPage` draws flat on the centre's colour in v2 (the 0.5 desk gradient otherwise). New views live in `UI/V2/V2Places.swift`.
+
+**Machine (A8, C4.x).** Title Machine; four meter cards (One Roof memory with its sparkline, CPU with its sparkline, This Mac with the memory meter and pressure, roofd with uptime, session count and its headroom bar); then two columns: today's `MacAppsCard` (This Mac by app, Quit, End, leftovers, browser tabs) and One Roof itself + every window's sessions, this window first (other windows keep the chosen sort). The roofd memory-guard line sits under them.
+
+**Loops (A9, C5.1, NEW-24).** The loop list (today's rows) beside `V2TonightPanel`: Tonight and Nightly sessions, nightly loops that are not stopped or paused, + Schedule a session (Planned and Next sessions, Tonight 2:00 AM, as the row's Schedule menu), and Last night: loop stop lines and Tonight/Nightly session runs since 6 PM yesterday. Clicking a loop opens today's `LoopDetail` as a page (‹ Loops, ⌘[) with `V2LoopFences`: ✓ for what roofd enforces (the limits; each round starts in the loop's worktree) and • for what the loop is only told (never push, merge or deploy, or touch your checkout; prompts come to Needs you unless the agent already allows the command). Nothing is claimed beyond the code.
+
+**Needs you (A6, C2.2, NEW-19).** Title Needs you; the footer "Earlier today · n decided · m rules learned ›" opens `V2RulesPage`: every always-allow rule (pattern, repo, when added) with Remove, and today's decisions (allowed once, always allowed, denied, replied). Its copy says exactly what a rule is: One Roof notes a matching decision in the same repo and never answers for you; the agent's own "don't ask again" lives in its settings and Remove does not undo it. The page closes when you leave Needs you or a new decision arrives; ‹ Needs you / ⌘[ goes back.
+
+**Home (A5, C1.3, NEW-23).** + New objective next to + New work item (opens today's New objective sheet); the Projects tab shows each active project's done percentage beside its live count.
+
+**Deviations, on purpose:**
+- The fences are worded from the code, not the handover: the mockup's "Lands on live, never protected branches", "Moves issues to In Review, never Done" and "Approves its own steps inside the fences" are not what 0.5.2.9 loops do. A real push guard for loops would be a new capability (tracked).
+- The Rules page does not promise that Remove brings the prompt back (it cannot: the agent keeps its own permission).
+- + New work item / + New objective sit in Home's header rather than under the window cards.
+
+**Independent audit of M4 (before landing): nothing changes with ui2 off; build and 563 tests green; no feature lost. Fixed from its findings:** Rules page and fences copy rewritten to match the code; Tonight includes nightly loops and their last-night results, Last night is only overnight Tonight/Nightly runs, Schedule a session offers Planned and Next sessions only; the Rules page no longer traps the queue; Machine's window order uses a valid sort; no loop row looks selected when none is open; the fence's time limit is formatted exactly.
+
+**Left for 1.4.1 (same milestone, tracked on its Linear issues):** Work and Board (A7.x), New work item and issue picker (A7.3, A7.4), the objective planner page (D1.2) and plan approval card (D1.3, NEW-27 total), New objective fields (C1.4), the planner budget's seat and time limits (NEW-15), the loop row layout (A9: budget, when, result pill) and the decision card restyle (A6.1: short Always allow, keys footer, count).
