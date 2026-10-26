@@ -130,6 +130,16 @@ public struct ThemeTokens: Sendable {
         }
     }
 
+    /// LAB-1233 · Learn Radio's "display" (the dark now-playing panel, the dial, the pressed band key and the play key):
+    /// dark in every look, as the Learn prototype draws it (--disp, --dtx, --dmute, --dacc, --keyedge).
+    public var display: (fill: RGB, text: RGB, mute: RGB, accent: RGB, keyEdge: RGB) {
+        switch name {
+        case .graphite: return (RGB(0x1C1C1E), RGB(0xF2F2F7), RGB(0x98989D), RGB(0x64D2FF), RGB(0x1C1C1E))
+        case .midnight, .blueprint: return (RGB(0x0B0B0D), RGB(0xE5E5EA), RGB(0x8E8E93), RGB(0x64D2FF), RGB(0x000000))
+        default: return (RGB(0x1C1C1E), RGB(0xF2F2F7), RGB(0x98989D), RGB(0x64D2FF), RGB(0xC7C8D0))
+        }
+    }
+
     // v0.1 names, kept so older views read the v2 palette.
     public var background: RGB { window }
     public var secondaryText: RGB { text2 }

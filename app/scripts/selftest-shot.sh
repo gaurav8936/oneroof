@@ -12,4 +12,9 @@ env ONEROOF_STORE="$OUT_DIR/store-$NAME/sessions.sqlite" ONEROOF_SELFTEST_DEMO=1
 PID=$!
 for _ in $(seq 1 60); do kill -0 $PID 2>/dev/null || break; sleep 1; done
 kill $PID 2>/dev/null || true
+# The run had its own roofd (ROOFD_DIR under /tmp, set by the app): stop it so test daemons never pile up.
+bash scripts/stop-test-roofd.sh "$PWD/build" >/dev/null 2>&1 || true
+# Launching registered the test bundle with Launch Services; launchd resolves the roofd background item by bundle id, so
+# drop it again or launchd may start roofd from this build instead of the installed app.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$PWD/build/One Roof.app" 2>/dev/null || true
 ls -la "$OUT_DIR/$NAME.png" 2>/dev/null || echo "no capture for $NAME"

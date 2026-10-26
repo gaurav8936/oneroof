@@ -29,7 +29,8 @@ enum RoofdService {
     /// Returns whether launchd now runs roofd.
     @discardableResult
     static func register() -> Bool {
-        guard bundled, ProcessInfo.processInfo.environment["ROOFD_DIR"] == nil else { return false }   // tests use their own
+        guard bundled, !SelfTest.isActive, !Prefs.freshProfile,
+              ProcessInfo.processInfo.environment["ROOFD_DIR"] == nil else { return false }   // tests use their own
         let s = service
         let build = bundledBuild ?? 0
         if s.status == .enabled, Prefs.defaults.double(forKey: registeredKey) != build {

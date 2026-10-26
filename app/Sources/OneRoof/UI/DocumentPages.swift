@@ -145,7 +145,7 @@ private enum MarkdownCache {
     }
 }
 
-private struct MarkdownBlockView: View {
+struct MarkdownBlockView: View {
     let block: MarkdownBlock
     let path: String
     let t: ThemeTokens
