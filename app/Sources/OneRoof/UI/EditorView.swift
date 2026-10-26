@@ -365,6 +365,7 @@ struct CodeEditor: NSViewRepresentable {
         scroll.verticalRulerView = gutter
         scroll.hasVerticalRuler = true
         scroll.rulersVisible = true
+        scroll.tile()   // lay the clip view out beside the gutter now, not under it
         context.coordinator.text = code
         context.coordinator.gutter = gutter
         context.coordinator.restyle()
@@ -381,12 +382,23 @@ struct CodeEditor: NSViewRepresentable {
             if let line { context.coordinator.scroll(to: line) }
         }
         context.coordinator.restyle()
+        // The gutter overlaps the clip view; AppKit normally starts the clip's bounds at -gutter width so the text begins
+        // beside it (clip x = -52 in the classic window). A host first laid out hidden (the v2 Files tab) keeps x = 0, which
+        // hides the first characters of every line under the gutter: start it at -gutter once per file.
+        if !context.coordinator.leftEdgeSet, scroll.bounds.width > 200, let ruler = scroll.verticalRulerView {
+            context.coordinator.leftEdgeSet = true
+            DispatchQueue.main.async {
+                let clip = scroll.contentView, left = -ruler.ruleThickness
+                if clip.bounds.origin.x > left { clip.scroll(to: NSPoint(x: left, y: clip.bounds.origin.y)); scroll.reflectScrolledClipView(clip) }
+            }
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: CodeEditor
         weak var text: CodeTextView?
         weak var gutter: GutterView?
+        var leftEdgeSet = false
         private var lastStyled: (String, ThemeName, Int)?
         init(_ p: CodeEditor) { parent = p }
 

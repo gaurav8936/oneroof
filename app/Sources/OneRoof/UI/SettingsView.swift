@@ -80,6 +80,7 @@ struct SettingsView: View {
         a.addButton(withTitle: "Quit and Switch"); a.addButton(withTitle: "Cancel")
         guard a.runModal() == .alertFirstButtonReturn else { return }
         model.settings.ui2 = false
+        model.settings.ui2Chosen = true
         Prefs.defaults.synchronize()   // the settings didSet already wrote it
         NSApp.terminate(nil)
     }
@@ -92,6 +93,7 @@ struct SettingsView: View {
         a.addButton(withTitle: "Quit and Switch"); a.addButton(withTitle: "Cancel")
         guard a.runModal() == .alertFirstButtonReturn else { return }
         model.settings.ui2 = true
+        model.settings.ui2Chosen = true
         Prefs.defaults.synchronize()
         NSApp.terminate(nil)
     }

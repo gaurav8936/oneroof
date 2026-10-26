@@ -294,6 +294,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
 
     /// Close or open the centre panel. With it closed, the plan panel takes the freed width (v0.1 rule).
     func toggleCentre() {
+        // v2: every other column has a capped width, so collapsing the centre would resize the window (LAB-596 rule);
+        // ⌥⌘C brings the terminal (Terminal tab) forward instead.
+        if isV2 { model.show(.workspace, in: win); terminalArea.focusTerminal(); return }
         let closing = !centreItem.isCollapsed
         if closing && sideItem.isCollapsed && planItem.isCollapsed && filesItem.isCollapsed { shake(); return }   // keep one panel
         planItem.holdingPriority = .init(closing ? 240 : 251)
@@ -306,7 +309,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         if isV2 { v2TogglePlan(); return }
         guard guardLast(planItem) else { return }; planItem.animator().isCollapsed.toggle(); syncLater()
     }
-    func toggleFiles() { guard guardLast(filesItem) else { return }; filesItem.animator().isCollapsed.toggle(); syncLater() }
+    func toggleFiles() {
+        // v2: the file tree lives in the Files tab (A2.1): ⌥⌘B opens it, or goes back to the terminal from it.
+        if isV2 {
+            if win.centre == .editor { model.show(.workspace, in: win) }
+            else if let p = win.viewerPath, EditorState.of(win.id).tabs.contains(p) { win.show(path: p) }
+            else if let last = EditorState.of(win.id).tabs.last { win.show(path: last) }
+            else { win.viewerPath = nil; model.show(.editor, in: win) }
+            return
+        }
+        guard guardLast(filesItem) else { return }; filesItem.animator().isCollapsed.toggle(); syncLater() }
     func toggleSidebar() {
         if isV2 { v2ToggleColumn(); return }
         guard guardLast(sideItem) else { return }; sideItem.animator().isCollapsed.toggle(); syncLater()
