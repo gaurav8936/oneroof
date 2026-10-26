@@ -31,7 +31,8 @@ struct V2SessionTabs: View {
 
     var body: some View {
         // Shown wherever the centre is one of the session's views (an Editor or Review reached from another place too).
-        if [.workspace, .editor, .review, .subagents].contains(win.centre) {
+        if [.workspace, .editor, .review, .subagents].contains(win.centre),
+           !(win.centre == .editor && win.viewerPath == FileKind.searchPath) {   // Find in Workspace is its own page
             let item = win.selectedId.flatMap { model.item($0) }
             let changes = item.flatMap { model.repoStats[$0.session.repoPath]?.files } ?? 0
             let subs = item.map { model.subagentCount($0) } ?? 0

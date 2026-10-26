@@ -5,7 +5,7 @@
 #   UI2_SHOTS=<handover>/01_handover/assets/shots scripts/ui2-compare.sh [code ...]
 #
 # Screens and their self-test settings come from scripts/ui2-screens.tsv (code <TAB> VAR=value ...). With codes given,
-# only those run. Captures go through scripts/selftest-shot.sh (scratch store, demo sessions, quits after the shot),
+# only those run. UI2_USE_EXTRA=1 in a line compares a sheet, panel or Settings capture instead of the window. Captures go through scripts/selftest-shot.sh (scratch store, demo sessions, quits after the shot),
 # so build "build/One Roof.app" first (scripts/bundle.sh debug). Output: $OUT_DIR/compare/<code>.png, the capture on
 # the left and the handover shot on the right, both scaled to 900 px high, plus $OUT_DIR/compare/index.txt.
 set -uo pipefail
@@ -24,6 +24,10 @@ while IFS=$'\t' read -r code vars; do
   bash scripts/selftest-shot.sh "$name" ONEROOF_SELFTEST_UI2=1 $vars >/dev/null 2>&1
   shot="$(ls "$UI2_SHOTS"/*-"${code//./_}".jpg 2>/dev/null | head -1)"
   cap="$OUT_DIR/$name.png"
+  # UI2_USE_EXTRA=1: the screen is a sheet, panel or the Settings window — use the largest extra window capture.
+  if [[ "$vars" == *UI2_USE_EXTRA=1* ]]; then
+    extra="$(ls -S "$OUT_DIR/$name"-window*.png 2>/dev/null | head -1)"; [ -n "$extra" ] && cap="$extra"
+  fi
   if [ ! -f "$cap" ]; then echo "$code  NO CAPTURE" | tee -a "$OUT_DIR/compare/index.txt"; continue; fi
   if [ -z "$shot" ]; then cp "$cap" "$OUT_DIR/compare/$code.png"; echo "$code  captured (no handover shot)" | tee -a "$OUT_DIR/compare/index.txt"; continue; fi
   ffmpeg -loglevel error -y -i "$cap" -i "$shot" \
