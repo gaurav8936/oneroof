@@ -15,30 +15,15 @@ struct LearnView: View {
 
     var current: LearnItem? { items.first { $0.id == (selected ?? model.learnTarget) } }
 
-    /// v2 (A12.2): Pages (today's Learn, the default) · Radio · All cards.
-    @State private var v2Mode = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LEARNMODE"] ?? "pages"
+    /// v2 (LAB-1233): where Learn is (Radio, a band, a card, Writing, a post, a programme, All cards, or Pages), the deck
+    /// and the posts found in Learn folders. Classic (settings.ui2 off) shows pagesBody only, as before.
+    @StateObject private var lnav = LearnNav()
+    @State private var deck: LearnDeck?
+    @State private var posts: [LearnPost] = []
+    @State private var appeared = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            if model.settings.ui2 {
-                HStack {
-                    Picker("", selection: $v2Mode) { Text("Pages").tag("pages"); Text("Radio").tag("radio"); Text("All cards").tag("map") }
-                        .pickerStyle(.segmented).labelsHidden().fixedSize()
-                    Spacer()
-                }
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(t.window.color)
-                Divider()
-            }
-            if model.settings.ui2 && v2Mode != "pages" {
-                V2LearnRadio(model: model, player: model.player, map: v2Mode == "map", open: { id in selected = id; v2Mode = "pages" })
-            } else {
-                pagesBody
-            }
-        }
-        // A link, Search's Learn result or How do I… while Radio or All cards shows: go to Pages, where they open.
-        .onChange(of: model.learnTarget) { _, t in if t != nil, v2Mode != "pages" { selected = t; v2Mode = "pages" } }
-        .onChange(of: model.learnQuery) { _, q in if q != nil, v2Mode != "pages" { v2Mode = "pages" } }
+        if model.settings.ui2 { v2Body } else { pagesBody }
     }
 
     private var pagesBody: some View {
@@ -261,17 +246,26 @@ enum LearnIndex {
 private struct PlayPageButton: View {
     let item: LearnItem
     @ObservedObject var player: CoursePlayer
+    /// v2 (A12, 42-A12.jpg): "▶ Play page" in the header's bordered style.
+    var v2 = false
     var body: some View {
         let here = player.pageId == item.id
         let resume = player.saved(item.id)
-        Button {
+        let button = Button {
             if here { player.toggle() } else { player.play(pageId: item.id, title: item.title, tracks: item.tracks()) }
         } label: {
-            Label(here ? (player.playing ? "Pause" : "Play") : resume.map { "Continue part \($0.track + 1)" } ?? "Play in One Roof",
+            Label(here ? (player.playing ? "Pause" : "Play") : resume.map { "Continue part \($0.track + 1)" } ?? (v2 ? "Play page" : "Play in One Roof"),
                   systemImage: here && player.playing ? "pause.fill" : "play.fill")
         }
-        .controlSize(.small)
         .help("Plays the narration here, at your speed, and keeps playing while you work")
+        if v2 { button.buttonStyle(LearnChipStyle()).labelStyle(LearnChipLabelStyle()) } else { button.controlSize(.small) }
+    }
+}
+
+/// A small icon before the text, as the header's chips draw it.
+struct LearnChipLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) { configuration.icon.font(.system(size: 9)); configuration.title }
     }
 }
 
@@ -306,6 +300,221 @@ private struct LearnPlayerBar: View {
         if player.pageId != nil {
             Divider()
             PlayerBar(player: player, tokens: tokens, onOpenPage: openPage)
+        }
+    }
+}
+
+// MARK: - v2 (LAB-1233 · handover A12 + A12.2)
+
+extension LearnView {
+    /// One header (breadcrumb · section left; actions, Radio · Writing · All cards · Pages and search right), the place
+    /// below it, and the player bar at the foot. Pages keeps today's sidebar on the left with the header beside it (42-A12).
+    var v2Body: some View {
+        VStack(spacing: 0) {
+            if lnav.place == .pages {
+                HStack(spacing: 0) {
+                    v2Sidebar.frame(width: 300).background(t.sidebar.color)
+                    Rectangle().fill(t.separator.color).frame(width: 1)
+                    VStack(spacing: 0) {
+                        v2PagesHeader
+                        v2PageContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+            } else {
+                v2RadioHeader
+                V2LearnRadio(model: model, player: model.player, nav: lnav, deck: deck, posts: posts)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            LearnPlayerBar(player: model.player, tokens: t) { v2OpenPlaying() }
+        }
+        .background(t.window.color)
+        .overlay(alignment: .top) { v2Toast }
+        .onAppear { v2Appear() }
+        .onChange(of: model.learnTarget) { _, target in v2Take(target) }
+        .onChange(of: model.learnQuery) { _, q in if q != nil { lnav.place = .pages }; takeQuestion() }
+        .onChange(of: model.learnItems.count) { _, _ in takeQuestion() }
+        .onChange(of: model.settings.learnFolders) { _, _ in v2LoadPosts() }
+    }
+
+    private func v2Appear() {
+        model.loadLearn()
+        if deck == nil { deck = LearnDeck.load(deck: AEFolder.deckRoot(model.settings.agenticEngineering.path)) }
+        v2LoadPosts()
+        guard !appeared else { takeQuestion(); return }
+        appeared = true
+        if deck == nil && !lnav.pinned { lnav.place = .pages }
+        if model.learnQuery != nil { lnav.place = .pages; takeQuestion() }
+        else if let target = model.learnTarget { v2Take(target) }
+    }
+
+    private func v2LoadPosts() {
+        let folders = model.settings.learnFolders
+        DispatchQueue.global(qos: .userInitiated).async {
+            let found = LearnPosts.scan(folders)
+            DispatchQueue.main.async { posts = found }
+        }
+    }
+
+    /// A link, Search's Learn result, the mini player or How do I…: a deck card opens its station while Radio shows;
+    /// anything else (and anything while Pages shows) opens in Pages, as in 1.8.0.
+    private func v2Take(_ target: String?) {
+        guard let target else { return }
+        if lnav.place != .pages, let slug = deck?.slug(forPage: target) {
+            lnav.openCard(slug, scene: model.player.pageId == target ? model.player.index : 0)
+        } else {
+            selected = target; query = ""; lnav.place = .pages
+        }
+    }
+
+    /// The player bar's title: the card station for a deck card (outside Pages), else the page in Pages.
+    private func v2OpenPlaying() {
+        guard let id = model.player.pageId else { return }
+        if lnav.place != .pages, let slug = deck?.slug(forPage: id) { lnav.openCard(slug, scene: model.player.index) }
+        else { selected = id; query = ""; lnav.place = .pages }
+    }
+
+    private var v2Mode: some View {
+        LearnModeControl(nav: lnav) { lnav.place = .pages }
+    }
+
+    // MARK: Pages (A12)
+
+    private var v2PagesHeader: some View {
+        LearnHeaderRow {
+            if let c = current {
+                LearnCrumbs(crumbs: [.init(label: c.title)], section: c.section)
+            } else {
+                LearnCrumbs(crumbs: [.init(label: "Learn")], section: "Pages")
+            }
+        } right: {
+            if let c = current {
+                if c.audio { PlayPageButton(item: c, player: model.player, v2: true) }
+                if !c.isFolder {
+                    if c.section.lowercased().contains("skill") || c.path.contains("/skills/") {
+                        // S11.U: send "/skill-name" to a live agent session.
+                        let skill = ((c.path as NSString).deletingLastPathComponent as NSString).lastPathComponent
+                        Menu {
+                            ForEach(model.items.filter { $0.liveAgent != nil && $0.session.agent.isAgent }) { i in
+                                Button(i.session.name) { model.sendSkill(skill, to: i) }
+                            }
+                        } label: { Text("Use in a session ▾") }
+                        .menuStyle(.button).buttonStyle(LearnChipStyle()).menuIndicator(.hidden).fixedSize()
+                    }
+                    Button { NSWorkspace.shared.open(URL(fileURLWithPath: c.path)) } label: { Text("Open in browser") }
+                        .buttonStyle(LearnChipStyle())
+                }
+            }
+            v2Mode.padding(.leading, 4)
+        }
+    }
+
+    @ViewBuilder private var v2PageContent: some View {
+        if let c = current {
+            if c.isFolder { TrackList(item: c, player: model.player, tokens: t) }
+            else if c.path.hasSuffix(".md") { MarkdownPage(path: c.path) } else { WebPage(path: c.path, root: c.root, blocked: { LearnExclusions.isExcluded($0) }, pageScript: LearnExclusions.hideLinksScript) }
+        } else {
+            VStack(spacing: 10) {
+                Image(systemName: "graduationcap").font(.system(size: 36)).foregroundStyle(t.secondaryText.color)
+                Text("Learn the agentic engineering process").font(.system(size: 15, weight: .semibold)).foregroundStyle(t.text.color)
+                Text("Start with the course (press play to listen), or open any skill and send it to a running session.")
+                    .font(.system(size: 12)).foregroundStyle(t.secondaryText.color).multilineTextAlignment(.center).frame(maxWidth: 420)
+            }
+        }
+    }
+
+    /// Today's sidebar in the panel theme (no inset box): Learn · >_ · search · Best matches · sections in catalog order.
+    private var v2Sidebar: some View {
+        let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        let best = q.isEmpty ? [] : model.learnMatches(q, limit: 10)
+        let bestIds = Set(best.map(\.id))
+        let rest = q.isEmpty ? items : items.filter { !bestIds.contains($0.id) && ($0.title + " " + $0.section).lowercased().contains(q) }
+        let sections = Array(NSOrderedSet(array: rest.map(\.section))) as? [String] ?? []
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Learn").font(.system(size: 17, weight: .bold)).foregroundStyle(t.text.color)
+                Spacer()
+                Button { model.learnMode = false } label: {
+                    Text(">_").font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(t.text2.color)
+                }
+                .buttonStyle(.plain).help("Back to terminals")
+            }
+            .padding(.horizontal, 4)
+            TextField("How do I…? or search \(items.count) pages", text: $query).textFieldStyle(.roundedBorder)
+                .focused($searchFocused)
+            List(selection: $selected) {
+                if !best.isEmpty {
+                    Section { ForEach(best) { i in row(i, detail: true) } } header: { v2SectionHeader("Best matches") }
+                }
+                ForEach(sections, id: \.self) { sec in
+                    Section { ForEach(rest.filter { $0.section == sec }) { i in row(i, detail: false) } } header: { v2SectionHeader(sec) }
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .foregroundStyle(t.text.color)
+        }
+        .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
+    }
+
+    private func v2SectionHeader(_ s: String) -> some View {
+        Text(s).font(.system(size: 11, weight: .semibold)).foregroundStyle(t.text.color)
+    }
+
+    // MARK: Radio and the rest (A12.2)
+
+    private var v2RadioHeader: some View {
+        let (crumbs, section) = v2Crumbs()
+        return LearnHeaderRow {
+            LearnCrumbs(crumbs: crumbs, section: section)
+        } right: {
+            if lnav.place == .card, let deck, deck.cards[lnav.slug] != nil {
+                LearnCardActions(model: model, nav: lnav, player: model.player, audio: LearnAudio(deck: deck, player: model.player, nav: lnav))
+            }
+            v2Mode
+            LearnSearchField(nav: lnav, total: deck?.count ?? 0)
+        }
+    }
+
+    private func v2Crumbs() -> ([LearnCrumbs.Crumb], String) {
+        let home = LearnCrumbs.Crumb(label: "Learn") { lnav.go(.radio) }
+        guard let deck else { return ([.init(label: "Learn")], "Agentic Engineering") }
+        switch lnav.place {
+        case .band:
+            let b = deck.band(id: lnav.band)
+            return ([home, .init(label: "\(b.n) \(b.title)")], "Band")
+        case .card:
+            let b = deck.band(of: lnav.slug), c = deck.cards[lnav.slug]
+            return ([home, .init(label: "\(b.n) \(b.title)") { lnav.openBand(b.id) }, .init(label: c?.title ?? lnav.slug)],
+                    "Agentic Engineering · " + (c?.track ?? ""))
+        case .post:
+            return ([home, .init(label: "Writing") { lnav.go(.writing) }, .init(label: posts.first { $0.slug == lnav.post }?.title ?? "")], "Post")
+        case .writing:
+            return ([home, .init(label: "Writing")], "Broadcast schedule")
+        case .path:
+            return ([home, .init(label: deck.paths.first { $0.id == lnav.path }?.title ?? "")], "Programme")
+        case .library:
+            var c = [home, LearnCrumbs.Crumb(label: "All cards") { lnav.libSel = nil; lnav.query = "" }]
+            if lnav.query.isEmpty, let sel = lnav.libSel { c.append(.init(label: v2BlockName(sel))) }
+            return (c, !lnav.query.isEmpty ? "How do I…" : lnav.lens == "loop" ? "By band" : "By kind")
+        default:
+            return ([.init(label: "Learn")], "Agentic Engineering · Radio")
+        }
+    }
+
+    /// "loops:rhythms" → "Daily loops"; "loops:start" → "Start here"; "kind:vault" → "Notes & memory".
+    private func v2BlockName(_ id: String) -> String {
+        let tail = String(id.split(separator: ":").last ?? "")
+        return tail == "start" ? "Start here" : LearnDeck.trackNames[tail]?.name ?? LearnDeck.label(tail)
+    }
+
+    @ViewBuilder private var v2Toast: some View {
+        if !lnav.toast.isEmpty {
+            let d = t.display
+            Text(lnav.toast).font(.system(size: 13)).foregroundStyle(d.text.color)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(d.fill.color).shadow(color: t.text.color.opacity(0.25), radius: 12, y: 8))
+                .padding(.top, 72)
+                .transition(.opacity)
         }
     }
 }

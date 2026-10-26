@@ -3,6 +3,15 @@ import OneRoofCore
 
 // One Roof — native Mac command center for the agent fleet.
 
+// 1.8.1: a self-test or fresh-profile run never shares the owner's roofd. Without its own ROOFD_DIR such a run talked
+// to the installed daemon, asked it to "upgrade" to the (newer) test binary and registered the test bundle as the
+// background item, so the owner's sessions ended up served from a worktree build.
+if (SelfTest.isActive || Prefs.freshProfile), ProcessInfo.processInfo.environment["ROOFD_DIR"] == nil {
+    let dir = "/tmp/oneroof-roofd-" + String(UUID().uuidString.prefix(8))
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    setenv("ROOFD_DIR", dir, 1)
+}
+
 // Command-line modes read the folders from the saved settings (no migration, nothing written).
 if ["--check", "--linear", "--route"].contains(where: CommandLine.arguments.contains) {
     AppModel.applyFolders(Prefs.loadSettings(migrate: false))

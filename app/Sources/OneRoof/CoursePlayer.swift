@@ -12,6 +12,10 @@ final class CoursePlayer: ObservableObject {
     @Published private(set) var playing = false
     @Published private(set) var elapsed: Double = 0
     @Published private(set) var duration: Double = 0
+    /// LAB-1233 · pages to play after this one (Learn › Radio: the rest of a band, a programme). Playing a page directly
+    /// replaces it; stop() clears it.
+    @Published private(set) var upNext: [QueuedPage] = []
+    struct QueuedPage: Identifiable { var id: String; var title: String; var tracks: () -> [CourseTrack] }
     @Published var rate: Float = 1 { didSet { if playing { player?.rate = rate }; if save { defaults.set(rate, forKey: Self.rateKey) } } }
 
     static let rates: [Float] = [0.75, 1, 1.25, 1.5, 1.75, 2]
@@ -36,8 +40,9 @@ final class CoursePlayer: ObservableObject {
     func saved(_ pageId: String) -> CourseProgress? { progress[pageId] }
 
     /// Load a page's tracks and play, continuing where it was left off (or from `track` when given).
-    func play(pageId: String, title: String, tracks: [CourseTrack], track: Int? = nil) {
+    func play(pageId: String, title: String, tracks: [CourseTrack], track: Int? = nil, upNext: [QueuedPage] = []) {
         guard !tracks.isEmpty else { return }
+        self.upNext = upNext
         if self.pageId != pageId || self.tracks != tracks {
             remember()
             self.pageId = pageId; pageTitle = title; self.tracks = tracks
@@ -61,6 +66,17 @@ final class CoursePlayer: ObservableObject {
     }
 
     func next() { if index + 1 < tracks.count { start(index + 1, at: 0) } else { finish() } }
+
+    /// Skip to the next queued page (Radio's ⏭ when a band is queued); false when nothing is queued.
+    @discardableResult func nextPage() -> Bool {
+        while let n = upNext.first {
+            let rest = Array(upNext.dropFirst())
+            let t = n.tracks()
+            if !t.isEmpty { play(pageId: n.id, title: n.title, tracks: t, track: 0, upNext: rest); return true }
+            upNext = rest
+        }
+        return false
+    }
     func previous() { elapsed > 3 || index == 0 ? seek(0) : start(index - 1, at: 0) }
 
     func seek(_ seconds: Double) {
@@ -73,6 +89,7 @@ final class CoursePlayer: ObservableObject {
         pause()
         teardown()
         pageId = nil; tracks = []; index = 0; elapsed = 0; duration = 0
+        upNext = []
     }
 
     // MARK: Internals
@@ -99,11 +116,12 @@ final class CoursePlayer: ObservableObject {
         playing = true
     }
 
-    private func finish() {
+    private func finish(advance: Bool = true) {
         pause()
         if let id = pageId { progress[id] = nil; persist() }     // heard it all: next time starts at the beginning
         index = 0; elapsed = 0
         teardown()
+        if advance, !upNext.isEmpty { DispatchQueue.main.async { [weak self] in self?.nextPage() } }
     }
 
     private func teardown() {
@@ -117,6 +135,7 @@ final class CoursePlayer: ObservableObject {
 
     private func remember() {
         guard let id = pageId, current != nil else { return }
+        if index == 0 && elapsed < 1 && progress[id] == nil { return }      // nothing heard yet (or just finished): no place to keep
         progress[id] = CourseProgress(track: index, seconds: elapsed)
         persist()
     }
@@ -184,10 +203,18 @@ struct PlayerBar: View {
                     }
                     .buttonStyle(.plain).padding(.vertical, 3)
                 }
+                // LAB-1233: the pages queued after this one (a band or a programme from Learn › Radio).
+                if !player.upNext.isEmpty {
+                    Text("UP NEXT · \(player.upNext.count)").font(.system(size: 10, weight: .semibold)).tracking(0.6)
+                        .foregroundStyle(tokens.text3.color).padding(.top, 8).padding(.bottom, 2)
+                    ForEach(player.upNext.prefix(40)) { q in
+                        Text(q.title).font(.system(size: 12)).foregroundStyle(tokens.text2.color).lineLimit(1).padding(.vertical, 2)
+                    }
+                }
             }
             .padding(10)
         }
-        .frame(width: 380, height: min(CGFloat(player.tracks.count) * 24 + 24, 420))
+        .frame(width: 380, height: min(CGFloat(player.tracks.count + min(player.upNext.count, 40) + (player.upNext.isEmpty ? 0 : 2)) * 24 + 24, 420))
     }
 
     private func icon(_ name: String, _ help: String, size: CGFloat = 13, _ action: @escaping () -> Void) -> some View {

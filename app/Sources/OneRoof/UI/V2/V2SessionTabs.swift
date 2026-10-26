@@ -34,7 +34,7 @@ struct V2SessionTabs: View {
         if [.workspace, .editor, .review, .subagents].contains(win.centre),
            !(win.centre == .editor && win.viewerPath == FileKind.searchPath) {   // Find in Workspace is its own page
             let item = win.selectedId.flatMap { model.item($0) }
-            let changes = item.flatMap { model.repoStats[$0.session.repoPath]?.files } ?? 0
+            let changes = item.flatMap { model.repoStats[model.workRepo($0)]?.files } ?? 0
             let subs = item.map { model.subagentCount($0) } ?? 0
             HStack(spacing: 2) {
                 tab("Terminal", .terminal) { model.show(.workspace, in: win) }
@@ -87,7 +87,7 @@ struct V2SessionTabs: View {
     }
 
     private func openChanges(_ item: BoardItem?) {
-        if let item { win.reviewRepo = item.session.repoPath }
+        if let item { win.reviewRepo = model.workRepo(item) }
         model.show(.review, in: win)
     }
 

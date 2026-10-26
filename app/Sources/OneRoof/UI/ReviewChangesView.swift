@@ -26,7 +26,7 @@ struct ReviewChangesView: View {
     @State private var hoverHunk: String?
     private let tick = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
-    private var repo: String { win.reviewRepo ?? model.selected?.session.repoPath ?? Workspace.projectsRoot }
+    private var repo: String { win.reviewRepo ?? model.selected.map { model.workRepo($0) } ?? Workspace.projectsRoot }
     private var session: BoardItem? { model.reviewTarget(repo: repo) ?? model.selected }
 
     var body: some View {

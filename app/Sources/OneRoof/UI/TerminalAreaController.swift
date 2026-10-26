@@ -42,7 +42,7 @@ final class TerminalAreaController: NSViewController {
         self.model = model
         self.win = win
         // Restore the last pane layout; self-tests always start from one pane.
-        if !SelfTest.isActive, let data = Prefs.defaults.data(forKey: Self.panesKey(win.id)),
+        if !SelfTest.isActive || Prefs.seeded, let data = Prefs.defaults.data(forKey: Self.panesKey(win.id)),
            let saved = try? JSONDecoder().decode(SavedPanes.self, from: data), saved.tree.leaf(saved.focused) != nil {
             tree = saved.tree
             focusedPane = saved.focused
@@ -55,7 +55,7 @@ final class TerminalAreaController: NSViewController {
     }
 
     private struct SavedPanes: Codable { var tree: PaneNode; var focused: String }
-    private static func panesKey(_ id: String) -> String { id == WorkspaceStore.mainId ? "OneRoofPanes" : "OneRoofPanes." + id }
+    static func panesKey(_ id: String) -> String { id == WorkspaceStore.mainId ? "OneRoofPanes" : "OneRoofPanes." + id }
 
     private var pendingSave: DispatchWorkItem?
 

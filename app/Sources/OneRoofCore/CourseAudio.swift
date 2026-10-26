@@ -12,8 +12,9 @@ public enum CourseAudio {
     /// A narrated skill page's clips in play order. The page embeds `window.__TTS__={"openai": {"<hash>": "<rel>.mp3",
     /// …}}` in scene order; titles come from the sibling `spec.json` (section · scene heading) when the counts agree.
     public static func tracks(page htmlPath: String) -> [CourseTrack] {
+        // LAB-1233: the deck's pages write `window.__TTS__ = {` (spaces around "="); older pages had none.
         guard let html = try? String(contentsOfFile: htmlPath, encoding: .utf8),
-              let start = html.range(of: "window.__TTS__=") else { return [] }
+              let start = html.range(of: #"window\.__TTS__\s*=\s*"#, options: .regularExpression) else { return [] }
         let tail = html[start.upperBound...]
         let block = tail.prefix(while: { $0 != "\n" && $0 != "<" })
         let dir = (htmlPath as NSString).deletingLastPathComponent

@@ -181,3 +181,89 @@
 **Learn Radio (NEW-8, A12.2, partial).** In v2, Learn has Pages (today's Learn, the default) · Radio · All cards (`UI/V2/V2LearnRadio.swift`). Radio reads the deck's catalog once (suits, bands, card lists) and shows the bands with card counts, a now-playing panel driving `CoursePlayer` (play / pause, speed, next, part and progress; Tune in plays the band's first narrated card) and the band's cards with ▶ and Open (the card page in Pages: diagram, transcript, skill). All cards lists the deck by suit and band. A link, a Search result or How do I… while Radio shows switches to Pages. Not built: Writing and the post reader, programmes, the band page, separate card-station tabs, the dial and waveform, the toolbar mini player's Radio state.
 
 **Independent audit (before landing):** classic untouched; routing at the defaults identical to before. Fixed: the Wall closed itself on background selection changes; Learn ignored targets while on Radio; the selected band was white-on-white in dark themes (now accent tokens, no emoji); the catalog was re-read on every render; the Wall feed read every session, overlapped batches and could leak its timer; the rotation copy; a Wall tile could open behind another view.
+
+## 1.8.1 · real-profile audit
+
+Every earlier audit ran on a fresh profile with demo sessions. This one ran the v2 window on a copy of the owner's real profile (settings, per-window state, 20 sessions in the "Blogs & Public Presence" window, 15 workspaces) and compared it with the classic window from the same build (LAB-1234).
+
+**How (test only).** `ONEROOF_PROFILE_SEED=<exported defaults plist>` is honoured only with `ONEROOF_FRESH_PROFILE=1`: after the fresh suite is emptied, the plist's keys are copied in (`SeedFilter` drops AppKit's `NS*` frames and the roofd registration). `Prefs.seeded` lets `WindowState` (step, layout, place, text size, widths), the saved panes and the v2 first-launch rule read that state, which self-tests otherwise ignore; nothing is saved. Run it with `ONEROOF_STORE=<a copy of sessions.sqlite per run>`, `ONEROOF_SELFTEST_DEMO=0`, `ROOFD_DIR=<scratch>` (the test's own roofd: without it a debug build would ask the installed app's daemon to upgrade) and `CFFIXED_USER_HOME=<scratch>` (keeps App Support out of reach; seat usage and Linear are then empty). A fresh profile no longer reads the real domain's saved window frame. Because the run has its own roofd, every real session shows Exited.
+
+**Fixed.**
+- *Launch state for an upgraded window.* A window with no saved step opened at Sessions (step 1): the Plan folded to the edge tab and the dock to one line, where 0.5.2.9 showed the Plan and the status footer. `V2Layout.initialStep`: a window that existed before (its classic pane layout is saved under `OneRoofPanes[.<id>]`) opens once at Full; a new window still opens at Sessions. The decision is saved at once, so it applies a single time. (The owner's own window was already saved at Full after the 019700d fix.)
+- *Sessions step kept across places.* Opening Sessions from Home, Work, Machine … always reset it to step 1, folding a Plan opened at Full every time. `WindowState.sessionsStep` (saved as `sessionsStep.<id>`) remembers the step Sessions was last at; `V2Layout.openingStep` returns to it. Other places still open at Full.
+- *Selected session hidden by the exited cap.* The Exited group shows four rows and "+ n more ›" (A1.1); with real data the selected session was often further down and vanished from the list. `V2Layout.cappedRows` keeps it.
+- *Files and Changes on the wrong folder.* Sessions start at the workspace root (startInRepo off, "one memory") and work in a repo below it; the row and Plan already show that repo (`BoardItem.repoPath`: live, else last seen), but the Files tab, the Changes tab and its count, ⌥⌘R and the row's Review Changes used the start folder: ~/Projects and "not in a git repo". `AppModel.workRepo` uses the work repo in the v2 window (the classic window keeps the start folder; repo stats are also read for the work repo).
+- *Window colour.* 0.5.2.9 tinted the toolbar band in the window's colour (LAB-590); the v2 band follows the columns, so only the switcher dot was left and coloured windows could not be told apart at a glance. A coloured window now keeps the 2 pt stripe in its ink under the band.
+- *Dragged widths.* `v2ApplyLayout` set the column to 280/250 pt and the Plan to 270 pt on every step change and launch, so a width you dragged never stuck (0.5.2.9 kept panel widths). A drag of divider 1 or 3 (only during a mouse drag; `setPosition` also names a divider) is saved per window (`v2.columnWidth.<id>`, `v2.planWidth.<id>`) and used within the column limits (`V2Layout.columnWidth/planWidth`).
+- *Dock line.* A dangling "·" after roofd when no seat has a usage feed.
+
+**Checked, not changed.** Menus: every 0.5.2.9 item is in the v2 menus under its new name with the same key; only the four per-panel theme submenus go (Look… and Settings › Appearance hold them; Terminal Theme stays). Shortcuts: KeymapV2 matches SHORTCUTS.md; ⌘L still puts the cursor in the terminal (and opens Sessions). Kept as the handover draws them: the four-row Exited cap, exited rows at 60 %, the session name (not the window name) in the toolbar and the window name truncated in the switcher, no version label in the toolbar, Grid filling empty tiles when fewer sessions are live. Same in 0.5.2.9, so not regressions: the Plan's name field clips a long name without an ellipsis; the filter field has the keyboard at launch when the selected session has exited; the saved place is not restored (a window opens on Sessions).
+
+**Not checked.** Live states (running, needs you, the approval card, the composer sending, Grid/Wall with live tiles): the run had its own empty roofd. Seat usage and Linear (no App Support or config in the scratch home). AppKit's split-view autosave restore (off in self-tests). The width memory with a real mouse drag (the rule is unit-tested). Learn was being rebuilt in another lane and was only looked at.
+
+## 1.8.1 · Learn
+
+**What it is (LAB-1233).** The owner found 1.8.0's Learn unlike the design (a grey band with a left-aligned picker, the
+old sidebar in an inset box, a Radio that was a headline, a black "Pick a band" box and a button grid). 1.8.1 ports the
+handover's `One Roof Learn.dc.html` as drawn. Files: `UI/V2/V2LearnRadio.swift` (LearnNav, the header pieces, Radio
+home, the dial, disc, keys, knob), `V2LearnBand.swift` (band, programme), `V2LearnCard.swift` (card station and its
+header actions), `V2LearnLibrary.swift` (Writing, post reader, All cards map and search); `LearnView.swift` gains
+`v2Body` (classic `pagesBody` untouched); data in `OneRoofCore/LearnDeck.swift` (tests: `LearnDeckTests`).
+
+**How Pages and Radio co-exist (my reading of A12 / A12.2 / LAB-1183).** v2.5 says 1.0.0 ships today's Learn (A12) and
+Radio arrives in 1.2.0 with the control "Radio | Writing | All cards" (A12.2). By 1.8 both exist, and Pages holds
+things Radio cannot (course, field manual, One Roof Help, Learn folders, hidden pages). So the control is the design's
+three segments with **Pages** appended: Radio · Writing · All cards · Pages. Learn opens on Radio when the deck is in
+the build, else on Pages. In Pages the header sits beside the 300 pt sidebar (as 42-A12 draws it) and has no search
+field (the sidebar's "How do I…? or search N pages" is the search); elsewhere the header spans the width with the
+search field on the right (43-A12_2). A link, Search's Learn result, the player bar's title or the toolbar mini player
+opens a deck card's station while Radio's family shows; anything else, and anything while Pages shows, opens in Pages
+(1.8.0's rule). How do I… (learnQuery) always goes to Pages.
+
+**What matches.** Header (breadcrumb with links, section, card actions, mode control, search). Radio home: edition
+line, headline and blurb, the panel (disc, ▶ / speed / ⏭ keys, KEEPS PLAYING WHILE YOU WORK, display with status,
+title, subtitle · part, progress, dial with band labels and needle, four band keys with the pressed one dark, knob
+from -135° to +135° across the dial, ON THIS BAND chips, Open the band →), broadcast schedule and programmes below.
+Band page (kicker, title, sub, definition, Play the band, posts, the band's dial with track names, Start here + tracks
+as card rows). Card station (kicker → band, meta, tabs; Listen panel with scene n of m, live status, kicker, heading,
+the section's diagram nodes with this scene's nodes lit, lede and points, prev / scene dots / next, narration text;
+Transcript rows that play from a scene; Skill file with path, frontmatter table and rendered body; right column with
+chapters, triggers, pairs with, read about it, next on the band). Programme page, Writing, post reader, All cards map
+(by band / by kind, start-here squares, length bars, playing ring, hover reader, block list with Play all, search
+dimming with matches and posts). Toast for Use in a session. Player bar = today's PlayerBar (it already matched the
+prototype's bar); its queue lists Up next pages. Toolbar mini player = today's MiniPlayer (NO_REGRESSION: kept); it now
+opens the card station for a deck card. Colours only from tokens; the display's dark colours are new tokens
+(`ThemeTokens.display`, the prototype's --disp/--dtx/--dmute/--dacc/--keyedge).
+
+**Data, and what is real.** Cards, tracks, suits, paths, card lengths and scene counts: the bundled deck's
+`content/catalog.json`. Scenes, narration text, diagram nodes and highlights: each card's `spec.json` (0.2.0 schema:
+scenes carry kicker/heading/lede/points/highlight/narration; sections carry a diagram). Skill file: the card's
+`SKILL.md`. Audio: the card page's `__TTS__` list through `CourseAudio` and `CoursePlayer` (no new player; the player
+gained an up-next queue of pages). **Bug fixed on the way:** the 0.2.0 pages write `window.__TTS__ = {` with spaces and
+CourseAudio searched for `window.__TTS__=`, so no deck card had playable clips in 1.8.0. The four bands, their lines,
+start-here cards and the plain track names are the design's layer over the catalog (prototype PARTS / TI / KINDS),
+ported as constants in `LearnDeck`; cards missing from the catalog are skipped. **The dial is not an audio waveform:**
+each line is one card and its height is the card's catalog length (est_seconds), exactly as the prototype draws it.
+Radio's time reads earlier parts at the catalog estimate per part plus the clip being heard.
+
+**Deviations.** "NEW EVERY RELEASE" left off the edition line (not something the app can promise; the deck is
+re-bundled each release but may not change); the post count shows only when posts exist. Scene visuals use the
+spec's diagram nodes (the prototype parsed the card HTML's `.fv` blocks, which the 0.2.0 cards do not have). Post
+bodies render with the app's Markdown viewer; the site-only `gg-diagram` / `gg-chart` blocks are left out. The radio
+headline is held to 600 pt so it breaks over three lines like the design's balanced text. Content is capped at
+1360 pt and centred, as in the prototype (wide windows show margins). The card's "Use in a session ▾" is a popover
+listing live agent sessions with status (refuses with a toast while the session works, as `sendSkill` does).
+
+**Captures** (`scripts/ui2-screens.tsv`, new hooks: `ONEROOF_SELFTEST_LEARN=<page title>`,
+`ONEROOF_SELFTEST_PLAY=<title>@paused`, `ONEROOF_SELFTEST_LEARNMODE=pages|radio|band:<id>|card:<slug>[:tab]|writing|
+post:<slug>|path:<id>|library|search:<text>`): A12, A12.2 (compared with 42 and 43), A12.3 map, A12.band, A12.card,
+A12.transcript, A12.skill, A12.writing, A12.path, A12.search. Bundle with `ONEROOF_AE_DECK_REPO` set, or Radio shows
+"not in this build".
+
+**Still open.** Posts: the app and deck ship none; Writing, the schedule, band posts and "Read about it" are filled
+only from posts in the owner's Learn folders (`<folder>/index.md` with title and date) and otherwise say so. The deck's
+card visuals (the animated explainers) are not drawn in the station; Open in browser shows them. Track plain names
+should come from the catalog (handover GAPS D6). Audio-to-scene order assumes one clip per narrated scene in
+`__TTS__` order (GAPS G2). Only Daylight was captured; Graphite and Midnight follow the tokens but were not looked at.
+The Radio panel and header were not checked at narrow window widths (the header can crowd below ~1250 pt).
+
