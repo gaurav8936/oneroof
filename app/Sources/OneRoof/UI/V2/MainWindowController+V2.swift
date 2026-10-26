@@ -89,6 +89,18 @@ extension MainWindowController {
         win.$place.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
             self?.v2ApplyLayout(animated: true)   // reads the current place and step, never the event's value
         }.store(in: &v2Bag)
+        // Settings, Help and Release notes are pages over the current place (LAB-1084): no column, no Plan, the rail
+        // keeps the place highlighted; Esc, ⌘[ or any place closes them.
+        $v2Page.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] p in
+            guard let self else { return }
+            self.v2PageHost?.isHidden = p == nil
+            if p != nil, let host = self.v2PageHost { self.window?.makeFirstResponder(host) }   // keys go to the page, not the hidden terminal
+            else if p == nil, self.win.centre == .workspace { self.terminalArea.focusTerminal() }
+            self.v2ApplyLayout(animated: true)
+        }.store(in: &v2Bag)
+        v2InstallPageHost()
+        // Anything that changes the centre (a notification, Search, a link) closes the page over it.
+        win.$centre.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2Page = nil }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSSplitView.didResizeSubviewsNotification, object: splitView)
             .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2PaintBand() }.store(in: &v2Bag)
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
@@ -113,7 +125,7 @@ extension MainWindowController {
     /// Which pieces show at this step in this place, and how wide (FOCUS_LADDER.md table).
     func v2ApplyLayout(animated: Bool) {
         guard let rail = v2RailItem else { return }
-        let step = win.focusStep, sessions = win.place == .sessions
+        let step = win.focusStep, sessions = win.place == .sessions && v2Page == nil
         v2HidePlanOverlay(); v2HideEdgeReveal()
         v2EdgeTracker?.isHidden = !(step == .focus && sessions)
         v2RightTracker?.isHidden = !(step == .focus && sessions)
@@ -230,8 +242,28 @@ extension MainWindowController {
         }
     }
 
-    func v2ShowLooks() { (NSApp.delegate as? AppDelegate)?.showSettingsTab(1) }
-    func v2OpenSettings(tab: Int) { (NSApp.delegate as? AppDelegate)?.showSettingsTab(tab) }
+    func v2ShowLooks() { v2ShowSettings(pane: 1) }
+    func v2OpenSettings(tab: Int) { v2ShowSettings(pane: tab) }
+
+    /// Settings as a page over the current place (B1.x); `pane` from the 0.5 tab numbers or the v2 list.
+    func v2ShowSettings(pane: Int) { v2SettingsPane = pane; v2ShowPage("Settings") }
+    func v2ShowPage(_ title: String) {
+        v2Page = title
+        showWindow(nil); window?.makeKeyAndOrderFront(nil)   // ⌘, from another window opens it in front
+    }
+
+    /// The page layer: over the centre item (the column and Plan fold while it shows), hidden when no page is open.
+    func v2InstallPageHost() {
+        let centre = centreItemRef.viewController.view
+        let host = V2PageHostingView(rootView: AnyView(V2PageHost(model: model, win: win, controller: self)))
+        host.sizingOptions = []
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.isHidden = true
+        centre.addSubview(host)
+        NSLayoutConstraint.activate([host.leadingAnchor.constraint(equalTo: centre.leadingAnchor), host.trailingAnchor.constraint(equalTo: centre.trailingAnchor),
+                                     host.topAnchor.constraint(equalTo: centre.topAnchor), host.bottomAnchor.constraint(equalTo: centre.bottomAnchor)])
+        v2PageHost = host
+    }
     func v2OpenSearch(query: String) {
         if query.isEmpty { NSApp.sendAction(#selector(AppDelegate.showPalette(_:)), to: nil, from: nil) }
         else { (NSApp.delegate as? AppDelegate)?.showPalette(query: query) }
@@ -320,8 +352,15 @@ extension MainWindowController {
     /// interrupt), so it is never taken from it (0.5.2.9 behaviour wins; noted in the implementation notes).
     func v2InstallEscape() {
         v2EscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard let self, e.window === self.window, e.keyCode == 53, e.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
-                  self.win.focusStep == .focus else { return e }
+            guard let self, e.window === self.window else { return e }
+            let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
+            // A page (LAB-1084) owns Esc and ⌘[ while it shows: they close it before anything underneath sees them.
+            if self.v2Page != nil, !ShortcutsSettings.isRecording {
+                if e.keyCode == 53, mods.isEmpty, !(self.window?.firstResponder is NSTextView) { self.v2Page = nil; return nil }
+                if e.keyCode == 33, mods == .command { self.v2Page = nil; return nil }   // ⌘[
+            }
+            guard e.keyCode == 53, mods.isEmpty else { return e }
+            guard self.win.focusStep == .focus else { return e }
             if self.window?.firstResponder is TerminalSurfaceView { return e }
             self.v2LeaveFocus()
             return nil

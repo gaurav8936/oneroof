@@ -59,6 +59,21 @@ struct CheckTab: View {
             }
             Text("One Roof reads these and runs the workspace's own check scripts. It never copies skills, hooks or rules.")
                 .font(.caption).foregroundStyle(.secondary)
+            if model.settings.ui2 {   // B2, NEW-21: every fix in one terminal, one after another
+                // Red rows only (warnings are optional add-ons), and not a fix that starts a long-running process
+                // (the roofd daemon): with "; " each fix runs after the previous one ends, failures or not.
+                let fixes = model.foundations.filter { $0.level == .fail }.compactMap { r in r.fix.map { (r.title, $0) } }
+                    .filter { !$0.1.hasSuffix(" daemon") }
+                if fixes.count > 1 {
+                    HStack {
+                        Spacer()
+                        Button("Fix all \(fixes.count)") {
+                            model.runInTerminal(fixes.map { "echo '▶ \($0.0.replacingOccurrences(of: "'", with: ""))'; \($0.1)" }.joined(separator: "; "), title: "Fix all foundations")
+                        }
+                        .help("Runs each fix in one One Roof terminal, in order: " + fixes.map(\.1).joined(separator: " ; "))
+                    }
+                }
+            }
             ScrollView {
                 VStack(spacing: 6) {
                     ForEach(model.foundations) { r in
