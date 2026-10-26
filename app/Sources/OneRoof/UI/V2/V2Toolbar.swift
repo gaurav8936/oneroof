@@ -162,7 +162,7 @@ struct V2StepButton: View {
         .padding(.horizontal, 9).frame(height: 22)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(focus ? t.accent.color : t.surface.color))
         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(focus ? .clear : t.separator.color, lineWidth: 1))
-        .help("Focus ladder: step on ⌥⌘F, step back ⇧⌥⌘F, Esc leaves Focus. Press and hold for the four steps.")
+        .help(focus ? "Leave Focus (⌥⌘F). Press and hold for the four steps." : "Focus ladder: step on ⌥⌘F, step back ⇧⌥⌘F. Press and hold for the four steps.")
         .accessibilityLabel("Focus step: \(win.focusStep.title)")
     }
 }
