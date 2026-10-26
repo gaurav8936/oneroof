@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2.9 — Agentic Engineering cards play as animated explainers (25 Oct 2026)
+
+- **Every card in Learn is new** (LAB-918, from Agentic Engineering 0.2.0). Each of the 156 cards now plays as a short
+  animated explainer: one diagram per section, the step being narrated lights up, dots run along its arrows, and the
+  panel beside it shows the same words the voice says. Plain-language narration, a warmer voice, all offline.
+
 ## 0.5.2.8 — every Agentic Engineering card opens as a card (25 Oct 2026)
 
 - **No more raw text in Learn** (LAB-858). Four new cards (context-as-structure, handoff-read, weekly-review, cost-check)
