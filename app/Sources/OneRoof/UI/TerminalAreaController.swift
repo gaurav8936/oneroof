@@ -17,6 +17,8 @@ final class TerminalAreaController: NSViewController {
     private var refused: [String: Int] = [:]
     private var bag = Set<AnyCancellable>()
     private let body = PaneBody()
+    /// LAB-1239: the pane area scrolls when the Grid's rows do not fit (it is exactly the viewport otherwise).
+    private let scroll = PaneScrollView()
     private var shownAgent: String?
     private var findBar: NSHostingView<FindBar>?
     let find = FindState()
@@ -73,24 +75,37 @@ final class TerminalAreaController: NSViewController {
 
     required init?(coder: NSCoder) { fatalError("not supported") }
 
-    deinit { if let clickMonitor { NSEvent.removeMonitor(clickMonitor) } }
+    deinit {
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        foregroundTimer?.invalidate()
+    }
 
     override func loadView() {
         let root = NSView()
         root.wantsLayer = true
-        body.translatesAutoresizingMaskIntoConstraints = false
         body.wantsLayer = true
         body.onLayout = { [weak self] in self?.layoutPanes() }
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.horizontalScrollElasticity = .none
+        scroll.verticalScrollElasticity = .none
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
+        scroll.documentView = body
+        scroll.onTile = { [weak self] in self?.sizeBody() }
         column.translatesAutoresizingMaskIntoConstraints = false
         column.sizingOptions = []
-        root.addSubview(body)
+        root.addSubview(scroll)
         root.addSubview(column)
         columnWidth = column.widthAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
-            body.topAnchor.constraint(equalTo: root.topAnchor),
-            body.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            body.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            body.trailingAnchor.constraint(equalTo: column.leadingAnchor),
+            scroll.topAnchor.constraint(equalTo: root.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            scroll.trailingAnchor.constraint(equalTo: column.leadingAnchor),
             column.topAnchor.constraint(equalTo: root.topAnchor),
             column.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             column.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -119,6 +134,11 @@ final class TerminalAreaController: NSViewController {
         model.$decisions.combineLatest(model.$subagents).receive(on: DispatchQueue.main)
             .sink { [weak self] _, _ in self?.update() }
             .store(in: &bag)
+        // LAB-861: what each shown pane's keys go to, every 2 s (only while the window is on screen).
+        foregroundTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            self.pollForeground()
+        }
         NotificationCenter.default.addObserver(forName: .rawStream, object: nil, queue: .main) { [weak self] n in
             guard let self, (n.object as? String) == self.win.id else { return }
             self.raw.toggle()
@@ -201,7 +221,7 @@ final class TerminalAreaController: NSViewController {
             let pv: PaneView
             if let v = paneViews[leaf.id] { pv = v } else {
                 pv = PaneView()
-                if let findBar { body.addSubview(pv, positioned: .below, relativeTo: findBar) } else { body.addSubview(pv) }
+                body.addSubview(pv)
                 paneViews[leaf.id] = pv
             }
             let item = leaf.session.flatMap { model.item($0) }
@@ -210,6 +230,7 @@ final class TerminalAreaController: NSViewController {
             let expanded = summaryOverride[leaf.id] ?? tall
             let leafId = leaf.id
             let liveSurface = item.flatMap(\.liveAgent).map { !model.poppedOut.contains($0) && (refused[$0] ?? 0) < 2 } ?? false
+            let runningCmd = liveSurface ? item.flatMap { running[$0.id] } : nil
             pv.setTop(AnyView(PaneTop(model: model, item: item, focused: focused, split: multi, expanded: expanded, raw: raw,
                                       openChapter: openChapter[leafId],
                                       onToggleSummary: { [weak self] in self?.summaryOverride[leafId] = !expanded; self?.update() },
@@ -218,19 +239,28 @@ final class TerminalAreaController: NSViewController {
                                       onClose: { [weak self] in self?.closePane(leafId) },
                                       reading: reading.contains(leafId),
                                       onReading: liveSurface ? { [weak self] in self?.toggleReading(leafId) } : nil,
-                                      onNewTerminal: { [weak self] in self?.newTerminal(in: item?.session.repoPath) })))
+                                      onNewTerminal: { [weak self] in self?.newTerminal(in: item?.session.repoPath) },
+                                      running: runningCmd,
+                                      onStop: runningCmd == nil ? nil : { [weak self] in if let item { self?.stopForeground(item) } })))
             pv.layer?.borderWidth = multi && focused ? 1 : 0
             pv.layer?.borderColor = tokens.accent.nsColor.cgColor
             pv.layer?.backgroundColor = tokens.terminal.background.nsColor.cgColor
             if let item, let agent = item.liveAgent, !model.poppedOut.contains(agent), (refused[agent] ?? 0) >= 2 {
                 pv.setBottom(nil)
                 pv.setOverlay(nil)
+                pv.setFloat(nil)
                 pv.show(placeholder: AnyView(ShownElsewherePlaceholder(onShowHere: { [weak self] in self?.showHere(agent) }).themed(theme)))
             } else if let item, let agent = item.liveAgent, !model.poppedOut.contains(agent) {
                 let sv = surface(agent: agent, cwd: item.session.repoPath, theme: theme, size: pv.surfaceSize(fallback: body.bounds.size))
                 pv.show(surface: sv)
                 shown.insert(agent)
                 pv.setReading(reading.contains(leaf.id) ? ReadingText.prepare(sv.allText() ?? "") : nil, theme: theme)
+                // LAB-825: viewing an earlier step and not at the live bottom: a second way back, at the bottom.
+                if let open = openChapter[leafId], !raw, sv.atScrollBottom != true {
+                    pv.setFloat(AnyView(BackToCurrentPill { [weak self] in self?.toggleChapter(leafId, open, item) }.themed(theme)))
+                } else {
+                    pv.setFloat(nil)
+                }
                 if item.session.agent.isAgent {
                     let onRaw: () -> Void = { [weak self] in
                         guard let self else { return }
@@ -253,6 +283,7 @@ final class TerminalAreaController: NSViewController {
             } else {
                 pv.setBottom(nil)
                 pv.setOverlay(nil)
+                pv.setFloat(nil)
                 pv.setReading(nil, theme: theme)
                 pv.show(placeholder: AnyView(PanePlaceholder(item: item, model: model, emptyPane: multi && item == nil,
                                                              onNewTerminal: { [weak self] in self?.newTerminal(in: nil) }).themed(theme)))
@@ -266,6 +297,7 @@ final class TerminalAreaController: NSViewController {
             if s.superview !== body { s.removeFromSuperview(); body.addSubview(s, positioned: .below, relativeTo: nil) }
             s.isHidden = true
         }
+        sizeBody()
         body.needsLayout = true
 
         let agent = focusedAgent
@@ -282,30 +314,37 @@ final class TerminalAreaController: NSViewController {
         }
     }
 
-    /// Single ↔ Grid (handover A4, NEW-2). Grid: up to four live sessions of this window (six when it is 1440 pt wide or
-    /// more), the selected one first, in tiles; the focus ring, ⌥⌘arrows, split and close work as on panes. Single puts
-    /// your own panes back. Wall (all windows) arrives in 1.8.0.
+    /// Single ↔ Grid (handover A4, NEW-2; LAB-1239). Grid: every live session of this window (popped-out ones left out),
+    /// the selected one first, two tiles across and as many rows as they need; the area scrolls when the rows do not
+    /// fit (`GridMetrics`). The focus ring, ⌥⌘arrows (scrolling the tile into view), split and close work as on panes.
+    /// Single puts your own panes back. Wall is its own page (V2Wall).
     private func applyLayout(_ l: SessionLayout) {
         switch l {
         case .grid:
             guard singleTree == nil, model.settings.ui2 else { return }   // the classic window has no Grid
             pendingSave?.cancel()   // a save queued just before must not write the Grid over your panes
             singleTree = (tree, focusedPane)
-            let wide = (view.window?.frame.width ?? view.bounds.width) > 1440   // 2 × 2 up to 1440 pt, 3 × 2 wider (A4)
             var ids: [String] = []
             if let sel = win.selectedId, model.item(sel)?.liveAgent != nil { ids.append(sel) }
             let rank: (BoardItem) -> Int = { i in i.status == .needsYou ? 0 : i.status == .running ? 1 : 2 }
             for i in model.items(in: win).filter({ $0.liveAgent.map { !model.poppedOut.contains($0) } ?? false && !ids.contains($0.id) }).sorted(by: { rank($0) < rank($1) }) { ids.append(i.id) }
             zoomed = nil
-            tree = PaneNode.grid(ids.map { Optional($0) }, wide: wide)
+            tree = PaneNode.grid(ids.map { Optional($0) }, columns: GridMetrics.columns)
             focusedPane = tree.leaves.first?.id ?? focusedPane
             update()
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
         case .single, .wall:
             guard let s = singleTree else { return }
             singleTree = nil
             tree = s.tree; focusedPane = s.focused
             if let sel = win.selectedId, let leaf = tree.leafShowing(sel) { focusedPane = leaf.id }
+            // A session chosen in the Grid that your panes do not show fills the focused pane, as a pick in the column
+            // does (1.8.1 showed the old pane under the new session's name).
+            else if win.selectedId != nil { lastSelected = nil }
             update()
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
         }
     }
 
@@ -325,6 +364,8 @@ final class TerminalAreaController: NSViewController {
             terminalAction("scroll_to_bottom"); update(); return
         }
         openChapter[pane] = index
+        // LAB-825: the pill shows until the terminal reports its viewport back at the live bottom.
+        if let agent = item?.liveAgent { surfaces[agent]?.atScrollBottom = false }
         update()
         let chs = item.flatMap { model.chapters[$0.id] } ?? []
         guard let item, let ch = chs.first(where: { $0.index == index }) else { return }
@@ -378,6 +419,11 @@ final class TerminalAreaController: NSViewController {
         surface.onSearchTotal = { [weak self] n in self?.find.total = n }
         surface.onSearchSelected = { [weak self] n in self?.find.selected = n }
         surface.onOpenURL = { [weak self] url in self?.openLink(url) }
+        // LAB-825: the floating Back to current follows the viewport (only matters while a step is open).
+        surface.onScrollBottom = { [weak self] _ in
+            guard let self, !self.openChapter.isEmpty else { return }
+            self.update()
+        }
         model.wire(surface, agent: agent)
         // LAB-745: right-click › New Terminal Here / Split Right with New Terminal, in this session's folder.
         surface.onNewTerminal = { [weak self] split in
@@ -408,6 +454,31 @@ final class TerminalAreaController: NSViewController {
         return surface
     }
 
+    /// The pane area's size: the viewport, or taller in the Grid when its rows need more than the window has (LAB-1239).
+    private func sizeBody() {
+        let clip = scroll.contentView.bounds.size
+        var h = clip.height
+        if singleTree != nil, zoomed == nil {
+            h = GridMetrics.contentHeight(rows: tree.chainCount(sideBySide: false), viewport: clip.height, gap: 2)
+        }
+        let size = NSSize(width: clip.width, height: h)
+        if body.frame.size != size { body.setFrameSize(size); body.needsLayout = true }
+        scroll.verticalScrollElasticity = h > clip.height + 0.5 ? .automatic : .none
+    }
+
+    /// The Grid scrolls the focused tile into view (⌥⌘arrows, a click, a pick in the column).
+    private var scrolledTo: String?
+    private func scrollFocusedIntoView() {
+        guard singleTree != nil, zoomed == nil, scrolledTo != focusedPane, let pv = paneViews[focusedPane] else { return }
+        scrolledTo = focusedPane
+        let visible = scroll.contentView.bounds
+        guard body.frame.height > visible.height + 0.5 else { return }
+        let y = GridMetrics.scrollOffset(showing: pv.frame, visible: visible)
+        guard abs(y - visible.minY) > 0.5 else { return }
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: min(max(0, y), body.frame.height - visible.height)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+    }
+
     private func layoutPanes() {
         let r = body.bounds
         let multi = tree.leaves.count > 1
@@ -419,6 +490,7 @@ final class TerminalAreaController: NSViewController {
         }
         let (frames, dividers) = tree.layout(in: r, gap: multi ? 2 : 0)
         for (id, f) in frames { paneViews[id]?.frame = f; paneViews[id]?.isHidden = false }
+        if singleTree == nil { scrolledTo = nil } else { DispatchQueue.main.async { [weak self] in self?.scrollFocusedIntoView() } }
         while dividerViews.count < dividers.count {
             let d = PaneDividerView()
             d.onDrag = { [weak self] path, ratio in
@@ -435,6 +507,59 @@ final class TerminalAreaController: NSViewController {
             d.isHidden = false
             d.frame = dividers[i].sideBySide ? dividers[i].rect.insetBy(dx: -3, dy: 0) : dividers[i].rect.insetBy(dx: 0, dy: -3)
         }
+    }
+
+    // MARK: What the keys go to (LAB-861)
+
+    private var foregroundTimer: Timer?
+    private var polling = false
+    /// Session id → the command its pane's keys go to (nil = the shell or the session's agent).
+    private var running: [String: String] = [:]
+
+    /// Ask roofd for the foreground process group of each live pane on screen (off the main thread), and redraw the
+    /// headers only when one changed.
+    private func pollForeground() {
+        // On screen only (self-test windows are drawn off screen, so they skip the occlusion check).
+        guard !polling, let w = view.window, w.isVisible, w.occlusionState.contains(.visible) || SelfTest.isActive,
+              !view.isHiddenOrHasHiddenAncestor else { return }
+        let visible = scroll.contentView.bounds
+        let shown = zoomed.flatMap { z in tree.leaf(z).map { [$0] } } ?? tree.leaves
+        var targets: [(id: String, pane: String, agentShown: Bool)] = []
+        for leaf in shown {
+            guard let sid = leaf.session, let item = model.item(sid), let agent = item.liveAgent, let pane = item.paneId,
+                  !model.poppedOut.contains(agent), (refused[agent] ?? 0) < 2,
+                  zoomed != nil || paneViews[leaf.id].map({ $0.frame.intersects(visible) }) == true else { continue }
+            targets.append((sid, pane, item.session.agent.isAgent || item.agentInTerminal))
+        }
+        let ids = Set(targets.map(\.id))
+        if targets.isEmpty {
+            if !running.isEmpty { running = [:]; update() }
+            return
+        }
+        polling = true
+        let runtime = model.runtime
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var found: [String: String] = [:]
+            for t in targets {
+                guard let p = try? runtime.processes(pane: t.pane) else { continue }
+                if let cmd = ForegroundProgram.label(p, agentShown: t.agentShown) { found[t.id] = cmd }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.polling = false
+                // Panes not polled this time (scrolled away, closed) drop their marker.
+                let next = found.filter { ids.contains($0.key) }
+                if next != self.running { self.running = next; self.update() }
+            }
+        }
+    }
+
+    /// Stop: Ctrl-C to the pane, as if typed (the program decides; a server normally quits), then look again soon.
+    private func stopForeground(_ item: BoardItem) {
+        guard let pane = item.paneId else { return }
+        let runtime = model.runtime
+        DispatchQueue.global().async { try? runtime.keys(pane: pane, [.ctrlC]) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.pollForeground() }
     }
 
     // MARK: Wrap for reading (LAB-657)
@@ -555,10 +680,11 @@ final class TerminalAreaController: NSViewController {
                                                     onPrevious: { [weak self] in self?.terminalAction("navigate_search:previous") },
                                                     onClose: { [weak self] in self?.hideFind() }))
             h.translatesAutoresizingMaskIntoConstraints = false
-            body.addSubview(h, positioned: .above, relativeTo: nil)
+            // Over the scroll view, not in it: it stays put while a scrolled Grid moves (LAB-1239).
+            view.addSubview(h, positioned: .above, relativeTo: nil)
             NSLayoutConstraint.activate([
-                h.topAnchor.constraint(equalTo: body.topAnchor, constant: 8),
-                h.trailingAnchor.constraint(equalTo: body.trailingAnchor, constant: -16),
+                h.topAnchor.constraint(equalTo: scroll.topAnchor, constant: 8),
+                h.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -16),
             ])
             findBar = h
         }
@@ -603,6 +729,14 @@ final class TerminalAreaController: NSViewController {
     }
 }
 
+/// Holds the pane area (LAB-1239): reports each tile so the controller sizes the area to the viewport (or the Grid's
+/// taller rows). A wheel over a terminal scrolls that terminal; over a tile's header, Right now line or the scroller it
+/// scrolls the Grid.
+final class PaneScrollView: NSScrollView {
+    var onTile: (() -> Void)?
+    override func tile() { super.tile(); onTile?() }
+}
+
 /// The pane area: top-left origin (like `PaneNode.layout`), lays panes out by frame.
 final class PaneBody: NSView {
     var onLayout: (() -> Void)?
@@ -618,6 +752,8 @@ final class PaneView: NSView {
     /// Whether a point (in this view's coordinates) is in the bottom bar (the v2 composer).
     func bottomContains(_ p: NSPoint) -> Bool { bottom.map { !$0.isHidden && $0.frame.contains(p) } ?? false }
     private var overlay: NSHostingView<AnyView>?
+    /// LAB-825: a pill floating at the bottom centre of the terminal (Back to current).
+    private var float: NSHostingView<AnyView>?
     private var placeholder: NSHostingView<AnyView>?
     private var readingView: ReadingView?
     private let content = NSView()
@@ -656,6 +792,12 @@ final class PaneView: NSView {
     func setOverlay(_ view: AnyView?) {
         overlay = host(overlay, view)
         if let overlay { addSubview(overlay, positioned: .above, relativeTo: nil) }
+        needsLayout = true
+    }
+
+    func setFloat(_ view: AnyView?) {
+        float = host(float, view)
+        if let float, float.superview != nil, subviews.last !== float { addSubview(float, positioned: .above, relativeTo: nil) }
         needsLayout = true
     }
 
@@ -729,6 +871,12 @@ final class PaneView: NSView {
             // LAB-716: measured at the pane's width, so a question that wraps gets the rows it needs.
             let h = min(Self.height(of: overlay, width: w), content.frame.height)
             overlay.frame = NSRect(x: inset, y: content.frame.maxY - h, width: w, height: h)
+        }
+        if let float, !float.isHidden {
+            // Bottom centre of the terminal, above the approval card when one shows.
+            let s = float.fittingSize
+            let base = overlay.map { $0.isHidden ? content.frame.maxY : $0.frame.minY } ?? content.frame.maxY
+            float.frame = NSRect(x: inset + max(0, (w - s.width) / 2), y: max(content.frame.minY, base - s.height), width: min(s.width, w), height: s.height)
         }
     }
 }
@@ -852,3 +1000,4 @@ extension Notification.Name {
     /// A window is about to show a session's terminal (object: agent id, userInfo: win, force).
     static let releaseSurface = Notification.Name("oneroof.releaseSurface")
 }
+

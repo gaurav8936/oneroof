@@ -10,21 +10,33 @@ public struct PaneLeaf: Codable, Equatable, Sendable {
 }
 
 public indirect enum PaneNode: Codable, Equatable, Sendable {
-    /// Grid layout (handover A4.1, NEW-2): 2 × 2 tiles, or 3 × 2 on a wide window, filled with `sessions` in order
-    /// (nil = an empty tile). Rows split top / bottom, each row splits into equal columns.
-    public static func grid(_ sessions: [String?], wide: Bool) -> PaneNode {
-        let cols = wide ? 3 : 2
-        var cells = Array(sessions.prefix(cols * 2))
-        while cells.count < cols * 2 { cells.append(nil) }
-        func row(_ r: Int) -> PaneNode {
-            let leaves = (0..<cols).map { c in PaneNode.leaf(PaneLeaf(id: "grid-\(r * cols + c)", session: cells[r * cols + c])) }
-            // a | (b | c) with ratios that give equal columns
-            return leaves.dropLast().reversed().reduce(leaves.last!) { acc, l in
-                let n = Double(acc.leaves.count + 1)
-                return .split(sideBySide: true, ratio: 1 / n, l, acc)
-            }
+    /// Grid layout (handover A4.1, NEW-2; LAB-1239): always `columns` (2) tiles across and as many rows as the sessions
+    /// need, filled with `sessions` in order (nil = an empty tile; an odd count leaves the last tile empty, no sessions
+    /// = one row of two empty tiles). Rows split top / bottom in equal shares, each row splits into equal columns. When
+    /// the rows do not fit the window, the terminal area scrolls (`GridMetrics`).
+    public static func grid(_ sessions: [String?], columns: Int) -> PaneNode {
+        let cols = max(1, columns)
+        let rows = GridMetrics.rows(sessions: sessions.count, columns: cols)
+        var cells = Array(sessions.prefix(cols * rows))
+        while cells.count < cols * rows { cells.append(nil) }
+        let rowNodes = (0..<rows).map { r in
+            chain((0..<cols).map { c in PaneNode.leaf(PaneLeaf(id: "grid-\(r * cols + c)", session: cells[r * cols + c])) }, sideBySide: true)
         }
-        return .split(sideBySide: false, ratio: 0.5, row(0), row(1))
+        return chain(rowNodes, sideBySide: false)
+    }
+
+    /// `a | (b | (c …))` with ratios that give every node an equal share.
+    static func chain(_ nodes: [PaneNode], sideBySide: Bool) -> PaneNode {
+        nodes.dropLast().reversed().reduce(nodes.last!) { acc, n in
+            let k = Double(acc.chainCount(sideBySide: sideBySide) + 1)
+            return .split(sideBySide: sideBySide, ratio: 1 / k, n, acc)
+        }
+    }
+
+    /// How many nodes a chain along one axis holds (`a | (b | c)` = 3): for the Grid, its rows (`sideBySide: false`).
+    public func chainCount(sideBySide: Bool) -> Int {
+        if case .split(let s, _, _, let b) = self, s == sideBySide { return 1 + b.chainCount(sideBySide: sideBySide) }
+        return 1
     }
 
     case leaf(PaneLeaf)
