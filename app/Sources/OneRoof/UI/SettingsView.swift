@@ -405,12 +405,14 @@ struct SettingsView: View {
         return panel.runModal() == .OK ? panel.url?.path : nil
     }
 
-    /// Extra Learn folders: each folder's Markdown pages and narration folders appear in Learn.
+    /// Extra Learn folders: posts in them (`<folder>/<post>/index.md`) join Learn › Writing; in the classic window their
+    /// Markdown pages and narration folders are also Learn pages (LAB-1274: the v2 window has no Pages list).
     private var learnFoldersRow: some View {
         LabeledContent("Learn folders") {
             VStack(alignment: .leading, spacing: 4) {
                 if model.settings.learnFolders.isEmpty {
-                    Text("None. Add a folder of Markdown pages or narration (.mp3) folders.").font(.caption).foregroundStyle(.secondary)
+                    Text(model.settings.ui2 ? "None. Add a folder of posts (one folder per post, with an index.md) to read them in Learn › Writing."
+                         : "None. Add a folder of Markdown pages or narration (.mp3) folders.").font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(model.settings.learnFolders, id: \.self) { f in
                     HStack(spacing: 6) {
@@ -462,7 +464,7 @@ struct SettingsView: View {
         }
     }
 
-    /// Agentic engineering ships inside One Roof (LAB-768): the course, every skill and the narrated deck. No folder choice;
+    /// Agentic engineering ships inside One Roof (LAB-768): every skill and the narrated deck. No folder choice;
     /// ONEROOF_AE_PATH still overrides it for development, and the row says so when it does.
     private var aeRow: some View {
         let r = model.settings.agenticEngineering

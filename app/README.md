@@ -60,7 +60,7 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   themes), Agents (default account, model, extra arguments), Foundations (the projects folder, the agentic-engineering and shared
   folders One Roof reads from; it never copies them). Agentic engineering is the copy bundled with the app
   (`agentic_engineering/`: the linking script plus the deck, packaged from the deck's repository at main, with every
-  skill, the course and the hooks); `ONEROOF_AE_PATH` overrides it for development.
+  skill, card and the hooks); `ONEROOF_AE_PATH` overrides it for development.
 - **Stickers, colours and icons ("Apple meets terminal", I5).** Bold stickers with icons (Next, WIP, Important,
   Blocked, Review, Idea, Bug, Research, Shipped, Do not use, or any word of your own, which keeps its colour) that pop
   on a light or dark sidebar; a colour per row; an emoji or the agent's logo; pinned sessions on top; double-click a
@@ -103,10 +103,10 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   up to 0.5.1) classifies a task's kind in ~0.15 s. Rotation: a
   step whose seat is near its limit writes a handoff and continues on the next agent.
 
-- **Learn (⌘⇧E, I9).** The course (`course/NN-*.md`, narrated from `course/audio/<lesson>/`), the field manual and
-  narrated skill pages when the folder has them, every skill's `SKILL.md`, One Roof's Help and your extra Learn folders, browsable and
-  searchable inside One Roof, read where they live. Foundations ›
-  Skills has a Learn button per skill.
+- **Learn (⌘⇧E, I9).** The narrated Agentic Engineering deck in three views: Radio (bands, a dial, programmes),
+  Writing (posts) and All cards (by band, by kind, by folder), each card with its narration, transcript and skill file;
+  "How do I…?" opens the best card. Read where it lives. Foundations › Skills has a Learn button per skill. The course
+  and the Pages list were removed in 1.9.2 (LAB-1274); the classic window keeps its page list.
 
 - **Layout and navigation (owner round + terminal-app parity).** Title bar: Terminals · Launchpad · Board · Work · Learn and
   buttons to open or close every panel, the centre included (⌘⌥S / ⌘⌥B / ⌘⌥C / ⌘⌥P). Files, plans and docs open as tabs in a
@@ -132,7 +132,7 @@ Not yet (terminal-app parity, see 05_warp-parity.md): split panes, git diff pane
      gotchas (`docs/gotchas/`), plans and workspace check scripts. Default `<projects>/_common`. "Create it" makes an
      empty one; "Skip" leaves it out: handoffs, gotchas and the doors/MCP checks then stay quiet (amber, never a crash),
      and plans go to `~/Library/Application Support/One Roof/plans/`.
-   - **Agentic engineering:** the skills, routing rules and course bundled with the app, or your own folder with a
+   - **Agentic engineering:** the skills, cards and routing rules bundled with the app, or your own folder with a
      `skills/` tree.
    - **Required tools and agents:** git, then claude (with the signed-in email of each account), codex, kimi,
      gemini and agy, each found or not. Nothing here blocks Start.
