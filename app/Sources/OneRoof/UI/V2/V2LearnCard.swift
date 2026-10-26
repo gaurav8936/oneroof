@@ -373,13 +373,18 @@ struct LearnCardActions: View {
     @ObservedObject var nav: LearnNav
     @ObservedObject var player: CoursePlayer
     let audio: LearnAudio
+    /// Another card than the station's (All cards › By folder's panel, LAB-1253).
+    var card: String? = nil
+    /// Only "Use in a session ▾" (the panel draws its own Play and links).
+    var sessionOnly = false
     @State private var sessionsOpen = false
     @Environment(\.theme) private var t
 
     var body: some View {
-        let slug = nav.slug
+        let slug = card ?? nav.slug
         let here = audio.playingSlug == slug
         HStack(spacing: 6) {
+            if !sessionOnly {
             Button { audio.toggle(slug, scene: here ? player.index : nav.scene, then: audio.bandFrom(slug)) } label: {
                 HStack(spacing: 6) {
                     Image(systemName: here && player.playing ? "pause.fill" : "play.fill").font(.system(size: 9))
@@ -387,13 +392,16 @@ struct LearnCardActions: View {
                 }
             }
             .buttonStyle(LearnChipStyle())
+            }
             Button { sessionsOpen.toggle() } label: { Text("Use in a session ▾") }
                 .buttonStyle(LearnChipStyle())
                 .popover(isPresented: $sessionsOpen, arrowEdge: .bottom) { sessions(slug) }
+            if !sessionOnly {
             Button { NSWorkspace.shared.open(URL(fileURLWithPath: audio.deck.htmlPath(slug))) } label: {
                 HStack(spacing: 6) { Image(systemName: "safari").font(.system(size: 11)); Text("Open in browser") }
             }
             .buttonStyle(LearnChipStyle())
+            }
         }
     }
 

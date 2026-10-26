@@ -172,6 +172,7 @@ struct LearnPostReader: View {
 // MARK: - All cards · the map
 
 struct LearnLibraryPage: View {
+    @ObservedObject var model: AppModel
     @ObservedObject var nav: LearnNav
     @ObservedObject var player: CoursePlayer
     let audio: LearnAudio
@@ -218,22 +219,29 @@ struct LearnLibraryPage: View {
         let postHits = q.isEmpty ? [] : posts.filter { ([$0.title, $0.subtitle, $0.summary] + $0.tags).joined(separator: " ").lowercased().contains(lq) }
         let cols = columns
         let sel = cols.flatMap(\.blocks).first { $0.id == nav.libSel }
+        // LAB-1253: By folder lists the skills folder as packaged (search still lights the band map).
+        let folders = nav.lens == "folder" && q.isEmpty
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .bottom, spacing: 24) {
                 VStack(alignment: .leading, spacing: 0) {
                     LearnKicker(text: "All cards · The map")
                     Text(q.isEmpty ? "Everything, at a glance" : "\u{201C}\(q)\u{201D}").font(.system(size: 44, weight: .bold)).tracking(-1.3)
                         .foregroundStyle(t.text.color).padding(.top, 6).padding(.bottom, 4)
-                    Text(q.isEmpty ? "\(deck.count) cards. " + (nav.lens == "loop" ? "Grouped by when they matter in the work." : "Grouped by what kind of thing they are.")
+                    Text(q.isEmpty ? "\(deck.count) cards. " + (nav.lens == "loop" ? "Grouped by when they matter in the work."
+                                                               : nav.lens == "folder" ? "Laid out the way the skills folder is on disk." : "Grouped by what kind of thing they are.")
                          : "\(hits.count) of \(deck.count) cards light up · \(postHits.count) posts")
                         .font(.system(size: 14)).foregroundStyle(t.text2.color)
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 8) { lenses; legend }
+                VStack(alignment: .trailing, spacing: 8) { lenses; if !folders { legend } }
             }
-            reader(hits.count, q).padding(.top, 18)
-            HStack(alignment: .top, spacing: 24) { map(cols, hits, q).frame(maxWidth: .infinity); panel(sel, hits, postHits, q).frame(width: 380) }
-            .padding(.top, 16)
+            reader(hits.count, q, folders: folders).padding(.top, 18)
+            if folders {
+                LearnFolderView(model: model, nav: nav, player: player, audio: audio) { intro }.padding(.top, 16)
+            } else {
+                HStack(alignment: .top, spacing: 24) { map(cols, hits, q).frame(maxWidth: .infinity); panel(sel, hits, postHits, q).frame(width: 380) }
+                .padding(.top, 16)
+            }
         }
         .padding(.horizontal, 40).padding(.top, 28).padding(.bottom, 64)
         .frame(maxWidth: 1440, alignment: .leading)
@@ -241,7 +249,7 @@ struct LearnLibraryPage: View {
 
     private var lenses: some View {
         HStack(spacing: 2) {
-            ForEach([("loop", "By band"), ("kind", "By kind")], id: \.0) { id, label in
+            ForEach([("loop", "By band"), ("kind", "By kind"), ("folder", "By folder")], id: \.0) { id, label in
                 let on = nav.lens == id
                 Button { nav.lens = id; nav.libSel = nil } label: {
                     Text(label).font(.system(size: 12, weight: on ? .semibold : .regular)).foregroundStyle(t.text.color)
@@ -268,18 +276,21 @@ struct LearnLibraryPage: View {
         .font(.system(size: 11)).foregroundStyle(t.text2.color)
     }
 
-    private func reader(_ n: Int, _ q: String) -> some View {
+    private func reader(_ n: Int, _ q: String, folders: Bool = false) -> some View {
         let d = t.display
-        let hc = nav.hover.flatMap { audio.deck.cards[$0] }
+        // By folder (LAB-1253_3): the row under the pointer, else the card playing.
+        let hc = (nav.hover ?? (folders ? audio.playingSlug : nil)).flatMap { audio.deck.cards[$0] }
         let kick: String = {
-            guard let hc else { return q.isEmpty ? "HOVER A SQUARE" : "\(n) MATCHES LIT" }
+            guard let hc else { return folders ? "HOVER A ROW" : q.isEmpty ? "HOVER A SQUARE" : "\(n) MATCHES LIT" }
             let b = audio.deck.band(of: hc.slug)
             return "BAND \(b.n) · \((LearnDeck.trackNames[hc.track]?.name ?? hc.track).uppercased()) · \(LearnDeck.minutes(hc.estSeconds).uppercased())"
         }()
         return HStack(alignment: .firstTextBaseline, spacing: 14) {
             Text(kick).font(.system(size: 11, design: .monospaced)).tracking(0.6).foregroundStyle(d.accent.color)
-            Text(hc?.title ?? (q.isEmpty ? "Each square is one card" : "Everything else is dimmed")).font(.system(size: 14, weight: .semibold)).foregroundStyle(d.text.color)
-            Text(hc.map { $0.subtitle.isEmpty ? $0.description : $0.subtitle } ?? (q.isEmpty ? "Click a block to list it, click a square to open the card." : "Matches are listed on the right."))
+            Text(hc?.title ?? (folders ? "Each skill folder is one card" : q.isEmpty ? "Each square is one card" : "Everything else is dimmed")).font(.system(size: 14, weight: .semibold)).foregroundStyle(d.text.color)
+            Text(hc.map { $0.subtitle.isEmpty ? $0.description : $0.subtitle }
+                 ?? (folders ? "Click a folder to list it, click a file to read it, double-click a skill to open the card."
+                     : q.isEmpty ? "Click a block to list it, click a square to open the card." : "Matches are listed on the right."))
                 .font(.system(size: 13)).foregroundStyle(d.mute.color).lineLimit(1)
             Spacer(minLength: 0)
         }
@@ -368,7 +379,7 @@ struct LearnLibraryPage: View {
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
     }
 
-    private var intro: some View {
+    var intro: some View {
         VStack(alignment: .leading, spacing: 0) {
             LearnKicker(text: "How the map reads", color: t.text3.color, size: 10)
             Text("Every square is one card. Columns are the four bands of the dial, in the order work happens. Each block inside answers one question in plain words; the small grey name is the track it ships under.")
