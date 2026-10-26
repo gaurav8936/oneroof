@@ -18,7 +18,7 @@ final class BlogHubTests: XCTestCase {
     <div class="bl-chart" data-spec="{&#x22;kind&#x22;:&#x22;kpis&#x22;,&#x22;title&#x22;:&#x22;One engineer · 48 hours&#x22;,&#x22;sub&#x22;:&#x22;tmp/<project>/&#x22;}"><p class="bl-stepdiagram-loading">One engineer · 48 hours</p></div>
     <aside class="bl-callout" data-kind="note">
     <p class="bl-callout-title">What "landed" means</p>
-    <p>A commit counts once it is on <code>ganarasi/live</code>.</p>
+    <p>A commit counts once it is on <code>team/live</code>.</p>
     </aside>
     <p>The <a href="/blog/agentic-engineering">first post</a> said <em>why</em>; see <a href="/about">about</a> &amp; <strong>One Roof </strong>today.</p>
     <h2 id="self-hosting">Self-hosting: the IDE<a href="#self-hosting" class="bl-anchor" aria-label="Link to this section">#</a></h2>
@@ -76,7 +76,7 @@ final class BlogHubTests: XCTestCase {
         XCTAssertTrue(md.contains("*Diagram: The self-hosting loop. Drawn on the web version"))
         XCTAssertFalse(md.contains("<project>"))
         // Callout → quote with its title in bold.
-        XCTAssertTrue(md.contains("> **What \"landed\" means**\n>\n> A commit counts once it is on `ganarasi/live`."), md)
+        XCTAssertTrue(md.contains("> **What \"landed\" means**\n>\n> A commit counts once it is on `team/live`."), md)
         // Links: post links stay /blog/ (the reader opens them in place); other site paths get the hub's address.
         XCTAssertTrue(md.contains("The [first post](/blog/agentic-engineering) said *why*; see [about](https://hub.test/about) \\& **One Roof** today."), md)
         // Headings lose the anchor link.
