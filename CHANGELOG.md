@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.1 — the places, part 2, in the new window (26 Oct 2026)
+
+- **Needs you** (still behind the new-window setting): the card's button says **Always allow this** (the tooltip says
+  what it allows and where), the count sits by the title, and a line under the buttons lists the keys.
+- **Objectives:** **Send all to** puts every step of a plan on one seat this Mac has (each step's pickers still change
+  it; the router's Route all steps stays).
+- **Board** groups by Status, Agent or Project; **Loops** rows show each loop's trigger, limits and repo, where it
+  stands, its last checks and its state.
+- With the setting off, nothing changes.
+
 ## 1.4.0 — the places, part 1, in the new window (26 Oct 2026)
 
 - **Places redrawn** (LAB-973, milestone 4 of the new window; still off by default): Home, Needs you, Work, Machine

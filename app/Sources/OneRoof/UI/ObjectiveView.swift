@@ -56,6 +56,12 @@ struct NewObjectiveSheet: View {
 
 /// The objective in the centre: its plan as editable step cards, approve, and live progress.
 struct ObjectiveView: View {
+    /// Seats for Send all to: this Mac's Claude accounts, then every other agent (as the per-step pickers offer).
+    struct Seat: Hashable { var agent: AgentKind; var account: String?; var label: String { account ?? agent.displayName } }
+    static var seatChoices: [Seat] {
+        AccountResolver.choices(for: .claude).map { Seat(agent: .claude, account: $0) }
+            + AgentKind.allCases.filter { $0.isAgent && $0 != .claude }.map { Seat(agent: $0, account: nil) }
+    }
     @ObservedObject var model: AppModel
     @Environment(\.colorScheme) private var scheme
     var t: ThemeTokens { model.themes.centre.tokens }
@@ -106,6 +112,21 @@ struct ObjectiveView: View {
                 Button { model.openInViewer(o.planPath(common: model.settings.sharedFolder)) } label: {
                     Label("Plan file", systemImage: "doc.text")
                 }.disabled(o.plan == nil)
+                if model.settings.ui2, let plan = o.plan, o.status == .review || o.status == .draft {
+                    // D1.2: every step to one seat this Mac has (the router's "Route all steps" below picks per step).
+                    Menu("Send all to") {
+                        ForEach(Self.seatChoices, id: \.self) { seat in
+                            Button(seat.label) {
+                                var x = o   // one save for every step (updateStep per step would keep only the last)
+                                x.plan?.steps = plan.steps.map { var st = $0
+                                    if st.agentKind != seat.agent { st.model = nil }   // keep a typed model when the agent stays
+                                    st.agent = seat.agent.rawValue; st.account = seat.account; return st }
+                                model.saveObjective(x)
+                            }
+                        }
+                    }
+                    .fixedSize().help("Send every step to one seat; each step's own pickers still change it")
+                }
                 Menu {
                     Button("Re-plan (new planner session)") { model.startPlanner(o) }
                     Button("Reload plan from file") { model.reloadPlan(o) }
