@@ -450,7 +450,9 @@ final class CentreController: NSViewController {
         root.wantsLayer = true
         // The strip is as tall as it draws: 30 pt while a file is open, nothing otherwise.
         let m = model, w = win
-        let strip = NSHostingView(rootView: AnyView(CentreThemed(model: m, win: w) { CentreTabStrip(model: m, win: w) }))
+        // v2: the session tabs (Terminal · Files · Changes · Subagents); file tabs live inside Files (A2.0).
+        let strip = v2 ? NSHostingView(rootView: AnyView(CentreThemed(model: m, win: w) { V2SessionTabs(model: m, win: w) }))
+                       : NSHostingView(rootView: AnyView(CentreThemed(model: m, win: w) { CentreTabStrip(model: m, win: w) }))
         strip.sizingOptions = [.intrinsicContentSize]
         for v in [strip, content] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
@@ -482,6 +484,11 @@ final class CentreController: NSViewController {
             hint.translatesAutoresizingMaskIntoConstraints = false
             card.addSubview(hint)
             NSLayoutConstraint.activate([hint.centerXAnchor.constraint(equalTo: card.centerXAnchor), hint.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -48)])
+            let toast = NSHostingView(rootView: AnyView(V2UndoToastSlot(model: m, windowId: w.id).themed(m.themes.centre, scale: 1)))
+            toast.sizingOptions = [.intrinsicContentSize]
+            toast.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(toast)
+            NSLayoutConstraint.activate([toast.centerXAnchor.constraint(equalTo: card.centerXAnchor), toast.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -84)])
             cardFrame = card
             hosts[.workspace] = card
         } else {
@@ -510,11 +517,13 @@ final class CentreController: NSViewController {
         case .resources: v = AnyView(CentreThemed(model: m, win: w) { ResourcesView(model: m, win: w) })
         case .board: v = AnyView(CentreThemed(model: m, win: w) { BoardView(model: m, win: w) })
         case .decisions: v = AnyView(CentreThemed(model: m, win: w) { DecisionsView(model: m, win: w) })
-        case .subagents: v = AnyView(CentreThemed(model: m, win: w) { SubagentTraceView(model: m, win: w) })
+        case .subagents: v = v2 ? AnyView(CentreThemed(model: m, win: w) { V2SubagentsHost(model: m, win: w) })
+                                : AnyView(CentreThemed(model: m, win: w) { SubagentTraceView(model: m, win: w) })
         case .work: v = AnyView(CentreThemed(model: m, win: w) { WorkView(model: m) })
         case .learn: v = AnyView(CentreThemed(model: m, win: w) { LearnView(model: m) })
         case .objective: v = AnyView(CentreThemed(model: m, win: w) { ObjectiveView(model: m) })
-        case .editor: v = AnyView(CentreThemed(model: m, win: w) { EditorView(model: m, win: w) })
+        case .editor: v = v2 ? AnyView(CentreThemed(model: m, win: w) { V2FilesTab(model: m, win: w) })
+                             : AnyView(CentreThemed(model: m, win: w) { EditorView(model: m, win: w) })
         case .review: v = AnyView(CentreThemed(model: m, win: w) { ReviewChangesView(model: m, win: w) })
         case .loops: v = AnyView(CentreThemed(model: m, win: w) { LoopsView(model: m, win: w) })
         }

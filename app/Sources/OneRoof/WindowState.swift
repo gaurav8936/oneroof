@@ -54,6 +54,8 @@ final class WindowState: ObservableObject, Identifiable {
     @Published var reviewRepo: String?
     /// The subagent the trace focuses on, "<session>/<subagent>".
     @Published var traceFocus: String?
+    /// v2 Subagents tab: true = the trace (Trace ▸ / Whole trace ▸), false = the cards.
+    @Published var v2Trace = false
     @Published var filter = ""
     /// Count-chip filter in the Sessions panel.
     @Published var statusFilter: StatusChip?

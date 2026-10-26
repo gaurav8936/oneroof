@@ -19,6 +19,7 @@ while IFS=$'\t' read -r code vars; do
   [ -z "$code" ] || [ "${code:0:1}" = "#" ] && continue
   [ $# -gt 0 ] && [[ "$want" != *" $code "* ]] && continue
   name="ui2-${code//./_}"
+  vars="${vars//@REPO@/$(cd .. && pwd)}"   # file paths in the list are relative to the repo root
   # shellcheck disable=SC2086
   bash scripts/selftest-shot.sh "$name" ONEROOF_SELFTEST_UI2=1 $vars >/dev/null 2>&1
   shot="$(ls "$UI2_SHOTS"/*-"${code//./_}".jpg 2>/dev/null | head -1)"

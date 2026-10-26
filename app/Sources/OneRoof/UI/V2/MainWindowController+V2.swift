@@ -94,14 +94,17 @@ extension MainWindowController {
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
             .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.v2PaintBand() }.store(in: &v2Bag)
         v2InstallEscape()
+        // The session tabs' Wrap: read the focused pane's text re-wrapped (LAB-657), in this window only.
+        NotificationCenter.default.publisher(for: V2SessionTabs.wrap).receive(on: DispatchQueue.main).sink { [weak self] n in
+            guard let self, n.object as? String == self.win.id else { return }
+            self.terminalArea.toggleReading(self.terminalArea.focusedPane)
+        }.store(in: &v2Bag)
         DispatchQueue.main.async { [weak self] in self?.v2ApplyLayout(animated: false) }
     }
 
-    /// The place follows the centre inside WindowState. The Editor still opens the file tree beside it, as in 0.5.2.9
-    /// (until the Files session tab takes over in 1.2.0), and folds it again when you leave.
+    /// The place follows the centre inside WindowState. Since 1.2.0 the Files session tab holds the file tree, so the
+    /// Editor no longer opens the separate Files panel (⌥⌘B still toggles it).
     func v2CentreChanged(_ c: CentreView) {
-        if c == .editor, filesItemRef.isCollapsed { filesItemRef.animator().isCollapsed = false; v2FilesOpenedByEditor = true }
-        else if c != .editor, v2FilesOpenedByEditor { filesItemRef.animator().isCollapsed = true; v2FilesOpenedByEditor = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.v2PaintBand() }
     }
 

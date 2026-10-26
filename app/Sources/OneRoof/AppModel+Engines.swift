@@ -212,6 +212,8 @@ extension Notification.Name {
     static let rawStream = Notification.Name("oneroof.rawStream")
     static let askAboutSelection = Notification.Name("oneroof.askAboutSelection")
     static let saveFile = Notification.Name("oneroof.saveFile")
+    /// v2 Split editor ⌘\ (CAP-18), object = window id.
+    static let v2SplitEditor = Notification.Name("oneroof.v2.splitEditor")
 }
 
 extension AppModel {
