@@ -235,6 +235,9 @@ enum SelfTest {
         if env["ONEROOF_SELFTEST_SHEET"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.main.newSession() }
         }
+        // SHEET=objective / workitem opens New objective (⇧⌘O) / New work item (⌃⌘N) instead.
+        if env["ONEROOF_SELFTEST_SHEET"] == "objective" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.main.newObjective() } }
+        if env["ONEROOF_SELFTEST_SHEET"] == "workitem" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.newWorkItem(nil) } }
         let out = env["ONEROOF_SELFTEST_OUT"]
         let target = env["ONEROOF_SELFTEST_SELECT"]
         let wait = Double(env["ONEROOF_SELFTEST_WAIT"] ?? "") ?? 2.5
