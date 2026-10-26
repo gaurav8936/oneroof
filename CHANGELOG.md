@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 — Settings, Help and Setup in the new window (26 Oct 2026)
+
+- **Settings, Help and Release notes open as pages** over the place you are in (LAB-997, milestone 5 of the new
+  window; still off by default). The rail stays; Esc, ⌘[ or ‹ Back returns.
+- **Settings has nine panes:** General, Appearance, Seats & accounts, Notifications, On-device model, Foundations,
+  Learn, Shortcuts and **Updates** (this version, roofd, release notes, and Check now, which opens the download page).
+  Every setting from before is in one of them.
+- **Classic layout** (Settings › General) switches back to the 0.5.2.9 window after a restart, and **Use the new
+  window…** in the classic window's Settings switches again.
+- **Done when required** (off by default): New session waits for a Done when.
+- **Foundations › Fix all** runs every failing check's fix in one terminal, one after another.
+- **Setup** comes in three steps (agents; folders and tools; kit, look and Linear) and ends with Open One Roof.
 ## 1.4.1 — the places, part 2, in the new window (26 Oct 2026)
 
 - **Needs you** (still behind the new-window setting): the card's button says **Always allow this** (the tooltip says

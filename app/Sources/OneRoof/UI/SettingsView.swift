@@ -9,8 +9,134 @@ struct SettingsView: View {
     /// What macOS says about One Roof's notifications (LAB-197).
     @State private var noteStatus = ""
     @State private var notePermission: NotePermissionStatus = .notAsked
+    /// v2 Settings page (B1.x): one of the nine panes, drawn without the tab bar; nil = the 0.5 window.
+    var v2Pane: Int? = nil
 
     var body: some View {
+        if let p = v2Pane { v2Content(p) } else { tabs05 }
+    }
+
+    /// The nine panes (B1.x, LAB-1084 order): every 0.5 setting is in one of them.
+    static let v2Panes = ["General", "Appearance", "Seats & accounts", "Notifications", "On-device model", "Foundations", "Learn", "Shortcuts", "Updates"]
+
+    @ViewBuilder private func v2Content(_ p: Int) -> some View {
+        switch p {
+        case 0: v2General
+        case 1: appearance
+        case 2: agents
+        case 3: Form { notifications }.formStyle(.grouped)
+        case 4: v2Model
+        case 5: v2Foundations
+        case 6: Form { aeRow; learnFoldersRow }.formStyle(.grouped)
+        case 7: ShortcutsSettings(model: model)
+        default: v2Updates
+        }
+    }
+
+    private var v2General: some View {
+        Form {
+            Section("Start") {
+                LabeledContent("Start folder") {
+                    Text(model.settings.projectsFolder.replacingOccurrences(of: NSHomeDirectory(), with: "~")).textSelection(.enabled)
+                }
+                Text("Agents start here. Change it in Settings › Foundations. A session can start in its repo instead (New session › Start in).")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Check the foundations every time One Roof starts", isOn: $model.settings.startupCheck)
+                Text("Checks roofd (the session manager), agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Show sessions that need you on the Dock icon", isOn: $model.settings.dockBadge)
+                LabeledContent("Sessions") { Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .green : .red) }
+            }
+            Section("New sessions") {
+                Toggle("Done when required", isOn: $model.settings.doneWhenRequired)
+                Text("When on, New session can't launch without a Done when. Off keeps it optional.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Step review: Claude reads each finished step", isOn: $model.settings.stepReview)
+                Text("Shown in the Plan panel (also switched there). Each step it reviews is one Claude (\(StepExplainer.model)) call on your Claude account, so it is off by default.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("In the background") {
+                Toggle("Allow scheduled runs (Tonight, Nightly)", isOn: $model.settings.scheduledRuns)
+                Text("roofd starts Tonight, Nightly and repeating sessions on time, with One Roof open or closed. Off, they run only while One Roof is open. Nothing is merged or committed on its own.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Menu-bar extra", isOn: $model.settings.menuBarExtra)
+            }
+            Section("Layout · 1.x") {
+                LabeledContent("Classic layout") {
+                    Button("Use the classic window…") { Self.switchToClassic(model) }
+                }
+                Text("The 0.5.2.9 window, as a fallback while the new one settles. One Roof quits to switch; open it again and it starts in the classic window.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    /// Classic layout (NEW-28): ui2 is read when a window is built, so switching needs a fresh start; ask, save, quit.
+    static func switchToClassic(_ model: AppModel) {
+        let a = NSAlert()
+        a.messageText = "Switch to the classic window?"
+        a.informativeText = "One Roof quits now. Open it again and it starts in the 0.5.2.9 window. Your sessions keep running in roofd."
+        a.addButton(withTitle: "Quit and Switch"); a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        model.settings.ui2 = false
+        Prefs.defaults.synchronize()   // the settings didSet already wrote it
+        NSApp.terminate(nil)
+    }
+
+    /// From the classic window to the One Roof 1 window: the layout is chosen when a window is built, so quit.
+    static func switchToNew(_ model: AppModel) {
+        let a = NSAlert()
+        a.messageText = "Switch to the new window?"
+        a.informativeText = "One Roof quits now. Open it again and it starts in the One Roof 1 window. Settings › General › Classic layout brings this one back. Your sessions keep running in roofd."
+        a.addButton(withTitle: "Quit and Switch"); a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        model.settings.ui2 = true
+        Prefs.defaults.synchronize()
+        NSApp.terminate(nil)
+    }
+
+    private var v2Model: some View {
+        Form {
+            Toggle("Use the on-device model for captions and reasons", isOn: $model.settings.captionsModel)
+            Text("When llama-server runs on 127.0.0.1:\(LocalModel.port), One Roof asks it for one-line captions. Off, or when it is not running, captions come from the terminal (tool calls, test counts, prompts). Nothing leaves this Mac.")
+                .font(.caption).foregroundStyle(.secondary)
+            modelRow
+        }
+        .formStyle(.grouped)
+    }
+
+    private var v2Foundations: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("The startup check, skills, hooks and memory live in the Foundations window.").font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button("Open Foundations ⇧⌘F") { NSApp.sendAction(#selector(AppDelegate.showFoundations(_:)), to: nil, from: nil) }
+            }
+            .padding(.horizontal, 20).padding(.top, 14)
+            foundations
+        }
+    }
+
+    private var v2Updates: some View {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return Form {
+            Section("This Mac") {
+                LabeledContent("One Roof") { Text("\(v) (build \(b))").textSelection(.enabled) }
+                LabeledContent("roofd") { Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .primary : Color.red) }
+                HStack {
+                    Button("Release notes") { NSApp.sendAction(#selector(AppDelegate.openReleaseNotes(_:)), to: nil, from: nil) }
+                    Button("Check now") { NSWorkspace.shared.open(URL(string: "https://github.com/gaurav8936/oneroof/releases/latest")!) }
+                }
+            }
+            Text("One Roof has no updater yet: new versions install from the download page (Check now opens it). The beta / release channel arrives with the updater.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+    }
+
+    private var tabs05: some View {
         TabView(selection: $tab) {
             general.tabItem { Label("General", systemImage: "gearshape") }.tag(0)
             appearance.tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(1)
@@ -38,6 +164,8 @@ struct SettingsView: View {
             LabeledContent("Sessions") {
                 Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .green : .red)
             }
+            // The way back from Classic layout (1.x): the new window, after a restart.
+            LabeledContent("Window") { Button("Use the new window…") { Self.switchToNew(model) } }
         }
         .formStyle(.grouped)
     }

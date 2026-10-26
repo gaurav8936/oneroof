@@ -205,6 +205,10 @@ enum SelfTest {
                     .write(toFile: out, atomically: true, encoding: .utf8)
             }
         }
+        // PAGE=help / notes opens the v2 Help or Release notes page (B4.1, B4.2).
+        if let pg = env["ONEROOF_SELFTEST_PAGE"], app.model.settings.ui2 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.main.v2ShowPage(pg == "notes" ? "Release notes" : "Help") }
+        }
         if env["ONEROOF_SELFTEST_SETTINGS"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 app.showSettings(nil)
@@ -348,6 +352,7 @@ enum SelfTest {
              "live": i.liveAgent ?? "", "adopted": i.adopted ? "yes" : "no"]
         }
         let meta: [String: Any] = ["rows": rows, "runtime": app.model.runtimeState, "selected": app.model.selectedId ?? "",
+                                   "firstResponder": app.main.window?.firstResponder.map { String(describing: Swift.type(of: $0)) } ?? "-",
                                    "themes": [app.model.themes.sidebar.rawValue, app.model.themes.terminal.rawValue, app.model.themes.plan.rawValue],
                                    "grouping": app.model.grouping.rawValue, "error": app.model.lastError ?? "",
                                    "conversations": { () -> String in
