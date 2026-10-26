@@ -129,7 +129,7 @@ struct NewSessionSheet: View {
             section {
                 HStack(alignment: .top, spacing: 14) {
                     // LAB-639: say what Done when is for and what it does not do.
-                    labelled("Done when · optional") {
+                    labelled(doneWhenNeeded ? "Done when · required" : "Done when · optional") {
                         box($doneWhen, minHeight: 64, placeholder: "What finished looks like, e.g. \"tests pass and the feed shows newest first\"")
                             .onChange(of: doneWhen) { _, _ in refreshOpening() }
                         Text(mark == .shell ? "Kept with the session and shown in its Plan panel."
@@ -442,6 +442,7 @@ struct NewSessionSheet: View {
     private var blockedReason: String? {
         guard !valid else { return nil }
         if text.trimmingCharacters(in: .whitespaces).isEmpty && useTicket == nil { return nil }
+        if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Say when it's done (Settings › General › Done when required)" }
         if model.linearLoading { return "Loading teams and projects from Linear…" }
         if linked && needsTeam && teamKey.isEmpty { return kind == .workstream ? "Pick a team (top right) for the project" : "Pick a team (top right) to file the ticket in" }
         if kind == .workstream && !codeOK { return "The code looks like TEAM-TOPIC or TEAM-TOPIC-01" }
@@ -762,8 +763,12 @@ struct NewSessionSheet: View {
         }
     }
 
+    /// Settings › General › Done when required (v2 only; off keeps 0.5's optional Done when).
+    private var doneWhenNeeded: Bool { model.settings.ui2 && model.settings.doneWhenRequired }
+
     private var valid: Bool {
         let has = !text.trimmingCharacters(in: .whitespaces).isEmpty || useTicket != nil
+        if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }   // NEW-30
         if (kind == .ticket || kind == .defect) && useTicket == nil { return has && (linked ? !teamKey.isEmpty : currentWorkstream != nil) }
         if kind == .workstream && linked { return has && !teamKey.isEmpty && codeOK }
         return has

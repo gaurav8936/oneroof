@@ -5,6 +5,8 @@ import OneRoofCore
 /// Settings › Shortcuts: change any menu shortcut, and set a global shortcut that shows or hides
 /// One Roof from any app. Press Record, then the new keys; Esc cancels. Duplicates are refused.
 struct ShortcutsSettings: View {
+    /// True while a shortcut is being recorded, so the v2 page's Esc / ⌘[ leave the key to the recorder.
+    nonisolated(unsafe) static var isRecording = false
     @ObservedObject var model: AppModel
     @State private var recording: String?      // menu item title, or Self.global
     @State private var monitor: Any?
@@ -68,6 +70,7 @@ struct ShortcutsSettings: View {
     private func record(_ title: String) {
         stop()
         recording = title
+        Self.isRecording = true
         message = nil
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
             guard let s = ShortcutBridge.shortcut(of: e) else { return e }
@@ -96,5 +99,6 @@ struct ShortcutsSettings: View {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         recording = nil
+        Self.isRecording = false
     }
 }
