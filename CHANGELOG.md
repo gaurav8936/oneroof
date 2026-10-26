@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.0 — Looks, Search and the row menu in the new window (26 Oct 2026)
+
+- **Looks** (LAB-962, milestone 3 of the new window; still off by default): Settings › Appearance opens on six looks —
+  Sky Studio, Mint Garden, Lavender Dusk, Peach Paper, Daylight, Midnight — each setting every panel at once.
+  Customize each panel… keeps today's per-panel grid; text size, Follow macOS, row colours, sticker style and the
+  window's colour sit below.
+- **Search ⌘K** groups what it finds by source (views, actions, windows, decisions, Roof windows, looks, sessions,
+  objectives, projects, the selected repo's files, skills, Learn) with Learn's best answer first and "Show all n" under a
+  long group. **⌘↩ sends what you typed to the selected session.**
+- **Right-click a session** for Rename…, Schedule, Interrupt, Send Handoff and a Copy menu too; the menu ends Close
+  Agent… · Delete · Remove Exited Sessions….
+- **Find in Workspace ⇧⌘S** fills the centre on its own, and Markdown, HTML, folder and search pages follow the window's
+  look instead of the terminal's colours.
+- With the setting off, nothing changes.
+
 ## 1.2.0 — session tabs and the Plan inspector in the new window (26 Oct 2026)
 
 - **Session tabs** (LAB-929, milestone 2 of the new window; still off by default): Terminal · Files · Changes · Subagents
