@@ -43,6 +43,12 @@ enum SelfTest {
         if app.model.settings.ui2, let p = env["ONEROOF_SELFTEST_PLACE"], let place = Place(rawValue: p) { app.model.active.open(place) }
         if let l = env["ONEROOF_SELFTEST_LAYOUT"], let layout = SessionLayout(rawValue: l) { app.model.active.layout = layout }
         if let f = Int(env["ONEROOF_SELFTEST_FOCUS"] ?? ""), let step = FocusStep(rawValue: f) { app.model.active.focusStep = step }
+        // SELECTFIRST=1 selects the window's first session (demo ids are random) so the Plan and session tabs have one.
+        if env["ONEROOF_SELFTEST_SELECTFIRST"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                if let first = app.model.items(in: app.model.active).first { app.model.active.selectedId = first.id }
+            }
+        }
         // V2PLAN=1 slides the Plan over the terminal (C7.1); V2EDGE=1 reveals the session column at Focus (C7.2).
         if env["ONEROOF_SELFTEST_V2PLAN"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.main.v2ShowPlanOverlay() } }
         if env["ONEROOF_SELFTEST_V2EDGE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.main.v2ShowEdgeReveal() } }

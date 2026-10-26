@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 — session tabs and the Plan inspector in the new window (26 Oct 2026)
+
+- **Session tabs** (LAB-929, milestone 2 of the new window; still off by default): Terminal · Files · Changes · Subagents
+  · + Terminal above the terminal card, with Split ⌘D · Raw ⌘R · Wrap on the right.
+- **Files** is the session's file tree beside the editor, with the open files as tabs (unsaved files keep their dot).
+  Every editor feature stays: Outline · Problems · Git, Ask ⌘I, the claim banner, the Run dock, Markdown and HTML preview.
+  **Split editor ⌘\** now shows a second open file beside the one you edit (for reading; open its tab to edit it).
+- **Changes** is Review changes for the session's repo, plus **Ask the agent to commit** (it never pushes) and
+  **Discard…**, which asks first and only restores files the last commit has; new, renamed and binary files are kept.
+- **Subagents** shows a card per subagent (asked, doing or done, model, tokens, age) and the files they touched;
+  Trace ▸ and Whole trace ▸ open today's trace, ‹ Subagents goes back.
+- **The Plan inspector** has one row of text tabs: Plan · Ticket · Notes · Files · Usage.
+- **Always allow** on a terminal's approval card shows Undo for 5 seconds, as in Needs you.
+- With the setting off, nothing changes.
+
 ## 1.1.0 — the new window's shell, behind a setting (26 Oct 2026)
 
 - **The One Roof 1 window, part 1** (LAB-929, milestone 1 of the new window; still off by default). With the new-window

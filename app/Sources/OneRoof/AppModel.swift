@@ -69,6 +69,8 @@ final class AppModel: ObservableObject {
     @Published var workstreams: [LinearWorkstream] = []
     /// Usage windows per seat (Claude1, Claude2, Codex), refreshed every 30 s.
     @Published var seats: [SeatUsage] = []
+    /// v2 (CAP-26): the rule just learned from Always allow on a terminal's approval card, offered for Undo for 5 s.
+    @Published var v2UndoRule: (decision: Decision, window: String)? = nil
     /// Objectives typed by the owner, with their plans.
     @Published var objectives: [Objective] = []
     @Published var issues: [String: [LinearIssue]] = [:]     // project id → tickets
