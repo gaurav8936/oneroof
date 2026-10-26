@@ -116,10 +116,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             c.window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
-        if w.id == model.windows.first?.id, ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_CENTRE"] == nil, !SelfTest.isActive,
+        if w.id == model.windows.first?.id, ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_CENTRE"] == nil, !SelfTest.isActive || Prefs.seeded,
            Prefs.defaults.object(forKey: "v2.firstLaunch") == nil {
             // First v2 launch opens on Overview (S00 L0).
-            Prefs.defaults.set(true, forKey: "v2.firstLaunch")
+            if !SelfTest.isActive { Prefs.defaults.set(true, forKey: "v2.firstLaunch") }
             w.centre = .overview
         }
         return c
@@ -806,7 +806,7 @@ extension AppDelegate: NSMenuItemValidation {
         case #selector(interruptSelected(_:)), #selector(sendHandoff(_:)), #selector(copySessionId(_:)):
             return model.selected?.liveAgent != nil
         case #selector(reviewChanges(_:)):
-            return GitDiff.repoRoot(for: model.selected?.session.repoPath ?? Workspace.projectsRoot) != nil
+            return GitDiff.repoRoot(for: model.selected.map { model.workRepo($0) } ?? Workspace.projectsRoot) != nil
         case #selector(debugFile(_:)):
             return model.centre == .editor
         case #selector(setWindowColour(_:)):

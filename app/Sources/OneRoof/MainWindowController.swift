@@ -161,7 +161,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         if isV2 { v2InstallDock(in: root, under: split.view, top: top) }
         else { split.view.bottomAnchor.constraint(equalTo: root.bottomAnchor).isActive = true }
 
-        if !window.setFrameUsingName(autosave), let screen = NSScreen.main {
+        // A fresh profile is a new Mac: no saved frame (and a test never reads the real domain's).
+        if Prefs.freshProfile || !window.setFrameUsingName(autosave), let screen = NSScreen.main {
             // First launch: 85% of the screen, at most 1700 × 1000, centred; later windows cascade.
             let v = screen.visibleFrame
             let size = NSSize(width: min(v.width * 0.85, 1700), height: min(v.height * 0.85, 1000))
@@ -273,7 +274,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         backdrop.fill = accent?.band ?? k.toolbar
         backdrop.line = accent?.ink ?? k.separator
         backdrop.lineWidth = accent == nil ? 1 : 2
-        if isV2 { backdrop.lineWidth = 0 }
+        // v2: the band follows the columns, so the window's colour keeps only its 2 pt stripe (1.8.1: a coloured window
+        // was no longer told apart at a glance; the switcher dot alone was the only trace of it).
+        if isV2 { backdrop.lineWidth = accent == nil ? 0 : 2 }
         window?.appearance = t.sidebar.appearance
         sideItem.viewController.view.appearance = t.sidebar.appearance
         filesItem.viewController.view.appearance = t.files.appearance

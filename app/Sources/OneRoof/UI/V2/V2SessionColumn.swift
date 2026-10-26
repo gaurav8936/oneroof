@@ -56,14 +56,17 @@ private struct V2SessionList: View {
                     }
                     ForEach(groups) { g in
                         let exited = g.title == SessionStatus.exited.label
-                        let rows = exited && !showAllExited ? Array(g.items.prefix(exitedShown)) : g.items
+                        // The selected session always shows, even past the cap (1.8.1: it vanished behind "+ n more").
+                        let rows = exited && !showAllExited
+                            ? V2Layout.cappedRows(g.items, cap: exitedShown, id: \.id, keep: Set([win.selectedId].compactMap { $0 }))
+                            : g.items
                         Section {
                             ForEach(rows) { item in
                                 row(item, now: now).opacity(item.status == .exited ? 0.6 : 1)
                             }
-                            if exited && !showAllExited && g.items.count > exitedShown {
+                            if exited && !showAllExited && g.items.count > rows.count {
                                 Button { showAllExited = true } label: {
-                                    Text("+ \(g.items.count - exitedShown) more ›").ui(11.5).foregroundStyle(t.text2.color)
+                                    Text("+ \(g.items.count - rows.count) more ›").ui(11.5).foregroundStyle(t.text2.color)
                                 }
                                 .buttonStyle(.plain).padding(.horizontal, 8).padding(.vertical, 6)
                             }

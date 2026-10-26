@@ -454,8 +454,14 @@ final class AppModel: ObservableObject {
         if item.liveAgent == nil && item.status != .doNotUse { launch(item) }
     }
 
+    /// The repo a session's Files and Changes show (v2): where it works (seen live, else last seen), else the folder it
+    /// started in. Sessions started at the workspace root (One Roof's default, "one memory") work in a repo below it;
+    /// 1.8.1: the v2 tabs and ⌥⌘R showed the root ("not in a git repo") for them. The classic window keeps the start folder.
+    func workRepo(_ i: BoardItem) -> String { settings.ui2 ? (i.repoPath ?? i.session.repoPath) : i.session.repoPath }
+
     func refreshRepoStats() {
-        let paths = Set(items.filter { $0.status != .doNotUse }.map(\.session.repoPath))
+        let live = items.filter { $0.status != .doNotUse }
+        let paths = Set(live.map(\.session.repoPath) + live.map { workRepo($0) })
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var out: [String: RepoStat] = [:]
             for p in paths where p != Workspace.projectsRoot { if let s = GitDiff.stat(repo: p) { out[p] = s } }
@@ -681,7 +687,7 @@ final class AppModel: ObservableObject {
 
     /// Code review panel for a repo: the selected session's when none is given, else ~/Projects' own.
     func openDiff(_ path: String? = nil) {
-        let start = path ?? selected?.session.repoPath ?? Workspace.projectsRoot
+        let start = path ?? selected.map { workRepo($0) } ?? Workspace.projectsRoot
         guard let root = GitDiff.repoRoot(for: start) else {
             lastError = "\((start as NSString).lastPathComponent) is not in a git repo, so there is nothing to review."
             return

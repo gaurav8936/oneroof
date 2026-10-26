@@ -23,7 +23,7 @@ struct FileBrowserView: View {
         var root: String {
             // In the Editor the tree follows the open file's repo; otherwise the selected session's.
             if win.centre == .editor, let p = win.viewerPath, let top = GitDiff.repoRoot(for: p) { return top }
-            let r = model.item(win.selectedId ?? "")?.session.repoPath ?? Workspace.projectsRoot
+            let r = model.item(win.selectedId ?? "").map { model.workRepo($0) } ?? Workspace.projectsRoot
             return Workspace.isInsideProjects(r) ? r : Workspace.projectsRoot
         }
 
