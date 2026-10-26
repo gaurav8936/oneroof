@@ -1,41 +1,29 @@
 #!/usr/bin/env bash
 # agentic_engineering · check the package is complete and clean before it ships.
 #   scripts/check.sh        exit 1 on any problem
+# 1.9.0 (LAB-1257): One Roof authors no agentic-engineering content. The package is the linking script plus the deck
+# (deck/, the deck repository at main, added when the app is built); the routing rules are One Roof's own configuration
+# (app/Resources/agent-routing in the source checkout, Resources/agent-routing in the app).
 set -uo pipefail
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 bad=0; ok() { echo "  ok   $1"; }; no() { echo "  FAIL $1"; bad=1; }
 
-echo "== skills"
-n=0
-for md in "$PKG"/skills/*/*/SKILL.md; do
-  n=$((n + 1)); dir="$(basename "$(dirname "$md")")"
-  name="$(sed -n '2,/^---$/s/^name: //p' "$md" | head -1)"
-  desc="$(sed -n '2,/^---$/s/^description: //p' "$md" | head -1)"
-  [ "$(head -1 "$md")" = "---" ] || no "$dir: no frontmatter"
-  [ "$name" = "$dir" ] || no "$dir: name '$name' differs from its folder"
-  [ -n "$desc" ] || no "$dir: no description"
-  [ "$(wc -l < "$md")" -le 120 ] || no "$dir: longer than 120 lines"
+echo "== package"
+[ -f "$PKG/scripts/sync-skills.sh" ] && ok "sync-skills.sh present" || no "scripts/sync-skills.sh missing"
+for d in skills course hooks; do
+  [ -e "$PKG/$d" ] && no "$d/ is back in the package: agentic-engineering content belongs in the deck repository (LAB-1257)"
 done
-names="$(for md in "$PKG"/skills/*/*/SKILL.md; do basename "$(dirname "$md")"; done | sort)"
-dupes="$(echo "$names" | uniq -d)"; [ -z "$dupes" ] || no "duplicate skill names: $dupes"
-ok "$n skills"
+ok "no content of the app's own"
 
 echo "== routing"
-for f in routing roles; do
-  python3 -m json.tool "$PKG/skills/fleet/agent-routing/$f.json" >/dev/null && ok "$f.json parses" || no "$f.json is not valid JSON"
-done
-for s in $(python3 -c "import json,sys; print(' '.join(r['skill'] for r in json.load(open(sys.argv[1]))['roles']))" "$PKG/skills/fleet/agent-routing/roles.json"); do
-  echo "$names" | grep -qx "$s" || no "roles.json names a skill that is not in the package: $s"
-done
-ok "every role's skill exists"
-
-echo "== course"
-for l in "$PKG"/course/[0-9][0-9]-*.md; do
-  b="$(basename "$l" .md)"; want="$(grep -c '^## ' "$l")"
-  have="$(find "$PKG/course/audio/$b" -name '*.mp3' 2>/dev/null | wc -l | tr -d ' ')"
-  [ "$want" = "$have" ] || no "$b: $want sections but $have audio clips (run scripts/make-audio.py)"
-done
-ok "$(find "$PKG"/course -maxdepth 1 -name '[0-9][0-9]-*.md' | wc -l | tr -d ' ') lessons"
+ROUTING=""
+for d in "$PKG/../app/Resources/agent-routing" "$PKG/../agent-routing"; do [ -f "$d/routing.json" ] && { ROUTING="$(cd "$d" && pwd -P)"; break; }; done
+if [ -z "$ROUTING" ]; then no "agent-routing/routing.json not found next to the package"
+else
+  for f in routing roles; do
+    python3 -m json.tool "$ROUTING/$f.json" >/dev/null && ok "$f.json parses" || no "$f.json is not valid JSON"
+  done
+fi
 
 echo "== deck (LAB-768, present in a built app)"
 if [ -f "$PKG/deck/content/catalog.json" ]; then
@@ -44,6 +32,23 @@ if [ -f "$PKG/deck/content/catalog.json" ]; then
     d="$(basename "$(dirname "$md")")"; [ "$(sed -n '2,/^---$/s/^name: //p' "$md" | head -1)" = "$d" ] || no "deck $d: name differs from its folder"
   done
   ok "$(find "$PKG/deck/skills" -name SKILL.md | wc -l | tr -d ' ') deck skills"
+  if [ -n "$ROUTING" ]; then
+    for s in $(python3 -c "import json,sys; print(' '.join(r['skill'] for r in json.load(open(sys.argv[1]))['roles']))" "$ROUTING/roles.json"); do
+      compgen -G "$PKG/deck/skills/*/$s/SKILL.md" >/dev/null || no "roles.json names a skill that is not in the deck: $s"
+    done
+    ok "every role's skill is in the deck"
+  fi
+  C="$PKG/deck/content/course"
+  if [ -d "$C" ]; then
+    for l in "$C"/[0-9][0-9]-*.md; do
+      b="$(basename "$l" .md)"; want="$(grep -c '^## ' "$l")"
+      have="$(find "$C/audio/$b" -name '*.mp3' 2>/dev/null | wc -l | tr -d ' ')"
+      [ "$want" = "$have" ] || no "course $b: $want sections but $have audio clips"
+    done
+    ok "$(find "$C" -maxdepth 1 -name '[0-9][0-9]-*.md' | wc -l | tr -d ' ') course lessons"
+  else
+    no "deck has no content/course (the deck repository's main predates LAB-1257)"
+  fi
 else
   ok "no deck in the source checkout (added when the app is built)"
 fi
@@ -51,7 +56,7 @@ fi
 echo "== nothing personal or private"
 # Add your own handles and private hostnames with AE_PRIVATE_PATTERN (an extended regex, joined with "|").
 pat="/Users/[a-z]|@gmail\.com|sk-[A-Za-z0-9]{20,}|xox[bp]-${AE_PRIVATE_PATTERN:+|$AE_PRIVATE_PATTERN}"
-hits="$(grep -rInE "$pat" "$PKG" --exclude-dir=audio --exclude=check.sh || true)"
+hits="$(grep -rInE "$pat" "$PKG" ${ROUTING:+"$ROUTING"} --exclude-dir=audio --exclude-dir='*_audio' --exclude=check.sh || true)"
 [ -z "$hits" ] && ok "no private strings" || { no "private strings found:"; echo "$hits"; }
 
 [ "$bad" = 0 ] && echo "check: all good" || { echo "check: problems found"; exit 1; }

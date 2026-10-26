@@ -134,8 +134,8 @@ on a line to send it back to the agent, then commit.
 
 ### Your roadmap and a coach, built in. <sub>Work · Learn</sub>
 Work shows your projects and tickets by phase, with the session working on each one. Learn is an
-agentic-engineering coach: a 12-lesson narrated course and 17 starter skills ([`agentic_engineering/`](agentic_engineering/)).
-Listen in the app, or send a skill straight to a session.
+agentic-engineering coach: the narrated Agentic Engineering deck (every card and skill), a 12-lesson course and two
+optional hooks, all packaged from the deck's own repository at build time. Listen in the app, or send a skill straight to a session.
 
 | | |
 |---|---|
@@ -148,7 +148,7 @@ Listen in the app, or send a skill straight to a session.
 | Part | Folder | What it is |
 |---|---|---|
 | **One Roof app** | [`app/`](app/) | The macOS app (Swift, libghostty terminals, roofd sessions) |
-| **Agentic engineering starter set** | [`agentic_engineering/`](agentic_engineering/) | 17 short skills and a 12-lesson narrated course, bundled with the app |
+| **Agentic engineering linking** | [`agentic_engineering/`](agentic_engineering/) | The script that links the bundled deck's skills into every agent; the deck itself (skills, course, hooks) is packaged from its own repository when the app is built |
 | **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | One launch folder, one memory, one rulebook for every agent, plus `roof swarm` for parallel agents in git worktrees. Works with or without the app |
 | **Website** | [`site/`](site/) | The launch page, published at [gaurav8936.github.io/oneroof](https://gaurav8936.github.io/oneroof/) |
 
@@ -213,9 +213,9 @@ oneroof fixes this with the simplest controls that work, layered so a mistake ha
   and a short `READ-FIRST.md` must-read list.
 - **Handoffs in git**: the `next-session-handoff`, `last-call` and `where-are-we` skills write and read session
   bridges that any agent can resume from.
-- **A starter set of agentic-engineering skills and a narrated course** in [`agentic_engineering/`](agentic_engineering/):
-  17 short skills (plan, test-first, review, routing, parallel worktrees, shipping, gotchas) and 12 lessons. One Roof
-  bundles it and uses it unless you point Settings at your own skills folder.
+- **The Agentic Engineering deck, built in**: every narrated card and skill, a 12-lesson course and two optional hooks,
+  packaged from the deck's own repository when the app is built (One Roof authors none of it). Skills are linked into
+  every agent by [`agentic_engineering/scripts/sync-skills.sh`](agentic_engineering/scripts/sync-skills.sh).
 - **One skills folder for every agent**: `roof sync-skills` links each skill into Claude's, Codex's, Hermes's and
   Gemini's skills homes.
 - **Bounded parallel agents**: `roof swarm run spec.json` runs tasks in separate git worktrees with non-overlapping file
@@ -247,7 +247,7 @@ On macOS, `roof lock` prints the `sudo chflags` commands that make the home note
 | `roof install [--workspace DIR] [--shared DIR] [--agents "…"] [--no-shell] [--no-home-notes] [--dry-run]` | set up every layer |
 | `roof doctor` | check every layer live (blocks a fake session in `~`, starts a stand-in in `~`); exit 1 on any problem |
 | `roof status` | show workspace, shared folder, agents, memory folder |
-| `roof sync-skills <dir>` | link one skills folder into every agent's skills home (e.g. `agentic_engineering/skills`) |
+| `roof sync-skills <dir>` | link one skills folder into every agent's skills home (e.g. a checkout of the deck's `skills/`) |
 | `roof swarm run spec.json [--dry-run]` | run tasks in parallel, one git worktree + branch each, non-overlapping file claims, timeouts, capped retries, disk check (`roof swarm --help`) |
 | `roof swarm merge <run-dir>` | merge each green task branch into the current branch (`--no-ff`), stopping at the first conflict |
 | `roof swarm clean <run-dir> [--force]` | remove the run's worktrees and its merged branches (`--force`: all its branches) |

@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# agentic_engineering · link every skill in this package into each agent's skills home.
+# agentic_engineering · link every skill of the bundled Agentic Engineering deck into each agent's skills home.
 #
 #   scripts/sync-skills.sh [--dry-run] [--unlink]
 #
-# Skills live at skills/<track>/<name>/SKILL.md. Each becomes a symlink <home>/<name> in every home that exists:
+# Skills live in the deck (deck/skills/<track>/<name>/SKILL.md: the deck repository at main, packaged into the app, LAB-768),
+# or at skills/<track>/<name>/SKILL.md when this script runs from the deck repository itself (ONEROOF_AE_PATH).
+# Each becomes a symlink <home>/<name> in every home that exists:
 #   ~/.claude/skills  ~/.claude-*/skills  ~/.codex/skills  ~/.kimi-code/skills  ~/.gemini/config/skills  + $AE_SKILL_HOMES
 # --dry-run prints "[DRY] ln -sfn <source> <dest>" for every link that is missing or wrong (One Roof reads this).
 # A real folder with the same name is never replaced, and neither is a link to a folder outside this package that exists
 # (someone's own copy of a skill, e.g. a checkout of the deck repository). --unlink removes only links into this package.
-# The Agentic Engineering deck (deck/skills/<track>/<name>, LAB-768) is linked too; where a name is in both, skills/ wins.
+# 1.9.0 (LAB-1257): One Roof ships no skills of its own, so only deck skills are linked and nothing in the app can win
+# over the deck on a name clash. Links into this package whose target is gone (the old starter skills) are removed.
 set -euo pipefail
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+DECK="$PKG/deck"; [ -d "$DECK/skills" ] || DECK="$PKG"   # the deck repository itself has skills/ at its root
 DRY=0; UNLINK=0
 for a in "$@"; do
   case "$a" in --dry-run) DRY=1 ;; --unlink) UNLINK=1 ;; *) echo "unknown option: $a" >&2; exit 2 ;; esac
@@ -34,10 +38,14 @@ while IFS= read -r home; do
     continue
   fi
   [ "$DRY" = 1 ] || mkdir -p "$home"
-  for md in "$PKG"/skills/*/*/SKILL.md "$PKG"/deck/skills/*/*/SKILL.md; do
+  # A link into this package that points nowhere (a removed skill) goes.
+  for l in "$home"/*; do
+    [ -L "$l" ] && [ ! -e "$l" ] || continue
+    case "$(readlink "$l")" in "$PKG"/*) if [ "$DRY" = 1 ]; then echo "[DRY] rm $l"; else rm -f "$l"; fi; removed=$((removed + 1)) ;; esac
+  done
+  for md in "$DECK"/skills/*/*/SKILL.md; do
     [ -e "$md" ] || continue
     src="$(dirname "$md")"; name="$(basename "$src")"; dst="$home/$name"
-    case "$md" in "$PKG"/deck/*) compgen -G "$PKG/skills/*/$name/SKILL.md" >/dev/null && continue ;; esac
     if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then same=$((same + 1)); continue; fi
     if [ -L "$dst" ]; then
       to="$(readlink "$dst")"
@@ -49,4 +57,4 @@ while IFS= read -r home; do
   done
 done < <(homes)
 if [ "$UNLINK" = 1 ]; then echo "sync-skills: $removed links removed"
-else echo "sync-skills: $made to link · $same already linked · $kept real folders kept"; fi
+else echo "sync-skills: $made to link · $same already linked · $kept real folders kept · $removed dead links removed"; fi

@@ -32,10 +32,10 @@ Launching an agent while a check is red shows a choice: **Open Foundations**, **
 | Launch-folder guard | A Claude hook stops prompts while a session is outside your projects folder. | Red: no `UserPromptSubmit` hook in `~/.claude/settings.json`. | Run `roof install` from the kit, or add your own hook. |
 | Hooks | Each Claude hook points at a script. | Amber: a hook's script file is missing. | Restore the script (its name is in the detail line). |
 | Doors | A door is a small file under the name an agent looks for (`AGENTS.md`, `GEMINI.md`…) that points at your one rulebook, so every agent finds the rules from any folder it starts in. | Uses `scripts/doors/ensure-doors.sh` in your shared folder. Red: the script's check fails. Amber: the script is not there. | Fix runs the script. Without the script, ignore it. |
-| Skills | The skills in your agentic engineering folder must be linked into every agent's skills folder. | Red: a link is missing or stale (from `scripts/sync-skills.sh --dry-run`). | Fix runs `scripts/sync-skills.sh` from your agentic engineering folder. |
+| Skills | The skills of the bundled Agentic Engineering deck must be linked into every agent's skills folder (One Roof ships no skills of its own, so the deck's version is always the one linked). | Red: a link is missing or stale (from `scripts/sync-skills.sh --dry-run`). | Fix runs `scripts/sync-skills.sh` from the bundled agentic engineering folder. |
 | MCP servers | One MCP server list for all agents. | Uses `scripts/mcp/sync-mcp.py` in your shared folder. Red: its check fails. Amber: the script, or a recent enough Python, is not there. | Fix runs the script, or `brew install python@3.12`. Without the script, ignore it. |
 | Agents | Each agent CLI (`claude`, `codex`, `kimi`, `gemini`, `agy`) is installed and signed in. Claude2 is checked only if you have a second Claude config. | Amber: not on your PATH, or no login found. | Install or sign in to that CLI from a terminal. |
-| Agentic engineering | Skills, roles, routing rules, the course and the Agentic Engineering deck, bundled with One Roof. | Red: the bundled package is missing (reinstall One Roof). | Reinstall from the download page. |
+| Agentic engineering | The Agentic Engineering deck (every skill, the course, the hooks), bundled with One Roof. | Red: the bundled package is missing (reinstall One Roof). | Reinstall from the download page. |
 | On-device router model | Suggestions use it to sort a task into a kind. | Amber: `llama-server` or the model file is missing, or the model is still Arch-Router (its licence restricts commercial use). | Fix runs `brew install llama.cpp`; **Get the model** on the row downloads and checks the model (also in Settings; [Seats and routing](07_seats-router-and-on-device-model.md)). Without it, routing uses the rules alone. |
 
 **Fix** buttons open a plain One Roof terminal in your projects folder and run the command there, so you see what it does. One Roof never fixes anything silently.
@@ -44,7 +44,7 @@ Launching an agent while a check is red shows a choice: **Open Foundations**, **
 
 ![Foundations › Skills](img/foundations-skills.png)
 
-- **Skills:** every skill in your agentic engineering folder, searchable, with its group and description and which agent skill folders have it (CL, CO, KI, GM). Per skill: type `/name` into the selected session (not sent), open its `SKILL.md`, or open it in Learn.
+- **Skills:** every skill in the bundled deck, searchable, with its group and description and which agent skill folders have it (CL, CO, KI, GM). Per skill: type `/name` into the selected session (not sent), open its `SKILL.md`, or open it in Learn.
 - **Hooks & rules:** the rules every agent reads, and every Claude hook with its event, matcher and script. Codex, Kimi and Antigravity have no hooks; the kit reaches them through PATH stand-ins and the doors.
 - **Memory:** **Latest handoff per project** from `docs/next-session-handoff/` in your shared folder (**Resume** plans a Claude session that reads it and continues), recent gotchas from `docs/gotchas/`, and `MEMORY.md`. Empty when you have no shared folder.
 

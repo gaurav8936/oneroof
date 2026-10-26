@@ -9,9 +9,15 @@ final class LearnDeckTests: XCTestCase {
             + #""sections": [{"title": "One", "scenes": 2}, {"title": "Two", "scenes": 1}], "scenes": 3, "est_seconds": \#(secs)}"#
     }
 
+    /// The catalog's `bands` (LAB-1257: the deck repository's manual.yaml), as JSON to splice into a test catalog.
+    private func bandsJSON() throws -> String {
+        let j = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(LearnDeckFixture.catalogJSON.utf8)) as? [String: Any])
+        return String(decoding: try JSONSerialization.data(withJSONObject: j["bands"] ?? []), as: UTF8.self)
+    }
+
     private func deck() throws -> LearnDeck {
         let json = """
-        {"version": "0.2.0",
+        {"version": "0.2.0", "bands": \(try bandsJSON()),
          "suits": [{"id": "spades", "symbol": "♠", "label": "Ideas", "tracks": ["foundations", "rhythms", "ship"]}],
          "tracks": [{"id": "foundations", "suit": "spades", "intro": "Big", "cards": ["loops-first", "context-as-structure", "zeta"]},
                     {"id": "rhythms", "suit": "spades", "intro": "Daily", "cards": ["done-when", "nightly"]},
@@ -40,6 +46,41 @@ final class LearnDeckTests: XCTestCase {
         XCTAssertEqual(d.slug(forPage: "/deck/skills/rhythms/done-when/done-when.html"), "done-when")
         XCTAssertNil(d.slug(forPage: "/elsewhere/done-when.html"))
         XCTAssertEqual(d.paths.first?.slugs.filter { d.cards[$0] != nil }, ["done-when", "smoke-prod"])
+    }
+
+    /// LAB-1257 · the bands, plain track names and By-kind groups read from the catalog the deck repository builds are
+    /// exactly the constants One Roof 1.8.2 hard-coded.
+    func testCatalogBandsNamesAndKindsEqualThe182Constants() throws {
+        let d = try XCTUnwrap(LearnDeck.parse(Data(LearnDeckFixture.catalogJSON.utf8), root: "/deck"))
+        XCTAssertEqual(d.bands, LearnDeckFixture.bands)
+        XCTAssertEqual(d.trackNames.mapValues { [$0.name, $0.question] }, LearnDeckFixture.trackNames.mapValues { [$0.name, $0.question] })
+        XCTAssertEqual(d.kinds.map { [$0.title, $0.sub] + $0.tracks }, LearnDeckFixture.kinds.map { [$0.title, $0.sub] + $0.tracks })
+        XCTAssertEqual(d.band(id: "nope").id, "loops", "an unknown band falls back to Loops, as before")
+    }
+
+    /// An older deck without bands shows a neutral Learn: no bands, no dial, nothing invented, nothing crashes.
+    func testDeckWithoutBandsIsNeutral() throws {
+        let json = #"{"version": "0.1.0", "tracks": [{"id": "ship", "cards": ["smoke-prod"]}], "cards": [{"slug": "smoke-prod", "track": "ship"}]}"#
+        let d = try XCTUnwrap(LearnDeck.parse(Data(json.utf8), root: "/deck"))
+        XCTAssertTrue(d.bands.isEmpty)
+        XCTAssertTrue(d.trackNames.isEmpty)
+        XCTAssertTrue(d.kinds.isEmpty)
+        XCTAssertEqual(d.dial, [])
+        XCTAssertEqual(d.band(of: "smoke-prod").id, "")
+        XCTAssertEqual(d.count, 1)
+    }
+
+    /// `load` makes the deck the one the static accessors (used by the Learn views) describe.
+    func testLoadPublishesTheDecksBands() throws {
+        let dir = NSTemporaryDirectory() + "deckload-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: dir + "/content", withIntermediateDirectories: true)
+        try LearnDeckFixture.catalogJSON.write(toFile: dir + "/content/catalog.json", atomically: true, encoding: .utf8)
+        let d = try XCTUnwrap(LearnDeck.load(deck: dir))
+        XCTAssertEqual(LearnDeck.bands, d.bands)
+        XCTAssertEqual(LearnDeck.bands.map(\.title), ["Context", "Loops", "Evidence", "Procedure"])
+        XCTAssertEqual(LearnDeck.trackNames["vault"]?.name, "Notes & memory")
+        XCTAssertEqual(LearnDeck.kinds.count, 4)
+        XCTAssertEqual(LearnDeck.fallbackBand.id, "loops")
     }
 
     func testSearchMatchesEveryWordInDialOrder() throws {

@@ -364,7 +364,7 @@ struct V2LearnRadio: View {
             VStack(spacing: 10) {
                 Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 34)).foregroundStyle(t.text3.color)
                 Text("The narrated deck is not in this build").font(.system(size: 15, weight: .semibold)).foregroundStyle(t.text.color)
-                Text("Radio, Writing and All cards read the Agentic Engineering deck bundled with release builds. Pages still has the course, the skills and One Roof Help.")
+                Text("Radio, Writing and All cards read the Agentic Engineering deck bundled with release builds, and so do the course and the skills. Pages still has One Roof Help and your Learn folders.")
                     .font(.system(size: 12)).foregroundStyle(t.text2.color).multilineTextAlignment(.center).frame(maxWidth: 440)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

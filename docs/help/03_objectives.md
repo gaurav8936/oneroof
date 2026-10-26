@@ -26,7 +26,7 @@ Press **⇧⌘O** (File › New Objective…), **+ New objective** on the Overvi
 
 ## 2. Watch the planner
 
-The planner is an ordinary Claude session named "Plan: " plus your title. It uses the `plan-objective` skill from your agentic engineering folder. It reads the repo, the newest handoff and the routing rules, writes a plan file and replies `PLAN READY`. It starts nothing.
+The planner is an ordinary Claude session named "Plan: " plus your title. It uses the `plan-objective` skill from the bundled Agentic Engineering deck. It reads the repo, the newest handoff and the routing rules, writes a plan file and replies `PLAN READY`. It starts nothing.
 
 - **Watch the planner** jumps to its terminal; answer it there if it asks something.
 - The objective page fills in by itself when the plan file appears (checked every few seconds). **Check for the plan now** reads it at once.

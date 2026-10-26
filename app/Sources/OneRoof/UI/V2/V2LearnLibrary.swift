@@ -54,7 +54,7 @@ struct LearnPostReader: View {
             let series = posts.filter { $0.series == "Agentic engineering" }
             let i = series.firstIndex(of: p)
             let bands = LearnDeck.bands.filter { $0.posts.contains(p.slug) }
-            let band0 = bands.first ?? LearnDeck.bands[1]
+            let band0 = bands.first ?? LearnDeck.fallbackBand
             let cards = (bands.isEmpty ? LearnDeck.bands : bands).flatMap(\.key).reduce(into: [String]()) { if deck.cards[$1] != nil && !$0.contains($1) { $0.append($1) } }.prefix(6)
             HStack(alignment: .top, spacing: 40) {
                 toc(p).frame(width: 200)

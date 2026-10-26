@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "about": "Roles One Roof offers when you start a session: a skill from the bundled Agentic Engineering deck plus the agent that should run it. {repo} and {workstream} are filled in for you.",
+  "roles": [
+    { "id": "orient", "title": "Where are we", "skill": "where-are-we", "kind": "research", "agent": "claude", "model": "sonnet",
+      "opening": "Use the where-are-we skill, focused on {workstream}. Keep it short: where things stand and what is next." },
+    { "id": "spec", "title": "Write the spec", "skill": "spec-driven-coding", "kind": "design", "agent": "claude", "model": "opus",
+      "opening": "Use the spec-driven-coding skill in {repo} for {workstream}. Stop when the spec is ready for approval." },
+    { "id": "tests-first", "title": "Build it test-first", "skill": "test-first", "kind": "code", "agent": "codex",
+      "opening": "Use the test-first skill in {repo}: write failing tests for the objective below, then make them pass." },
+    { "id": "review", "title": "Second opinion", "skill": "code-review-agent", "kind": "review", "agent": "codex",
+      "opening": "Use the code-review-agent skill on the latest changes in {repo}. Correctness first; every finding with file and line." },
+    { "id": "secrets", "title": "Secrets check", "skill": "security-check", "kind": "review", "agent": "claude", "model": "sonnet",
+      "opening": "Use the security-check skill on {repo}: check the working tree and recent history, report what you find, fix only what is safe." },
+    { "id": "map", "title": "Update the repo map", "skill": "legacy-explorer", "kind": "docs", "agent": "kimi",
+      "opening": "Use the legacy-explorer skill in {repo}: map the structure, hot paths and risks, and bring docs/codebase-map.md up to date with the code." },
+    { "id": "ship", "title": "Ship it", "skill": "ship-domain", "kind": "chore", "agent": "claude", "model": "sonnet",
+      "opening": "Use the ship-domain skill for {repo}. Stop and ask before the production step." },
+    { "id": "close", "title": "Close the session (last call)", "skill": "last-call", "kind": "docs", "agent": "claude",
+      "opening": "Use the last-call skill for {workstream}." }
+  ]
+}
