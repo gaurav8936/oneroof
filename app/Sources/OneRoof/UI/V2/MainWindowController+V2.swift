@@ -285,6 +285,8 @@ extension MainWindowController {
     /// ⌥⌘F steps on; at Focus it leaves Focus again, as the 0.5.2.9 toggle did (Esc can't while the terminal has
     /// the keyboard, so without this a window could stay stuck at step 3, even across launches).
     func v2StepOn() { if win.focusStep == .focus { v2LeaveFocus() } else { v2SetStep(win.focusStep.next) } }
+    /// A click on the toolbar's step button: the next step, and from Focus round to Full (LAB-1235).
+    func v2StepClick() { v2SetStep(win.focusStep.clicked) }
     func v2StepBack() { win.focusStep = win.focusStep.previous }
     /// Esc in Focus: back to the step before it.
     func v2LeaveFocus() { if win.focusStep == .focus { win.focusStep = v2BeforeFocus == .focus ? .wide : v2BeforeFocus } }

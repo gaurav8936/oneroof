@@ -191,6 +191,14 @@ public final class LinearClient: @unchecked Sendable {
         return json["data"] as? [String: Any] ?? [:]
     }
 
+    /// Whether a cached Linear list should be fetched again (LAB-546 issues, LAB-1255 projects): never loaded, asked
+    /// for (`force`), or older than `maxAge` seconds.
+    public static func isStale(loaded: Bool, fetchedAt: Date?, force: Bool = false, maxAge: TimeInterval, now: Date = Date()) -> Bool {
+        if force || !loaded { return true }
+        guard let fetchedAt else { return true }
+        return now.timeIntervalSince(fetchedAt) >= maxAge
+    }
+
     /// Every project, with its team and milestones (LAB-236: not only WS- names; the owner's are TEAM-TOPIC).
     public func workstreams() throws -> [LinearWorkstream] {
         var out: [LinearWorkstream] = []
@@ -226,19 +234,41 @@ public final class LinearClient: @unchecked Sendable {
         return f.date(from: s)
     }
 
-    /// The tickets of one workstream.
-    public func issues(project: String) throws -> [LinearIssue] {
-        let d = try gql("""
-        query($id: String!) { project(id: $id) { issues(first: 150) { nodes {
-          id identifier title description url createdAt updatedAt state { name type } projectMilestone { id name } labels(first: 6) { nodes { name } } } } } }
-        """, ["id": project])
-        let nodes = ((d["project"] as? [String: Any])?["issues"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []
-        return nodes.map { n in
+    /// The most issues one project fetch reads (LAB-1255): pages of `issuesPage` until Linear says there are no more,
+    /// or this many. A project the owner works in can hold 300+ issues; 1.9.2 read the first 150 only.
+    public static let issuesCap = 1000
+    public static let issuesPage = 100
+
+    /// The tickets of one workstream, every page (pageInfo / endCursor), up to `cap`.
+    public func issues(project: String, cap: Int = LinearClient.issuesCap) throws -> [LinearIssue] {
+        var nodes: [[String: Any]] = []
+        var after: String?
+        repeat {
+            var vars: [String: Any] = ["id": project, "first": min(Self.issuesPage, max(1, cap - nodes.count))]
+            if let after { vars["after"] = after }
+            let d = try gql("""
+            query($id: String!, $first: Int!, $after: String) { project(id: $id) { issues(first: $first, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+              id identifier title description url createdAt updatedAt state { name type } projectMilestone { id name } labels(first: 6) { nodes { name } } } } } }
+            """, vars)
+            let page = (d["project"] as? [String: Any])?["issues"] as? [String: Any] ?? [:]
+            let got = page["nodes"] as? [[String: Any]] ?? []
+            nodes += got
+            let info = page["pageInfo"] as? [String: Any] ?? [:]
+            let next = (info["hasNextPage"] as? Bool ?? false) ? info["endCursor"] as? String : nil
+            // Stop on the cap, on a page with no cursor or no nodes, or on a cursor that does not move (never loop).
+            after = (next == nil || next == after || got.isEmpty || nodes.count >= cap) ? nil : next
+        } while after != nil
+        var seen = Set<String>()
+        return nodes.prefix(cap).compactMap { n -> LinearIssue? in
+            let id = n["id"] as? String ?? ""
+            guard seen.insert(id).inserted else { return nil }
             let st = n["state"] as? [String: Any] ?? [:]
             let ms = n["projectMilestone"] as? [String: Any]
             let labels = ((n["labels"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
             let type = labels.lazy.compactMap(WorkKind.fromLabel).first?.rawValue
-            return LinearIssue(id: n["id"] as? String ?? "", identifier: n["identifier"] as? String ?? "", title: n["title"] as? String ?? "",
+            return LinearIssue(id: id, identifier: n["identifier"] as? String ?? "", title: n["title"] as? String ?? "",
                                description: n["description"] as? String ?? "", state: st["name"] as? String ?? "",
                                stateType: st["type"] as? String ?? "", type: type, milestoneId: ms?["id"] as? String,
                                milestone: ms?["name"] as? String, url: n["url"] as? String ?? "",

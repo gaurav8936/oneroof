@@ -3,8 +3,12 @@ import OneRoofCore
 
 /// Work: workstreams and tickets from Linear, the intake filter, and sessions planned from tickets.
 extension AppModel {
-    func loadWorkstreams(force: Bool = false) {
-        guard force || workstreams.isEmpty, !linearLoading else { return }
+    /// The projects from Linear: fetched when not loaded yet, when `force`, or when the copy is older than `maxAge`
+    /// seconds (LAB-1255: 1.9.2 fetched them once, so a renamed or new project never showed until relaunch; issues have
+    /// had this since LAB-546). Also refreshed when a window comes to the front and when the New session sheet opens.
+    func loadWorkstreams(force: Bool = false, maxAge: TimeInterval = 30) {
+        guard LinearClient.isStale(loaded: !workstreams.isEmpty, fetchedAt: workstreamsFetchedAt, force: force, maxAge: maxAge),
+              !linearLoading else { return }
         linearLoading = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
@@ -12,8 +16,10 @@ extension AppModel {
                 let ws = try self.linear.workstreams()
                 let teams = (try? self.linear.teams()) ?? []
                 DispatchQueue.main.async {
-                    self.workstreams = ws; self.linearError = nil; self.linearLoading = false
-                    if !teams.isEmpty { self.linearTeams = teams }
+                    self.workstreamsFetchedAt = Date()
+                    if self.workstreams != ws { self.workstreams = ws }
+                    self.linearError = nil; self.linearLoading = false
+                    if !teams.isEmpty, teams != self.linearTeams { self.linearTeams = teams }
                 }
             } catch {
                 DispatchQueue.main.async { self.linearError = "\(error)"; self.linearLoading = false }
@@ -25,7 +31,7 @@ extension AppModel {
     /// `maxAge` seconds (LAB-546: a list fetched once at launch never showed issues created later). One fetch per
     /// project at a time.
     func loadIssues(_ w: LinearWorkstream, force: Bool = false, maxAge: TimeInterval = 30) {
-        if !force, issues[w.id] != nil, let at = issuesFetchedAt[w.id], Date().timeIntervalSince(at) < maxAge { return }
+        guard LinearClient.isStale(loaded: issues[w.id] != nil, fetchedAt: issuesFetchedAt[w.id], force: force, maxAge: maxAge) else { return }
         guard !issuesLoading.contains(w.id) else { return }
         issuesLoading.insert(w.id)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
