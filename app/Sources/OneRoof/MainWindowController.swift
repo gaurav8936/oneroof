@@ -52,6 +52,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     @Published var v2DockFolded = true
     /// Plan inspector mode in its column: the 270 pt inspector (step 0) or the 28 pt edge tab (steps 1-2).
     @Published var v2PlanEdge = false
+    /// What the toolbar right of the column has room for (LAB-1237), from the window and column widths.
+    @Published var v2Bar = V2Layout.toolbarFit(room: 1400)
+    /// The last Plan-fits answer at Full, so a window resize re-lays the columns out only when it crosses it (LAB-831).
+    var v2PlanFitsLast: Bool?
     var splitView: NSSplitView { split.splitView }
     var splitController: NSSplitViewController { split }
     var centreItemRef: NSSplitViewItem { centreItem }
@@ -76,7 +80,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .none
-        window.minSize = NSSize(width: PanelMinimums.windowWidth, height: 560)
+        // LAB-831: the v2 window goes down to about a third of the screen (its Plan and column fold first); the classic
+        // window keeps the width its four panels need.
+        window.minSize = NSSize(width: model.settings.ui2 ? CGFloat(V2Layout.minWindowWidth) : PanelMinimums.windowWidth, height: 560)
         window.isReleasedWhenClosed = false
         let autosave = win.id == WorkspaceStore.mainId ? "OneRoofMain" : "OneRoofMain." + win.id
         if !SelfTest.isActive { window.setFrameAutosaveName(autosave) }   // tests never change the owner's layout
@@ -85,6 +91,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         Self.all.append(self)
 
         isV2 = model.settings.ui2
+        terminalArea.showsSubagentColumn = !isV2   // LAB-1240: v2 has the Subagents tab, never a column beside the terminal
         // Toolbar: a unified NSToolbar gives the 50 pt title bar with the traffic lights centred; its items are SwiftUI.
         // The v2 window builds its own toolbar once the split view exists (its sections track the column dividers).
         if !isV2 {
@@ -291,7 +298,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     func syncPanels() {
         panels = PanelState(sidebar: !sideItem.isCollapsed, files: !filesItem.isCollapsed,
                             centre: !centreItem.isCollapsed, plan: !planItem.isCollapsed)
-        // v2: the 28 pt edge tab is not an open Plan (the Subagents column beside the terminal still shows, audit D3).
+        // v2: the 28 pt edge tab is not an open Plan (audit D3). The v2 window shows no Subagents column (LAB-1240).
         terminalArea.planPanelOpen = panels.plan && !(isV2 && v2PlanEdge)
     }
 
@@ -469,8 +476,10 @@ final class CentreController: NSViewController {
         // The strip is as tall as it draws: 30 pt while a file is open, nothing otherwise.
         let m = model, w = win
         // v2: the session tabs (Terminal · Files · Changes · Subagents); file tabs live inside Files (A2.0).
-        let strip = v2 ? NSHostingView(rootView: AnyView(CentreThemed(model: m, win: w) { V2SessionTabs(model: m, win: w) }))
-                       : NSHostingView(rootView: AnyView(CentreThemed(model: m, win: w) { CentreTabStrip(model: m, win: w) }))
+        // Only its height counts (NoIdealWidth). Its width (every tab, Split · Raw · Wrap) was a required minimum of the
+        // centre: in a narrow window, showing the tabs (a place change, a session) grew the window (LAB-874, LAB-596).
+        let strip = v2 ? NSHostingView(rootView: AnyView(NoIdealWidth { CentreThemed(model: m, win: w) { V2SessionTabs(model: m, win: w) } }))
+                       : NSHostingView(rootView: AnyView(NoIdealWidth { CentreThemed(model: m, win: w) { CentreTabStrip(model: m, win: w) } }))
         strip.sizingOptions = [.intrinsicContentSize]
         for v in [strip, content] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
@@ -575,6 +584,24 @@ final class CentreController: NSViewController {
             })
         }
         if c == .workspace { terminalArea.focusTerminal() }
+    }
+}
+
+/// A view that asks for no width of its own, only its content's height at the width it is given (LAB-874): an
+/// NSHostingView sized by its intrinsic content then never makes its container, or the window, wider.
+struct NoIdealWidth<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+    var body: some View { HeightOnly { content() } }
+
+    private struct HeightOnly: Layout {
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+            let w = proposal.width.map { $0.isFinite ? $0 : 0 }
+            let h = subviews.map { $0.sizeThatFits(ProposedViewSize(width: w, height: proposal.height)).height }.max() ?? 0
+            return CGSize(width: w ?? 0, height: h)
+        }
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            for s in subviews { s.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height)) }
+        }
     }
 }
 

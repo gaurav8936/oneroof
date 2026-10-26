@@ -36,37 +36,50 @@ struct V2SessionTabs: View {
             let item = win.selectedId.flatMap { model.item($0) }
             let changes = item.flatMap { model.repoStats[model.workRepo($0)]?.files } ?? 0
             let subs = item.map { model.subagentCount($0) } ?? 0
-            HStack(spacing: 2) {
-                tab("Terminal", .terminal) { model.show(.workspace, in: win) }
-                tab("Files", .files) { openFiles(item) }
-                tab(changes > 0 ? "Changes \(changes)" : "Changes", .changes) { openChanges(item) }
-                tab(subs > 0 ? "Subagents \(subs)" : "Subagents", .subagents) { openSubagents(item) }
-                Button { NSApp.sendAction(#selector(AppDelegate.newTerminal(_:)), to: nil, from: nil) } label: {
-                    Text("+ Terminal").ui(11.5).foregroundStyle(t.text2.color).padding(.horizontal, 8).frame(height: 24)
-                }
-                .buttonStyle(.plain).help("New terminal (⌘T)")
-                Spacer(minLength: 8)
-                HStack(spacing: 10) {
-                    hint("Split ⌘D", #selector(AppDelegate.splitRight(_:)), "Split right (⌘D) · down ⇧⌘D")
-                    hint("Raw ⌘R", #selector(AppDelegate.toggleRawStream(_:)), "Raw stream (⌘R)")
-                    Button { NotificationCenter.default.post(name: V2SessionTabs.wrap, object: win.id) } label: {
-                        Text("Wrap").ui(11).foregroundStyle(t.text2.color)
-                    }
-                    .buttonStyle(.plain).help("Read-only re-wrapped text of the terminal")
-                }
-                .opacity(current == .terminal ? 1 : 0.4)
-                .disabled(current != .terminal)
+            // A narrow window (LAB-831) drops the shortcut labels, then shortens + Terminal, then the Split · Raw · Wrap
+            // hints (the menus and ⌘D / ⌘R keep them), then tightens the tabs; nothing wraps or overlaps.
+            ViewThatFits(in: .horizontal) {
+                ForEach(0..<5) { level in strip(item: item, changes: changes, subs: subs, level: level) }
             }
             .padding(.horizontal, 10).frame(height: 34)
             .background(model.themes.centre.tokens.window.color)
         }
     }
 
-    private func tab(_ title: String, _ k: Tab, action: @escaping () -> Void) -> some View {
+    /// The tab row at a narrowness level: 0 everything, 1 hints without keys, 2 "+" for + Terminal, 3 no hints,
+    /// 4 tighter tabs.
+    private func strip(item: BoardItem?, changes: Int, subs: Int, level: Int) -> some View {
+        let pad: CGFloat = level >= 4 ? 6 : 10
+        return HStack(spacing: 2) {
+            tab("Terminal", .terminal, pad: pad) { model.show(.workspace, in: win) }
+            tab("Files", .files, pad: pad) { openFiles(item) }
+            tab(changes > 0 ? "Changes \(changes)" : "Changes", .changes, pad: pad) { openChanges(item) }
+            tab(subs > 0 ? "Subagents \(subs)" : "Subagents", .subagents, pad: pad) { openSubagents(item) }
+            Button { NSApp.sendAction(#selector(AppDelegate.newTerminal(_:)), to: nil, from: nil) } label: {
+                Text(level >= 2 ? "+" : "+ Terminal").ui(11.5).foregroundStyle(t.text2.color).lineLimit(1).padding(.horizontal, 8).frame(height: 24)
+            }
+            .buttonStyle(.plain).help("New terminal (⌘T)").accessibilityLabel("New terminal")
+            Spacer(minLength: level >= 3 ? 0 : 8)
+            if level < 3 {
+                HStack(spacing: 10) {
+                    hint(level == 0 ? "Split ⌘D" : "Split", #selector(AppDelegate.splitRight(_:)), "Split right (⌘D) · down ⇧⌘D")
+                    hint(level == 0 ? "Raw ⌘R" : "Raw", #selector(AppDelegate.toggleRawStream(_:)), "Raw stream (⌘R)")
+                    Button { NotificationCenter.default.post(name: V2SessionTabs.wrap, object: win.id) } label: {
+                        Text("Wrap").ui(11).foregroundStyle(t.text2.color).lineLimit(1)
+                    }
+                    .buttonStyle(.plain).help("Read-only re-wrapped text of the terminal")
+                }
+                .opacity(current == .terminal ? 1 : 0.4)
+                .disabled(current != .terminal)
+            }
+        }
+    }
+
+    private func tab(_ title: String, _ k: Tab, pad: CGFloat = 10, action: @escaping () -> Void) -> some View {
         let on = current == k
         return Button(action: action) {
-            Text(title).ui(11.5, on ? .semibold : .regular).foregroundStyle(on ? t.text.color : t.text2.color)
-                .padding(.horizontal, 10).frame(height: 24)
+            Text(title).ui(11.5, on ? .semibold : .regular).foregroundStyle(on ? t.text.color : t.text2.color).lineLimit(1)
+                .padding(.horizontal, pad).frame(height: 24)
                 .background(Capsule().fill(on ? t.surface.color : .clear))
         }
         .buttonStyle(.plain)
@@ -74,7 +87,7 @@ struct V2SessionTabs: View {
     }
 
     private func hint(_ title: String, _ sel: Selector, _ help: String) -> some View {
-        Button { NSApp.sendAction(sel, to: nil, from: nil) } label: { Text(title).ui(11).foregroundStyle(t.text2.color) }
+        Button { NSApp.sendAction(sel, to: nil, from: nil) } label: { Text(title).ui(11).foregroundStyle(t.text2.color).lineLimit(1) }
             .buttonStyle(.plain).help(help)
     }
 
