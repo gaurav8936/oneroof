@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SwiftUI
 import OneRoofCore
 
 /// Scripted self-test (LAB-12): `ONEROOF_SELFTEST_SCRIPT=<file>` runs one step per line, in order, inside the app,
@@ -81,6 +82,29 @@ enum SelfTestScript {
                     Chapter(index: have.count + k + 1, title: "Step \(have.count + k + 1)", summary: "", toolCalls: 1,
                             started: now, ended: now, scrollbackRange: 0..<1)
                 }
+            }
+        case "summarycard":   // LAB-1270: the open summary card's height with 0…12 steps; it must never change
+            if let it = m.selected {
+                let saved = m.chapters[it.id], now = Date()
+                var heights: [String] = []
+                for n in [0, 1, 3, 5, 6, 12] {
+                    m.chapters[it.id] = (0..<n).map { k in
+                        Chapter(index: k, title: "Step \(k + 1) · a longer title that runs on", summary: "", toolCalls: k + 1,
+                                started: now.addingTimeInterval(-Double(60 * (k + 1))), ended: k == n - 1 ? nil : now, scrollbackRange: 0..<1)
+                    }
+                    let host = NSHostingView(rootView: SummaryCard(model: m, item: it, onCollapse: {}).themed(m.themes.centre))
+                    host.frame = NSRect(x: 0, y: 0, width: 1200, height: 10)
+                    let h = host.fittingSize.height
+                    host.frame.size.height = h
+                    host.layoutSubtreeIfNeeded()
+                    if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                        host.cacheDisplay(in: host.bounds, to: rep)
+                        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out + "-\(arg)-\(n).png"))
+                    }
+                    heights.append("\(n) steps: \(Int(h.rounded())) pt")
+                }
+                m.chapters[it.id] = saved
+                log(out, "  summarycard " + heights.joined(separator: " · "))
             }
         case "checktop":   // each pane's top strip: laid-out height vs the height its content needs (LAB-521)
             for h in app.main.terminalArea.topHeights() {

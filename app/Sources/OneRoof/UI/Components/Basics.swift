@@ -211,12 +211,17 @@ struct StepList: View {
     var selected: Int?
     var onTap: ((Int) -> Void)?
     /// Something at the end of a row (the Explain button).
-    var accessory: ((Step) -> AnyView)?
+    var accessory: ((Step) -> AnyView)? = nil
+    /// LAB-1270: always `maxVisible` rows tall, even with fewer steps, so the list never changes the height around it.
+    var fixedHeight = false
 
     private static let rowHeight: CGFloat = 25
+    static func height(rows: Int) -> CGFloat { CGFloat(rows) * rowHeight }
 
     var body: some View {
-        if let cap = maxVisible, steps.count > cap {
+        if let cap = maxVisible, fixedHeight, steps.count <= cap {
+            list.frame(height: Self.height(rows: cap), alignment: .top)
+        } else if let cap = maxVisible, steps.count > cap {
             ScrollViewReader { proxy in
                 ScrollView(.vertical) { list.padding(.trailing, 6) }
                     .frame(height: CGFloat(cap) * Self.rowHeight)
