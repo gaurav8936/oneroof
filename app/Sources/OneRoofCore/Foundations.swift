@@ -40,7 +40,8 @@ public struct FoundationPaths: Sendable {
     public var gotchas: String { common + "/docs/gotchas" }
     /// The shared folder is optional: checks and lists that need it stay quiet when it is missing.
     public var hasShared: Bool { Workspace.folderExists(common) }
-    public var skills: String { agenticEngineering + "/skills" }
+    /// The skills One Roof lists and links: the bundled deck's `skills/` (LAB-1257: the app ships none of its own).
+    public var skills: String { (AEFolder.deckRoot(agenticEngineering) ?? agenticEngineering + "/deck") + "/skills" }
 }
 
 public enum Foundations {

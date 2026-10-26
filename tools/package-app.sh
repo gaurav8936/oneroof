@@ -24,6 +24,9 @@ t0=$(date +%s)
 app/scripts/build-ghosttykit.sh --release-build "$STAGE/ghostty"
 echo "package-app: libghostty release build took $(( $(date +%s) - t0 ))s"
 
+# LAB-1257 · a release always packages the deck repository at origin/main; ONEROOF_AE_DECK_REF is for local test builds.
+[ "${ONEROOF_AE_DECK_REF:-origin/main}" = origin/main ] || { echo "package-app: ONEROOF_AE_DECK_REF=$ONEROOF_AE_DECK_REF; a release uses origin/main (unset it)" >&2; exit 1; }
+
 # 2. A clean copy of HEAD, linked to that libghostty (its .build is kept between runs).
 [ -d "$STAGE/src/app/.build" ] && mv "$STAGE/src/app/.build" "$STAGE/swift-build-keep"
 rm -rf "$STAGE/src"; mkdir -p "$STAGE/src"
@@ -36,9 +39,12 @@ ln -sfn "$STAGE/ghostty/macos/GhosttyKit.xcframework" "$STAGE/src/app/Vendor/Gho
 (cd "$STAGE/src/app" && ONEROOF_GHOSTTY_DIR="$STAGE/ghostty" scripts/bundle.sh release)
 
 APP="$STAGE/src/app/build/One Roof.app"
-for need in agentic_engineering agentic_engineering/deck/content/catalog.json THIRD-PARTY-NOTICES.md licenses/Qwen3-LICENSE.txt MacOS/OneRoof MacOS/roofd Library/LaunchAgents/io.github.gaurav8936.oneroof.roofd.plist; do
+# LAB-1257 · the skill-linking script, One Roof's own routing rules, and the deck's course (the deck repository at main
+# must include it); the deck's catalog carries the Learn bands.
+for need in agentic_engineering agentic_engineering/scripts/sync-skills.sh agentic_engineering/deck/content/catalog.json agentic_engineering/deck/content/course agent-routing/routing.json agent-routing/roles.json THIRD-PARTY-NOTICES.md licenses/Qwen3-LICENSE.txt MacOS/OneRoof MacOS/roofd Library/LaunchAgents/io.github.gaurav8936.oneroof.roofd.plist; do
   [ -e "$APP/Contents/Resources/$need" ] || [ -e "$APP/Contents/$need" ] || { echo "package-app: $need missing from the bundle" >&2; exit 1; }
 done
+grep -q '"bands"' "$APP/Contents/Resources/agentic_engineering/deck/content/catalog.json" || { echo "package-app: the deck catalog has no Learn bands (deck repository main predates LAB-1257)" >&2; exit 1; }
 bash tools/release-check.sh --app "$APP" || { echo "package-app: the built app leaks build-machine paths" >&2; exit 1; }
 
 # 3. Zip: no resource forks, extended attributes or ACLs (so no __MACOSX/ entries), then gate the zip itself.

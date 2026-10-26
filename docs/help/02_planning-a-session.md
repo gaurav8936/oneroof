@@ -71,7 +71,7 @@ The last item of each menu creates something, then starts the session on it.
 **Advanced** holds:
 
 - **Agent arguments:** extra CLI arguments, for example `--permission-mode plan`.
-- **Role:** a skill plus the agent that runs it (for example a second-opinion review on Codex), read from `roles.json` in your agentic engineering folder. Picking one fills agent, model, name and opening message.
+- **Role:** a skill plus the agent that runs it (for example a code review on Codex), read from One Roof's `roles.json` (`~/.config/oneroof/agent-routing/roles.json` wins). Each role names a skill of the bundled deck. Picking one fills agent, model, name and opening message.
 - **Resume a Claude conversation:** lists your recent Claude conversations by title. Pick one to continue it in One Roof. If it was active in the last few minutes, One Roof warns you to close it in the other terminal first, so two Claudes do not write to one conversation.
 - **Own git worktree:** shown but not available yet.
 

@@ -76,7 +76,7 @@ public enum Usage {
     public static func all() -> [SeatUsage] { claude() + [codex()].compactMap { $0 } }
 }
 
-/// Routing rules, read in place from the agentic-engineering folder (`skills/*/agent-routing/routing.json`, see AEFolder).
+/// Routing rules: One Roof's own `agent-routing/routing.json` (app Resources), or yours in ~/.config/oneroof/agent-routing/ (see AEFolder).
 public struct RoutingPolicy: Sendable {
     public struct Choice: Equatable, Sendable { public var agent: AgentKind; public var model: String? }
     public var kinds: [String: [Choice]]
@@ -167,8 +167,8 @@ public enum Router {
     static func note(_ skipped: [String]) -> String { skipped.isEmpty ? "" : " · skipped: " + skipped.joined(separator: ", ") }
 }
 
-/// A role: a skill plus the agent that should run it, read in place from the agentic-engineering folder
-/// (`skills/*/agent-routing/roles.json`).
+/// A role: a skill from the bundled deck plus the agent that should run it, read from One Roof's routing rules
+/// (`agent-routing/roles.json`, see AEFolder.routingFile).
 public struct Role: Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String

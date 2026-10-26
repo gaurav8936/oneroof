@@ -27,7 +27,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
-ROUTING = os.path.join(REPO, "agentic_engineering", "skills", "fleet", "agent-routing", "routing.json")
+ROUTING = os.path.join(REPO, "app", "Resources", "agent-routing", "routing.json")  # LAB-1257: app config, not a skill
 
 # Mirrors LocalModel.task / LocalModel.format (Arch-Router's own route prompt).
 ARCH_TASK = """
