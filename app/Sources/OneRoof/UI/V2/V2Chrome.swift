@@ -1,0 +1,402 @@
+import AppKit
+import SwiftUI
+import OneRoofCore
+
+// One Roof 1.x window chrome (handover A1, shared/NAVIGATION.md, FOCUS_LADDER.md): the places rail and icon row, the
+// status dock in its three forms, and the small pieces they share. Colours come only from the panel's theme tokens.
+
+// MARK: Places
+
+extension Place {
+    /// The 0.5 centre view a place opens until its own v2 screen lands (M4 redraws Home, Needs you, Work, Machine,
+    /// Loops; Learn stays today's Learn in the v2 frame). Nothing that works today is lost in the meantime.
+    var centre: CentreView {
+        switch self {
+        case .home: return .overview
+        case .needsYou: return .decisions
+        case .sessions: return .workspace
+        case .work: return .work
+        case .machine: return .resources
+        case .loops: return .loops
+        case .learn: return .learn
+        }
+    }
+}
+
+extension CentreView {
+    /// The place a centre view belongs to (menus such as ⇧⌘L Overview or ⌘B Board still open their view; the rail
+    /// follows). Views of a session (editor, review, subagents, objective) stay in the place you were in.
+    var place: Place? {
+        switch self {
+        case .workspace: return .sessions
+        case .overview: return .home
+        case .decisions: return .needsYou
+        case .work, .board: return .work
+        case .resources: return .machine
+        case .loops: return .loops
+        case .learn: return .learn
+        case .subagents, .objective, .editor, .review: return nil
+        }
+    }
+}
+
+/// Live counts the chrome shows (needs you, tonight), shared by the rail, the icon row, the avatars and the dock.
+enum V2Counts {
+    @MainActor static func needsYou(_ model: AppModel) -> Int {
+        max(model.openDecisionCount, model.items.filter { $0.status == .needsYou }.count)
+    }
+    @MainActor static func tonight(_ model: AppModel) -> Int {
+        model.scheduleRecords.values.filter { if case .tonight = $0.schedule { return true }; if case .nightly = $0.schedule { return true }; return false }.count
+    }
+}
+
+/// The 66 pt place rail (steps 0 and 2): icon + label per place, Needs you badged, Look at the foot; at step 2 the
+/// seat bars sit above Look instead of a dock.
+struct V2Rail: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    @ObservedObject var win: WindowState
+    let controller: MainWindowController
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ForEach(Place.allCases) { p in
+                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0,
+                              labelled: true) { controller.v2Open(p) }
+            }
+            Spacer(minLength: 8)
+            if win.focusStep == .wide { V2RailSeats(model: model).padding(.bottom, 6) }
+            Button { controller.v2ShowLooks() } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "circle.lefthalf.filled").font(.system(size: 14, weight: .medium))
+                    Text("Look").ui(10.5)
+                }
+                .foregroundStyle(t.text2.color).frame(width: 54, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Look: one preset sets every panel at once (Settings › Appearance)")
+            .accessibilityLabel("Look")
+        }
+        .padding(.top, 8).padding(.bottom, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(t.control.color)
+    }
+}
+
+/// The icon row (step 1): the seven places as icons in the toolbar band of the session column.
+struct V2PlacesIconRow: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    @ObservedObject var win: WindowState
+    let controller: MainWindowController
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Place.allCases) { p in
+                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0,
+                              labelled: false) { controller.v2Open(p) }
+            }
+        }
+    }
+}
+
+struct V2PlaceButton: View {
+    @Environment(\.theme) private var t
+    let place: Place
+    let selected: Bool
+    let badge: Int
+    let labelled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: place.symbol).font(.system(size: labelled ? 14 : 12.5, weight: selected ? .semibold : .regular))
+                    .overlay(alignment: .topTrailing) {
+                        if badge > 0 {
+                            Text("\(badge)").ui(9, .bold).foregroundStyle(t.onAccent.color)
+                                .padding(.horizontal, 4).frame(minWidth: 14, minHeight: 14)
+                                .background(Capsule().fill(t.statusColor(.needsYou).color))
+                                .offset(x: 9, y: -7)
+                        }
+                    }
+                if labelled { Text(place.title).ui(10.5, selected ? .semibold : .regular).lineLimit(1).minimumScaleFactor(0.8) }
+            }
+            .foregroundStyle(selected ? t.text.color : t.text2.color)
+            .frame(width: labelled ? 56 : 26, height: labelled ? 44 : 24)
+            .background(RoundedRectangle(cornerRadius: labelled ? 9 : 7, style: .continuous)
+                .fill(selected ? t.surface.color : .clear)
+                .shadow(color: selected ? t.separator.color : .clear, radius: 0.5, y: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(place.title + " (⌃⌘\(place.controlKey))")
+        .accessibilityLabel(place.title + (badge > 0 ? ", \(badge) waiting" : "") + (selected ? ", selected" : ""))
+    }
+}
+
+// MARK: Dock
+
+/// One seat in the dock: badge, then usage ("9% · 5h"), dimmed when the seat is off.
+struct V2SeatChip: View {
+    @Environment(\.theme) private var t
+    let mark: AgentMark
+    let usage: SeatUsage?
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            AgentBadge(mark, size: compact ? 16 : 20)
+            Text(Self.label(usage)).ui(compact ? 10.5 : 11).foregroundStyle(usage == nil ? t.text3.color : t.text2.color).lineLimit(1).fixedSize()
+        }
+        .opacity(usage == nil ? 0.55 : 1)
+        .help(Self.help(mark, usage))
+    }
+
+    static func label(_ u: SeatUsage?) -> String {
+        guard let u else { return "off" }
+        if let f = u.fiveHour { return "\(Int(f))% · 5h" }
+        if let w = u.sevenDay { return "\(Int(w))% · week" }
+        return "–"
+    }
+
+    static func help(_ m: AgentMark, _ u: SeatUsage?) -> String {
+        guard let u else { return "\(m.mono): not signed in or no usage feed" }
+        var parts: [String] = []
+        if let f = u.fiveHour { parts.append("5 h \(Int(f))%") }
+        if let w = u.sevenDay { parts.append("7 d \(Int(w))%") }
+        if let r = u.fiveHourResets { parts.append("resets \(r.formatted(date: .omitted, time: .shortened))") }
+        return "\(u.seat): " + parts.joined(separator: " · ")
+    }
+}
+
+enum V2Seats {
+    static let marks: [AgentMark] = [.claude1, .claude2, .codex, .kimi, .gemini]
+    static func name(_ m: AgentMark) -> String {
+        switch m { case .claude1: return "Claude1"; case .claude2: return "Claude2"; case .codex: return "Codex"; case .kimi: return "Kimi"
+        case .gemini: return "Gemini"; default: return m.rawValue }
+    }
+    @MainActor static func usage(_ model: AppModel) -> [AgentMark: SeatUsage] {
+        let byName = Dictionary(model.seats.map { ($0.seat, $0) }, uniquingKeysWith: { a, _ in a })
+        var out: [AgentMark: SeatUsage] = [:]
+        for m in AgentMark.available(marks) { if let u = byName[name(m)] { out[m] = u } }
+        return out
+    }
+}
+
+/// The full dock (step 0, 50 pt across the window): seats · roofd · foundations · Mac load · Needs you · Tonight.
+/// Every part opens where its details are (LAB-1085).
+struct V2Dock: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    @ObservedObject var resources: ResourceMonitor
+    let controller: MainWindowController
+
+    var body: some View {
+        let usage = V2Seats.usage(model)
+        HStack(spacing: 14) {
+            ForEach(AgentMark.available(V2Seats.marks), id: \.self) { m in
+                Button { controller.v2OpenSettings(tab: 2) } label: { V2SeatChip(mark: m, usage: usage[m]) }.buttonStyle(.plain)
+            }
+            Spacer(minLength: 12)
+            V2DockStatus(model: model, controller: controller)
+            Button { controller.v2Open(.machine) } label: {
+                Text(V2DockMac.text(resources.snapshot)).ui(11).foregroundStyle(t.text2.color).lineLimit(1).fixedSize()
+            }
+            .buttonStyle(.plain).help("This Mac: One Roof's memory and CPU (Machine)")
+            V2DockPill(title: "Needs you", count: V2Counts.needsYou(model), urgent: true) { controller.v2Open(.needsYou) }
+            V2DockPill(title: "Tonight", count: V2Counts.tonight(model), urgent: false) { controller.v2Open(.loops) }
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(t.control.color)
+        .overlay(alignment: .top) { Rectangle().fill(t.separator.color).frame(height: 1) }
+    }
+}
+
+/// "● roofd 0.5.2.9 · 4 agents · 1 foundations issue": the runtime and the startup check.
+struct V2DockStatus: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    let controller: MainWindowController
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Button { controller.v2Open(.machine) } label: {
+                HStack(spacing: 5) {
+                    Circle().fill(t.statusColor(model.runtimeOK ? .done : .needsYou).color).frame(width: 7, height: 7)
+                    Text(model.runtimeState).ui(11).foregroundStyle(t.text2.color).lineLimit(1)
+                    if let note = AppVersion.daemonOlderNote(model.daemonVersion, app: AppVersion.current?.short) {
+                        Text("· older than app").ui(11).foregroundStyle(t.text3.color).lineLimit(1).fixedSize().help(note)
+                    }
+                }
+            }
+            .buttonStyle(.plain).help("roofd, the background service that keeps every session running (Machine)")
+            let issues = model.foundations.filter { $0.level != .ok }.count
+            if model.checkingFoundations {
+                Text("· Checking…").ui(11).foregroundStyle(t.text3.color).fixedSize()
+            } else if issues > 0 {
+                Button { NotificationCenter.default.post(name: .openFoundations, object: nil) } label: {
+                    Text("· \(issues) foundations issue\(issues == 1 ? "" : "s")").ui(11, .medium).foregroundStyle(t.needsText.color).fixedSize()
+                }
+                .buttonStyle(.plain).help("Startup check found problems (⇧⌘F)")
+            }
+        }
+    }
+}
+
+enum V2DockMac {
+    static func text(_ s: ResourceSnapshot) -> String {
+        guard s.processCount > 0 else { return "Mac · measuring…" }
+        return "Mac · \(ResourceFormat.bytes(s.footprint)) · \(ResourceFormat.cpu(s.cpu)) CPU"
+    }
+}
+
+struct V2DockPill: View {
+    @Environment(\.theme) private var t
+    let title: String
+    let count: Int
+    let urgent: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("\(title) · \(count)").ui(11, count > 0 ? .semibold : .regular)
+                .foregroundStyle(urgent && count > 0 ? t.pill(.needsYou).text.color : t.text.color)
+                .padding(.horizontal, 10).frame(height: 22)
+                .background(Capsule().fill(urgent && count > 0 ? (t.pill(.needsYou).fill ?? t.surface).color : t.surface.color))
+                .overlay(Capsule().strokeBorder(t.separator.color, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title): \(count)")
+    }
+}
+
+/// The dock folded into one line at the foot of the session column (step 1): "● roofd · C1 9% C2 5% CX 19%   ⌃⌘J".
+struct V2DockLine: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+    let controller: MainWindowController
+    @State private var flash = false
+
+    var body: some View {
+        let usage = V2Seats.usage(model)
+        let needs = V2Counts.needsYou(model)
+        HStack(spacing: 6) {
+            Button { controller.v2Open(.machine) } label: {
+                HStack(spacing: 4) {
+                    Circle().fill(t.statusColor(model.runtimeOK ? .done : .needsYou).color).frame(width: 7, height: 7)
+                    Text("roofd").ui(11).foregroundStyle(t.text2.color)
+                }
+            }
+            .buttonStyle(.plain).help(model.runtimeState)
+            Text("·").ui(11).foregroundStyle(t.text3.color)
+            ForEach(AgentMark.available(V2Seats.marks).filter { usage[$0] != nil }, id: \.self) { m in
+                Text("\(m.mono) \(usage[m]?.worst.map { "\(Int($0))%" } ?? "–")").ui(11).foregroundStyle(t.text2.color)
+                    .lineLimit(1).fixedSize().help(V2SeatChip.help(m, usage[m]))
+            }
+            if needs > 0 {
+                Button { controller.v2Open(.needsYou) } label: {
+                    Text("· Needs you \(needs)").ui(11, .semibold).foregroundStyle(t.needsText.color).fixedSize()
+                }
+                .buttonStyle(.plain)
+            }
+            // The startup check stays visible at step 1 when it found something (0.5.2.9's footer always showed it).
+            let issues = model.foundations.filter { $0.level != .ok }.count
+            if issues > 0 {
+                Button { NotificationCenter.default.post(name: .openFoundations, object: nil) } label: {
+                    Text("· \(issues) issue\(issues == 1 ? "" : "s")").ui(11, .medium).foregroundStyle(t.needsText.color).fixedSize()
+                }
+                .buttonStyle(.plain).help("Startup check found problems (⇧⌘F)")
+            }
+            Spacer(minLength: 4)
+            Button { controller.v2ToggleDock() } label: { Text("⌃⌘J").ui(10.5).foregroundStyle(t.text3.color) }
+                .buttonStyle(.plain).help("Show the full dock (⌃⌘J)")
+        }
+        .padding(.horizontal, 12).frame(height: 30)
+        .background(flash ? t.selection.color : .clear)
+        .onChange(of: needs) { old, new in
+            // Needs you is never hidden: at step 1 the dock line flashes once when something starts waiting.
+            guard new > old, !Motion.reduce else { return }
+            withAnimation(.easeInOut(duration: 0.25)) { flash = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { withAnimation(.easeInOut(duration: 0.4)) { flash = false } }
+        }
+    }
+}
+
+/// Seat bars at the foot of the rail (step 2, where there is no dock).
+struct V2RailSeats: View {
+    @Environment(\.theme) private var t
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let usage = V2Seats.usage(model)
+        VStack(spacing: 3) {
+            ForEach(AgentMark.available(V2Seats.marks), id: \.self) { m in
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(t.separator.color)
+                        Capsule().fill(m.fill.color).frame(width: g.size.width * CGFloat(min(100, max(0, usage[m]?.worst ?? 0))) / 100)
+                    }
+                }
+                .frame(width: 36, height: 3)
+                .help(V2SeatChip.help(m, usage[m]))
+            }
+            Text("seats").ui(9.5).foregroundStyle(t.text3.color)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Seat usage")
+    }
+}
+
+// MARK: Shared bits
+
+/// The Plan inspector folded to a 28 pt edge tab (steps 1 and 2): vertical "Plan ⌥⌘P · Ticket · Notes".
+struct V2InspectorEdgeTab: View {
+    @Environment(\.theme) private var t
+    let open: (Int) -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ForEach(Array(["Plan ⌥⌘P", "Ticket", "Notes"].enumerated()), id: \.offset) { i, s in
+                Button { open(i) } label: {
+                    Text(s).ui(10.5, i == 0 ? .semibold : .regular).foregroundStyle(i == 0 ? t.text.color : t.text2.color)
+                        .fixedSize().rotationEffect(.degrees(90)).frame(width: 20, height: CGFloat(s.count) * 7 + 8)
+                }
+                .buttonStyle(.plain)
+                .help(i == 0 ? "Slide the Plan over the terminal (⌥⌘P)" : "Open the Plan on its \(s) tab")
+            }
+            Spacer()
+        }
+        .padding(.top, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(t.surface.color)
+        .overlay(alignment: .leading) { Rectangle().fill(t.separator.color).frame(width: 1) }
+    }
+}
+
+/// "Focus · ⌥⌘F steps on · ⇧⌥⌘F steps back · Esc leaves · hover the left edge for sessions" (step 3).
+struct V2FocusHint: View {
+    @Environment(\.theme) private var t
+    var body: some View {
+        Text("Focus · ⌥⌘F steps on · ⇧⌥⌘F steps back · Esc leaves · hover the left edge for sessions")
+            .ui(11).foregroundStyle(t.text2.color)
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .background(Capsule().fill(t.surface.color.opacity(0.92)))
+            .overlay(Capsule().strokeBorder(t.separator.color, lineWidth: 1))
+            .allowsHitTesting(false)
+    }
+}
+
+/// Shows the Focus hint only at step 3.
+struct V2FocusHintSlot: View {
+    @ObservedObject var win: WindowState
+    var body: some View {
+        if win.focusStep == .focus { V2FocusHint() } else { Color.clear.frame(width: 1, height: 1) }
+    }
+}
+
+/// A hosting view that never takes the mouse (the hint over the terminal must not steal clicks or selection).
+final class PassThroughHostingView: NSHostingView<AnyView> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}

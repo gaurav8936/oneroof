@@ -24,7 +24,7 @@ struct PlanPanelView: View {
                     ScrollView { today.padding(16).frame(maxWidth: .infinity, alignment: .leading) }
                 }
                 Hairline()
-                appearance
+                if !model.settings.ui2 { appearance }   // v2: Looks replace the per-panel list (Settings › Appearance › Customize)
             }
             .background(t.window.color)
         }
@@ -107,6 +107,11 @@ struct PlanDetail: View {
     var body: some View {
         VStack(spacing: 0) {
             tabBar
+                // v2 edge tab: "Ticket" / "Notes" open the Plan on that tab (PlanTabRequest).
+                .onReceive(NotificationCenter.default.publisher(for: PlanTabRequest.name)) { n in
+                    guard n.userInfo?["window"] as? String == win.id, let i = n.userInfo?["tab"] as? Int else { return }
+                    tab = [PlanTab.plan, .ticket, .notes][min(max(i, 0), 2)]
+                }
             Hairline()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {

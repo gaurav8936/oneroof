@@ -24,6 +24,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     /// Plan panel was open before the Editor (its inspector) took its place.
     private var planBeforeEditor: Bool?
 
+    // One Roof 1.x v2 window (LAB-ONEROOF-UI-REDESIGN M1): set once at init from the ui2 setting.
+    private(set) var isV2 = false
+    var v2RailItem: NSSplitViewItem?
+    var v2Dock: NSView?
+    var v2DockHeight: NSLayoutConstraint?
+    var v2PlanOverlay: NSView?
+    var v2EdgeTracker: V2EdgeTracker?
+    var v2RightTracker: V2EdgeTracker?
+    /// The Plan was opened by the 0.5-style Editor rule (the file tree beside it), to fold back afterwards.
+    var v2FilesOpenedByEditor = false
+    var v2EdgeOverlay: NSView?
+    var v2V2Toolbar: V2ToolbarDelegate?
+    var v2Bag = Set<AnyCancellable>()
+    var v2EscMonitor: Any?
+    /// ⌃⌘J at the current step: nil = the step's own dock (full at 0, a line at 1, none at 2 and 3).
+    var v2DockOverride: Bool?
+    /// The step before Focus, for Esc / leaving Focus.
+    var v2BeforeFocus: FocusStep = .sessions
+    /// A page over the current place (Settings, Help …, M5); the rail then highlights no place (LAB-1084).
+    @Published var v2Page: String?
+    var v2OnPage: Bool { v2Page != nil }
+    /// The dock is folded into the session column's line (step 1) rather than shown full.
+    @Published var v2DockFolded = true
+    /// Plan inspector mode in its column: the 270 pt inspector (step 0) or the 28 pt edge tab (steps 1-2).
+    @Published var v2PlanEdge = false
+    var splitView: NSSplitView { split.splitView }
+    var splitController: NSSplitViewController { split }
+    var centreItemRef: NSSplitViewItem { centreItem }
+    var sideItemRef: NSSplitViewItem { sideItem }
+    var planItemRef: NSSplitViewItem { planItem }
+    var filesItemRef: NSSplitViewItem { filesItem }
+    var backdropRef: ToolbarBackdrop { backdrop }
+
     /// Every open main window, in Window-menu order.
     static var all: [MainWindowController] = []
     static func forWorkspace(_ id: String) -> MainWindowController? { all.first { $0.win.id == id } }
@@ -48,22 +81,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         window.delegate = self
         Self.all.append(self)
 
+        isV2 = model.settings.ui2
         // Toolbar: a unified NSToolbar gives the 50 pt title bar with the traffic lights centred; its items are SwiftUI.
-        toolbarDelegate = ToolbarDelegate(model: model, win: win, controller: self)
-        let tb = NSToolbar(identifier: "OneRoofToolbar." + win.id)
-        tb.delegate = toolbarDelegate
-        tb.displayMode = .iconOnly
-        tb.allowsUserCustomization = false
-        tb.showsBaselineSeparator = false
-        window.toolbar = tb
-        window.toolbarStyle = .unified
+        // The v2 window builds its own toolbar once the split view exists (its sections track the column dividers).
+        if !isV2 {
+            toolbarDelegate = ToolbarDelegate(model: model, win: win, controller: self)
+            let tb = NSToolbar(identifier: "OneRoofToolbar." + win.id)
+            tb.delegate = toolbarDelegate
+            tb.displayMode = .iconOnly
+            tb.allowsUserCustomization = false
+            tb.showsBaselineSeparator = false
+            window.toolbar = tb
+            window.toolbarStyle = .unified
+        }
 
-        let sidebar = NSHostingController(rootView: SessionsPanel(model: model, win: win, controller: self))
-        let plan = NSHostingController(rootView: PlanPanelView(model: model, win: win))
+        let sidebar = isV2 ? NSHostingController(rootView: AnyView(V2SessionColumn(model: model, win: win, controller: self)))
+                           : NSHostingController(rootView: AnyView(SessionsPanel(model: model, win: win, controller: self)))
+        let plan = isV2 ? NSHostingController(rootView: AnyView(V2PlanSlot(model: model, win: win, controller: self)))
+                        : NSHostingController(rootView: AnyView(PlanPanelView(model: model, win: win)))
         let files = NSHostingController(rootView: FileBrowserView(model: model, win: win))
         // SwiftUI panels must not report a preferred/maximum size, or AppKit shrinks the window when a panel closes.
         sidebar.sizingOptions = []; plan.sizingOptions = []; files.sizingOptions = []
-        centre = CentreController(model: model, win: win, terminalArea: terminalArea)
+        centre = CentreController(model: model, win: win, terminalArea: terminalArea, v2: isV2)
 
         split = NSSplitViewController()
         split.splitView.isVertical = true
@@ -88,7 +127,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             i!.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
             split.addSplitViewItem(i!)
         }
-        if !SelfTest.isActive { split.splitView.autosaveName = win.id == WorkspaceStore.mainId ? "OneRoofSplit" : "OneRoofSplit." + win.id }
+        // The v2 window keeps its own layout save: its split view has a rail item 0.5's does not (audit D1).
+        if !SelfTest.isActive {
+            let base = isV2 ? "OneRoofSplitV2" : "OneRoofSplit"
+            split.splitView.autosaveName = win.id == WorkspaceStore.mainId ? base : base + "." + win.id
+        }
+        if isV2 { v2InstallRailAndToolbar() }
 
         // Content: the themed toolbar backdrop (behind the transparent title bar) and the panels below it.
         let root = NSView()
@@ -110,8 +154,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             split.view.topAnchor.constraint(equalTo: top),
             split.view.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             split.view.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            split.view.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
+        if isV2 { v2InstallDock(in: root, under: split.view, top: top) }
+        else { split.view.bottomAnchor.constraint(equalTo: root.bottomAnchor).isActive = true }
 
         if !window.setFrameUsingName(autosave), let screen = NSScreen.main {
             // First launch: 85% of the screen, at most 1700 × 1000, centred; later windows cascade.
@@ -122,7 +167,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         }
         // Default widths (WINDOW_SHELL §3) when there is no saved layout: Sessions 300 · Plan 330.
         let saved = !SelfTest.isActive && !Prefs.freshProfile && UserDefaults.standard.object(forKey: "NSSplitView Subview Frames " + (split.splitView.autosaveName ?? "")) != nil
-        if !saved {
+        if !saved && !isV2 {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 let w = self.split.splitView.bounds.width
@@ -141,11 +186,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         }.store(in: &bag)
         syncPanels()
         watchToolbarClicks()
+        if isV2 { v2Start() }
     }
 
     required init?(coder: NSCoder) { fatalError("not supported") }
 
-    deinit { if let toolbarClickMonitor { NSEvent.removeMonitor(toolbarClickMonitor) } }
+    deinit {
+        if let toolbarClickMonitor { NSEvent.removeMonitor(toolbarClickMonitor) }
+        if let v2EscMonitor { NSEvent.removeMonitor(v2EscMonitor) }
+    }
 
     /// LAB-596 / LAB-653: two quick clicks on toolbar controls (tabs, window name, panel toggles) reach the title bar
     /// as a double-click where SwiftUI does not take them, and macOS zooms or "fills" the window. They become single
@@ -195,6 +244,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     static var quitting = false
 
     func windowWillClose(_ notification: Notification) {
+        if let m = v2EscMonitor { NSEvent.removeMonitor(m); v2EscMonitor = nil }
         Self.all.removeAll { $0 === self }
         // Closing a workspace window keeps its sessions (they wait in the store, roofd keeps the agents);
         // reopen it from Window ▸. Quitting is not closing (LAB-706): every window comes back at the next launch.
@@ -213,12 +263,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     }
 
     private func applyThemes(_ t: PanelThemes) {
+        if isV2 { v2ApplyThemes(t) }
         let k = t.sidebar.tokens
         // LAB-590: a window with a colour gets a tinted band and a 2 pt stripe in the colour's ink; without one, as before.
         let accent = WindowAccent(named: win.colour, on: k)
         backdrop.fill = accent?.band ?? k.toolbar
         backdrop.line = accent?.ink ?? k.separator
         backdrop.lineWidth = accent == nil ? 1 : 2
+        if isV2 { backdrop.lineWidth = 0 }
         window?.appearance = t.sidebar.appearance
         sideItem.viewController.view.appearance = t.sidebar.appearance
         filesItem.viewController.view.appearance = t.files.appearance
@@ -233,7 +285,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     func syncPanels() {
         panels = PanelState(sidebar: !sideItem.isCollapsed, files: !filesItem.isCollapsed,
                             centre: !centreItem.isCollapsed, plan: !planItem.isCollapsed)
-        terminalArea.planPanelOpen = panels.plan
+        // v2: the 28 pt edge tab is not an open Plan (the Subagents column beside the terminal still shows, audit D3).
+        terminalArea.planPanelOpen = panels.plan && !(isV2 && v2PlanEdge)
     }
 
     /// Close or open the centre panel. With it closed, the plan panel takes the freed width (v0.1 rule).
@@ -246,9 +299,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         syncLater()
     }
 
-    func togglePlanPanel() { guard guardLast(planItem) else { return }; planItem.animator().isCollapsed.toggle(); syncLater() }
+    func togglePlanPanel() {
+        if isV2 { v2TogglePlan(); return }
+        guard guardLast(planItem) else { return }; planItem.animator().isCollapsed.toggle(); syncLater()
+    }
     func toggleFiles() { guard guardLast(filesItem) else { return }; filesItem.animator().isCollapsed.toggle(); syncLater() }
-    func toggleSidebar() { guard guardLast(sideItem) else { return }; sideItem.animator().isCollapsed.toggle(); syncLater() }
+    func toggleSidebar() {
+        if isV2 { v2ToggleColumn(); return }
+        guard guardLast(sideItem) else { return }; sideItem.animator().isCollapsed.toggle(); syncLater()
+    }
     /// The Sessions rail's widen button (LAB-714): back to the panel's usual width.
     func widenSessions() {
         if sideItem.isCollapsed { sideItem.animator().isCollapsed = false }
@@ -270,6 +329,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
 
     /// Focus: hide both side panels (terminal only); if both are already hidden, show them again.
     func toggleFocus() {
+        if isV2 { v2StepOn(); return }
         let hidden = sideItem.isCollapsed && planItem.isCollapsed
         sideItem.animator().isCollapsed = !hidden
         planItem.animator().isCollapsed = !hidden
@@ -280,6 +340,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
 
     /// Fleet views fold the Sessions panel away; Workspace brings it back as it was (S00.T.1).
     private func centreChanged(_ c: CentreView) {
+        if isV2 {
+            if centreItem.isCollapsed { centreItem.animator().isCollapsed = false }
+            v2CentreChanged(c)
+            centre.show(c); syncLater(); return
+        }
         if c.foldsSessions {
             if sessionsBeforeFold == nil { sessionsBeforeFold = !sideItem.isCollapsed }
             sideItem.animator().isCollapsed = true
@@ -346,12 +411,16 @@ struct PanelState: Equatable {
 
 /// The 50 pt band behind the transparent title bar, in the Sessions theme's toolbar colour, with a bottom separator.
 final class ToolbarBackdrop: NSView {
+    /// v2: the band painted per column, each segment (right edge x, colour) from left to right.
+    var segments: [(CGFloat, RGB)] = [] { didSet { needsDisplay = true } }
     var fill = ThemeName.daylight.tokens.toolbar { didSet { needsDisplay = true } }
     var line = ThemeName.daylight.tokens.separator { didSet { needsDisplay = true } }
     var lineWidth: CGFloat = 1 { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         fill.nsColor.setFill(); bounds.fill()
+        var x: CGFloat = 0
+        for (end, colour) in segments where end > x { colour.nsColor.setFill(); NSRect(x: x, y: 0, width: end - x, height: bounds.height).fill(); x = end }
         line.nsColor.setFill(); NSRect(x: 0, y: bounds.height - lineWidth, width: bounds.width, height: lineWidth).fill()
     }
 }
@@ -363,9 +432,12 @@ final class CentreController: NSViewController {
     let terminalArea: TerminalAreaController
     private var hosts: [CentreView: NSView] = [:]
     private var current: CentreView = .workspace
+    /// v2 window: the terminal area is a card inset 8 pt on the centre's background, corners 12 (handover A1.11).
+    private let v2: Bool
+    private var cardFrame: NSView?
 
-    init(model: AppModel, win: WindowState, terminalArea: TerminalAreaController) {
-        self.model = model; self.win = win; self.terminalArea = terminalArea
+    init(model: AppModel, win: WindowState, terminalArea: TerminalAreaController, v2: Bool = false) {
+        self.model = model; self.win = win; self.terminalArea = terminalArea; self.v2 = v2
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("not supported") }
@@ -388,8 +460,34 @@ final class CentreController: NSViewController {
             content.leadingAnchor.constraint(equalTo: root.leadingAnchor), content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
         ])
         addChild(terminalArea)
-        pin(terminalArea.view, in: content)
-        hosts[.workspace] = terminalArea.view
+        if v2 {
+            // The card: a rounded, clipped frame around the terminal area, 8 pt in from the centre's edges.
+            let card = NSView()
+            card.wantsLayer = true
+            card.layer?.cornerRadius = Radius.card
+            card.layer?.cornerCurve = .continuous
+            card.layer?.masksToBounds = true
+            let bg = NSHostingView(rootView: AnyView(CentreThemed(model: m, win: w) { Color.clear }))
+            bg.sizingOptions = []   // a background must never size the centre (a clear view's size would shrink it to nothing)
+            pin(bg, in: content)
+            card.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(card)
+            NSLayoutConstraint.activate([
+                card.topAnchor.constraint(equalTo: content.topAnchor, constant: 6), card.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
+                card.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8), card.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
+            ])
+            pin(terminalArea.view, in: card)
+            let hint = PassThroughHostingView(rootView: AnyView(V2FocusHintSlot(win: w).themed(m.themes.terminal, scale: 1)))
+            hint.sizingOptions = [.intrinsicContentSize]
+            hint.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(hint)
+            NSLayoutConstraint.activate([hint.centerXAnchor.constraint(equalTo: card.centerXAnchor), hint.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -48)])
+            cardFrame = card
+            hosts[.workspace] = card
+        } else {
+            pin(terminalArea.view, in: content)
+            hosts[.workspace] = terminalArea.view
+        }
         view = root
     }
 
@@ -407,7 +505,7 @@ final class CentreController: NSViewController {
         let m = model, w = win
         let v: AnyView
         switch c {
-        case .workspace: return terminalArea.view
+        case .workspace: return cardFrame ?? terminalArea.view
         case .overview: v = AnyView(CentreThemed(model: m, win: w) { OverviewView(model: m, win: w) })
         case .resources: v = AnyView(CentreThemed(model: m, win: w) { ResourcesView(model: m, win: w) })
         case .board: v = AnyView(CentreThemed(model: m, win: w) { BoardView(model: m, win: w) })
