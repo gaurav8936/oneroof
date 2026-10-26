@@ -54,7 +54,7 @@ final class ResourceMonitor: ObservableObject {
             DispatchQueue.main.async {
                 self.snapshot = snap
                 self.history.record(snap)
-                if wantsMac { self.mac = mac }
+                if wantsMac { self.mac = SelfTestMacFixture.breakdown ?? mac }   // LAB-853 self-test data
             }
         }
     }

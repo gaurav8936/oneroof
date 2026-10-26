@@ -33,8 +33,60 @@ public struct BrowserSite: Equatable, Sendable, Identifiable {
     public var id: String { site }
 }
 
+/// The tabs of one browser window (LAB-853: Chrome's tabs by window, as the owner sees them in Chrome).
+public struct BrowserWindowTabs: Equatable, Sendable, Identifiable {
+    public var windowId: String
+    /// 1-based, in the order the browser listed its windows (front window first).
+    public var number: Int
+    public var tabs: [BrowserTab]
+    public var id: String { windowId }
+    /// The window's front tab (what its title bar shows).
+    public var front: BrowserTab? { tabs.first(where: \.active) }
+}
+
 public enum BrowserTabs {
     public enum Family: Sendable { case chromium, safari }
+
+    /// The kind MacResources gives a browser's renderer processes (one per tab or site, unnamed by macOS).
+    public static let rendererKind = "Tab or site"
+
+    /// Tabs grouped by window, windows and tabs in the browser's order.
+    public static func windows(_ tabs: [BrowserTab]) -> [BrowserWindowTabs] {
+        var out: [BrowserWindowTabs] = []
+        for t in tabs {
+            if let i = out.firstIndex(where: { $0.windowId == t.windowId }) { out[i].tabs.append(t) }
+            else { out.append(BrowserWindowTabs(windowId: t.windowId, number: out.count + 1, tabs: [t])) }
+        }
+        return out.map { w in var w = w; w.tabs.sort { $0.index < $1.index }; return w }
+    }
+
+    /// The renderer ("Tab or site") processes of an app: how many, and their memory together.
+    public static func renderers(_ procs: [MacProc]) -> (count: Int, bytes: UInt64) {
+        procs.filter { $0.kind == rendererKind }.reduce((0, 0)) { ($0.0 + 1, $0.1 + $1.footprint) }
+    }
+
+    /// May One Roof read this browser's tabs? Asked of macOS without prompting (AEDeterminePermissionToAutomateTarget
+    /// with askUserIfNeeded = false), so the page can say so before the owner presses anything.
+    public enum Permission: Equatable, Sendable {
+        case granted
+        /// macOS has not asked the owner yet: the first read asks.
+        case notAsked
+        /// The owner said no (System Settings › Privacy & Security › Automation).
+        case denied
+        case notRunning
+        case unknown(Int32)
+    }
+
+    /// The OSStatus from AEDeterminePermissionToAutomateTarget → Permission.
+    public static func permission(status: Int32) -> Permission {
+        switch status {
+        case 0: return .granted
+        case -1744: return .notAsked      // errAEEventWouldRequireUserConsent
+        case -1743: return .denied        // errAEEventNotPermitted
+        case -600: return .notRunning     // procNotFound
+        default: return .unknown(status)
+        }
+    }
 
     /// Browsers whose tabs can be listed, by app name (as Resources names the group).
     public static func family(appName: String) -> Family? {
