@@ -26,6 +26,10 @@ final class TerminalAreaController: NSViewController {
     private(set) var focusedPane: String { didSet { savePanes() } }
     private(set) var zoomed: String?
     private var paneViews: [String: PaneView] = [:]
+    /// Grid (A4.1): the Single layout's panes while the Grid shows, put back on Single.
+    private var singleTree: (tree: PaneNode, focused: String)?
+    /// Set when a click lands in a pane's composer: the next focus change leaves the keyboard where the click put it.
+    private var keepKeyboardOnce = false
 
     /// Self-test (LAB-521): each pane's top strip height as laid out and as its content needs it.
     func topHeights() -> [(frame: CGFloat, needs: CGFloat)] { paneViews.values.filter { !$0.isHidden }.compactMap(\.topHeights) }
@@ -57,10 +61,10 @@ final class TerminalAreaController: NSViewController {
 
     /// Saved half a second after the last change, so dragging a divider does not write on every mouse move.
     private func savePanes() {
-        guard !SelfTest.isActive else { return }
+        guard !SelfTest.isActive, singleTree == nil else { return }   // the Grid is built, never saved over your panes
         pendingSave?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, let data = try? JSONEncoder().encode(SavedPanes(tree: self.tree, focused: self.focusedPane)) else { return }
+            guard let self, self.singleTree == nil, let data = try? JSONEncoder().encode(SavedPanes(tree: self.tree, focused: self.focusedPane)) else { return }
             Prefs.defaults.set(data, forKey: Self.panesKey(self.win.id))
         }
         pendingSave = work
@@ -111,6 +115,7 @@ final class TerminalAreaController: NSViewController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _, _, _, _ in self?.update() }
             .store(in: &bag)
+        win.$layout.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] l in self?.applyLayout(l) }.store(in: &bag)
         model.$decisions.combineLatest(model.$subagents).receive(on: DispatchQueue.main)
             .sink { [weak self] _, _ in self?.update() }
             .store(in: &bag)
@@ -139,7 +144,9 @@ final class TerminalAreaController: NSViewController {
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in
             guard let self, e.window === self.view.window, self.tree.leaves.count > 1 else { return e }
             let p = self.body.convert(e.locationInWindow, from: nil)
-            if let (id, _) = self.paneViews.first(where: { !$0.value.isHidden && $0.value.frame.contains(p) }), id != self.focusedPane {
+            if let (id, pv) = self.paneViews.first(where: { !$0.value.isHidden && $0.value.frame.contains(p) }), id != self.focusedPane {
+                // A click into the pane's composer: the composer keeps the keyboard, not the pane's terminal.
+                if pv.bottomContains(self.body.convert(p, to: pv)) { self.keepKeyboardOnce = true }
                 self.focus(pane: id)
             }
             return e
@@ -225,10 +232,13 @@ final class TerminalAreaController: NSViewController {
                 shown.insert(agent)
                 pv.setReading(reading.contains(leaf.id) ? ReadingText.prepare(sv.allText() ?? "") : nil, theme: theme)
                 if item.session.agent.isAgent {
-                    pv.setBottom(AnyView(HintStrip(item: item, raw: raw, onRaw: { [weak self] in
+                    let onRaw: () -> Void = { [weak self] in
                         guard let self else { return }
                         NotificationCenter.default.post(name: .rawStream, object: self.win.id)
-                    }).themed(theme)))
+                    }
+                    // v2 (NEW-1): a real composer under the terminal; the classic window keeps the hint strip.
+                    pv.setBottom(model.settings.ui2 ? AnyView(V2Composer(model: model, item: item, raw: raw, onRaw: onRaw).themed(theme))
+                                                    : AnyView(HintStrip(item: item, raw: raw, onRaw: onRaw).themed(theme)))
                 } else {
                     pv.setBottom(nil)
                 }
@@ -259,14 +269,43 @@ final class TerminalAreaController: NSViewController {
         body.needsLayout = true
 
         let agent = focusedAgent
+        let keep = keepKeyboardOnce
+        keepKeyboardOnce = false
         if shownAgent != agent {
             shownAgent = agent
-            if let agent, let s = surfaces[agent] {
+            if !keep, let agent, let s = surfaces[agent] {
                 DispatchQueue.main.async { [weak s] in
                     guard let s, let w = s.window else { return }
                     w.makeFirstResponder(s)
                 }
             }
+        }
+    }
+
+    /// Single ↔ Grid (handover A4, NEW-2). Grid: up to four live sessions of this window (six when it is 1440 pt wide or
+    /// more), the selected one first, in tiles; the focus ring, ⌥⌘arrows, split and close work as on panes. Single puts
+    /// your own panes back. Wall (all windows) arrives in 1.8.0.
+    private func applyLayout(_ l: SessionLayout) {
+        switch l {
+        case .grid:
+            guard singleTree == nil, model.settings.ui2 else { return }   // the classic window has no Grid
+            pendingSave?.cancel()   // a save queued just before must not write the Grid over your panes
+            singleTree = (tree, focusedPane)
+            let wide = (view.window?.frame.width ?? view.bounds.width) > 1440   // 2 × 2 up to 1440 pt, 3 × 2 wider (A4)
+            var ids: [String] = []
+            if let sel = win.selectedId, model.item(sel)?.liveAgent != nil { ids.append(sel) }
+            let rank: (BoardItem) -> Int = { i in i.status == .needsYou ? 0 : i.status == .running ? 1 : 2 }
+            for i in model.items(in: win).filter({ $0.liveAgent.map { !model.poppedOut.contains($0) } ?? false && !ids.contains($0.id) }).sorted(by: { rank($0) < rank($1) }) { ids.append(i.id) }
+            zoomed = nil
+            tree = PaneNode.grid(ids.map { Optional($0) }, wide: wide)
+            focusedPane = tree.leaves.first?.id ?? focusedPane
+            update()
+        case .single, .wall:
+            guard let s = singleTree else { return }
+            singleTree = nil
+            tree = s.tree; focusedPane = s.focused
+            if let sel = win.selectedId, let leaf = tree.leafShowing(sel) { focusedPane = leaf.id }
+            update()
         }
     }
 
@@ -576,6 +615,8 @@ final class PaneBody: NSView {
 final class PaneView: NSView {
     private var top: NSHostingView<AnyView>?
     private var bottom: NSHostingView<AnyView>?
+    /// Whether a point (in this view's coordinates) is in the bottom bar (the v2 composer).
+    func bottomContains(_ p: NSPoint) -> Bool { bottom.map { !$0.isHidden && $0.frame.contains(p) } ?? false }
     private var overlay: NSHostingView<AnyView>?
     private var placeholder: NSHostingView<AnyView>?
     private var readingView: ReadingView?
