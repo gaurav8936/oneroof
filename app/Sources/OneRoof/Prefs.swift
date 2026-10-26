@@ -39,7 +39,12 @@ enum Prefs {
                 LegacyMigration.run(target: d)
             }
         }
-        if let data = d.data(forKey: "settings"), let st = try? JSONDecoder().decode(AppSettings.self, from: data) { return st }
-        return AppSettings()
+        var st = AppSettings()
+        if let data = d.data(forKey: "settings"), let saved = try? JSONDecoder().decode(AppSettings.self, from: data) { st = saved }
+        // P6: ONEROOF_SELFTEST_UI2=1 turns the v2 window setting on (the window itself arrives in 1.1.0); ONEROOF_SELFTEST_LOOK=<skyStudio|mintGarden|…> picks a look.
+        let env = ProcessInfo.processInfo.environment
+        if let v = env["ONEROOF_SELFTEST_UI2"] { st.ui2 = v == "1" }
+        if let v = env["ONEROOF_SELFTEST_LOOK"], let l = Look(rawValue: v) { st.look = l }
+        return st
     }
 }
