@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — the new window's shell, behind a setting (26 Oct 2026)
+
+- **The One Roof 1 window, part 1** (LAB-929, milestone 1 of the new window; still off by default). With the new-window
+  setting on, a window has places down a rail or as a row of icons (Home, Needs you, Sessions, Work, Machine, Loops,
+  Learn), a session column with a window switcher, search and filter chips, the terminal as a rounded card, the Plan as
+  an inspector or a slim edge tab, and a dock with seats, roofd, the startup check, Mac load, Needs you and Tonight.
+- **The Focus ladder:** ⌥⌘F steps from everything (Full) to Sessions, Wide and Focus (just the terminal), ⇧⌥⌘F steps
+  back, and each window remembers its step. At Focus, hover the left edge for the session list; the Plan slides over the
+  terminal from its edge tab without moving it. ⌃⌘J folds or opens the dock; ⌃⌘1–⌃⌘7 open the places.
+- Every place still opens the view you know until it gets its own new page in 1.4.0; with the setting off, nothing
+  changes.
+
 ## 1.0.0 — One Roof 1: groundwork for the new window (26 Oct 2026)
 
 - **Version numbers are now 1.x.y** (LAB-1209): 1 is the major release, x the milestone, y a fix or a smaller step

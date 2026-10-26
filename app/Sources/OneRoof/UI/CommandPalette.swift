@@ -30,7 +30,12 @@ enum Fuzzy {
 struct CommandPalette: View {
     let items: [PaletteItem]
     let close: () -> Void
-    @State private var query = ""
+    @State private var query: String
+
+    /// `query`: text to start with (the v2 session column's search box passes what was typed).
+    init(items: [PaletteItem], query: String = "", close: @escaping () -> Void) {
+        self.items = items; self.close = close; _query = State(initialValue: query)
+    }
     @State private var index = 0
     @FocusState private var focused: Bool
 
@@ -101,7 +106,7 @@ final class PalettePanel: NSPanel {
 
     static var current: PalettePanel?
 
-    static func show(over window: NSWindow?, items: [PaletteItem]) {
+    static func show(over window: NSWindow?, items: [PaletteItem], query: String = "") {
         current?.close()
         let p = PalettePanel(contentRect: NSRect(x: 0, y: 0, width: 640, height: 440),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -110,7 +115,7 @@ final class PalettePanel: NSPanel {
         p.backgroundColor = .clear
         p.isOpaque = false
         p.hasShadow = true
-        let host = NSHostingView(rootView: CommandPalette(items: items, close: { PalettePanel.current?.close(); PalettePanel.current = nil })
+        let host = NSHostingView(rootView: CommandPalette(items: items, query: query, close: { PalettePanel.current?.close(); PalettePanel.current = nil })
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous)))
         p.contentView = host
         if let w = window {

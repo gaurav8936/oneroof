@@ -279,7 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func openBundled(_ path: String?, _ what: String) {
         if let path { openPath(path) } else { model.lastError = "\(what) are not bundled with this build." }
     }
-    private func showSettingsTab(_ tab: Int) {
+    func showSettingsTab(_ tab: Int) {
         if settingsWindow == nil { settingsWindow = SettingsWindowController(model: model, tab: tab) }
         settingsWindow?.showWindow(nil)
         settingsWindow?.window?.makeKeyAndOrderFront(nil)
@@ -288,6 +288,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var workspaceMenu = WorkspaceListMenu(app: self)
     @objc func clearTerminal(_ sender: Any?) { main.terminalArea.terminalAction("clear_screen") }
     @objc func showPalette(_ sender: Any?) { PalettePanel.show(over: main.window, items: paletteItems()) }
+    /// Search with text already typed (the v2 session column's search box).
+    func showPalette(query: String) { PalettePanel.show(over: main.window, items: paletteItems(), query: query) }
 
     /// Everything the palette can find: views, actions, sessions, objectives, files in the selected repo, skills.
     private func paletteItems() -> [PaletteItem] {
@@ -387,6 +389,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleSidebarPanel(_ sender: Any?) { main.toggleSidebar() }
     @objc func togglePlanPanel(_ sender: Any?) { main.togglePlanPanel() }
     @objc func toggleFocus(_ sender: Any?) { main.toggleFocus() }
+    @objc func v2StepBack(_ sender: Any?) { if main.isV2 { main.v2StepBack() } }
+    @objc func v2ToggleDock(_ sender: Any?) { if main.isV2 { main.v2ToggleDock() } }
+    @objc func v2OpenPlace(_ sender: Any?) {
+        guard main.isV2, let raw = (sender as? NSMenuItem)?.representedObject as? String, let p = Place(rawValue: raw) else { return }
+        main.v2Open(p)
+    }
     @objc func toggleFiles(_ sender: Any?) { main.toggleFiles() }
     @objc func reviewChanges(_ sender: Any?) { model.openDiff() }
 
@@ -603,6 +611,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(.separator())
         view.addItem(item("Focus: Terminal Only", #selector(toggleFocus(_:)), "f", [.command, .option]))
         view.addItem(item("Focus Terminal", #selector(focusTerminal(_:)), "l"))
+        // One Roof 1.x v2 window keys (shared/SHORTCUTS.md): hidden until the A11 menus land in 1.6.0; they only act in a
+        // v2 window. ⇧⌥⌘F Focus step back · ⌃⌘J dock full ↔ line · ⌃⌘1-7 places.
+        for v2item in [item("Focus: Step Back", #selector(v2StepBack(_:)), "f", [.command, .option, .shift]),
+                       item("Dock", #selector(v2ToggleDock(_:)), "j", [.command, .control])]
+                      + Place.allCases.map({ p -> NSMenuItem in
+                          let i = item(p.title, #selector(v2OpenPlace(_:)), String(p.controlKey), [.command, .control])
+                          i.representedObject = p.rawValue
+                          return i
+                      }) where model.settings.ui2 {
+            v2item.isHidden = true; v2item.allowsKeyEquivalentWhenHidden = true
+            view.addItem(v2item)
+        }
         view.addItem(item("Raw Stream / Run", #selector(toggleRawStream(_:)), "r"))
         view.addItem(item("Debug", #selector(debugFile(_:)), "r", [.command, .shift]))
         viewItem.submenu = view
