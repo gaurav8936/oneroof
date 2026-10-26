@@ -10,6 +10,23 @@ public struct PaneLeaf: Codable, Equatable, Sendable {
 }
 
 public indirect enum PaneNode: Codable, Equatable, Sendable {
+    /// Grid layout (handover A4.1, NEW-2): 2 × 2 tiles, or 3 × 2 on a wide window, filled with `sessions` in order
+    /// (nil = an empty tile). Rows split top / bottom, each row splits into equal columns.
+    public static func grid(_ sessions: [String?], wide: Bool) -> PaneNode {
+        let cols = wide ? 3 : 2
+        var cells = Array(sessions.prefix(cols * 2))
+        while cells.count < cols * 2 { cells.append(nil) }
+        func row(_ r: Int) -> PaneNode {
+            let leaves = (0..<cols).map { c in PaneNode.leaf(PaneLeaf(id: "grid-\(r * cols + c)", session: cells[r * cols + c])) }
+            // a | (b | c) with ratios that give equal columns
+            return leaves.dropLast().reversed().reduce(leaves.last!) { acc, l in
+                let n = Double(acc.leaves.count + 1)
+                return .split(sideBySide: true, ratio: 1 / n, l, acc)
+            }
+        }
+        return .split(sideBySide: false, ratio: 0.5, row(0), row(1))
+    }
+
     case leaf(PaneLeaf)
     /// `sideBySide`: first on the left, second on the right; else first on top. `ratio` = the first child's share.
     case split(sideBySide: Bool, ratio: Double, PaneNode, PaneNode)
