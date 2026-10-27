@@ -236,8 +236,9 @@ final class AppModel: ObservableObject {
         }
         var ticks = 0
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.queue.async { self?.poll() }
             ticks += 1
+            // LAB-1323: with no window on screen (hidden, minimised or covered), poll every 3 s instead of every second.
+            if ticks % 3 == 0 || Self.anyWindowOnScreen { self?.queue.async { self?.poll() } }
             if ticks % 3 == 0 { self?.tickObjectives(); self?.deliverPendingMessages(); self?.applyIssueRequests() }
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
@@ -245,6 +246,12 @@ final class AppModel: ObservableObject {
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
             if ticks % 60 == 40 { self?.tickCommitWatch() }
         }
+        timer?.tolerance = 0.1   // LAB-1323: let the system batch wake-ups
+    }
+
+    /// A main or pop-out window the owner can see (not hidden, minimised or fully covered).
+    static var anyWindowOnScreen: Bool {
+        NSApp.windows.contains { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) && $0.canBecomeMain }
     }
 
     /// Once the background item is on (approved in Login Items after start, say), launchd's roofd should serve:

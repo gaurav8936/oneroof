@@ -155,7 +155,7 @@ struct LearnListen: View {
                 HStack {
                     LearnKicker(text: "Scene \(idx + 1) of \(scenes.count) · \(s?.section ?? "")", color: t.text3.color)
                     Spacer()
-                    LearnKicker(text: live, color: here ? t.accentText.color : t.text3.color)
+                    PlaybackClockView(clock: player.clock) { _ in LearnKicker(text: live, color: here ? t.accentText.color : t.text3.color) }   // LAB-1332
                 }
                 if let s {
                     Text(s.kicker).font(.system(size: 12, weight: .semibold)).foregroundStyle(t.accentText.color).padding(.top, 18)

@@ -541,6 +541,8 @@ final class TerminalAreaController: NSViewController {
 
     /// Ask roofd for the foreground process group of each live pane on screen (off the main thread), and redraw the
     /// headers only when one changed.
+    /// LAB-1334: when each pane's foreground was last asked, at which output seq.
+    private var foregroundAsked: [String: (seq: Int?, at: Date)] = [:]
     private func pollForeground() {
         // On screen only (self-test windows are drawn off screen, so they skip the occlusion check).
         guard !polling, let w = view.window, w.isVisible, w.occlusionState.contains(.visible) || SelfTest.isActive,
@@ -559,11 +561,28 @@ final class TerminalAreaController: NSViewController {
             if !running.isEmpty { running = [:]; update() }
             return
         }
+        // LAB-1334: a pane is asked again only when its session wrote output since the last ask (a program starting
+        // or stopping writes to the terminal), or 10 s after it; each ask is a roofd call plus a process-group read.
+        let now = Date()
+        let seqs = model.lastSnapshotSessions
+        let due = targets.filter { t in
+            guard let last = foregroundAsked[t.id] else { return true }
+            let seq = model.item(t.id)?.liveAgent.flatMap { seqs[$0]?.seq }
+            return seq != last.seq || now.timeIntervalSince(last.at) >= 10
+        }
+        for t in due { foregroundAsked[t.id] = (model.item(t.id)?.liveAgent.flatMap { seqs[$0]?.seq }, now) }
+        for id in Array(foregroundAsked.keys) where !ids.contains(id) { foregroundAsked[id] = nil }
+        if due.isEmpty {
+            let next = running.filter { ids.contains($0.key) }
+            if next != running { running = next; update() }
+            return
+        }
+        let kept = running.filter { k, _ in ids.contains(k) && !due.contains { $0.id == k } }
         polling = true
         let runtime = model.runtime
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            var found: [String: String] = [:]
-            for t in targets {
+            var found = kept
+            for t in due {
                 guard let p = try? runtime.processes(pane: t.pane) else { continue }
                 if let cmd = ForegroundProgram.label(p, agentShown: t.agentShown) { found[t.id] = cmd }
             }
@@ -580,6 +599,7 @@ final class TerminalAreaController: NSViewController {
     /// Stop: Ctrl-C to the pane, as if typed (the program decides; a server normally quits), then look again soon.
     private func stopForeground(_ item: BoardItem) {
         guard let pane = item.paneId else { return }
+        foregroundAsked[item.id] = nil   // look again at once
         let runtime = model.runtime
         DispatchQueue.global().async { try? runtime.keys(pane: pane, [.ctrlC]) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.pollForeground() }
@@ -716,7 +736,7 @@ final class TerminalAreaController: NSViewController {
             feed.lastKey = key
             feed.busy = true
             DispatchQueue.global(qos: .userInitiated).async {
-                let jsonl = EngineHub.tail(path, bytes: 4 << 20).map { String(decoding: $0, as: UTF8.self) } ?? ""
+                let jsonl = TailReader.shared.tail(path, bytes: 4 << 20).map { String(decoding: $0, as: UTF8.self) } ?? ""   // LAB-1335
                 let items = TranscriptFormat.items(jsonl: jsonl)
                 DispatchQueue.main.async { feed.busy = false; feed.set(items, source: .transcript) }
             }
@@ -727,6 +747,10 @@ final class TerminalAreaController: NSViewController {
         let fixture = SelfTest.isActive ? ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_TERMTEXT"]
             .flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } : nil
         guard let agent = item.liveAgent, let s = surfaces[agent] else { return }
+        // LAB-1335: the terminal's whole text is read (on the main thread) only when the session wrote something since.
+        let seq = model.lastSnapshotSessions[agent]?.seq
+        if fixture == nil, let seq, feed.lastSeq == seq { return }
+        feed.lastSeq = seq
         // LAB-1299 (owner, 1.9.4): the text can arrive as screen rows (output roofd replayed after the app reattached
         // is hard rows), so rows exactly the terminal's width are rejoined, and cut table rows are glued in OneRoofCore.
         // Self-test: ONEROOF_SELFTEST_TERMCOLS=<n> stands in for the width of the fixture's rows.

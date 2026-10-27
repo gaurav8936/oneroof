@@ -156,3 +156,28 @@ final class GitDiffTests: XCTestCase {
         XCTAssertEqual(GitDiff.repoRoot(for: base + "/link/b"), git(base + "/link/b", "rev-parse", "--show-toplevel"))
     }
 }
+
+/// LAB-1331 · the incremental tail reader reads only what was appended, and starts again when the file is replaced.
+final class TailReaderTests: XCTestCase {
+    func testReadsOnlyAppendedBytes() throws {
+        let p = NSTemporaryDirectory() + "tail-\(UUID().uuidString).jsonl"
+        defer { try? FileManager.default.removeItem(atPath: p) }
+        try String(repeating: "a", count: 100).write(toFile: p, atomically: false, encoding: .utf8)
+        let r = TailReader()
+        XCTAssertEqual(r.tail(p, bytes: 40)?.count, 40)
+        XCTAssertEqual(r.bytesRead, 40)
+        let h = try XCTUnwrap(FileHandle(forWritingAtPath: p)); h.seekToEndOfFile(); h.write(Data("bbbbb".utf8)); try h.close()
+        let d = try XCTUnwrap(r.tail(p, bytes: 40))
+        XCTAssertEqual(String(decoding: d, as: UTF8.self), String(repeating: "a", count: 35) + "bbbbb")
+        XCTAssertEqual(r.bytesRead, 45, "only the 5 appended bytes were read")
+        XCTAssertEqual(r.tail(p, bytes: 40), d)
+        XCTAssertEqual(r.bytesRead, 45, "nothing new: nothing read")
+        // Replaced (atomic write = new inode, shorter): read again from its end.
+        try "new".write(toFile: p, atomically: true, encoding: .utf8)
+        XCTAssertEqual(r.tail(p, bytes: 40).map { String(decoding: $0, as: UTF8.self) }, "new")
+        // A larger window than kept: read fresh.
+        try String(repeating: "c", count: 200).write(toFile: p, atomically: true, encoding: .utf8)
+        XCTAssertEqual(r.tail(p, bytes: 40)?.count, 40)
+        XCTAssertEqual(r.tail(p, bytes: 150)?.count, 150)
+    }
+}

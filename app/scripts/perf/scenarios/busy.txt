@@ -1,0 +1,19 @@
+menu View/Sessions
+terminal @DIR@
+wait 1
+send for i in $(seq 1 600); do seq 1 3000000; yes | head -c 50000000; done
+terminal @DIR@
+wait 1
+send for i in $(seq 1 600); do seq 1 3000000; yes | head -c 50000000; done
+terminal @DIR@
+wait 1
+send for i in $(seq 1 600); do seq 1 3000000; yes | head -c 50000000; done
+terminal @DIR@
+wait 1
+send for i in $(seq 1 600); do seq 1 3000000; yes | head -c 50000000; done
+terminal @DIR@
+wait 1
+send for i in $(seq 1 600); do seq 1 3000000; yes | head -c 50000000; done
+menu View/Grid
+wait 600
+quit

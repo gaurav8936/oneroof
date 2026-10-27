@@ -5,6 +5,7 @@ import OneRoofCore
 extension AppModel {
     /// After each runtime poll: every live session, its status and output seq.
     func feedEngines() {
+        let inView = visibleInPanes.union([selectedId].compactMap { $0 })
         let live: [EngineHub.Live] = items.compactMap { i in
             guard i.liveAgent != nil || i.status == .exited else { return nil }
             let st = repoStats[i.session.repoPath]
@@ -17,7 +18,8 @@ extension AppModel {
             return EngineHub.Live(id: i.id, name: i.session.name, agent: i.session.agent, account: i.account, status: i.status,
                                   pane: i.paneId, revision: revision(of: i), title: i.title, objective: i.session.objective,
                                   repoPath: i.session.repoPath, launchDirectory: i.session.launchDirectory, ticket: i.session.ticket,
-                                  launchedAt: i.session.launchedAt, lastActive: lastActiveDate(i), added: st?.added, removed: st?.removed, plan: plan)
+                                  launchedAt: i.session.launchedAt, lastActive: lastActiveDate(i), added: st?.added, removed: st?.removed, plan: plan,
+                                  visible: inView.contains(i.id))
         }
         engines.modelAllowed = settings.captionsModel
         engines.tick(live)

@@ -33,7 +33,8 @@ struct MacAppsCard: View {
         }
     }
 
-    var body: some View {
+    var body: some View { watchedBody.modifier(WatchesResources(res: res)) }   // LAB-1333
+    @ViewBuilder private var watchedBody: some View {
         Card {
             VStack(alignment: .leading, spacing: 0) {
                 if let b = res.mac { content(b) } else {
