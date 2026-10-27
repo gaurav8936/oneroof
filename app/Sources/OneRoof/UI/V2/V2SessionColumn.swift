@@ -22,6 +22,8 @@ struct V2SessionColumn: View {
 }
 
 private struct V2SessionList: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
@@ -237,6 +239,8 @@ private struct V2SessionList: View {
 /// running agents, so 22 avatars stood for 7 live sessions); the selected one stays, dimmed if it has ended. The rest
 /// are one "+N" button at the foot that opens the full list.
 struct V2AvatarColumn: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

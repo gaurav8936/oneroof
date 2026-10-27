@@ -103,6 +103,8 @@ struct V2FileTabs: View {
 /// Subagents tab (handover A2.3): one card per subagent of the selected session — status dot, name, model · tokens ·
 /// age, Asked:, Done: / Doing: — and FILES TOUCHED beside them. Trace ▸ opens every call (C6.2, today's trace view).
 struct V2SubagentsTab: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

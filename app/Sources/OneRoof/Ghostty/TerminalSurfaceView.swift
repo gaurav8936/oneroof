@@ -163,7 +163,10 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
     override func viewDidUnhide() { super.viewDidUnhide(); updateOcclusion() }
     func updateOcclusion() {
         guard let surface else { return }
-        let visible = window.map { $0.occlusionState.contains(.visible) && !$0.isMiniaturized } == true && !isHiddenOrHasHiddenAncestor
+        // Self-test windows are drawn off screen: macOS reports them occluded, so they count as on screen (as the
+        // foreground poll does); a terminal told it is occluded draws nothing (a re-attached one stayed blank).
+        let onScreen = window.map { SelfTest.isActive || ($0.occlusionState.contains(.visible) && !$0.isMiniaturized) } == true
+        let visible = onScreen && !isHiddenOrHasHiddenAncestor
         guard visible != lastOcclusionVisible else { return }
         lastOcclusionVisible = visible
         ghostty_surface_set_occlusion(surface, visible)

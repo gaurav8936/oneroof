@@ -118,7 +118,7 @@ extension MainWindowController {
         // queued handler ran after the drag and often missed it, so a dragged width was not kept, LAB-829).
         NotificationCenter.default.publisher(for: NSSplitView.didResizeSubviewsNotification, object: splitView)
             .sink { [weak self] n in
-                self?.v2PaintBand()
+                self?.v2PaintBand(fit: self?.window?.inLiveResize != true)
                 // A divider the owner dragged (setPosition from the layout also names a divider, but not mid-drag):
                 // keep that width for this window (1.8.1).
                 if let i = n.userInfo?["NSSplitViewDividerIndex"] as? Int,
@@ -126,7 +126,14 @@ extension MainWindowController {
                     self?.v2RememberWidth(divider: i)
                 }
             }.store(in: &v2Bag)
+        // LAB-1337: during a live resize only the band's colours follow each frame; fitting the toolbar (a SwiftUI
+        // fittingSize) and the Plan runs once, when the drag ends.
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if self.window?.inLiveResize == true { self.v2PaintBand(fit: false) } else { self.v2PaintBand(); self.v2FitPlanToWidth() }
+            }.store(in: &v2Bag)
+        NotificationCenter.default.publisher(for: NSWindow.didEndLiveResizeNotification, object: window)
             .sink { [weak self] _ in self?.v2PaintBand(); self?.v2FitPlanToWidth() }.store(in: &v2Bag)
         v2InstallEscape()
         DispatchQueue.main.async { [weak self] in self?.v2ApplyLayout(animated: false) }
@@ -158,6 +165,13 @@ extension MainWindowController {
         let planMode: (collapsed: Bool, edge: Bool) = !sessions || step == .focus ? (true, false) : (step == .full && fits ? (false, false) : (false, true))
         v2PlanEdge = planMode.edge
 
+        // LAB-1337: places outside Sessions share one layout (rail, no column, no Plan): moving between them changed
+        // nothing here but still forced a full layout of every panel, the largest cost of switching places.
+        let dockShownNow = v2DockOverride ?? (step == .full)
+        // The split's actual state is part of the key: a panel opened or closed by hand since is put back.
+        let key = "\(showRail)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
+            + "|\(rail.isCollapsed)|\(sideItemRef.isCollapsed)|\(planItemRef.isCollapsed)|\(filesItemRef.isCollapsed)"
+        if key == v2LastLayout, window?.inLiveResize != true { return }
         let apply = {
             rail.isCollapsed = !showRail
             side.isCollapsed = !sessions
@@ -173,6 +187,8 @@ extension MainWindowController {
             self.filesItemRef.isCollapsed = true   // LAB-1306: was a no-op (x = x); the v2 file tree is the Files tab
         }
         apply()
+        v2LastLayout = "\(showRail)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
+            + "|\(rail.isCollapsed)|\(sideItemRef.isCollapsed)|\(planItemRef.isCollapsed)|\(filesItemRef.isCollapsed)"
         splitView.layoutSubtreeIfNeeded()
         // Widths after the collapse changes have settled.
         DispatchQueue.main.async { [weak self] in
@@ -220,7 +236,7 @@ extension MainWindowController {
     }
 
     /// The toolbar band takes the colour of the column under each part of it.
-    func v2PaintBand() {
+    func v2PaintBand(fit: Bool = true) {
         let t = model.themes
         var segs: [(CGFloat, RGB)] = []
         let views = splitView.subviews
@@ -228,8 +244,8 @@ extension MainWindowController {
         for (i, v) in views.enumerated() where i < colours.count && !v.isHidden && v.frame.width > 0.5 {
             segs.append((v.frame.maxX, colours[i]))
         }
-        backdropRef.segments = segs
-        v2FitToolbar()
+        backdropRef.setSegments(segs)
+        if fit { v2FitToolbar() }
     }
 
     /// The toolbar's room right of the column (LAB-1237): published only when the fit changes.

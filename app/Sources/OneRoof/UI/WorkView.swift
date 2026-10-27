@@ -139,6 +139,8 @@ func statePastel(_ state: String) -> Pastel {
 }
 
 struct WorkstreamDetail: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @ObservedObject var model: AppModel
     let w: LinearWorkstream
     let newItem: () -> Void

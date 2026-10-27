@@ -6,6 +6,8 @@ import OneRoofCore
 /// the middle, Checks · Artifacts · Commit on the right (Plan theme). Click a line number to comment; the comment goes
 /// to the agent's next turn or into the session's notes. Commit never pushes.
 struct ReviewChangesView: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

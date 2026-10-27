@@ -49,11 +49,19 @@ extension AppModel {
         if chs != chapters { chapters = chs }
         fileClaims = claims
         // LAB-513: keep each session's edited files on the session (claims clear when a turn ends; these stay).
+        // LAB-1336: all of them in one save and one rebuild (it was a save and a full rebuild per session, each publish).
+        var changedRows: [Session] = []
         for (sid, edits) in claims.editedBy {
             guard let it = item(sid) else { continue }
             let merged = SessionArtifacts.merge(it.session.writtenFiles, edits: edits)
-            if merged != it.session.writtenFiles { update(it) { $0.writtenFiles = merged } }
+            guard merged != it.session.writtenFiles else { continue }
+            var s = it.session
+            s.writtenFiles = merged
+            if it.adopted { s.lifecycle = .idle }
+            if it.agentInTerminal { s.agent = .shell }
+            changedRows.append(s)
         }
+        saveAll(changedRows)
         updateDockBadge()
     }
 

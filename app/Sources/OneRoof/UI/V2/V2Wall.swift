@@ -46,6 +46,8 @@ import OneRoofCore
 /// 15 from 2400 pt. A tile shows the session, its window, its state, the Right now line and its last terminal lines;
 /// clicking it opens that window at Single on that session. Rail and dock stay; no composer on tiles.
 struct V2WallPage: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
