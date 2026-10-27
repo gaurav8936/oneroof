@@ -510,9 +510,15 @@ enum PlanTabRequest {
     static func post(_ tab: Int, window: String) { NotificationCenter.default.post(name: name, object: nil, userInfo: ["tab": tab, "window": window]) }
 }
 
-/// A thin strip on the window's left edge that reports the mouse entering it.
+/// A thin strip on a window edge that reports the pointer resting there.
 final class V2EdgeTracker: NSView {
     var onEnter: (() -> Void)?
+    /// LAB-1367 / LAB-1368: open only after the pointer rests at the edge for `V2Layout.edgeRevealDwell`; opening on
+    /// contact made the panels flash whenever the pointer passed the edge.
+    var dwell: TimeInterval = V2Layout.edgeRevealDwell
+    /// How far from the strip the pointer may drift while resting (a window not flush with the screen edge).
+    static let restSlack: CGFloat = 18
+    private var pending: DispatchWorkItem?
     /// Never takes clicks: the avatars and the Plan under the strip stay clickable (tracking areas still fire).
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func updateTrackingAreas() {
@@ -520,7 +526,26 @@ final class V2EdgeTracker: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
-    override func mouseEntered(with event: NSEvent) { onEnter?() }
+    override func mouseEntered(with event: NSEvent) {
+        pending?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pending = nil
+            if self.stillResting { self.onEnter?() }
+        }
+        pending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + dwell, execute: work)
+    }
+    /// At fire time: still shown, in the key window, no button held (a window-edge resize drag is not a rest), and
+    /// the pointer still at the edge (not carried on into the terminal).
+    private var stillResting: Bool {
+        guard !isHiddenOrHasHiddenAncestor, let w = window, w.isKeyWindow, NSEvent.pressedMouseButtons == 0 else { return false }
+        let p = convert(w.mouseLocationOutsideOfEventStream, from: nil)
+        return bounds.insetBy(dx: -Self.restSlack, dy: 0).contains(p)
+    }
+    /// Hiding a view does not always send mouseExited: a pending reveal must not fire for a hidden strip.
+    override var isHidden: Bool { didSet { if isHidden { pending?.cancel(); pending = nil } } }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); pending?.cancel(); pending = nil }
 }
 
 /// A hosting view that reports the mouse leaving it (the edge-reveal overlay hides then).
