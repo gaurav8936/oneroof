@@ -48,10 +48,30 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: nil, focusWide: 900), 440)
         XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 300, focusWide: 260), 300, "other steps keep theirs")
         XCTAssertNil(V2Layout.focusLaneSnap(dragged: 52))
-        XCTAssertNil(V2Layout.focusLaneSnap(dragged: 129))
-        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 140), 200, "past the snap point: at least the list's minimum")
-        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 300), 300)
+        XCTAssertNil(V2Layout.focusLaneSnap(dragged: 109))
         XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 700), 440)
+    }
+
+    /// LAB-1383: Focus means the thin lane. A click on Focus (or 3 · Focus, ⌥⌘F) with the lane widened snaps it back
+    /// and stays at Focus; only with the thin lane does the click move on to the next step.
+    func test_LAB1383_focusClickSnapsTheLaneBack() {
+        XCTAssertEqual(V2Layout.stepRequest(current: .focus, requested: .full, laneWide: true), .snapLane)
+        XCTAssertEqual(V2Layout.stepRequest(current: .focus, requested: .focus, laneWide: true), .snapLane)
+        XCTAssertEqual(V2Layout.stepRequest(current: .focus, requested: .full, laneWide: false), .step(.full))
+        XCTAssertEqual(V2Layout.stepRequest(current: .full, requested: .focus, laneWide: true), .enterFocusThin)
+        XCTAssertEqual(V2Layout.stepRequest(current: .full, requested: .wide, laneWide: true), .step(.wide))
+    }
+
+    /// LAB-1382: the lane shows the list as soon as it is wider than the avatars (text appears progressively, cut
+    /// off, never wrapped), and a release keeps the width you dragged to instead of jumping to 200 pt.
+    func test_LAB1382_focusLaneListFollowsTheLiveWidth() {
+        XCTAssertFalse(V2Layout.focusLaneShowsList(width: 52))
+        XCTAssertFalse(V2Layout.focusLaneShowsList(width: 109))
+        XCTAssertTrue(V2Layout.focusLaneShowsList(width: 110))
+        XCTAssertTrue(V2Layout.focusLaneShowsList(width: 300))
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 140), 140, "kept where you let go")
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 300), 300)
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: nil, focusWide: 140), 140)
     }
 
     /// LAB-1363: "Current ↓" shows whenever the terminal is scrolled up from its live bottom (not only while a step

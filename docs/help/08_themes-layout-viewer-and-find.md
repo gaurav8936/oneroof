@@ -95,4 +95,4 @@ Session › Open in New Window (⌥⌘O) moves a running session's terminal into
 
 **Edges at Focus.** Rest the pointer at the window's left edge for a second to slide the session list in, or at the right edge for the Plan; passing over an edge does nothing (LAB-1367, LAB-1368).
 
-**The Focus lane.** At Focus the session column is a thin lane of avatars. Drag its right edge out to see the full session list (it stays that wide for this window); drag it back under about 130 pt and it snaps back to avatars. The **+N** button under the avatars widens it too (LAB-1366).
+**The Focus lane.** At Focus the session column is a thin lane of avatars. Drag its right edge out and the session list appears as you drag, names cut off at first and more of them as it widens; let go and it stays that wide. Drag it back under about 110 pt and it returns to avatars. **+N** under the avatars widens it too. Click **Focus** (or ⌥⌘F) while the lane is wide to snap it back to the avatars; Focus always opens with the thin lane (LAB-1366, LAB-1382, LAB-1383).
