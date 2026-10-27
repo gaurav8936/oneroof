@@ -152,7 +152,7 @@ optional hooks, all packaged from the deck's own repository at build time. Liste
 | **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | One launch folder, one memory, one rulebook for every agent, plus `roof swarm` for parallel agents in git worktrees. Works with or without the app |
 | **Website** | [`site/`](site/) | The launch page, published at [gaurav8936.github.io/oneroof](https://gaurav8936.github.io/oneroof/) |
 
-> **Early release (1.9.3).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
+> **Early release (1.9.4).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
 > especially in first-run setup and agent detection on machines unlike ours. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with what you find; see [CONTRIBUTING.md](CONTRIBUTING.md).
 > Known limits: Apple silicon only; the optional on-device model needs `brew install llama.cpp` (the model itself is one click: **Get the model**).
