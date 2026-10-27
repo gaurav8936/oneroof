@@ -81,6 +81,90 @@ final class TerminalFormatTests: XCTestCase {
         }
     }
 
+    /// LAB-1299 follow-up (owner, installed 1.9.4): a live terminal hands over its text as screen rows, each wide row
+    /// cut at the pane's edge (and, after the app reattached, cut again at the width roofd drew it). The rows are
+    /// rejoined before tables are looked for.
+    func testOwnerSampleCutIntoScreenRowsStillGivesTwoTables() {
+        let (h, rows, lines) = Self.ownerSample()
+        for width in [67, 80, 131, 156] {
+            var cut: [String] = []
+            for l in lines {
+                var rest = Substring(l)
+                if rest.isEmpty { cut.append(""); continue }
+                while !rest.isEmpty { cut.append(String(rest.prefix(width))); rest = rest.dropFirst(width) }
+            }
+            for cols in [nil, width] {
+                let tables = Self.tables(TerminalFormat.items(cut.joined(separator: "\n"), columns: cols))
+                XCTAssertEqual(tables.count, 2, "width \(width) columns \(String(describing: cols))")
+                for t in tables {
+                    XCTAssertEqual(t.0, h, "width \(width)")
+                    XCTAssertEqual(t.1, rows, "width \(width)")
+                }
+            }
+            let tables = Self.tables(TerminalFormat.items(cut.joined(separator: "\n")))
+            XCTAssertEqual(tables.count, 2, "width \(width)")
+            for t in tables {
+                XCTAssertEqual(t.0, h, "width \(width)")
+                XCTAssertEqual(t.1, rows, "width \(width)")
+            }
+        }
+    }
+
+    /// A Markdown row cut into three or more pieces whose middle piece neither starts nor ends with a bar.
+    func testMarkdownRowCutIntoThreePieces() {
+        let raw = "| ID | Repo | Branch | Version | Status |\n|---|---|---|---|---|\n| LAB-1287 | diagnostic-analyzer | ga\nnarasi/live | 1.9.3 | Bu\nilding |\n| LAB-1288 | _common |\nBox form:"
+        XCTAssertEqual(TerminalFormat.items(raw).first, .table(header: ["ID", "Repo", "Branch", "Version", "Status"],
+            alignments: Array(repeating: .leading, count: 5),
+            rows: [["LAB-1287", "diagnostic-analyzer", "ganarasi/live", "1.9.3", "Building"], ["LAB-1288", "_common", "", "", ""]]))
+    }
+
+    /// With the terminal's width known, prose cut at exactly that width is rejoined (words whole again), while a table
+    /// exactly as wide as the terminal keeps its rows apart.
+    func testProseRowsRejoinAtTerminalWidth() {
+        let raw = "This paragraph is deliberately long so it has to wrap ins\ntead of running off.\n| a | b |\n|---|---|\n| 1 | 2 |"
+        let items = TerminalFormat.items(raw, columns: 57)
+        XCTAssertEqual(items.first, .text("This paragraph is deliberately long so it has to wrap instead of running off."))
+        let fullWidth = "| aaaa | bbbb |\n|------|------|\n| 1111 | 2222 |\n| 3333 | 4444 |"
+        XCTAssertEqual(TerminalFormat.items(fullWidth, columns: 15), [
+            .table(header: ["aaaa", "bbbb"], alignments: [.leading, .leading], rows: [["1111", "2222"], ["3333", "4444"]])])
+    }
+
+    /// Text that merely starts with a bar is not glued to the next lines when no table follows.
+    func testBarLineWithoutTableIsLeftAlone() {
+        XCTAssertEqual(TerminalFormat.items("| not a table\nnext line\n"), [.text("| not a table\nnext line")])
+    }
+
+    static func ownerSample() -> ([String], [[String]], [String]) {
+        let h = ["ID", "Repo", "Branch", "Version", "Status", "Owner", "Tests", "Pass %", "Build s", "Size MB", "Notarized",
+                 "Channel", "Released", "Lane", "Notes"]
+        let rows = (0..<10).map { (i: Int) -> [String] in h.map { (c: String) -> String in "\(c.prefix(3))\(i) long note" } }
+        let w = h.indices.map { c in max(h[c].count, rows.map { $0[c].count }.max()!) }
+        func rule(_ l: String, _ m: String, _ r: String) -> String {
+            let parts: [String] = w.map { String(repeating: "─", count: $0 + 2) }
+            return l + parts.joined(separator: m) + r
+        }
+        func row(_ cs: [String]) -> String {
+            var parts: [String] = []
+            for (i, c) in cs.enumerated() { parts.append(" " + c.padding(toLength: w[i], withPad: " ", startingAt: 0) + " ") }
+            return "│" + parts.joined(separator: "│") + "│"
+        }
+        var lines: [String] = ["Release summary.", ""]
+        lines += [rule("┌", "┬", "┐"), row(h), rule("├", "┼", "┤")]
+        lines += rows.map(row)
+        lines.append(rule("└", "┴", "┘"))
+        lines.append("| " + h.joined(separator: " | ") + " |")
+        lines.append("|" + Array(repeating: "---", count: 15).joined(separator: "|") + "|")
+        lines += rows.map { (r: [String]) -> String in "| " + r.joined(separator: " | ") + " |" }
+        lines.append("user@host t15 % ")
+        return (h, rows, lines)
+    }
+
+    static func tables(_ items: [FormattedItem]) -> [([String], [[String]])] {
+        items.compactMap { item -> ([String], [[String]])? in
+            if case .table(let hd, _, let rs) = item { return (hd, rs) } else { return nil }
+        }
+    }
+
     /// An ASCII grid table (psql) ends at its last rule when a Markdown table follows.
     func testAsciiGridTableThenMarkdownTableStaySeparate() {
         let raw = "+----+----+\n| a  | b  |\n+----+----+\n| 1  | 2  |\n+----+----+\n| x | y |\n|---|---|\n| 3 | 4 |"

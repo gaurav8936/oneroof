@@ -29,24 +29,89 @@ public enum TerminalFormat {
     public static func items(_ raw: String, columns: Int? = nil, maxLines: Int = 5000) -> [FormattedItem] {
         var lines = raw.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n")
-        if let columns, columns > 0 { lines = rejoin(lines, columns: columns) }
+        // Table rows first (they know where a row ends), then the remaining text rows cut at the terminal's width.
+        lines = rejoinTableRows(lines)
+        if let columns, columns > 0 { lines = rejoin(lines, columns: columns, skipTableRows: true) }
         let tidy = ReadingText.prepare(lines.joined(separator: "\n"), maxLines: maxLines)
         return blocks(tidy.isEmpty ? [] : tidy.components(separatedBy: "\n"))
     }
 
     /// Physical terminal rows back to logical lines: a row exactly `columns` wide was cut by the terminal's edge and
     /// continues on the next row. A row that ends early (or an empty row) ends its line.
-    public static func rejoin(_ rows: [String], columns: Int) -> [String] {
+    /// `skipTableRows`: a row that starts a table line (a bar, a frame corner) is left to `rejoinTableRows`, which knows
+    /// where a table row ends; a table exactly as wide as the terminal would otherwise swallow the row under it.
+    public static func rejoin(_ rows: [String], columns: Int, skipTableRows: Bool = false) -> [String] {
         guard columns > 0 else { return rows }
         var out: [String] = []
         var cur = ""
         var open = false
         for r in rows {
             if open { cur += r } else { cur = r }
-            open = r.count >= columns
+            let tableRow = skipTableRows && !open && cur.drop(while: { $0 == " " }).first.map { "|+".contains($0) || isBoxChar($0) } == true
+            open = !tableRow && r.count >= columns
             if !open { out.append(cur); cur = "" }
         }
         if open { out.append(cur) }
+        return out
+    }
+
+    /// Table rows cut into screen rows, glued back (LAB-1299 follow-up). A live terminal's text arrives as the rows it
+    /// shows: a row wider than the pane is cut at the edge, and after One Roof reattaches to roofd a second time at the
+    /// width roofd drew it. A box-drawing line is whole once it is as wide as its table's top frame (or, for the frame
+    /// itself, once it reaches its right corner); a Markdown row once it ends with `|` and the next piece is not the
+    /// rest of it (a piece that does not start with `|` but has one in it). Anything that never completes is left as it
+    /// was, so ordinary text with a bar in it is untouched.
+    public static func rejoinTableRows(_ lines: [String], maxPieces: Int = 24) -> [String] {
+        var out: [String] = []
+        var boxWidth = 0
+        var i = 0
+        func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+        while i < lines.count {
+            let first = trimmed(lines[i])
+            guard let f = first.first else { out.append(lines[i]); i += 1; continue }
+            if "┌╭┏╔".contains(f) || ((boxVerticals.contains(f) || "├└┣┗╠╚╞╘".contains(f)) && boxWidth > 0) {
+                // Box line: gather pieces until it is whole (only leading blanks dropped: a piece's trailing padding
+                // is part of the row's width).
+                var acc = String(lines[i].drop(while: { $0 == " " }))
+                var j = i + 1
+                func whole(_ t: String) -> Bool {
+                    if "┌╭┏╔".contains(t.first!) { return t.last.map { "┐╮┓╗".contains($0) } ?? false }
+                    return t.count >= boxWidth
+                }
+                while !whole(acc), j < lines.count, j - i < maxPieces {
+                    let n = lines[j]
+                    if trimmed(n).isEmpty { break }
+                    acc += n
+                    j += 1
+                }
+                if whole(acc) {
+                    if "┌╭┏╔".contains(f) { boxWidth = acc.count }
+                    if isBottomFrame(acc) && !boxVerticals.contains(f) && !"├┣╠╞".contains(f) { boxWidth = 0 }
+                    out.append(acc); i = j; continue
+                }
+                out.append(lines[i]); i += 1; continue
+            }
+            if f == "|" {
+                var acc = String(lines[i].drop(while: { $0 == " " }))
+                var j = i + 1
+                var done = false
+                while j < lines.count, j - i < maxPieces {
+                    let n = trimmed(lines[j])
+                    if n.isEmpty { break }
+                    if trimmed(acc).hasSuffix("|") {
+                        // The rest of this row: does not start a row of its own, and ends where a row ends.
+                        // (a middle piece of a long row has a bar inside it; text after the table has none).
+                        if !n.hasPrefix("|"), n.contains("|") { acc += lines[j]; j += 1; continue }
+                        done = true; break
+                    }
+                    acc += lines[j]; j += 1
+                }
+                if !done, trimmed(acc).hasSuffix("|") { done = true }
+                if done, j > i + 1 { out.append(trimmed(acc)); i = j; continue }
+                out.append(lines[i]); i += 1; continue
+            }
+            out.append(lines[i]); i += 1
+        }
         return out
     }
 

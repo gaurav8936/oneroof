@@ -7,6 +7,7 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_WIDTH=<pt>                 the window this wide (1.8.2: narrow-window and toolbar checks)
 ///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
 ///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)
+///   ONEROOF_SELFTEST_TERMCOLS=<n>               LAB-1299: the width the TERMTEXT rows were cut at (rows that long rejoin)
 ///   ONEROOF_SELFTEST_PLACES=learn,sessions,…    open these places 0.6 s apart and write each window frame to
 ///                                               <out>.frames.txt (LAB-874: a place change never moves the window);
 ///                                               FRAMEDEBUG=1 adds the column widths, the toolbar fit and its visible items
