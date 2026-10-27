@@ -528,6 +528,13 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         return String(cString: p)
     }
 
+    /// The terminal's width in cells (LAB-1299: the Table view rejoins rows cut at exactly this width).
+    func columns() -> Int? {
+        guard let surface else { return nil }
+        let c = Int(ghostty_surface_size(surface).columns)
+        return c > 0 ? c : nil
+    }
+
     /// The visible screen as plain text (viewport top-left → bottom-right).
     func screenText() -> String? {
         guard let surface else { return nil }

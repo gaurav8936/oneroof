@@ -727,13 +727,16 @@ final class TerminalAreaController: NSViewController {
         let fixture = SelfTest.isActive ? ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_TERMTEXT"]
             .flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } : nil
         guard let agent = item.liveAgent, let s = surfaces[agent] else { return }
-        // libghostty's read_text gives logical lines (rows it soft-wrapped come back joined), so no rejoin is needed.
+        // LAB-1299 (owner, 1.9.4): the text can arrive as screen rows (output roofd replayed after the app reattached
+        // is hard rows), so rows exactly the terminal's width are rejoined, and cut table rows are glued in OneRoofCore.
+        // Self-test: ONEROOF_SELFTEST_TERMCOLS=<n> stands in for the width of the fixture's rows.
         let text = fixture ?? s.allText() ?? ""
+        let cols = fixture != nil ? ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_TERMCOLS"].flatMap { Int($0) } : s.columns()
         guard "t:" + text != feed.lastKey else { return }
         feed.lastKey = "t:" + text
         feed.busy = true
         DispatchQueue.global(qos: .userInitiated).async {
-            let items = TerminalFormat.items(text)
+            let items = TerminalFormat.items(text, columns: cols)
             DispatchQueue.main.async { feed.busy = false; feed.set(items, source: .terminal) }
         }
     }
