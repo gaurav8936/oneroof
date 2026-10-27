@@ -194,7 +194,8 @@ final class TerminalAreaController: NSViewController {
         for s in surfaces.values where s.theme != theme { s.applyTheme(theme) }
 
         // Drop surfaces whose agent is gone, or is popped out into its own window.
-        let live = Set(model.items.compactMap(\.liveAgent)).subtracting(model.poppedOut)
+        // LAB-1362: an exited agent's terminal (its shell lives on) keeps its surface: the last screen stays.
+        let live = Set(model.items.compactMap { $0.liveAgent ?? $0.endedShell }).subtracting(model.poppedOut)
         for (name, s) in surfaces where !live.contains(name) {
             s.removeFromSuperview()
             surfaces[name] = nil
@@ -270,9 +271,14 @@ final class TerminalAreaController: NSViewController {
                 pv.show(surface: sv)
                 shown.insert(agent)
                 pv.setFormatted(formattedView(leafId, theme: theme))
-                // LAB-825: viewing an earlier step and not at the live bottom: a second way back, at the bottom.
-                if let open = openChapter[leafId], !raw, sv.atScrollBottom != true {
-                    pv.setFloat(AnyView(BackToCurrentPill { [weak self] in self?.toggleChapter(leafId, open, item) }.themed(theme)))
+                // LAB-825 / LAB-1363: scrolled up from the live bottom (in a step or not): "Current ↓", bottom right.
+                let stepOpen = openChapter[leafId]
+                if V2Layout.showsCurrentPill(atBottom: sv.atScrollBottom, raw: raw, table: formatted[leafId] != nil) {
+                    pv.setFloat(AnyView(BackToCurrentPill { [weak self, weak sv] in
+                        guard let self else { return }
+                        if let stepOpen { self.toggleChapter(leafId, stepOpen, item); return }
+                        sv?.bindingAction("scroll_to_bottom")
+                    }.themed(theme)))
                 } else {
                     pv.setFloat(nil)
                 }
@@ -301,6 +307,16 @@ final class TerminalAreaController: NSViewController {
                 } else {
                     pv.setOverlay(nil)
                 }
+            } else if let item, item.liveAgent == nil, let shell = item.endedShell, !model.poppedOut.contains(shell) {
+                // LAB-1362: the agent exited but its terminal lives on: keep showing it (Claude's last screen and
+                // resume hint, the scrollback), with what ended and Resume over it, as in a standalone terminal.
+                let sv = surface(agent: shell, cwd: item.session.repoPath, theme: theme, size: pv.surfaceSize(fallback: body.bounds.size))
+                pv.show(surface: sv)
+                shown.insert(shell)
+                pv.setFormatted(nil)
+                pv.setFloat(nil)
+                pv.setBottom(nil)
+                pv.setOverlay(AnyView(ExitedStrip(item: item, model: model).themed(theme)))
             } else {
                 pv.setBottom(nil)
                 pv.setOverlay(nil)
@@ -437,7 +453,7 @@ final class TerminalAreaController: NSViewController {
     }
 
     private var focusedAgent: String? {
-        guard let sid = tree.leaf(focusedPane)?.session, let item = model.item(sid), let agent = item.liveAgent,
+        guard let sid = tree.leaf(focusedPane)?.session, let item = model.item(sid), let agent = item.liveAgent ?? item.endedShell,
               !model.poppedOut.contains(agent) else { return nil }
         return agent
     }
@@ -461,11 +477,8 @@ final class TerminalAreaController: NSViewController {
         surface.onSearchTotal = { [weak self] n in self?.find.total = n }
         surface.onSearchSelected = { [weak self] n in self?.find.selected = n }
         surface.onOpenURL = { [weak self] url in self?.openLink(url) }
-        // LAB-825: the floating Back to current follows the viewport (only matters while a step is open).
-        surface.onScrollBottom = { [weak self] _ in
-            guard let self, !self.openChapter.isEmpty else { return }
-            self.update()
-        }
+        // LAB-825 / LAB-1363: "Current ↓" follows the viewport. Reported only when leaving or reaching the bottom.
+        surface.onScrollBottom = { [weak self] _ in self?.update() }
         model.wire(surface, agent: agent)
         // LAB-745: right-click › New Terminal Here / Split Right with New Terminal, in this session's folder.
         surface.onNewTerminal = { [weak self] split in
@@ -946,7 +959,7 @@ final class PaneView: NSView {
     /// Whether a point (in this view's coordinates) is in the bottom bar (the v2 composer).
     func bottomContains(_ p: NSPoint) -> Bool { bottom.map { !$0.isHidden && $0.frame.contains(p) } ?? false }
     private var overlay: NSHostingView<AnyView>?
-    /// LAB-825: a pill floating at the bottom centre of the terminal (Back to current).
+    /// LAB-825 / LAB-1363: a pill floating at the bottom right of the terminal ("Current ↓").
     private var float: NSHostingView<AnyView>?
     private var placeholder: NSHostingView<AnyView>?
     /// LAB-1286: the Table view over the terminal (nil = the live terminal).
@@ -1072,10 +1085,10 @@ final class PaneView: NSView {
             overlay.frame = NSRect(x: inset, y: content.frame.maxY - h, width: w, height: h)
         }
         if let float, !float.isHidden {
-            // Bottom centre of the terminal, above the approval card when one shows.
+            // Bottom right of the terminal (LAB-1363), above the approval card when one shows.
             let s = float.fittingSize
             let base = overlay.map { $0.isHidden ? content.frame.maxY : $0.frame.minY } ?? content.frame.maxY
-            float.frame = NSRect(x: inset + max(0, (w - s.width) / 2), y: max(content.frame.minY, base - s.height), width: min(s.width, w), height: s.height)
+            float.frame = NSRect(x: inset + max(0, w - s.width - 12), y: max(content.frame.minY, base - s.height), width: min(s.width, w), height: s.height)
         }
     }
 }

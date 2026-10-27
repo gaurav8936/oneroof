@@ -92,3 +92,7 @@ You type to an agent in its own prompt, in the terminal (Claude's `❯` line). O
 ## A session in its own window
 
 Session › Open in New Window (⌥⌘O) moves a running session's terminal into its own window, for a second screen or side by side with another app. The centre then offers **Show window** and **Bring back here**.
+
+**Edges at Focus.** Rest the pointer at the window's left edge for a second to slide the session list in, or at the right edge for the Plan; passing over an edge does nothing (LAB-1367, LAB-1368).
+
+**The Focus lane.** At Focus the session column is a thin lane of avatars. Drag its right edge out to see the full session list (it stays that wide for this window); drag it back under about 130 pt and it snaps back to avatars. The **+N** button under the avatars widens it too (LAB-1366).

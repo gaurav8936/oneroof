@@ -170,7 +170,18 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         guard visible != lastOcclusionVisible else { return }
         lastOcclusionVisible = visible
         ghostty_surface_set_occlusion(surface, visible)
+        // LAB-1365: becoming visible, libghostty draws once from the frame data it already has and does not rebuild
+        // it; an unfocused surface then draws only when output arrives. A pane resized or re-attached while hidden
+        // came back cut off (the old size) or blank until the program printed again. Re-send the size and ask for a
+        // full frame.
+        if visible {
+            sizeDidChange(frame.size)
+            ghostty_surface_refresh(surface)
+        }
     }
+
+    /// Whether libghostty was last told this surface is visible (self-test and tests read it).
+    var drawsWhenVisible: Bool? { lastOcclusionVisible }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()

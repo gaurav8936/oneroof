@@ -311,15 +311,15 @@ struct RewindBar: View {
     }
 }
 
-/// LAB-825: the same way back as the RewindBar, floating at the bottom of the terminal while an earlier step is shown
-/// and the terminal is not at its live bottom (where the eye is after scrolling on through the step).
+/// LAB-825 / LAB-1363: "Current ↓", floating bottom right of the terminal whenever it is scrolled up from its live
+/// bottom (an earlier step open or plain scrolling); also ⌘↓.
 struct BackToCurrentPill: View {
     @Environment(\.theme) private var t
     var onCurrent: () -> Void
 
     var body: some View {
         Button(action: onCurrent) {
-            Label("Back to current", systemImage: "arrow.down.to.line").ui(12, .medium)
+            Label("Current", systemImage: "arrow.down").ui(12, .medium)
                 .foregroundStyle(t.onAccent.color)
                 .padding(.vertical, 6).padding(.horizontal, 14)
                 .background(Capsule().fill(t.accent.color))
@@ -328,8 +328,8 @@ struct BackToCurrentPill: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("Scroll to the bottom: the step in progress now")
-        .accessibilityLabel("Back to current step")
+        .help("Jump to the live bottom (⌘↓)")
+        .accessibilityLabel("Jump to current")
         .padding(.bottom, 12)
     }
 }
@@ -523,6 +523,38 @@ struct StartingStrip: View {
     }
 }
 
+/// LAB-1362: over the terminal of an agent that exited (its shell lives on): says so, and offers Resume (the same
+/// conversation, typed into this terminal), a new session and the handoff. The terminal above keeps its text.
+struct ExitedStrip: View {
+    @Environment(\.theme) private var t
+    let item: BoardItem
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack {
+            Spacer()
+            HStack(spacing: 10) {
+                Text("\(item.session.agent.displayName) session ended").ui(12, .medium).foregroundStyle(t.text2.color).lineLimit(1)
+                if item.session.agent == .claude {
+                    RoofButton("Resume", .primary) { model.resume(item) }
+                        .help("Continue this conversation here (claude --resume), in the same terminal and folder")
+                }
+                RoofButton("New session") { model.launch(item) }
+                    .help("Start a fresh \(item.session.agent.displayName) session with this session's plan")
+                if let h = model.handoffMatch(for: item) {
+                    RoofButton("Open \(h.key) handoff") { model.openInViewer(h.path) }
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Capsule().fill(t.surface.color))
+            .overlay(Capsule().strokeBorder(t.separatorStrong.color))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("\(item.session.agent.displayName) session ended")
+        }
+        .padding(.horizontal, 16).padding(.bottom, 10)
+    }
+}
+
 /// Placeholder states with no surface (S02 §1.6): Planned/Next, Exited, Scheduled, popped out, empty pane.
 struct PanePlaceholder: View {
     @Environment(\.theme) private var t
@@ -565,7 +597,12 @@ struct PanePlaceholder: View {
                         Text(item.session.objective).ui(12.5).foregroundStyle(t.text3.color).multilineTextAlignment(.center).frame(maxWidth: 440)
                     }
                     HStack {
-                        RoofButton("Relaunch", .primary) { model.launch(item) }
+                        // LAB-1362: Resume continues the same conversation; New session starts a fresh one.
+                        if item.session.agent == .claude {
+                            RoofButton("Resume", .primary) { model.resume(item) }
+                                .help("Continue this conversation (claude --resume)")
+                        }
+                        RoofButton("New session", item.session.agent == .claude ? .secondary : .primary) { model.launch(item) }
                         // Only this session's own handoff, named for what it is (LAB-250); none → no button.
                         if let h = model.handoffMatch(for: item) {
                             RoofButton("Open \(h.key) handoff") { model.openInViewer(h.path) }

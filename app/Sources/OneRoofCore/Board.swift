@@ -21,6 +21,10 @@ public struct BoardItem: Identifiable, Equatable, Sendable {
     public var agentInTerminal: Bool = false
     /// Launched a moment ago and not in the runtime's list yet: starting, not exited.
     public var starting: Bool = false
+    /// LAB-1362: an agent that exited while its terminal lives on (roofd runs `claude …; exec zsh`): the shell's
+    /// runtime id. The pane keeps showing that terminal (the agent's last screen, its resume hint) and Resume types
+    /// `claude --resume <id>` into it. Not `liveAgent`: everything else still treats the session as exited.
+    public var endedShell: String?
     /// The status the list groups and orders by (LAB-490): the live status once it has held for a moment, so rows do
     /// not jump on every flicker. Nil = the live status.
     public var settledStatus: SessionStatus?
@@ -130,12 +134,15 @@ public enum Board {
             } else if s.runtimeId != nil, s.lifecycle != .doNotUse {
                 if justLaunched(s) { status = .idle; starting = true } else { status = .exited }
             }
+            var ended: String?
+            if status == .exited, let name = s.runtimeId, byShell[name] != nil { ended = name; used.insert(name) }
             var item = BoardItem(
                 id: s.id, session: s, status: status,
                 liveAgent: live?.id, paneId: live?.pane, workspaceId: live?.groupId,
                 detectedAccount: live.flatMap { accounts[$0.id] },
                 adopted: false, title: live?.title, ready: starting ? false : live?.ready ?? false)
             item.starting = starting
+            item.endedShell = ended
             items.append(item)
         }
 

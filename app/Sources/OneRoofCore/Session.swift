@@ -105,7 +105,7 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
         case .needsYou: return "Stopped on a question or a permission prompt. It waits for you."
         case .done: return "Finished a turn you have not looked at yet. It turns Idle as soon as you open the session or type in it."
         case .idle: return "Alive at its prompt with nothing new for you; not executing. Plain terminals are always Idle (they have no agent)."
-        case .exited: return "The agent's process has ended. Relaunch it or remove it."
+        case .exited: return "The agent's process has ended. Resume the conversation (Claude), start a new session, or remove it."
         case .doNotUse: return "Parked by you: kept, but not to be used."
         }
     }

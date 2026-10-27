@@ -865,6 +865,57 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// LAB-1362: continue an exited Claude session's conversation. Its terminal usually lives on (roofd runs
+    /// `claude …; exec zsh`): type `claude --resume <id>` into it, so the folder, account, environment and scrollback
+    /// are the same. Otherwise start it again with `--resume <id>` and no opening message. The id comes from the
+    /// transcript the engines followed, else from Claude's exit hint on the screen.
+    func resume(_ item: BoardItem) {
+        guard item.session.agent == .claude else { launch(item); return }
+        var s = item.session
+        let shell = item.endedShell
+        let known = engines.transcriptPath(item.id).flatMap(ClaudeResume.sessionId(transcriptPath:))
+        busy.insert(s.id)
+        queue.async { [weak self] in
+            guard let self else { return }
+            // Claude's own last word wins (an in-process /resume may have moved on since the engines looked).
+            let onScreen = shell.flatMap { try? self.runtime.read(pane: $0, lines: 120) }.flatMap(ClaudeResume.sessionId(fromScreen:))
+            guard let id = onScreen ?? known else {
+                DispatchQueue.main.async {
+                    self.busy.remove(s.id)
+                    self.lastError = "No Claude conversation found to resume for \(s.name). Start a new session instead."
+                }
+                return
+            }
+            let command = ClaudeResume.command(launchArgs: s.launchArgs, sessionId: id)
+            if let shell {
+                do {
+                    try self.runtime.type(pane: shell, text: "\u{15}")   // clear a half-typed line first (Ctrl-U)
+                    try self.runtime.submit(shell, text: command)
+                    DispatchQueue.main.async {
+                        self.busy.remove(s.id)
+                        s.launchedAt = Date()   // "starting" until Claude is back in the foreground
+                        self.save(s)
+                    }
+                } catch {
+                    DispatchQueue.main.async { self.busy.remove(s.id); self.lastError = "Resume failed: \(error)" }
+                }
+                return
+            }
+            var resumed = s
+            resumed.agentArgs = ClaudeResume.args(s.agentArgs, sessionId: id)
+            DispatchQueue.main.async {
+                switch LaunchPlan.spec(resumed, stored: self.stored, command: nil, deliverOpening: false) {
+                case .failure(let refusal): self.busy.remove(s.id); self.lastError = refusal.description
+                case .success(let spec):
+                    self.queue.async {
+                        do { self.finishLaunch(s, .success(try self.runtime.start(spec))) }
+                        catch { self.finishLaunch(s, .failure(error)) }
+                    }
+                }
+            }
+        }
+    }
+
     private func finishLaunch(_ session: Session, _ result: Result<RuntimeSessionRef, Error>) {
         DispatchQueue.main.async {
             var s = session

@@ -103,7 +103,7 @@ final class GhosttyRuntime {
         notify-on-command-finish = always
         notify-on-command-finish-action = no-bell,notify
         notify-on-command-finish-after = 1s
-        """ + "\n" + theme.tokens.ghosttyConfig
+        """ + "\n" + V2Layout.terminalKeybinds + "\n" + theme.tokens.ghosttyConfig
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("oneroof-ghostty", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("theme-\(theme.rawValue).conf")

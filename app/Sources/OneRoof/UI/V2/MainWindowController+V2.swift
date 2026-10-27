@@ -152,13 +152,14 @@ extension MainWindowController {
         guard let rail = v2RailItem else { return }
         let step = win.focusStep, sessions = win.place == .sessions && v2Page == nil
         v2HidePlanOverlay(); v2HideEdgeReveal()
-        v2EdgeTracker?.isHidden = !(step == .focus && sessions)
+        // LAB-1366: a Focus lane dragged wide already shows the list: no left-edge reveal over it.
+        v2EdgeTracker?.isHidden = !(step == .focus && sessions && win.focusColumnWidth == nil)
         v2RightTracker?.isHidden = !(step == .focus && sessions)
 
         // Outside Sessions the rail stays at every step, so Needs you is always visible (audit D2).
         let showRail = step == .full || step == .wide || !sessions
         let side = sideItemRef, plan = planItemRef
-        let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth))
+        let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth, focusWide: win.focusColumnWidth))
         // At Full the inspector takes its column only while it fits; a narrower window gets the edge tab (LAB-831).
         let fits = v2PlanFits(step: step, column: Double(columnWidth))
         v2PlanFitsLast = fits
@@ -176,8 +177,9 @@ extension MainWindowController {
             rail.isCollapsed = !showRail
             side.isCollapsed = !sessions
             if sessions {
+                // LAB-1366: at Focus the lane can be dragged from the 52 pt avatars out to the full list.
                 side.minimumThickness = step == .focus ? 52 : 200
-                side.maximumThickness = step == .focus ? 52 : 440
+                side.maximumThickness = 440
             }
             plan.isCollapsed = planMode.collapsed
             if !planMode.collapsed {
@@ -232,7 +234,19 @@ extension MainWindowController {
     func v2RememberWidth(divider i: Int) {
         guard win.place == .sessions, v2Page == nil else { return }
         if i == 1 || i == 2, win.focusStep != .focus, !sideItemRef.isCollapsed { win.columnWidth = Double(sideItemRef.viewController.view.frame.width) }
+        // LAB-1366: the Focus lane snaps when the drag ends: back to the avatars, or wide enough for the full list.
+        if i == 1 || i == 2, win.focusStep == .focus, !sideItemRef.isCollapsed, NSApp.currentEvent?.type == .leftMouseUp {
+            v2SetFocusLane(V2Layout.focusLaneSnap(dragged: Double(sideItemRef.viewController.view.frame.width)))
+        }
         if i == 3, win.focusStep == .full, !planItemRef.isCollapsed, !v2PlanEdge { win.planWidth = Double(planItemRef.viewController.view.frame.width) }
+    }
+
+    /// LAB-1366: the Focus lane at this width (nil = avatars); re-applied even when the width is unchanged, so a drag
+    /// that snaps back lands exactly on the snapped width.
+    func v2SetFocusLane(_ width: Double?) {
+        win.focusColumnWidth = width
+        v2LastLayout = nil
+        v2ApplyLayout(animated: false)
     }
 
     /// The toolbar band takes the colour of the column under each part of it.
@@ -510,9 +524,15 @@ enum PlanTabRequest {
     static func post(_ tab: Int, window: String) { NotificationCenter.default.post(name: name, object: nil, userInfo: ["tab": tab, "window": window]) }
 }
 
-/// A thin strip on the window's left edge that reports the mouse entering it.
+/// A thin strip on a window edge that reports the pointer resting there.
 final class V2EdgeTracker: NSView {
     var onEnter: (() -> Void)?
+    /// LAB-1367 / LAB-1368: open only after the pointer rests at the edge for `V2Layout.edgeRevealDwell`; opening on
+    /// contact made the panels flash whenever the pointer passed the edge.
+    var dwell: TimeInterval = V2Layout.edgeRevealDwell
+    /// How far from the strip the pointer may drift while resting (a window not flush with the screen edge).
+    static let restSlack: CGFloat = 18
+    private var pending: DispatchWorkItem?
     /// Never takes clicks: the avatars and the Plan under the strip stay clickable (tracking areas still fire).
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func updateTrackingAreas() {
@@ -520,7 +540,26 @@ final class V2EdgeTracker: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
-    override func mouseEntered(with event: NSEvent) { onEnter?() }
+    override func mouseEntered(with event: NSEvent) {
+        pending?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pending = nil
+            if self.stillResting { self.onEnter?() }
+        }
+        pending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + dwell, execute: work)
+    }
+    /// At fire time: still shown, in the key window, no button held (a window-edge resize drag is not a rest), and
+    /// the pointer still at the edge (not carried on into the terminal).
+    private var stillResting: Bool {
+        guard !isHiddenOrHasHiddenAncestor, let w = window, w.isKeyWindow, NSEvent.pressedMouseButtons == 0 else { return false }
+        let p = convert(w.mouseLocationOutsideOfEventStream, from: nil)
+        return bounds.insetBy(dx: -Self.restSlack, dy: 0).contains(p)
+    }
+    /// Hiding a view does not always send mouseExited: a pending reveal must not fire for a hidden strip.
+    override var isHidden: Bool { didSet { if isHidden { pending?.cancel(); pending = nil } } }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); pending?.cancel(); pending = nil }
 }
 
 /// A hosting view that reports the mouse leaving it (the edge-reveal overlay hides then).
