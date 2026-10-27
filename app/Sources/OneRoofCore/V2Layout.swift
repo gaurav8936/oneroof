@@ -48,7 +48,7 @@ public enum V2Layout {
     }
 
     /// LAB-1363: terminal keys added to libghostty's defaults: ⌘↓ / ⌘↑ jump to the live bottom / the top, as in
-    /// Terminal and Warp. Bound in the terminal (not a menu) so the editor and composer keep ⌘↓ for themselves.
+    /// standalone terminals. Bound in the terminal (not a menu) so the editor and composer keep ⌘↓ for themselves.
     public static let terminalKeybinds = """
     keybind = super+arrow_down=scroll_to_bottom
     keybind = super+arrow_up=scroll_to_top
