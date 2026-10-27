@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.5 — Table view on a live terminal (26 Oct 2026)
+
+- **Table view finds tables in a live terminal** (LAB-1299). 1.9.4 was checked with whole lines, but a live
+  terminal hands its text over as screen rows: every row wider than the pane is cut at the edge, and after One Roof
+  restarts, output that roofd kept is cut again at the width roofd drew it. The Table view showed those pieces
+  instead of tables. Cut table rows are now glued back before tables are looked for (a box row is whole once it is
+  as wide as its top frame, a Markdown row once it ends with `|`), and text cut at exactly the terminal's width is
+  rejoined, so paragraphs wrap at words again. Checked against the owner's own terminal text and the same sample cut
+  at 67, 80, 131 and 156 columns.
+
 ## 1.9.4 — Table view fixes, one place to type (26 Oct 2026)
 
 - **Table view reads wide tables correctly** (LAB-1299). A box-drawing table printed right before a Markdown table
