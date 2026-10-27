@@ -15,6 +15,12 @@ import OneRoofCore
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
 ///   answer allowOnce|always|deny   snap <name>   dump <name>   screen <name>   (selected session's text)
 ///   copytest <name>                (drag-select, copy, paste text, paste an image → <name>.copytest.txt)
+///   table                          (LAB-1286: the focused pane's Table view on/off, as the Table button does)
+///   tablescroll left|right         (scroll every table in the Table view to its left or right end)
+///   tableprobe                     (log: Table view on?, what it shows, who has the keyboard)
+///   esc                            (an Esc key event through the app, so key monitors see it)
+///   width <pt>                     (the main window this wide; the panes follow)
+///   alltext <name>                 (the focused terminal's whole text as libghostty gives it → <name>.alltext.txt)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
     static func run(_ path: String, app: AppDelegate) {
@@ -128,6 +134,22 @@ enum SelfTestScript {
             SelfTest.type(arg, into: w)
             delay = 1
         case "probe": log(out, "  " + app.main.terminalArea.debugState())
+        case "table": app.main.terminalArea.toggleTable(app.main.terminalArea.focusedPane); delay = 2.5
+        case "tablescroll": app.main.terminalArea.scrollTables(toEnd: arg == "right"); delay = 0.8
+        case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
+        case "esc":
+            if let w = app.main.window, let ev = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                                   windowNumber: w.windowNumber, context: nil, characters: "\u{1b}",
+                                                                   charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53) {
+                log(out, "  esc with keyboard in " + (w.firstResponder.map { String(describing: Swift.type(of: $0)) } ?? "-"))
+                NSApp.postEvent(ev, atStart: false)
+            }
+            delay = 1
+        case "width":
+            if let w = app.main.window, let pt = Double(arg) { var f = w.frame; f.size.width = CGFloat(pt); w.setFrame(f, display: true) }
+            delay = 2
+        case "alltext":
+            try? (app.main.terminalArea.focusedAllText() ?? "(none)").write(toFile: out + "-" + arg + ".alltext.txt", atomically: true, encoding: .utf8)
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":

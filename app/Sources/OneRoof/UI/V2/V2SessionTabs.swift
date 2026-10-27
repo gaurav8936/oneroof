@@ -3,7 +3,7 @@ import SwiftUI
 import OneRoofCore
 
 /// The session tabs above the centre (handover A2.0): Terminal · Files · Changes n · Subagents n · + Terminal, and on
-/// the right Split ⌘D · Raw ⌘R · Wrap. Each tab is a view of the selected session: the terminal area, today's file tree
+/// the right Split · Raw · Table (buttons; their keys are in the tooltips and the menus, LAB-1271). Each tab is a view of the selected session: the terminal area, today's file tree
 /// with the editor and its file tabs (LAB-799 tabs live inside Files now), Review changes for the session's repo, and the
 /// subagent cards of the session. Shown whenever the centre is one of those views.
 struct V2SessionTabs: View {
@@ -17,9 +17,8 @@ struct V2SessionTabs: View {
     }
 
     enum Tab { case terminal, files, changes, subagents }
-    /// Wrap for reading on the focused pane (LAB-657), for this window (object = window id).
-    static let wrap = Notification.Name("oneroof.v2.wrap")
-
+    /// Whether the focused pane of this window shows its Table view (LAB-1286; the terminal area says when it changes).
+    @State private var tableOn = false
     private var current: Tab {
         switch win.centre {
         case .editor: return .files
@@ -36,17 +35,20 @@ struct V2SessionTabs: View {
             let item = win.selectedId.flatMap { model.item($0) }
             let changes = item.flatMap { model.repoStats[model.workRepo($0)]?.files } ?? 0
             let subs = item.map { model.subagentCount($0) } ?? 0
-            // A narrow window (LAB-831) drops the shortcut labels, then shortens + Terminal, then the Split · Raw · Wrap
-            // hints (the menus and ⌘D / ⌘R keep them), then tightens the tabs; nothing wraps or overlaps.
+            // A narrow window (LAB-831) shortens + Terminal, then drops the Split · Raw · Table labels to icons, then
+            // the buttons (the menus and ⌘D / ⌘R keep them), then tightens the tabs; nothing wraps or overlaps.
             ViewThatFits(in: .horizontal) {
                 ForEach(0..<5) { level in strip(item: item, changes: changes, subs: subs, level: level) }
             }
             .padding(.horizontal, 10).frame(height: 34)
             .background(model.themes.centre.tokens.window.color)
+            .onReceive(NotificationCenter.default.publisher(for: .tableViewChanged)) { n in
+                if n.object as? String == win.id { tableOn = n.userInfo?["on"] as? Bool ?? false }
+            }
         }
     }
 
-    /// The tab row at a narrowness level: 0 everything, 1 hints without keys, 2 "+" for + Terminal, 3 no hints,
+    /// The tab row at a narrowness level: 0 everything, 1 "+" for + Terminal, 2 icon-only buttons, 3 no buttons,
     /// 4 tighter tabs.
     private func strip(item: BoardItem?, changes: Int, subs: Int, level: Int) -> some View {
         let pad: CGFloat = level >= 4 ? 6 : 10
@@ -56,23 +58,42 @@ struct V2SessionTabs: View {
             tab(changes > 0 ? "Changes \(changes)" : "Changes", .changes, pad: pad) { openChanges(item) }
             tab(subs > 0 ? "Subagents \(subs)" : "Subagents", .subagents, pad: pad) { openSubagents(item) }
             Button { NSApp.sendAction(#selector(AppDelegate.newTerminal(_:)), to: nil, from: nil) } label: {
-                Text(level >= 2 ? "+" : "+ Terminal").ui(11.5).foregroundStyle(t.text2.color).lineLimit(1).padding(.horizontal, 8).frame(height: 24)
+                Text(level >= 1 ? "+" : "+ Terminal").ui(11.5).foregroundStyle(t.text2.color).lineLimit(1).padding(.horizontal, 8).frame(height: 24)
             }
             .buttonStyle(.plain).help("New terminal (⌘T)").accessibilityLabel("New terminal")
             Spacer(minLength: level >= 3 ? 0 : 8)
             if level < 3 {
-                HStack(spacing: 10) {
-                    hint(level == 0 ? "Split ⌘D" : "Split", #selector(AppDelegate.splitRight(_:)), "Split right (⌘D) · down ⇧⌘D")
-                    hint(level == 0 ? "Raw ⌘R" : "Raw", #selector(AppDelegate.toggleRawStream(_:)), "Raw stream (⌘R)")
-                    Button { NotificationCenter.default.post(name: V2SessionTabs.wrap, object: win.id) } label: {
-                        Text("Wrap").ui(11).foregroundStyle(t.text2.color).lineLimit(1)
-                    }
-                    .buttonStyle(.plain).help("Read-only re-wrapped text of the terminal")
+                HStack(spacing: 6) {
+                    // LAB-1271: buttons, not loose shortcut text; the keys are in the tooltips and the View menu.
+                    button("Split", "rectangle.split.2x1", icon: level >= 2, #selector(AppDelegate.splitRight(_:)),
+                           "Split this pane: right ⌘D, down ⇧⌘D")
+                    button("Raw", "text.alignleft", icon: level >= 2, #selector(AppDelegate.toggleRawStream(_:)),
+                           "Raw stream: the session's plain output, steps folded open (⌘R)")
+                    button(tableOn ? "Table ✓" : "Table", "tablecells", icon: level >= 2, #selector(AppDelegate.toggleTableView(_:)),
+                           tableOn ? "Back to the live terminal (Esc while the formatted view has the keyboard)" : FormattedPaneView.tooltip,
+                           on: tableOn)
                 }
                 .opacity(current == .terminal ? 1 : 0.4)
                 .disabled(current != .terminal)
             }
         }
+    }
+
+
+    private func button(_ title: String, _ symbol: String, icon: Bool, _ sel: Selector, _ help: String, on: Bool = false) -> some View {
+        Button { NSApp.sendAction(sel, to: nil, from: nil) } label: {
+            Group {
+                if icon { Image(systemName: symbol).font(.system(size: 11, weight: .medium)) }
+                else { Text(title).ui(11, .medium) }
+            }
+            .foregroundStyle(on ? t.text.color : t.text2.color).lineLimit(1)
+            .padding(.horizontal, 8).frame(height: 22)
+            .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(on ? t.surface.color : .clear))
+            .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separator.color))
+            .contentShape(Rectangle())
+            .fixedSize()
+        }
+        .buttonStyle(.plain).help(help).accessibilityLabel(title.replacingOccurrences(of: " ✓", with: ", on"))
     }
 
     private func tab(_ title: String, _ k: Tab, pad: CGFloat = 10, action: @escaping () -> Void) -> some View {
@@ -84,11 +105,6 @@ struct V2SessionTabs: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title + (on ? ", selected" : ""))
-    }
-
-    private func hint(_ title: String, _ sel: Selector, _ help: String) -> some View {
-        Button { NSApp.sendAction(sel, to: nil, from: nil) } label: { Text(title).ui(11).foregroundStyle(t.text2.color).lineLimit(1) }
-            .buttonStyle(.plain).help(help)
     }
 
     private func openFiles(_ item: BoardItem?) {

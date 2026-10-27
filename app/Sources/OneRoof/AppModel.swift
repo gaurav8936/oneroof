@@ -83,6 +83,8 @@ final class AppModel: ObservableObject {
     /// When each project's issues last came from Linear, and the projects being fetched now (LAB-546: the list was
     /// fetched once and never again, so issues created after that never showed).
     var issuesFetchedAt: [String: Date] = [:]
+    /// When the project list was last fetched from Linear (LAB-1255).
+    var workstreamsFetchedAt: Date?
     @Published var issuesLoading: Set<String> = []
     /// A commit-watch scan is running (LAB-474), so ticks never overlap.
     var commitWatchBusy = false

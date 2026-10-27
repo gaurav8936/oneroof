@@ -23,6 +23,8 @@ final class CoursePlayer: ObservableObject {
     private let defaults = Prefs.defaults
     private let save = !SelfTest.isActive          // tests never touch the owner's progress
     private var player: AVPlayer?
+    /// ONEROOF_SELFTEST_PLAY / PLAYCARD=<…>@muted: a self-test plays a card silently (LAB-1281 frame checks).
+    static let selfTestMuted = ["ONEROOF_SELFTEST_PLAY", "ONEROOF_SELFTEST_PLAYCARD"].contains { ProcessInfo.processInfo.environment[$0]?.hasSuffix("@muted") == true }
     private var tick: Any?
     private var endObserver: NSObjectProtocol?
     private var progress: [String: CourseProgress] = [:]
@@ -100,6 +102,7 @@ final class CoursePlayer: ObservableObject {
         let item = AVPlayerItem(url: URL(fileURLWithPath: tracks[i].path))
         let p = AVPlayer(playerItem: item)
         p.automaticallyWaitsToMinimizeStalling = false
+        p.isMuted = Self.selfTestMuted
         player = p
         elapsed = seconds; duration = 0
         if seconds > 0 { p.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) }

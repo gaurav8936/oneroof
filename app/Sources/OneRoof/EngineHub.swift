@@ -48,6 +48,18 @@ final class EngineHub {
     private var lastModelCheck = Date.distantPast
     /// Tests and self-tests can feed text instead of reading the runtime.
     var textOverride: ((String) -> String?)?
+    /// LAB-1286: the transcript file each Claude session shows (found by the subagent scan, every 5 s), for the
+    /// terminal pane's Table view. Read from the main thread, written on the engine queue.
+    private let transcriptLock = NSLock()
+    private var transcripts: [String: String] = [:]
+    func transcriptPath(_ sessionId: String) -> String? {
+        transcriptLock.lock(); defer { transcriptLock.unlock() }
+        return transcripts[sessionId]
+    }
+    private func setTranscript(_ sessionId: String, _ path: String?) {
+        transcriptLock.lock(); defer { transcriptLock.unlock() }
+        transcripts[sessionId] = path
+    }
 
     init(model: AppModel, store: SessionStore?, runtime: SessionRuntime) {
         self.model = model
@@ -79,6 +91,7 @@ final class EngineHub {
         for (id, _) in revisions where !ids.contains(id) { scheduler.remove(id); revisions[id] = nil }
         for id in Set(agentFiles.keys).union(claudeLinks.keys).union(scanSig.keys) where !ids.contains(id) {
             agentFiles[id] = nil; claudeLinks[id] = nil; lastLinkTry[id] = nil; scanSig[id] = nil
+            setTranscript(id, nil)
         }
         var changed = false
         for s in live {
@@ -281,7 +294,8 @@ final class EngineHub {
     }
 
     private func scanSubagents(_ s: Live, now: Date) -> Bool {
-        guard let conv = conversation(s, now: now) else { return false }
+        guard let conv = conversation(s, now: now) else { setTranscript(s.id, nil); return false }
+        setTranscript(s.id, conv.folder + "/\(conv.id).jsonl")
         let fm = FileManager.default
         func sig(_ path: String) -> FileSig? {
             guard let a = try? fm.attributesOfItem(atPath: path) else { return nil }

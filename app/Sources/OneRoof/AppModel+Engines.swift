@@ -210,6 +210,10 @@ extension AppModel {
 extension Notification.Name {
     /// ⌘R in a session: fold chapters open (object: workspace id).
     static let rawStream = Notification.Name("oneroof.rawStream")
+    /// LAB-1286: the focused pane's Table view on or off (object: window id). It replaced Wrap (LAB-657).
+    static let tableView = Notification.Name("oneroof.tableView")
+    /// Posted by the terminal area when its focused pane's Table view turns on or off (object: window id, "on": Bool).
+    static let tableViewChanged = Notification.Name("oneroof.tableViewChanged")
     static let askAboutSelection = Notification.Name("oneroof.askAboutSelection")
     static let saveFile = Notification.Name("oneroof.saveFile")
     /// v2 Split editor ⌘\ (CAP-18), object = window id.

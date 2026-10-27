@@ -129,11 +129,6 @@ extension MainWindowController {
         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: window)
             .sink { [weak self] _ in self?.v2PaintBand(); self?.v2FitPlanToWidth() }.store(in: &v2Bag)
         v2InstallEscape()
-        // The session tabs' Wrap: read the focused pane's text re-wrapped (LAB-657), in this window only.
-        NotificationCenter.default.publisher(for: V2SessionTabs.wrap).receive(on: DispatchQueue.main).sink { [weak self] n in
-            guard let self, n.object as? String == self.win.id else { return }
-            self.terminalArea.toggleReading(self.terminalArea.focusedPane)
-        }.store(in: &v2Bag)
         DispatchQueue.main.async { [weak self] in self?.v2ApplyLayout(animated: false) }
     }
 
@@ -285,6 +280,8 @@ extension MainWindowController {
     /// ⌥⌘F steps on; at Focus it leaves Focus again, as the 0.5.2.9 toggle did (Esc can't while the terminal has
     /// the keyboard, so without this a window could stay stuck at step 3, even across launches).
     func v2StepOn() { if win.focusStep == .focus { v2LeaveFocus() } else { v2SetStep(win.focusStep.next) } }
+    /// A click on the toolbar's step button: the next step, and from Focus round to Full (LAB-1235).
+    func v2StepClick() { v2SetStep(win.focusStep.clicked) }
     func v2StepBack() { win.focusStep = win.focusStep.previous }
     /// Esc in Focus: back to the step before it.
     func v2LeaveFocus() { if win.focusStep == .focus { win.focusStep = v2BeforeFocus == .focus ? .wide : v2BeforeFocus } }
@@ -436,6 +433,8 @@ extension MainWindowController {
                 if e.keyCode == 53, mods.isEmpty, !(self.window?.firstResponder is NSTextView) { self.v2Page = nil; return nil }
                 if e.keyCode == 33, mods == .command { self.v2Page = nil; return nil }   // ⌘[
             }
+            // LAB-1286: Esc in a pane's Table view (when it has the keyboard) goes back to the live terminal first.
+            if e.keyCode == 53, mods.isEmpty, self.terminalArea.escapeTable() { return nil }
             guard e.keyCode == 53, mods.isEmpty, self.win.place == .sessions else { return e }   // Focus is a Sessions thing
             guard self.win.focusStep == .focus else { return e }
             if self.window?.firstResponder is TerminalSurfaceView { return e }

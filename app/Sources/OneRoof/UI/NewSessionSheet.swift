@@ -779,7 +779,8 @@ struct NewSessionSheet: View {
     private func appear() {
         DispatchQueue.main.async { textFocused = true }
         roles = Role.load(agenticEngineering: model.settings.agenticEngineering.path)
-        model.loadWorkstreams(force: model.linearTeams.isEmpty)
+        // LAB-1255: the project picker shows Linear's current list (fetched again when older than 10 s).
+        model.loadWorkstreams(force: model.linearTeams.isEmpty, maxAge: 10)
         defaultWorkstream()
         let acc = model.settings.defaults(for: .claude).account
         select(acc == "Claude2" && marks.contains(.claude2) ? .claude2 : .claude1)
