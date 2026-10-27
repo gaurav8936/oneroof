@@ -136,6 +136,44 @@ final class RoofProtocolTests: XCTestCase {
         XCTAssertEqual(Array(tail), Array((numbers.first ?? 1)...400), "nothing lost after the first line the redraw kept")
     }
 
+    /// LAB-1365: since 1.9.10 a terminal not shown lately is freed and re-attached when shown again, so long sessions
+    /// get redrawn often. A redraw bigger than the client queue limit (4 MB) made the holder drop the client part way
+    /// through: the terminal showed part of the history, or nothing, when scrolled back.
+    func testRedrawBiggerThanTheQueueLimitArrivesWhole() throws {
+        // Every cell its own colour: the redraw carries an SGR per cell, so a long history is well over 4 MB.
+        let awk = "BEGIN{for(i=1;i<=30000;i++){s=\"\";for(j=0;j<100;j++)s=s sprintf(\"\\033[38;5;%dm%c\",(i+j)%256,65+j%26);"
+            + "print \"L\" i \" \" s \"\\033[0m\"}; print \"DONE\"}"
+        _ = try call("create", ["id": "bigredraw", "cwd": "/tmp", "env": ["PATH": "/usr/bin:/bin"],
+                                "argv": ["/bin/sh", "-c", "awk '\(awk)'; sleep 60"]])
+        // Wait for the program to finish printing (the holder parses it with nobody attached).
+        let ready = Date().addingTimeInterval(60)
+        var printed = false
+        while Date() < ready, !printed {
+            printed = ((try? call("read", ["id": "bigredraw", "lines": 3]))?["text"] as? String ?? "").contains("DONE")
+            if !printed { usleep(200_000) }
+        }
+        XCTAssertTrue(printed, "the program printed its history")
+        guard let fd = Sock.connect(Paths.session("bigredraw")) else { return XCTFail("no session socket") }
+        defer { close(fd) }
+        Sock.writeAll(fd, Wire.encode(.hello, json: ["cols": 120, "rows": 40, "redraw": true]))
+        usleep(300_000)   // a client busy creating its terminal: the redraw piles up in the holder's queue meanwhile
+        var redraw = 0, gotRedrawn = false, received = 0, buf: [UInt8] = []
+        var chunk = [UInt8](repeating: 0, count: 1 << 16)
+        let deadline = Date().addingTimeInterval(60)
+        reading: while Date() < deadline {
+            let n = read(fd, &chunk, chunk.count)
+            if n <= 0 { break }
+            received += n
+            buf += chunk[0..<n]
+            for (t, p) in Wire.decode(&buf) {
+                if t == .redraw { redraw += p.count }
+                if t == .redrawn { gotRedrawn = true; break reading }
+            }
+        }
+        XCTAssertGreaterThan(redraw, 4 << 20, "the test needs a redraw over the 4 MB queue limit")
+        XCTAssertTrue(gotRedrawn, "the whole redraw arrived (\(received) bytes received) instead of the client being dropped")
+    }
+
     func testSecondPrimaryIsRefused() throws {
         _ = try call("create", ["id": "one", "cwd": "/tmp", "argv": ["/bin/sh", "-c", "sleep 30"], "env": ["PATH": "/usr/bin:/bin"]])
         guard let a = Sock.connect(Paths.session("one")), let b = Sock.connect(Paths.session("one")) else { return XCTFail() }
