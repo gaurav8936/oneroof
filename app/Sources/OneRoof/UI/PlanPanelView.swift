@@ -84,6 +84,8 @@ struct PlanPanelView: View {
 enum PlanTab: String, CaseIterable { case plan, ticket, notes, artifacts, resources }
 
 struct PlanDetail: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @Environment(\.planClose) private var planClose
     let item: BoardItem

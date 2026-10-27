@@ -5,6 +5,8 @@ import OneRoofCore
 /// what the command touches, the risk, what happens if you say no, and where it sits. Plans waiting for approval
 /// (objectives in review) are decisions too. Answers go to the agent as its own keys (y / a / n, or Esc then text).
 struct DecisionsView: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

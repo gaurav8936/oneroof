@@ -56,6 +56,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     @Published var v2Bar = V2Layout.toolbarFit(room: 1400)
     /// The last Plan-fits answer at Full, so a window resize re-lays the columns out only when it crosses it (LAB-831).
     var v2PlanFitsLast: Bool?
+    /// LAB-1337: the layout v2ApplyLayout last put in place (target + the split's state after it).
+    var v2LastLayout: String?
     var splitView: NSSplitView { split.splitView }
     var splitController: NSSplitViewController { split }
     var centreItemRef: NSSplitViewItem { centreItem }
@@ -307,8 +309,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     func syncPanels() {
         // LAB-1306: the v2 window never shows the classic Files side panel; whatever opened it, it closes again here.
         if isV2, !filesItem.isCollapsed { filesItem.isCollapsed = true }
-        panels = PanelState(sidebar: !sideItem.isCollapsed, files: !filesItem.isCollapsed,
-                            centre: !centreItem.isCollapsed, plan: !planItem.isCollapsed)
+        let now = PanelState(sidebar: !sideItem.isCollapsed, files: !filesItem.isCollapsed,
+                             centre: !centreItem.isCollapsed, plan: !planItem.isCollapsed)
+        if now != panels { panels = now }   // LAB-1337: published; set on every place change, twice
         // v2: the 28 pt edge tab is not an open Plan (audit D3). The v2 window shows no Subagents column (LAB-1240).
         terminalArea.planPanelOpen = panels.plan && !(isV2 && v2PlanEdge)
     }
@@ -452,6 +455,11 @@ struct PanelState: Equatable {
 final class ToolbarBackdrop: NSView {
     /// v2: the band painted per column, each segment (right edge x, colour) from left to right.
     var segments: [(CGFloat, RGB)] = [] { didSet { needsDisplay = true } }
+    /// LAB-1337: redraw only when an edge or a colour moved (it is set on every resize frame and place change).
+    func setSegments(_ new: [(CGFloat, RGB)]) {
+        guard new.count != segments.count || zip(new, segments).contains(where: { $0.0 != $1.0 || $0.1 != $1.1 }) else { return }
+        segments = new
+    }
     var fill = ThemeName.daylight.tokens.toolbar { didSet { needsDisplay = true } }
     var line = ThemeName.daylight.tokens.separator { didSet { needsDisplay = true } }
     var lineWidth: CGFloat = 1 { didSet { needsDisplay = true } }

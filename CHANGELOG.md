@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.9.10 — memory, sessions and layout (27 Oct 2026)
+
+- **Terminal memory stays bounded** (LAB-1321). Every terminal you visited stayed alive (about 30 MB each, never
+  freed). Now the 8 most recently shown stay live; older ones are freed and attach again when you show them, with
+  their text restored by roofd.
+- **Quiet session processes** (LAB-1322). Each session's process woke 10 times a second doing nothing; now once a
+  second when quiet, four times a second while output flows.
+- **Session saves off the main thread** (LAB-1336): written in order on their own queue, and edited-file updates
+  from the engines saved together with one rebuild instead of one per session.
+- **Smoother resizing and place changes** (LAB-1337): during a live resize only the toolbar band follows each frame
+  (the toolbar and Plan fit once at the end); places that share a layout (Learn, Home, Work) no longer re-lay out every
+  panel when you move between them.
+- **Captions and the feed redraw only what shows them** (LAB-1338): captions, the feed, step chapters and subagents
+  live in their own store, so a caption update no longer redraws every view; Home's feed rows redraw only when their
+  own entry changes, and their time labels no longer build date formatters on every redraw.
+- A terminal re-attached in a test window drew nothing (test windows are off screen and counted as hidden); they now
+  count as on screen.
+
 ## 1.9.9 — light in the background (27 Oct 2026)
 
 - **Hidden terminals stop drawing** (LAB-1320). The terminal engine was told a terminal was visible once and never
