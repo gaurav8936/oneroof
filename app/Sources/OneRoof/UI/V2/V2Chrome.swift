@@ -201,7 +201,8 @@ struct V2Dock: View {
     @ObservedObject var resources: ResourceMonitor
     let controller: MainWindowController
 
-    var body: some View {
+    var body: some View { watchedBody.modifier(WatchesResources(res: resources)) }   // LAB-1333
+    @ViewBuilder private var watchedBody: some View {
         let usage = V2Seats.usage(model)
         // A narrow window (LAB-831): compact seat chips, then no Mac line, then no seats (Settings › Seats and the
         // Machine place have them); the status and the two pills always show, nothing spills past the edges.

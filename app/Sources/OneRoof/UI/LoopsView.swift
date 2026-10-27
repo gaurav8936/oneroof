@@ -22,6 +22,7 @@ final class LoopBoard: ObservableObject {
         reload()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.reload() }
+        timer?.tolerance = 3 * 0.1   // LAB-1323: let the system batch wake-ups
     }
 
     func stop() { timer?.invalidate(); timer = nil }

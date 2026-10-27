@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Foundation
 import OneRoofCore
 
@@ -6,8 +7,15 @@ import OneRoofCore
 /// and ten minutes of history on the main thread. Always on, so the history is there when the owner opens the view
 /// (LAB-310: holders grew to 5+ GB and froze the Mac; the point is to see it coming). A tick costs about a millisecond.
 final class ResourceMonitor: ObservableObject {
-    @Published private(set) var snapshot = ResourceSnapshot()
-    @Published private(set) var history = ResourceHistory()
+    /// LAB-1333: sampled and recorded every 3 s, always (the history must be there when a page opens), but announced
+    /// to views only while one that shows it is on screen (WatchesResources); it re-rendered every observer before.
+    private(set) var snapshot = ResourceSnapshot()
+    private(set) var history = ResourceHistory()
+    private var viewers = 0
+    func watch(_ on: Bool) {
+        viewers = max(0, viewers + (on ? 1 : -1))
+        if on { objectWillChange.send() }   // show the latest sample at once
+    }
     /// LAB-544: every app on the Mac, sampled only while a Resources page is on screen (about 10 ms a tick).
     @Published private(set) var mac: MacBreakdown?
     private let macSampler = MacSampler()
@@ -52,6 +60,7 @@ final class ResourceMonitor: ObservableObject {
                 DispatchQueue.global(qos: .utility).async { LocalModel.shared.stop() }
             }
             DispatchQueue.main.async {
+                if self.viewers > 0 { self.objectWillChange.send() }
                 self.snapshot = snap
                 self.history.record(snap)
                 if wantsMac { self.mac = SelfTestMacFixture.breakdown ?? mac }   // LAB-853 self-test data
@@ -105,4 +114,12 @@ final class ResourceMonitor: ObservableObject {
 
     /// The live usage of a board row's session, when it runs (also after its agent exited while the shell lives on).
     func usage(_ item: BoardItem) -> SessionUsage? { item.resourceKey.flatMap { snapshot.sessions[$0] } }
+}
+
+/// LAB-1333 · a view that shows the resource monitor's numbers: it is announced new samples while this view is on screen.
+struct WatchesResources: ViewModifier {
+    let res: ResourceMonitor
+    func body(content: Content) -> some View {
+        content.onAppear { res.watch(true) }.onDisappear { res.watch(false) }
+    }
 }

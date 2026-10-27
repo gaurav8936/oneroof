@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import OneRoofCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -19,13 +20,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Keeps App Nap off: One Roof watches agents from the background (status, decisions, Dock badge, schedules).
-    /// Napped, its timers and run loop were delayed by tens of seconds once its windows were hidden.
+    /// Keeps App Nap off while One Roof has something to watch from the background: an agent working or waiting on
+    /// the owner, or a schedule (status, decisions, Dock badge). Napped, its timers and run loop were delayed by tens
+    /// of seconds once its windows were hidden. LAB-1323: held only while needed (it was held for the app's lifetime,
+    /// so a hidden, idle One Roof never napped); sessions themselves live in roofd and never depend on it.
     private var watchActivity: NSObjectProtocol?
+    private var napBag: AnyCancellable?
+
+    private func holdWatchActivity(_ on: Bool) {
+        if on, watchActivity == nil {
+            watchActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep], reason: "One Roof watches agent sessions")
+        } else if !on, let a = watchActivity {
+            ProcessInfo.processInfo.endActivity(a); watchActivity = nil
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        watchActivity = ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiatedAllowingIdleSystemSleep], reason: "One Roof watches agent sessions")
+        holdWatchActivity(true)
+        napBag = model.$items.combineLatest(model.$schedules).receive(on: DispatchQueue.main).sink { [weak self] items, schedules in
+            let watching = !schedules.isEmpty || items.contains { $0.starting || ($0.liveAgent != nil && [.running, .needsYou].contains($0.status)) }
+            self?.holdWatchActivity(watching)
+        }
         if let err = GhosttyRuntime.shared.initError { model.lastError = "Terminal engine: \(err)" }
         NSApp.mainMenu = buildMenu()
         if model.settings.ui2 { v2AdjustMenus(NSApp.mainMenu) }   // A11: the One Roof 1 menu names (MENUS.md)

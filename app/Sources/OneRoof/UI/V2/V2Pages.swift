@@ -191,7 +191,7 @@ struct V2ReleaseNotesPage: View {
 
     var body: some View {
         let path = AppResources.releaseNotes
-        let releases = Self.parse(path.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "")
+        let releases = path.map { FileParseCache.value($0, kind: "release-notes", parse: Self.parse) } ?? []   // LAB-1332
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         V2PageFrame(crumb: "Release notes", title: "One Roof \(v)", subtitle: releases.first?.heading ?? "", close: { controller.v2Page = nil }) {
             if let path { RoofButton("Open the file") { controller.v2Page = nil; model.openInViewer(path) } }

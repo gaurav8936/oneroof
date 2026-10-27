@@ -20,7 +20,8 @@ struct ResourcesView: View {
         self.model = model; self.win = win; self.res = model.resources
     }
 
-    var body: some View {
+    var body: some View { watchedBody.modifier(WatchesResources(res: res)) }   // LAB-1333
+    @ViewBuilder private var watchedBody: some View {
         let snap = res.snapshot
         let groups = ResourceBoard.group(rows(snap), windows: model.windows.map { ($0.id, $0.name) }, sort: sort)
         FleetPage(title: v2 ? "Machine" : "Resources", subtitle: subtitle(snap)) {
@@ -440,7 +441,8 @@ struct SessionResourcesTab: View {
     let item: BoardItem
     @ObservedObject var res: ResourceMonitor
 
-    var body: some View {
+    var body: some View { watchedBody.modifier(WatchesResources(res: res)) }   // LAB-1333
+    @ViewBuilder private var watchedBody: some View {
         if let u = res.usage(item) {
             running(u)
         } else {

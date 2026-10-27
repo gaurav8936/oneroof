@@ -10,8 +10,21 @@ final class CoursePlayer: ObservableObject {
     @Published private(set) var tracks: [CourseTrack] = []
     @Published private(set) var index = 0
     @Published private(set) var playing = false
-    @Published private(set) var elapsed: Double = 0
-    @Published private(set) var duration: Double = 0
+    /// LAB-1332: the playback position lives in its own small object; only the scrubber and the clocks observe it.
+    /// Published here, it re-rendered every view of the player (the whole Learn page) twice a second while playing.
+    let clock = PlaybackClock()
+    static func clockText(_ s: Double) -> String {
+        guard s.isFinite, s > 0 else { return "0:00" }
+        return String(format: "%d:%02d", Int(s) / 60, Int(s) % 60)
+    }
+    private(set) var elapsed: Double {
+        get { clock.elapsed }
+        set { if clock.elapsed != newValue { clock.elapsed = newValue } }
+    }
+    private(set) var duration: Double {
+        get { clock.duration }
+        set { if clock.duration != newValue { clock.duration = newValue } }
+    }
     /// LAB-1233 · pages to play after this one (Learn › Radio: the rest of a band, a programme). Playing a page directly
     /// replaces it; stop() clears it.
     @Published private(set) var upNext: [QueuedPage] = []
@@ -173,11 +186,7 @@ struct PlayerBar: View {
                 icon(player.playing ? "pause.circle.fill" : "play.circle.fill", player.playing ? "Pause" : "Play", size: 24) { player.toggle() }
                 icon("forward.fill", "Next part") { player.next() }
             }
-            Text(clock(player.elapsed)).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(tokens.secondaryText.color)
-            Slider(value: Binding(get: { min(player.elapsed, max(player.duration, 1)) }, set: { player.seek($0) }),
-                   in: 0...max(player.duration, 1))
-                .controlSize(.small)
-            Text(clock(player.duration)).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(tokens.secondaryText.color)
+            PlaybackScrubber(player: player, clock: player.clock, tokens: tokens)
             Picker("", selection: $player.rate) {
                 ForEach(CoursePlayer.rates, id: \.self) { r in Text(r == 1 ? "1×" : String(format: "%g×", r)).tag(r) }
             }
@@ -225,10 +234,7 @@ struct PlayerBar: View {
             .buttonStyle(.plain).help(help)
     }
 
-    private func clock(_ s: Double) -> String {
-        guard s.isFinite, s > 0 else { return "0:00" }
-        return String(format: "%d:%02d", Int(s) / 60, Int(s) % 60)
-    }
+    private func clock(_ s: Double) -> String { CoursePlayer.clockText(s) }
 }
 
 /// A compact player in the title bar while something is loaded, so playback can be paused from any view.
@@ -250,4 +256,31 @@ struct MiniPlayer: View {
             .background(Capsule().fill(Color.accentColor.opacity(0.16)))
         }
     }
+}
+
+/// LAB-1332 · where playback is: changes twice a second while playing.
+final class PlaybackClock: ObservableObject {
+    @Published var elapsed: Double = 0
+    @Published var duration: Double = 0
+}
+
+/// LAB-1332 · the player bar's position and length, and its slider: the only part that redraws on each tick.
+struct PlaybackScrubber: View {
+    let player: CoursePlayer
+    @ObservedObject var clock: PlaybackClock
+    let tokens: ThemeTokens
+    var body: some View {
+        Text(CoursePlayer.clockText(clock.elapsed)).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(tokens.secondaryText.color)
+        Slider(value: Binding(get: { min(clock.elapsed, max(clock.duration, 1)) }, set: { player.seek($0) }),
+               in: 0...max(clock.duration, 1))
+            .controlSize(.small)
+        Text(CoursePlayer.clockText(clock.duration)).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(tokens.secondaryText.color)
+    }
+}
+
+/// LAB-1332 · a view made from the playback position, redrawn on each tick without its parent.
+struct PlaybackClockView<Content: View>: View {
+    @ObservedObject var clock: PlaybackClock
+    @ViewBuilder let content: (_ elapsed: Double) -> Content
+    var body: some View { content(clock.elapsed) }
 }

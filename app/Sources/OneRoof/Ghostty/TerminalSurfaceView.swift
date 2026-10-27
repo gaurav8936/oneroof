@@ -141,13 +141,32 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard let window, let surface else { return }
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+        guard let window, let surface else { updateOcclusion(); return }
         if let screen = window.screen,
            let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
             ghostty_surface_set_display_id(surface, id.uint32Value)
         }
         viewDidChangeBackingProperties()
-        ghostty_surface_set_occlusion(surface, true)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowOcclusionChanged),
+                                               name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        updateOcclusion()
+    }
+
+    // LAB-1320: libghostty draws a surface every frame while it is told the surface is visible. It was told so once,
+    // when the view joined a window, and never told otherwise: terminals hidden behind another pane, in a hidden
+    // window, a minimised one or one covered by other apps kept rendering. Now visible = in a window, not hidden
+    // (itself or an ancestor) and the window's occlusion state says visible; un-occluded again just before it shows.
+    private var lastOcclusionVisible: Bool?
+    @objc private func windowOcclusionChanged(_ n: Notification) { updateOcclusion() }
+    override func viewDidHide() { super.viewDidHide(); updateOcclusion() }
+    override func viewDidUnhide() { super.viewDidUnhide(); updateOcclusion() }
+    func updateOcclusion() {
+        guard let surface else { return }
+        let visible = window.map { $0.occlusionState.contains(.visible) && !$0.isMiniaturized } == true && !isHiddenOrHasHiddenAncestor
+        guard visible != lastOcclusionVisible else { return }
+        lastOcclusionVisible = visible
+        ghostty_surface_set_occlusion(surface, visible)
     }
 
     override func becomeFirstResponder() -> Bool {
