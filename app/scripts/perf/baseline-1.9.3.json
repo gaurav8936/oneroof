@@ -1,0 +1,10 @@
+{
+ "_source": "LAB-1287 performance study, One Roof 1.9.3 test build on the owner's Mac, 2026-10-26 (B1 idle-sessions, B9b home-idle, B5 places, B10 spinners6, E memory; means of 2-3 runs)",
+ "version": "1.9.3",
+ "idle":      {"app_cpu": 9.6,  "main_busy": 9.2,  "stalls_50_per_min": 58.5,  "stall_ms_per_s": 84.5,  "model_changes_per_s": 2.0, "footprint_mb": 77.5},
+ "home":      {"app_cpu": 11.1, "main_busy": 10.8, "stalls_50_per_min": 55.9,  "stall_ms_per_s": 96.2,  "model_changes_per_s": 2.1, "children_per_min": 244, "footprint_mb": 86.5},
+ "places":    {"app_cpu": 29.0, "main_busy": 29.3, "stalls_50_per_min": 102.7, "stall_ms_per_s": 251.3, "model_changes_per_s": 4.0, "children_per_min": 295, "footprint_mb": 106.7},
+ "spinners6": {"app_cpu": 14.0, "main_busy": 9.8,  "stalls_50_per_min": 42.6,  "stall_ms_per_s": 76.8,  "model_changes_per_s": 9.0, "children_per_min": 266, "footprint_mb": 229.5},
+ "learn":     {"app_cpu": 16.3, "main_busy": 14.5, "stalls_50_per_min": 53.9,  "stall_ms_per_s": 100.1, "children_per_min": 243, "footprint_mb": 116.0},
+ "memory":    {"mb_per_terminal": 30.0}
+}

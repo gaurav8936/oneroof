@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OneRoofCore
 
@@ -51,7 +52,6 @@ struct StatusDot: View {
     let status: SessionStatus
     var size: CGFloat = 8
     var ring: RGB?
-    @State private var pulse = false
 
     init(status: SessionStatus, size: CGFloat = 8, ring: RGB? = nil) {
         self.status = status; self.size = size; self.ring = ring
@@ -63,10 +63,11 @@ struct StatusDot: View {
         let c = t.statusColor(status).color
         ZStack {
             if status == .running && !Motion.reduce {
-                Circle().fill(c.opacity(pulse ? 0 : 0.35))
-                    .frame(width: size + (pulse ? 8 : 0), height: size + (pulse ? 8 : 0))
-                    .animation(.easeOut(duration: 1.6).repeatForever(autoreverses: false), value: pulse)
-                    .onAppear { pulse = true }
+                // LAB-1318: a Core Animation layer animation; it runs in the render server. The SwiftUI repeatForever
+                // animation it replaces re-evaluated the view graph on the main thread every frame, forever.
+                PulseHalo(color: t.statusColor(status).nsColor, size: size)
+                    .frame(width: size + 8, height: size + 8)
+                    .allowsHitTesting(false)
             }
             if let ring { Circle().fill(ring.color).frame(width: size + 4, height: size + 4) }
             switch status {
@@ -77,6 +78,49 @@ struct StatusDot: View {
         .frame(width: size + 4, height: size + 4)
         .accessibilityHidden(true)
     }
+}
+
+/// The running dot's halo (LAB-1318): a circle that grows by 8 pt and fades out every 1.6 s, as a CALayer animation.
+struct PulseHalo: NSViewRepresentable {
+    let color: NSColor
+    let size: CGFloat
+
+    final class HaloView: NSView {
+        let halo = CALayer()
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.addSublayer(halo)
+        }
+        required init?(coder: NSCoder) { fatalError("not supported") }
+        func configure(color: NSColor, size: CGFloat) {
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            let full = size + 8
+            halo.bounds = CGRect(x: 0, y: 0, width: full, height: full)
+            halo.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            halo.cornerRadius = full / 2
+            halo.backgroundColor = color.withAlphaComponent(0.35).cgColor
+            CATransaction.commit()
+            guard halo.animation(forKey: "pulse") == nil || abs((halo.value(forKey: "haloSize") as? CGFloat ?? 0) - size) > 0.1 else { return }
+            halo.setValue(size, forKey: "haloSize")
+            let grow = CABasicAnimation(keyPath: "transform.scale")
+            grow.fromValue = size / full; grow.toValue = 1
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1; fade.toValue = 0
+            let g = CAAnimationGroup()
+            g.animations = [grow, fade]; g.duration = 1.6; g.repeatCount = .infinity
+            g.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            g.isRemovedOnCompletion = false
+            halo.add(g, forKey: "pulse")
+        }
+        override func layout() { super.layout(); CATransaction.begin(); CATransaction.setDisableActions(true); halo.position = CGPoint(x: bounds.midX, y: bounds.midY); CATransaction.commit() }
+        // Re-adding to a window drops layer animations: start again.
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); halo.removeAnimation(forKey: "pulse"); needsLayout = true; if let c = halo.backgroundColor { configure(color: NSColor(cgColor: c)?.withAlphaComponent(1) ?? .clear, size: (halo.value(forKey: "haloSize") as? CGFloat) ?? 8) } }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> HaloView { let v = HaloView(frame: .zero); v.configure(color: color, size: size); return v }
+    func updateNSView(_ v: HaloView, context: Context) { v.configure(color: color, size: size) }
 }
 
 /// Capsule pill per status (COMPONENTS StatusPill): fill / text / edge from the theme; Parked strikes the label.

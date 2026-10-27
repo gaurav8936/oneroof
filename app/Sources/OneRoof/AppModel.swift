@@ -127,17 +127,26 @@ final class AppModel: ObservableObject {
     let runtime: SessionRuntime = Runtimes.make()
     let store: SessionStore?
     private var stored: [Session] = []
-    private var lastSnapshot = RuntimeSnapshot()
+    private var lastSnapshot = RuntimeSnapshot() { didSet { snapshotIndex = nil } }
+    /// LAB-1328: the by-id table of the latest snapshot, built once per snapshot (it was built again for every row).
+    private var snapshotIndex: [RuntimeID: RuntimeSessionState]?
     /// The rows have been built from a real snapshot once (status changes before that are the app starting up).
     private var sawSnapshot = false
     /// Live sessions by runtime id from the latest snapshot (output seq for the caption engine).
     var lastSnapshotSessions: [RuntimeID: RuntimeSessionState] {
-        Dictionary(lastSnapshot.sessions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        if let i = snapshotIndex { return i }
+        let i = Dictionary(lastSnapshot.sessions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        snapshotIndex = i
+        return i
     }
     private var accounts: [String: String] = [:]     // runtime id → account label
     /// Runtime ids the rows were reloaded for already (sessions started outside the app).
     private var reloadedFor = Set<RuntimeID>()
     private var probing = Set<String>()
+    /// Agents whose account the runtime queue has read, or tried often enough (LAB-1328: the queue keeps its own list,
+    /// instead of asking the main thread for the model's every second with main.sync).
+    private var probed = Set<String>()
+    private var probeTries: [String: Int] = [:]
     private var timer: Timer?
     /// Commands to type into a terminal session once it starts (session id → command).
     private var pendingCommands: [String: String] = [:]
@@ -148,8 +157,9 @@ final class AppModel: ObservableObject {
     /// Set when the owner chose "Launch anyway" for this run of the app.
     var foundationsOverride = false
 
-    /// When each row last changed status or was working (in memory; falls back to the launch time).
-    @Published private(set) var lastActive: [String: Date] = [:]
+    /// When each row last changed status or was working (in memory; falls back to the launch time). Not published
+    /// (LAB-1314): it moves every second while an agent works; views read it when they redraw for a real change.
+    private(set) var lastActive: [String: Date] = [:]
     /// LAB-490: settles each row's status before the list moves it.
     private var statusSmoother = StatusSmoother()
     /// Branch and diff size per session repo path, refreshed every 10 s off the main thread.
@@ -160,6 +170,11 @@ final class AppModel: ObservableObject {
     private let queue = DispatchQueue(label: "oneroof.runtime", qos: .userInitiated)
     /// What One Roof itself costs, per session and overall (LAB-493).
     let resources = ResourceMonitor()
+    /// LAB-1316 · Learn rankings by question (not published: a cache, not state).
+    final class LearnRankCache { var cards: [String: [String]] = [:]; var pages: [String: [String]] = [:] }
+    let learnRankCache = LearnRankCache()
+    /// LAB-1315 · handoff matches for exited sessions (PanePlaceholder).
+    let handoffCache = HandoffCache()
     /// LAB-675 · Get the model (Settings and the Foundations check).
     let modelDownload = ModelDownloadController()
 
@@ -276,15 +291,17 @@ final class AppModel: ObservableObject {
                     self.stored = rows
                 }
                 self.lastSnapshot = snap
-                self.runtimeOK = true
-                self.runtimeState = state
+                // LAB-1314: assign published values only when they change; each assignment re-renders every view
+                // observing the model, and this runs every second.
+                if !self.runtimeOK { self.runtimeOK = true }
+                if self.runtimeState != state { self.runtimeState = state }
                 if self.daemonVersion != snap.version { self.daemonVersion = snap.version }
                 self.rebuild()
             }
         } catch {
             DispatchQueue.main.async {
-                self.runtimeOK = false
-                self.runtimeState = "\(error)"
+                if self.runtimeOK { self.runtimeOK = false }
+                if self.runtimeState != "\(error)" { self.runtimeState = "\(error)" }
                 self.rebuild()
             }
             // roofd is not answering (it stopped, or was never started): start it again at once, at most every 5 s.
@@ -300,15 +317,19 @@ final class AppModel: ObservableObject {
 
     /// Read each new agent's account from its process environment (pane → foreground PID → sysctl).
     private func probeAccounts(_ snap: RuntimeSnapshot) {
-        let known = DispatchQueue.main.sync { Set(accounts.keys) }
-        for a in snap.agents where !known.contains(a.id) && !probing.contains(a.id) {
+        for a in snap.agents where !probed.contains(a.id) && !probing.contains(a.id) {
             guard let kind = a.agent else { continue }
             probing.insert(a.id)
             defer { probing.remove(a.id) }
+            // An agent just starting has no foreground process or environment yet: try again on the next polls, a
+            // minute at most (the old code asked every second, forever, for an agent whose account can't be read).
+            probeTries[a.id, default: 0] += 1
+            if probeTries[a.id, default: 0] >= 60 { probed.insert(a.id) }
             guard let procs = try? runtime.processes(pane: a.pane).foreground else { continue }
             // Prefer the process whose argv names the agent; otherwise the first foreground process.
             let pick = procs.first { p in p.argv.joined(separator: " ").lowercased().contains(kind.rawValue) } ?? procs.first
             guard let pid = pick?.pid, let args = ProcessProbe.args(pid: pid), !args.env.isEmpty else { continue }
+            probed.insert(a.id)
             if let label = AccountResolver.label(agent: kind, env: args.env) {
                 DispatchQueue.main.async { self.accounts[a.id] = label; self.rebuild() }
             }
@@ -392,9 +413,20 @@ final class AppModel: ObservableObject {
     private var deckCache: LearnDeck?
 
     /// LAB-1274 · the deck cards that best answer `question` (v2: How do I…, Search, the Plan panel), best first.
+    /// LAB-1316: ranking all the deck's cards runs from view bodies (the Plan panel's Related in Learn) on every
+    /// redraw; the answer depends only on the question and the deck, so it is kept per question.
     func learnCards(_ question: String, limit: Int = 8) -> [DeckCard] {
         guard let deck = learnDeck else { return [] }
-        return deck.bestCards(for: question, limit: limit).compactMap { deck.cards[$0] }
+        let key = "\(deck.root)\u{1}\(limit)\u{1}\(question)"
+        if let hit = rankCache[key] { return hit.compactMap { deck.cards[$0] } }
+        let ids = deck.bestCards(for: question, limit: limit)
+        if rankCache.count > 256 { rankCache.removeAll() }
+        rankCache[key] = ids
+        return ids.compactMap { deck.cards[$0] }
+    }
+    private var rankCache: [String: [String]] {
+        get { learnRankCache.cards }
+        set { learnRankCache.cards = newValue }
     }
 
     /// LAB-1274 · open a deck card's station in Learn (v2). Re-set so the same card opens again. `show` false: the
@@ -409,7 +441,12 @@ final class AppModel: ObservableObject {
     /// Learn pages that best answer `question`, best first.
     func learnMatches(_ question: String, limit: Int = 8) -> [LearnItem] {
         let byId = Dictionary(learnItems.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        return LearnMatch.rank(question, learnDocs, limit: limit).compactMap { byId[$0] }
+        let key = "\(learnDocs.count)\u{1}\(limit)\u{1}\(question)"   // LAB-1316: learnDocs only grows from empty once
+        if let hit = learnRankCache.pages[key] { return hit.compactMap { byId[$0] } }
+        let ids = LearnMatch.rank(question, learnDocs, limit: limit)
+        if learnRankCache.pages.count > 256 { learnRankCache.pages.removeAll() }
+        learnRankCache.pages[key] = ids
+        return ids.compactMap { byId[$0] }
     }
 
     /// "How do I…": open Learn on the best page for the question, with the ranked list beside it.
@@ -488,15 +525,38 @@ final class AppModel: ObservableObject {
     /// 1.8.1: the v2 tabs and ⌥⌘R showed the root ("not in a git repo") for them. The classic window keeps the start folder.
     func workRepo(_ i: BoardItem) -> String { settings.ui2 ? (i.repoPath ?? i.session.repoPath) : i.session.repoPath }
 
-    func refreshRepoStats() {
-        let live = items.filter { $0.status != .doNotUse }
-        let paths = Set(live.map(\.session.repoPath) + live.map { workRepo($0) })
+    /// Branch and diff size per session repo (LAB-1319). Called every 10 s; each repo costs four or five git processes,
+    /// so a repo is read again only when it is due: every 10 s while a live session in it is working or in front of
+    /// the owner, every 60 s while its sessions are live but out of sight, every 5 min when none of them is live
+    /// (exited and planned rows keep the last numbers). Folders that are not in a repo are never asked.
+    func refreshRepoStats(now: Date = Date()) {
+        let inView = visibleInPanes.union([selectedId].compactMap { $0 })
+        var interval: [String: TimeInterval] = [:]
+        for i in items where i.status != .doNotUse {
+            let every: TimeInterval = i.liveAgent == nil ? 300 : (i.status == .running || inView.contains(i.id)) ? 10 : 60
+            for p in Set([i.session.repoPath, workRepo(i)]) where p != Workspace.projectsRoot {
+                interval[p] = min(interval[p] ?? .infinity, every)
+            }
+        }
+        let due = interval.filter { p, every in repoStatAt[p].map { now.timeIntervalSince($0) >= every - 0.5 } ?? true }.map(\.key)
+        let gone = Set(repoStats.keys).subtracting(interval.keys)
+        for p in due { repoStatAt[p] = now }
+        for p in gone { repoStatAt[p] = nil }
+        guard !due.isEmpty || !gone.isEmpty else { return }
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            var out: [String: RepoStat] = [:]
-            for p in paths where p != Workspace.projectsRoot { if let s = GitDiff.stat(repo: p) { out[p] = s } }
-            DispatchQueue.main.async { if self?.repoStats != out { self?.repoStats = out } }
+            var got: [String: RepoStat?] = [:]
+            for p in due { got.updateValue(GitDiff.repoRoot(for: p) == nil ? nil : GitDiff.stat(repo: p), forKey: p) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                var out = self.repoStats
+                for p in gone { out[p] = nil }
+                for (p, s) in got { out[p] = s }
+                if self.repoStats != out { self.repoStats = out }
+            }
         }
     }
+    /// When each repo's stats were last asked for (LAB-1319).
+    private var repoStatAt: [String: Date] = [:]
 
     func lastActiveDate(_ item: BoardItem) -> Date? { lastActive[item.id] ?? item.session.launchedAt }
 
@@ -628,7 +688,7 @@ final class AppModel: ObservableObject {
     func refreshSeats() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let u = Usage.all()
-            DispatchQueue.main.async { self?.seats = u }
+            DispatchQueue.main.async { if self?.seats != u { self?.seats = u } }   // LAB-1314: only on change
         }
     }
 

@@ -1,0 +1,21 @@
+menu View/Sessions
+terminal @DIR@
+wait 1
+send while true; do printf "\r working %s %s" $RANDOM $(date +%S); sleep 0.1; done
+terminal @DIR@
+wait 1
+send while true; do printf "\r working %s %s" $RANDOM $(date +%S); sleep 0.1; done
+terminal @DIR@
+wait 1
+send while true; do printf "\r working %s %s" $RANDOM $(date +%S); sleep 0.1; done
+terminal @DIR@
+wait 1
+send while true; do printf "\r working %s %s" $RANDOM $(date +%S); sleep 0.1; done
+terminal @DIR@
+wait 1
+send while true; do printf "\r working %s %s" $RANDOM $(date +%S); sleep 0.1; done
+terminal @DIR@
+wait 1
+send while true; do printf "\r working %s %s" $RANDOM $(date +%S); sleep 0.1; done
+wait 600
+quit

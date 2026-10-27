@@ -16,7 +16,7 @@ struct DiffView: View {
     @State private var commenting: String?
     @State private var comment = ""
     @State private var confirmRevert: DiffHunk?
-    private let tick = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
+    private let tick = Ticks.threeSeconds   // LAB-1329: a shared clock, not one per redraw
 
     var body: some View {
         VStack(spacing: 0) {

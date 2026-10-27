@@ -74,9 +74,11 @@ extension AppModel {
     }
 
     /// Dock badge = open decisions across all windows, else sessions that need you.
+    /// LAB-1328: set only when the label changes (it ran after every poll; each set redraws the Dock tile).
     func updateDockBadge() {
         let n = max(openDecisionCount, items.filter { $0.status == .needsYou }.count)
-        NSApp?.dockTile.badgeLabel = n > 0 && settings.dockBadge ? "\(n)" : nil
+        let label = n > 0 && settings.dockBadge ? "\(n)" : nil
+        if NSApp?.dockTile.badgeLabel != label { NSApp?.dockTile.badgeLabel = label }
     }
 
     // MARK: Subagents

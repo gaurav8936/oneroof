@@ -14,7 +14,7 @@ struct SubagentTraceView: View {
     @State private var tick = Date()
     /// LAB-695: the selected subagent's prompt, unfolded.
     @State private var askedOpen = false
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let timer = Ticks.second   // LAB-1329: a shared clock, not one per redraw
 
     private func running(_ id: String) -> Int { (model.subagents[id] ?? []).filter { $0.ended == nil }.count }
 

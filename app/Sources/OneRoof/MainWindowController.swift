@@ -474,6 +474,7 @@ final class CentreController: NSViewController {
     /// v2 window: the terminal area is a card inset 8 pt on the centre's background, corners 12 (handover A1.11).
     private let v2: Bool
     private var cardFrame: NSView?
+    private var bag = Set<AnyCancellable>()
 
     init(model: AppModel, win: WindowState, terminalArea: TerminalAreaController, v2: Bool = false) {
         self.model = model; self.win = win; self.terminalArea = terminalArea; self.v2 = v2
@@ -494,8 +495,18 @@ final class CentreController: NSViewController {
         // centre: in a narrow window, showing the tabs (a place change, a session) grew the window (LAB-874, LAB-596).
         let strip = v2 ? NSHostingView(rootView: AnyView(NoIdealWidth { CentreThemed(model: m, win: w) { V2SessionTabs(model: m, win: w) } }))
                        : NSHostingView(rootView: AnyView(NoIdealWidth { CentreThemed(model: m, win: w) { CentreTabStrip(model: m, win: w) } }))
-        strip.sizingOptions = [.intrinsicContentSize]
+        // LAB-1317: the v2 strip is 34 pt or nothing, known from the centre alone; sized by its intrinsic content it was
+        // measured (all five ViewThatFits levels) on every model change: 18 % of the idle main thread.
+        strip.sizingOptions = v2 ? [] : [.intrinsicContentSize]
         for v in [strip, content] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        if v2 {
+            let h = strip.heightAnchor.constraint(equalToConstant: 0)
+            h.isActive = true
+            w.$centre.combineLatest(w.$viewerPath).receive(on: DispatchQueue.main).sink { c, p in
+                let on = V2SessionTabs.shows(centre: c, viewerPath: p) ? V2SessionTabs.height : 0
+                if h.constant != on { h.constant = on }
+            }.store(in: &bag)
+        }
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: root.topAnchor),
             strip.leadingAnchor.constraint(equalTo: root.leadingAnchor), strip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
