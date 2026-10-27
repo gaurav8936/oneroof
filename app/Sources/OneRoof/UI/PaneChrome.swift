@@ -311,15 +311,15 @@ struct RewindBar: View {
     }
 }
 
-/// LAB-825: the same way back as the RewindBar, floating at the bottom of the terminal while an earlier step is shown
-/// and the terminal is not at its live bottom (where the eye is after scrolling on through the step).
+/// LAB-825 / LAB-1363: "Current ↓", floating bottom right of the terminal whenever it is scrolled up from its live
+/// bottom (an earlier step open or plain scrolling); also ⌘↓.
 struct BackToCurrentPill: View {
     @Environment(\.theme) private var t
     var onCurrent: () -> Void
 
     var body: some View {
         Button(action: onCurrent) {
-            Label("Back to current", systemImage: "arrow.down.to.line").ui(12, .medium)
+            Label("Current", systemImage: "arrow.down").ui(12, .medium)
                 .foregroundStyle(t.onAccent.color)
                 .padding(.vertical, 6).padding(.horizontal, 14)
                 .background(Capsule().fill(t.accent.color))
@@ -328,8 +328,8 @@ struct BackToCurrentPill: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("Scroll to the bottom: the step in progress now")
-        .accessibilityLabel("Back to current step")
+        .help("Jump to the live bottom (⌘↓)")
+        .accessibilityLabel("Jump to current")
         .padding(.bottom, 12)
     }
 }
