@@ -194,7 +194,8 @@ final class TerminalAreaController: NSViewController {
         for s in surfaces.values where s.theme != theme { s.applyTheme(theme) }
 
         // Drop surfaces whose agent is gone, or is popped out into its own window.
-        let live = Set(model.items.compactMap(\.liveAgent)).subtracting(model.poppedOut)
+        // LAB-1362: an exited agent's terminal (its shell lives on) keeps its surface: the last screen stays.
+        let live = Set(model.items.compactMap { $0.liveAgent ?? $0.endedShell }).subtracting(model.poppedOut)
         for (name, s) in surfaces where !live.contains(name) {
             s.removeFromSuperview()
             surfaces[name] = nil
@@ -306,6 +307,16 @@ final class TerminalAreaController: NSViewController {
                 } else {
                     pv.setOverlay(nil)
                 }
+            } else if let item, item.liveAgent == nil, let shell = item.endedShell, !model.poppedOut.contains(shell) {
+                // LAB-1362: the agent exited but its terminal lives on: keep showing it (Claude's last screen and
+                // resume hint, the scrollback), with what ended and Resume over it, as in a standalone terminal.
+                let sv = surface(agent: shell, cwd: item.session.repoPath, theme: theme, size: pv.surfaceSize(fallback: body.bounds.size))
+                pv.show(surface: sv)
+                shown.insert(shell)
+                pv.setFormatted(nil)
+                pv.setFloat(nil)
+                pv.setBottom(nil)
+                pv.setOverlay(AnyView(ExitedStrip(item: item, model: model).themed(theme)))
             } else {
                 pv.setBottom(nil)
                 pv.setOverlay(nil)
@@ -442,7 +453,7 @@ final class TerminalAreaController: NSViewController {
     }
 
     private var focusedAgent: String? {
-        guard let sid = tree.leaf(focusedPane)?.session, let item = model.item(sid), let agent = item.liveAgent,
+        guard let sid = tree.leaf(focusedPane)?.session, let item = model.item(sid), let agent = item.liveAgent ?? item.endedShell,
               !model.poppedOut.contains(agent) else { return nil }
         return agent
     }
