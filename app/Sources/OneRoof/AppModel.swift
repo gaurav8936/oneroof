@@ -11,15 +11,15 @@ final class AppModel: ObservableObject {
     /// Main windows, one per workspace (WINDOW_SHELL §1). `active` is the key one (or the first).
     @Published var windows: [WindowState] = []
     /// Latest caption per session (caption engine; S02, S06 rows, S01 cards).
-    @Published var captions: [String: LiveCaption] = [:]
+    var captions: [String: LiveCaption] { get { EngineState.shared.captions } set { EngineState.shared.captions = newValue } }   // LAB-1338
     /// Schedule label per session ("2:00 AM"), from the schedules table.
     @Published var schedules: [String: String] = [:]
     /// Subagents per session (Subagents engine), in tree order.
-    @Published var subagents: [String: [Subagent]] = [:]
+    var subagents: [String: [Subagent]] { get { EngineState.shared.subagents } set { EngineState.shared.subagents = newValue } }   // LAB-1338
     /// Open and recently answered decisions (Decisions engine; S03, S02 approval card).
     @Published var decisions: [Decision] = []
     /// Chapters per session.
-    @Published var chapters: [String: [Chapter]] = [:]
+    var chapters: [String: [Chapter]] { get { EngineState.shared.chapters } set { EngineState.shared.chapters = newValue } }   // LAB-1338
     /// "Explain this step" answers, by session · step (LAB-259).
     @Published var stepExplanations: [String: StepExplainState] = [:]
     /// The step a session's terminal is rewound to, shown in the right panel's Step review (LAB-260); nil = latest.
@@ -29,7 +29,7 @@ final class AppModel: ObservableObject {
     var scheduleRecords: [String: ScheduleRecord] = [:]
     lazy var engines = EngineHub(model: self, store: store, runtime: runtime)
     /// The FYI feed, newest first (Feed engine; S01).
-    @Published var feed: [FeedEntry] = []
+    var feed: [FeedEntry] { get { EngineState.shared.feed } set { EngineState.shared.feed = newValue } }   // LAB-1338
     @Published var mutedWindows: Set<String> = []
     @Published var mutedSessions: Set<String> = []
     @Published var activeWindowId: String?
@@ -293,7 +293,7 @@ final class AppModel: ObservableObject {
                 // reload the rows once, so it shows as its own session and not as a stray.
                 let known = Set(self.stored.compactMap(\.runtimeId))
                 let fresh = Set(snap.agents.map(\.id)).subtracting(known).subtracting(self.reloadedFor)
-                if !fresh.isEmpty, let rows = self.store?.all() {
+                if !fresh.isEmpty, let store = self.store, case let rows = self.storeQ.sync(execute: { store.all() }) {   // after queued writes
                     self.reloadedFor.formUnion(fresh)
                     self.stored = rows
                 }
@@ -348,11 +348,13 @@ final class AppModel: ObservableObject {
         // Remember the repo each session was last seen working in, so it keeps its group after it exits.
         let learnt = new.filter { !$0.adopted && $0.workRepo != nil && $0.workRepo != $0.session.lastRepo }
         if !learnt.isEmpty {
+            var rows: [Session] = []
             for i in learnt {
                 guard let k = stored.firstIndex(where: { $0.id == i.id }) else { continue }
                 stored[k].lastRepo = i.workRepo
-                store?.save(stored[k])
+                rows.append(stored[k])
             }
+            if let store { storeQ.async { rows.forEach(store.save) } }   // LAB-1336: off the main thread
             new = Board.merge(stored: stored, snapshot: lastSnapshot, accounts: accounts)
         }
         // Last active (LAB-258): what roofd says, since its holders outlive the app; for a runtime that does not say,
@@ -465,11 +467,20 @@ final class AppModel: ObservableObject {
 
     // MARK: Mutations
 
-    func save(_ s: Session) {
-        if let i = stored.firstIndex(where: { $0.id == s.id }) { stored[i] = s } else { stored.append(s) }
-        store?.save(s)
+    func save(_ s: Session) { saveAll([s]) }
+
+    /// LAB-1336: several sessions at once, one rebuild; the SQLite writes run in order on the store's own queue
+    /// (the store is locked, so reads on the main thread stay safe), not on the main thread.
+    func saveAll(_ list: [Session]) {
+        guard !list.isEmpty else { return }
+        for s in list {
+            if let i = stored.firstIndex(where: { $0.id == s.id }) { stored[i] = s } else { stored.append(s) }
+        }
+        if let store { storeQ.async { list.forEach(store.save) } }
         rebuild()
     }
+    /// LAB-1336: where session rows are written.
+    let storeQ = DispatchQueue(label: "oneroof.store", qos: .utility)
 
     /// Edit a row. Adopted rows (live agents started elsewhere) become stored sessions on first edit.
     func update(_ item: BoardItem, _ change: (inout Session) -> Void) {
@@ -579,7 +590,7 @@ final class AppModel: ObservableObject {
             queue.async { [weak self] in try? self?.runtime.close(id, group: ws) }
         }
         stored.removeAll { $0.id == item.id }
-        store?.delete(id: item.id)
+        if let store { let id = item.id; storeQ.async { store.delete(id: id) } }   // LAB-1336: in order with the writes
         Notifier.shared.clear(session: item.id)
         if selectedId == item.id { selectedId = nil }
         rebuild()
@@ -870,7 +881,7 @@ final class AppModel: ObservableObject {
                 if s.notes.isEmpty { s.notes = extra.notes }
                 s.tags = Array(Set(s.tags + extra.tags)).sorted()
                 self.stored.remove(at: i)
-                self.store?.delete(id: extra.id)
+                if let store = self.store { let id = extra.id; self.storeQ.async { store.delete(id: id) } }
             }
             s.runtimeId = name
             s.runtimeGroup = workspaceId

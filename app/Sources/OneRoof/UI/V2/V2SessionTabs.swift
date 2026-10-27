@@ -7,6 +7,8 @@ import OneRoofCore
 /// with the editor and its file tabs (LAB-799 tabs live inside Files now), Review changes for the session's repo, and the
 /// subagent cards of the session. Shown whenever the centre is one of those views.
 struct V2SessionTabs: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

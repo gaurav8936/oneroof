@@ -638,6 +638,8 @@ private struct DockTerminal: NSViewRepresentable {
 // MARK: - Inspector
 
 private struct EditorInspector: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

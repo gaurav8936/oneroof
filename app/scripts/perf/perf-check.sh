@@ -88,10 +88,11 @@ run_window() {   # run_window <name> <warm s> [VAR=value …]  — the standard 
 }
 
 run_memory() {   # 10 terminals with scrollback visited in turn; footprint every 2 s
-  local d="$OUT/memory"; mkdir -p "$d"; say "· memory: 10 terminals visited, footprint every 2 s"
+  local d="$OUT/memory"; mkdir -p "$d"; say "· memory: 20 terminals visited, footprint every 2 s"
   local pid; pid=$(launch "$d" "$HERE/scenarios/memory.txt"); local t0; t0=$(date +%s)
-  while kill -0 "$pid" 2>/dev/null && [ $(( $(date +%s) - t0 )) -le 150 ]; do
-    echo "$(( $(date +%s) - t0 )) $(top -l 1 -pid "$pid" -stats mem | tail -1)" >> "$d/mem.txt"; sleep 2
+  # Each line: seconds since launch, epoch mod 10000 (the self-test log's clock), footprint.
+  while kill -0 "$pid" 2>/dev/null && [ $(( $(date +%s) - t0 )) -le 220 ]; do
+    echo "$(( $(date +%s) - t0 )) $(python3 -c 'import time;print(round(time.time()%10000,1))') $(top -l 1 -pid "$pid" -stats mem | tail -1)" >> "$d/mem.txt"; sleep 2
   done
   cleanup
 }

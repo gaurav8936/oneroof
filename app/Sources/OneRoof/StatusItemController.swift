@@ -57,6 +57,8 @@ private struct StatusPopover: View {
     }
 
     private struct Content: View {
+        /// LAB-1338: captions redraw this view.
+        @ObservedObject var engineState = EngineState.shared
         @Environment(\.theme) private var t
         @ObservedObject var model: AppModel
         var close: () -> Void
