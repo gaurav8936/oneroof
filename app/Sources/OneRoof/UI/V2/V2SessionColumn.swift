@@ -14,9 +14,19 @@ struct V2SessionColumn: View {
 
     var body: some View {
         Group {
-            // LAB-1366: a Focus lane dragged wide shows the full list.
-            if win.focusStep == .focus && win.focusColumnWidth == nil && !overlay { V2AvatarColumn(model: model, win: win, controller: controller) }
-            else { V2SessionList(model: model, win: win, controller: controller, overlay: overlay) }
+            if win.focusStep == .focus && !overlay {
+                // LAB-1366 / LAB-1382: at Focus the lane follows its live width: the avatars while narrow, the list
+                // (cut off, more of it as it widens) as soon as it is wide enough, during the drag too.
+                GeometryReader { g in
+                    if V2Layout.focusLaneShowsList(width: g.size.width) {
+                        V2SessionList(model: model, win: win, controller: controller, overlay: false)
+                    } else {
+                        V2AvatarColumn(model: model, win: win, controller: controller)
+                    }
+                }
+            } else {
+                V2SessionList(model: model, win: win, controller: controller, overlay: overlay)
+            }
         }
         .themed(model.themes.sidebar, scale: win.textScale)
     }
