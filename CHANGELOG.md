@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.9.9 — light in the background (27 Oct 2026)
+
+- **Hidden terminals stop drawing** (LAB-1320). The terminal engine was told a terminal was visible once and never
+  told otherwise, so terminals behind another pane, in a hidden or minimised window kept rendering. Now each one is
+  told when it is hidden and again just before it shows.
+- **Learn plays lightly** (LAB-1332). The playback position redrew the whole Learn page twice a second; now only the
+  clock and the progress bar redraw. Posts and release notes are parsed once per file change. Learn playing:
+  16 % → 4 % CPU, main-thread stalls 54 → 0 a minute.
+- **The on-device caption model is asked less, and never blocks** (LAB-1330): at most every 30 s per session, only
+  for sessions on screen or when a status changes, off the engines' queue.
+- **Transcripts are read incrementally** (LAB-1331, LAB-1335): only what an agent appended since the last read, and
+  the Table view reads a terminal's text only when the session wrote something.
+- **Less background work** (LAB-1323, LAB-1333, LAB-1334): App Nap is held off only while an agent works or needs
+  you (or a schedule is set); the poll slows to every 3 s with no window on screen; timers allow the system to batch
+  wake-ups; the resource monitor announces samples only while a view shows them; the "running" marker in a pane is
+  looked up when the session writes output, not every 2 s.
+- Measured against 1.9.3 with `app/scripts/perf/perf-check.sh`: idle 9.6 % → 0.6 % CPU, six busy terminals 14 % →
+  3.8 %, Learn playing 16 % → 4 %.
+
 ## 1.9.8 — quiet when idle (26 Oct 2026)
 
 - **One Roof does nothing when nothing changes** (LAB-1314). The app model announced a change twice a second with

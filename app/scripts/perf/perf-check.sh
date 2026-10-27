@@ -6,7 +6,7 @@
 #                              [--baseline <json>] [--out <dir>] [--secs 60] [--tp 20]
 #
 #   --app        measure this bundle (copied, re-identified); default: build this checkout (scripts/bundle.sh release)
-#   --scenarios  comma list from scenarios/ (idle home places spinners6 memory learn); default idle,places,spinners6,memory
+#   --scenarios  comma list from scenarios/ (idle home places spinners6 memory learn busy); default idle,places,spinners6,memory
 #   --gate       a phase in gates.json (1.9.8 …): its thresholds must hold too; default none (baseline check only)
 #   --baseline   default baseline-1.9.3.json (the study's numbers); a headline >15 % worse than it fails the check
 #   --secs/--tp  measurement window and Time Profiler window, seconds
@@ -65,16 +65,18 @@ trap 'cleanup; /System/Library/Frameworks/CoreServices.framework/Frameworks/Laun
 launch() {   # launch <run dir> <scenario file> [VAR=value …] → pid
   local d=$1 s=$2; shift 2
   cp "$PROFILE/sessions.sqlite" "$d/store.sqlite"
-  sed "s|@DIR@|$WORKDIR|g" "$s" > "$d/script.txt"
+  # No scenario file (learn): the self-test's own PLACE / PLAYCARD settings drive it; a script would override them.
+  local script=()
+  if [ -n "$s" ]; then sed "s|@DIR@|$WORKDIR|g" "$s" > "$d/script.txt"; script=(ONEROOF_SELFTEST_SCRIPT="$d/script.txt"); fi
   env ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED="$PROFILE/defaults.plist" ONEROOF_STORE="$d/store.sqlite" \
       ONEROOF_SELFTEST_DEMO=0 ONEROOF_SELFTEST_UI2=1 ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" \
-      ONEROOF_SELFTEST_SCRIPT="$d/script.txt" ONEROOF_SELFTEST_OUT="$d/st" "$@" "$BIN" > "$d/app-stdout.txt" 2>&1 &
+      ${script[@]+"${script[@]}"} ONEROOF_SELFTEST_OUT="$d/st" "$@" "$BIN" > "$d/app-stdout.txt" 2>&1 &
   echo $!
 }
 
 run_window() {   # run_window <name> <warm s> [VAR=value …]  — the standard scenario: warm up, measure, profile
   local name=$1 warm=$2; shift 2; local d="$OUT/$name"; mkdir -p "$d"
-  local f="$HERE/scenarios/$name.txt"; [ "$name" = learn ] && f="$HERE/scenarios/idle.txt"
+  local f="$HERE/scenarios/$name.txt"; [ "$name" = learn ] && f=""
   say "· $name: launch, warm ${warm}s, measure ${SECS}s, profile ${TP}s (load $(sysctl -n vm.loadavg))"
   local pid; pid=$(launch "$d" "$f" "$@"); sleep "$warm"
   kill -0 "$pid" 2>/dev/null || { say "  $name: the app exited during warm-up"; FAILED="$FAILED $name"; cleanup; return 1; }
@@ -98,6 +100,7 @@ IFS=, read -r -a LIST <<< "$SCEN"
 for s in "${LIST[@]}"; do case "$s" in
   memory) run_memory ;;
   spinners6) run_window spinners6 25 ;;
+  busy) run_window busy 30 ;;   # LAB-1324: five terminals printing as fast as they can, Grid layout
   learn) run_window learn 15 ONEROOF_SELFTEST_PLACE=learn ONEROOF_SELFTEST_PLAYCARD=loops-first@muted ;;
   idle|home|places) run_window "$s" 15 ;;
   *) say "perf-check: unknown scenario $s"; exit 2 ;; esac; done

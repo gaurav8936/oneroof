@@ -11,6 +11,8 @@ final class FormattedFeed: ObservableObject {
     @Published private(set) var version = 0
     /// What the last read was made from (file size + date, or the terminal text), to skip work when nothing changed.
     var lastKey = ""
+    /// LAB-1335: the session output seq the terminal text was last read at.
+    var lastSeq: Int?
     /// A read is under way (one at a time per pane).
     var busy = false
 

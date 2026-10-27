@@ -561,14 +561,14 @@ struct LearnNowPlaying: View {
         let idx = here ? min(player.index, max(0, scenes.count - 1)) : 0
         let total = Double(max(1, c?.estSeconds ?? 1))
         // Time on the card: earlier parts at the catalog's estimate per part, plus the clip being heard.
-        let before = here ? total * Double(idx) / Double(max(1, player.tracks.count)) + player.elapsed : 0
+        let earlier = here ? total * Double(idx) / Double(max(1, player.tracks.count)) : 0
         let kicker = scenes.indices.contains(idx) ? scenes[idx].kicker : ""
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 (Text("● ").foregroundColor(d.accent.color)
                  + Text("\(here && player.playing ? "ON AIR" : "PAUSED") · \(band.n) \(band.title.uppercased()) · \(LearnDeck.label(c?.track ?? "").uppercased())"))
                 Spacer()
-                Text("\(LearnDeck.clock(before)) / \(LearnDeck.clock(total))")
+                PlaybackClockView(clock: player.clock) { e in Text("\(LearnDeck.clock(here ? earlier + e : 0)) / \(LearnDeck.clock(total))") }   // LAB-1332
             }
             .font(.system(size: 11, design: .monospaced)).tracking(0.6).foregroundStyle(d.mute.color)
             Button { nav.openCard(tuned, scene: idx) } label: {
@@ -580,7 +580,9 @@ struct LearnNowPlaying: View {
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Rectangle().fill(d.text.color.opacity(0.12))
-                    Rectangle().fill(d.accent.color).frame(width: g.size.width * min(1, before / total))
+                    PlaybackClockView(clock: player.clock) { e in   // LAB-1332: only the bar redraws on each tick
+                        Rectangle().fill(d.accent.color).frame(width: g.size.width * min(1, (here ? earlier + e : 0) / total))
+                    }
                 }
             }
             .frame(height: 2).padding(.top, 14)
