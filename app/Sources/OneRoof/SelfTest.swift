@@ -5,9 +5,16 @@ import OneRoofCore
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
 ///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
 ///   ONEROOF_SELFTEST_WIDTH=<pt>                 the window this wide (1.8.2: narrow-window and toolbar checks)
+///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
+///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)
 ///   ONEROOF_SELFTEST_PLACES=learn,sessions,…    open these places 0.6 s apart and write each window frame to
 ///                                               <out>.frames.txt (LAB-874: a place change never moves the window);
 ///                                               FRAMEDEBUG=1 adds the column widths, the toolbar fit and its visible items
+///   ONEROOF_SELFTEST_FRAME=x,y,w,h | left|right | tile-left|tile-right   the window at this frame, the left/right
+///                                               half of the screen, or tiled there by macOS (Window › Move & Resize) at
+///                                               full height (the owner's layout, LAB-1281); with PLACES every window
+///                                               resize is logged too
+///   ONEROOF_SELFTEST_PLACES_DELAY=<s>          start the places this much later (e.g. after PLAY has loaded a card)
 ///   ONEROOF_SELFTEST_RENAME=<text>              with SELECTFIRST: rename that session (long-title toolbar checks)
 ///   ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED=<exported defaults plist> ONEROOF_STORE=<copy of sessions.sqlite>
 ///                                               a real profile's settings and window state, read but never saved
@@ -26,8 +33,11 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_LINK=<oneroof:// url>       follow a link as if macOS had opened it
 ///   ONEROOF_SELFTEST_SEARCH=<text>              open Search in Workspace with that query
 ///   ONEROOF_SELFTEST_DIFF=<path>                open the code review panel for the repo containing <path>
+///   ONEROOF_SELFTEST_STEPCLICKS=<n>            n clicks on the toolbar's Focus step button
 ///   ONEROOF_SELFTEST_STEPHINT=1                 show the toolbar Focus step button's hover hint (LAB-1274)
 ///   ONEROOF_SELFTEST_HOWDOI=<question>         ask Learn "how do I…" (v2: the best card's station; classic: the best page)
+///   ONEROOF_SELFTEST_CLICK=x,y                  click the main window at that point (from its top-left)
+///   ONEROOF_SELFTEST_PLAYCARD=<slug>[@muted]   play that deck card (v2 Learn); @muted plays it silently
 ///   ONEROOF_SELFTEST_PLAY=<page title>[@terminals]  play that Learn page's narration (then show the terminals)
 ///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
 ///   ONEROOF_SELFTEST_KIND=session|ticket|defect|workstream   ONEROOF_SELFTEST_TEAM=<key>   ONEROOF_SELFTEST_PROJECT=<code>   New session sheet starting state
@@ -55,21 +65,65 @@ enum SelfTest {
                 w.setFrame(f, display: true)
             }
         }
+        if let spec = env["ONEROOF_SELFTEST_FRAME"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                guard let w = app.main.window, let v = (w.screen ?? NSScreen.main)?.visibleFrame else { return }
+                let n = spec.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+                let f: NSRect
+                // tile-left / tile-right: macOS window tiling (Window › Move & Resize), as the owner's half-screen layout
+                // is made; a tiled window that AppKit resizes is untiled and gets its size from before the tile back.
+                if spec.hasPrefix("tile-") {
+                    w.makeKeyAndOrderFront(nil)
+                    let side = spec == "tile-left" ? "Left" : "Right"
+                    // macOS 15's Move & Resize items send these to the window; the menu itself is added only when shown.
+                    let sel = Selector(("_zoom" + side + ":"))
+                    if w.responds(to: sel) { w.perform(sel, with: nil); return }
+                    if !invokeMenuPath(["Window", "Move & Resize", side]) { FileHandle.standardError.write("selftest: no Window › Move & Resize › \(side) in \(NSApp.windowsMenu?.items.map { $0.title + ($0.submenu.map { m in "[" + m.items.map(\.title).joined(separator: ",") + "]" } ?? "") } ?? [])\n".data(using: .utf8)!) }
+                    return
+                }
+                switch spec {
+                case "left": f = NSRect(x: v.minX, y: v.minY, width: (v.width / 2).rounded(), height: v.height)
+                case "right": f = NSRect(x: v.minX + (v.width / 2).rounded(), y: v.minY, width: (v.width / 2).rounded(), height: v.height)
+                default: guard n.count == 4 else { return }; f = NSRect(x: n[0], y: n[1], width: n[2], height: n[3])
+                }
+                w.setFrame(f, display: true)
+            }
+        }
         if let list = env["ONEROOF_SELFTEST_PLACES"], let out = env["ONEROOF_SELFTEST_OUT"] {
             let places = list.split(separator: ",").compactMap { Place(rawValue: String($0)) }
             var lines: [String] = []
+            // LAB-1281: every resize of the window after the start line, whatever caused it.
+            var started = false
+            var rects: [NSRect] = []
+            if let w = app.main.window {
+                NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: w, queue: .main) { _ in
+                    MainActor.assumeIsolated { if started { lines.append("  resized \(NSStringFromRect(w.frame)) windows=\(MainWindowController.all.count)") } }
+                }
+            }
             func frame() -> String {
                 guard let w = app.main.window else { return "-" }
                 let dbg = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_FRAMEDEBUG"] == "1"
                     ? " fit=\(w.contentView?.fittingSize ?? .zero) panes=\(app.main.splitView.subviews.map { Int($0.frame.width) }) bar=\(app.main.v2Bar) visible=\(w.toolbar?.visibleItems?.map { $0.itemIdentifier.rawValue.replacingOccurrences(of: "oneroof.v2.", with: "") + ":" + ($0.view.map { v in "\(Int(v.convert(v.bounds, to: nil).minX))+\(Int(v.frame.width))" } ?? "-") } ?? [])" : ""
-                return NSStringFromRect(w.frame) + dbg
+                // Every main window (a second workspace window can be the one that comes forward, LAB-1281).
+                let others = MainWindowController.all.filter { $0 !== app.main }.compactMap { c -> String? in
+                    guard let o = c.window else { return nil }
+                    return " | other \"\(o.title)\" \(NSStringFromRect(o.frame))\(o.isVisible ? " visible" : "")\(o.isKeyWindow ? " key" : "")"
+                }.joined()
+                return NSStringFromRect(w.frame) + " \"\(w.title)\"\(w.isKeyWindow ? " key" : "")" + others + dbg
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { lines.append("start \(frame())") }
+            let t0 = 1.1 + (env["ONEROOF_SELFTEST_FRAME"] != nil ? 0.3 : 0) + (Double(env["ONEROOF_SELFTEST_PLACES_DELAY"] ?? "") ?? 0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + t0) { lines.append("start \(frame()) windows=\(MainWindowController.all.count)"); rects.append(app.main.window?.frame ?? .zero); started = true }
             for (k, p) in places.enumerated() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2 + Double(k) * 0.6) { app.main.v2Open(p) }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.7 + Double(k) * 0.6) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + t0 + 0.1 + Double(k) * 0.6) { app.main.v2Open(p) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + t0 + 0.6 + Double(k) * 0.6) {
                     lines.append("\(p.rawValue) \(frame())")
-                    if k == places.count - 1 { try? lines.joined(separator: "\n").write(toFile: out + ".frames.txt", atomically: true, encoding: .utf8) }
+                    rects.append(app.main.window?.frame ?? .zero)
+                    if k == places.count - 1 {
+                        // One verdict line: the window kept its frame through every place (LAB-874, LAB-1281).
+                        let moved = Set(rects.map { NSStringFromRect($0) }).count > 1 || lines.contains { $0.hasPrefix("  resized") }
+                        lines.append(moved ? "result: CHANGED" : "result: unchanged")
+                        try? lines.joined(separator: "\n").write(toFile: out + ".frames.txt", atomically: true, encoding: .utf8)
+                    }
                 }
             }
         }
@@ -92,6 +146,10 @@ enum SelfTest {
         }
         // V2PLAN=1 slides the Plan over the terminal (C7.1); V2EDGE=1 reveals the session column at Focus (C7.2).
         if env["ONEROOF_SELFTEST_V2PLAN"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.main.v2ShowPlanOverlay() } }
+        // STEPCLICKS=<n>: n clicks on the toolbar's step button (its primary action; LAB-1235: from Focus round to Full).
+        if let n = Int(env["ONEROOF_SELFTEST_STEPCLICKS"] ?? "") {
+            for k in 0..<n { DispatchQueue.main.asyncAfter(deadline: .now() + 1.6 + Double(k) * 0.4) { app.main.v2StepClick() } }
+        }
         // LAB-1274: the toolbar step button's hover hint, shown without a mouse.
         if env["ONEROOF_SELFTEST_STEPHINT"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { NotificationCenter.default.post(name: StepHintAnchor.HintAnchorView.show, object: nil) }
@@ -103,7 +161,17 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.model.workMode = true; app.model.loadWorkstreams() }
             if w != "1" {   // a WS id: select it once loaded
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                    if let ws = app.model.workstreams.first(where: { $0.wsId == w }) { workSelect = ws.id; app.model.loadIssues(ws) }
+                    if let ws = app.model.workstreams.first(where: { $0.wsId == w || $0.name.contains(w) }) { workSelect = ws.id; app.model.loadIssues(ws) }
+                }
+                // LAB-1255: what Linear returned (projects, the picked project's name and issue count) in <out>.work.txt.
+                if let out = env["ONEROOF_SELFTEST_OUT"] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 12.0) {
+                        let ws = app.model.workstreams.first { $0.wsId == w || $0.name.contains(w) }
+                        let text = "projects=\(app.model.workstreams.count) error=\(app.model.linearError ?? "-")\n"
+                            + "picked=\(ws?.name ?? "-") issues=\(ws.flatMap { app.model.issues[$0.id]?.count } ?? -1)\n"
+                            + app.model.workstreams.map(\.name).filter { $0.contains("LAB-ONEROOF") }.joined(separator: "\n")
+                        try? text.write(toFile: out + ".work.txt", atomically: true, encoding: .utf8)
+                    }
                 }
             }
         }
@@ -198,6 +266,32 @@ enum SelfTest {
                 // LAB-1233: "<title>@paused" loads the page into the player and pauses at once (captures without sound).
                 if spec.hasSuffix("@paused") { app.model.player.pause() }
                 if spec.hasSuffix("@terminals") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.model.goTerminals() } }
+            }
+        }
+        // PLAYCARD=<deck slug>[@muted]: play that card from the start as Radio's ▶ does (LAB-1281: Learn's frame with a
+        // card playing and the player bar showing).
+        if let spec = env["ONEROOF_SELFTEST_PLAYCARD"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                let slug = spec.components(separatedBy: "@")[0]
+                guard let deck = app.model.learnDeck, let c = deck.cards[slug] else { return }
+                let page = deck.htmlPath(slug), tracks = CourseAudio.tracks(page: page)
+                guard !tracks.isEmpty else { return }
+                app.model.player.play(pageId: page, title: c.title, tracks: tracks)
+            }
+        }
+        // CLICK=x,y: a mouse click at that point of the main window, measured from its top-left (LAB-1266: the rail's
+        // seats button), delivered through the window as a real click would be.
+        if let spec = env["ONEROOF_SELFTEST_CLICK"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                let n = spec.split(separator: ",").compactMap { Double($0) }
+                guard n.count == 2, let w = app.main.window else { return }
+                let p = NSPoint(x: n[0], y: w.frame.height - n[1])
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+                        w.sendEvent(e)
+                    }
+                }
             }
         }
         if let q = env["ONEROOF_SELFTEST_HOWDOI"] { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { app.model.howDoI(q) } }
@@ -457,6 +551,22 @@ enum SelfTest {
               let i = top.items.firstIndex(where: { $0.title == parts[1] }) else { return }
         top.update()
         top.performActionForItem(at: i)
+    }
+
+    /// A menu item at any depth by titles ("Window", "Move & Resize", "Right"); true when it was performed.
+    @discardableResult
+    static func invokeMenuPath(_ titles: [String]) -> Bool {
+        var menu: NSMenu? = NSApp.mainMenu
+        var titles = titles
+        if let first = titles.first, let top = menu?.items.first(where: { $0.submenu?.title == first })?.submenu { menu = top; titles.removeFirst() }
+        while let m = menu, let t = titles.first {
+            m.update()
+            guard let i = m.items.firstIndex(where: { $0.title == t }) else { return false }
+            titles.removeFirst()
+            if titles.isEmpty { m.performActionForItem(at: i); return true }
+            menu = m.items[i].submenu
+        }
+        return false
     }
 
     /// Every menu and its items, with enabled state (written to the snapshot JSON).

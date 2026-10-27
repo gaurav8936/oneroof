@@ -65,7 +65,7 @@ struct V2Rail: View {
                               labelled: true) { controller.v2Open(p) }
             }
             Spacer(minLength: 8)
-            if win.focusStep == .wide { V2RailSeats(model: model).padding(.bottom, 6) }
+            if win.focusStep == .wide { V2RailSeats(model: model) { controller.v2OpenSettings(tab: 2) }.padding(.bottom, 6) }
             Button { controller.v2ShowLooks() } label: {
                 VStack(spacing: 3) {
                     Image(systemName: "circle.lefthalf.filled").font(.system(size: 14, weight: .medium))
@@ -349,28 +349,66 @@ struct V2DockLine: View {
     }
 }
 
-/// Seat bars at the foot of the rail (step 2, where there is no dock).
+/// Seat bars at the foot of the rail (step 2, where there is no dock). LAB-1266: one button that opens Settings ›
+/// Seats & accounts (as the dock's seat chips do), each bar labelled with its seat (C1 · C2 · CX …), one tooltip for
+/// the block, keyboard focusable with the accent ring.
 struct V2RailSeats: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
+    let open: () -> Void
+    @State private var hover = false
+    @FocusState private var focused: Bool
+
+    static let help = "Seats: usage this window — open Seats & accounts"
+
+    /// "C1 12%, C2 off, …" for VoiceOver (the bars carry no text of their own).
+    static func spoken(_ marks: [AgentMark], _ usage: [AgentMark: SeatUsage]) -> String {
+        marks.map { m in usage[m].map { "\(m.mono) \(Int($0.worst ?? 0))%" } ?? "\(m.mono) off" }.joined(separator: ", ")
+    }
 
     var body: some View {
         let usage = V2Seats.usage(model)
-        VStack(spacing: 3) {
-            ForEach(AgentMark.available(V2Seats.marks), id: \.self) { m in
-                GeometryReader { g in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(t.separator.color)
-                        Capsule().fill(m.fill.color).frame(width: g.size.width * CGFloat(min(100, max(0, usage[m]?.worst ?? 0))) / 100)
+        let marks = AgentMark.available(V2Seats.marks)
+        Button(action: open) {
+            VStack(spacing: 3) {
+                ForEach(marks, id: \.self) { m in
+                    HStack(spacing: 3) {
+                        Text(m.mono).font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(usage[m] == nil ? t.text3.color : t.text2.color)
+                            .frame(width: 14, alignment: .leading)
+                        GeometryReader { g in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(t.separator.color)
+                                Capsule().fill(m.fill.color).frame(width: g.size.width * CGFloat(min(100, max(0, usage[m]?.worst ?? 0))) / 100)
+                            }
+                        }
+                        .frame(width: 30, height: 3)
                     }
+                    .frame(height: 9)
                 }
-                .frame(width: 36, height: 3)
-                .help(V2SeatChip.help(m, usage[m]))
+                Text("seats").ui(9.5).foregroundStyle(hover ? t.text2.color : t.text3.color)
             }
-            Text("seats").ui(9.5).foregroundStyle(t.text3.color)
+            .padding(.vertical, 5).frame(width: 54)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(RailSeatsStyle(hover: hover))
+        .focused($focused)
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(t.accent.color, lineWidth: 2).padding(-2).opacity(focused ? 1 : 0))
+        .onHover { hover = $0 }
+        .help(Self.help)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Seat usage")
+        .accessibilityLabel("Seats: " + Self.spoken(marks, usage))
+        .accessibilityHint("Opens Settings, Seats & accounts")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private struct RailSeatsStyle: ButtonStyle {
+        @Environment(\.theme) private var t
+        let hover: Bool
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label.background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(configuration.isPressed ? t.selection.color : hover ? t.selection.color.opacity(0.5) : .clear))
+        }
     }
 }
 

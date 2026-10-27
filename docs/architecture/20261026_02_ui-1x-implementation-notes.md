@@ -469,3 +469,99 @@ and at 240 pt. `ONEROOF_SELFTEST_LEARNMODE=pages` now opens Radio.
 *Not changed / open.* The classic window's Learn search still says "N pages" (it is a page list). Graphite and Midnight
 not captured. Search results are cards and Help pages only (no posts). The step-hint self-test shows the hint in every
 open window. The hover delay and dismissal were checked in code only (captures cannot hover).
+
+## 1.9.3 · window frame, Linear projects, seats button, Focus wrap (lane 193b)
+
+**LAB-1281 · the window "resized" on Learn.** Reproduced first: the places check (`ONEROOF_SELFTEST_PLACES`) now also logs
+every window resize, all main windows and a `result:` line, takes `ONEROOF_SELFTEST_FRAME=x,y,w,h | left | right |
+tile-left | tile-right` (tile = macOS window tiling, the owner's half-screen layout) and `ONEROOF_SELFTEST_PLAYCARD=<slug>@muted`
+(a card playing, player bar and toolbar mini player showing). On a real-profile copy, switching Sessions ↔ Learn ↔ Home ↔
+Needs you ↔ Work never changed the frame, tiled left or right, at the right half (1720 × 1415), 1440 × 900, 1280 × 800,
+1000 and 800 wide. What the owner saw is exactly the first-launch size, 1700 × 1000 (also in LAB-874's screenshots): **no
+main window's frame was ever saved.** `MainWindowController` named the frame on the window before
+`super.init(window:)`, and NSWindowController replaces that name with its own empty one (pinned in
+`WindowFrameMemoryTests`; the owner's defaults have no `NSWindow Frame OneRoofMain*` key, while pop-outs, which name the
+frame after init, do). So every launch, every release install, put each workspace window (the owner keeps a second one
+named "Learn") back at 1700 × 1000, and a window tiled to half the screen fell back to that size when macOS untiled it.
+Fix: the name is set on the controller after init (`windowFrameAutosaveName`, never in self-tests or fresh profiles),
+`shouldCascadeWindows = false` (the first-launch cascade stays ours). *Not reproducible in a capture:* the untile itself
+(a title-bar drag); the save across a relaunch (self-tests never save frames).
+
+**LAB-1255 · projects not refreshed from Linear.** `loadWorkstreams` fetched once (only when the list was empty). It now
+has the issues' rule (`LinearClient.isStale`: never loaded, forced, or older than `maxAge`, 30 s), is called again when
+a main window becomes key (only once a list was loaded, so a Mac without a Linear key gets no error) and when the New
+session sheet opens (10 s); the list is replaced only when it changed. `issues(project:)` reads every page (100 a page,
+`pageInfo` / `endCursor`) up to `LinearClient.issuesCap` (1,000), stops on a cursor that does not move, and drops
+duplicate ids; 1.9.2 read the first 150 only. Fixture tests in `LinearRefreshTests`; a read-only live fetch from the dev
+build (`ONEROOF_SELFTEST_WORK=<code or name part>` now writes `<out>.work.txt`) listed 187 projects with the current name
+"(CURRENT) LAB-ONEROOF-UI-REDESIGN-v1.8-Full" and 324 of its issues.
+
+**LAB-1266 · the rail's seat bars.** `V2RailSeats` (step 2) is one button: each bar has its seat's mono label (C1 · C2 ·
+CX · KM · GM, only the seats this Mac has), one tooltip for the block ("Seats: usage this window — open Seats &
+accounts"), click opens Settings › Seats & accounts (as the dock's chips do), hover and pressed fills from the selection
+token, the accent focus ring, VoiceOver reads "Seats: C1 7%, C2 0%, …". `ONEROOF_SELFTEST_CLICK=x,y` clicks the window
+(checked: the click opens the pane).
+
+**LAB-1235 · Focus button wraps.** A click on the step button goes to `FocusStep.clicked`: 0 → 1 → 2 → 3 → 0 (three clicks
+from Full reach Focus; from Focus a click goes to Full). ⌥⌘F is unchanged (steps on; at Focus it leaves to the step
+before), ⇧⌥⌘F steps back, Esc leaves Focus when the terminal does not have the keyboard. The hint's Click row reads "Next
+step: <step>" at every step (Full at Focus); its key row at Focus reads "Leave Focus · ⇧⌥⌘F back · Esc leaves too".
+`ONEROOF_SELFTEST_STEPCLICKS=<n>` clicks it n times.
+
+*Seen, not changed:* on the real-profile copy the Files panel (180 pt, the file tree) stays open beside every place and at
+Focus; it follows that window's saved panel state (⌥⌘B closes it).
+
+## 1.9.3 · Table view replaces Wrap (lane 193a, LAB-1286 LAB-1271)
+
+**What changed.** The pane header's **Wrap** (LAB-657) is now **Table** (tooltip "Show this session formatted: text
+wraps, tables are real tables you can scroll"). Click → the pane shows the session formatted, with a bar on top
+("Formatted view · from the Claude transcript / the terminal text · Back to live"); click again, **Back to live**, or
+**Esc while the view has the keyboard** → the live terminal. Opening the view gives it the keyboard so Esc works; Esc in
+the terminal itself is never taken (the controller's key monitor and the v2 window's Esc handler both check that the
+first responder is inside the Table view, never a `TerminalSurfaceView`). Nothing of Wrap is lost: its word-wrapped,
+read-only, selectable, follows-new-output text is the terminal source of the new view (`ReadingText.prepare` is reused).
+
+**Sources.**
+- *Claude sessions*: the transcript JSONL the engines already find (EngineHub's subagent scan now records the path,
+  `transcriptPath(_:)`, every 5 s; until it is known, the view uses the terminal text). `TranscriptFormat.items`
+  (OneRoofCore) reads the last 4 MB: user prompts, each reply's original Markdown (parsed with `MarkdownDoc`), one line
+  per tool call ("Ran: …", "Read: …", "Edited: …"); side chains, meta lines, tool results, thinking and harness notes
+  (`<system-reminder>`, local command output) are left out; the newest 400 items are kept. Re-read only when the file's
+  size or date changes, checked every 2 s, off the main thread.
+- *Other agents / plain terminals*: the surface's `allText()` (libghostty `ghostty_surface_read_text` over the whole
+  screen and scrollback). Ghostty's selection-to-text joins rows it soft-wrapped, so these are already logical lines;
+  `TerminalFormat.rejoin(_:columns:)` exists (and is tested) for text that comes as physical rows. `TerminalFormat.items`
+  finds Markdown pipe tables (`|…|` + `|---|`), box-drawing tables (U+2500–U+257F frames, `│ ┃ ║` separators) and ASCII
+  grids (`+---+`, psql); a rule between every row means the program wrapped cells inside the box, so those lines merge
+  into one row; a one-column frame (an agent's welcome box) stays text. libghostty itself is unchanged.
+- Rendering: `FormattedPaneView` (SwiftUI, terminal theme tokens) reuses `MarkdownBlockView` from the post reader:
+  tables in a horizontal `ScrollView`, code blocks monospace and sideways-scrolling, prose wrapping to the pane. Long
+  terminal text is split into 80-line pieces inside a `LazyVStack`; the view follows the end unless you scrolled up.
+
+**Session tab strip (LAB-1271).** "Split ⌘D · Raw ⌘R · Wrap" text is gone: **Split**, **Raw** and **Table** are bordered
+buttons whose tooltips name the keys (Split ⌘D / ⇧⌘D, Raw stream ⌘R); a narrow strip shows them as icons, then hides
+them (as before). Raw (⌘R) is unchanged. Wrap had no menu item or key; **View › Table View** is new (no default key;
+assignable in Settings › Shortcuts), so every old item and key stays.
+
+**Self-test.** Script steps `table`, `tablescroll left|right`, `tableprobe`, `esc` (a real Esc event through the app),
+`width <pt>`, `alltext <name>`; env `ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>` (every pane's Table view reads it) and
+`ONEROOF_SELFTEST_TERMTEXT=<file>` (stands in for the terminal's text). The terminal-area probe now reports
+`ghostty=<init error or ok>`.
+
+**Captures (real-profile copy, ui2, 2026-10-26).** The owner's Mac had its screen locked during this lane, so libghostty
+could make no surface (no GPU; the panes stay blank and `hasSurface=false`): the Claude path used a fixture transcript and
+the terminal path the text-fixture hook, and the live terminal itself does not appear in the captures. (a) a 15 × 10
+Markdown table in a ~800 pt and ~700 pt pane: aligned columns, scrolled left and right; (b) the same table as box-drawing
+text plus a cell-wrapped box table and long prose: both real tables, prose wrapped at words; (c) prose + a code block +
+a list, also at a 900 pt window (prose re-wraps, table and code scroll); (d) back to live by Esc (keyboard returns to
+the terminal surface) and by the Table button.
+
+**Widening test (owner ask): not run yet.** It needs a live libghostty surface, and the screen stayed locked for the
+whole lane (checked for 20 more minutes). The script is ready: a plain terminal at a 1000 pt window prints a 15-column
+box table (168 cells wide), snapshot + `alltext`, then the window goes to 1900 pt, snapshot + `alltext`, then Table.
+What the code says will happen: rows wider than the pane are soft-wrapped by the terminal, and libghostty reflows
+soft-wrapped rows when the pane widens, so a table printed wider than the pane re-renders correctly on widening (the
+owner's LAB-1265 screenshots show exactly this). Output a program wrapped itself (hard newlines, e.g. a TUI that drew
+the table at the old width) is not reflowed; the program would have to redraw it. One more finding from roofd's
+headless screen (`roofd read`): its text comes back as physical 120-column rows with trailing spaces trimmed, so it is
+not a reliable logical-line source; the Table view reads the libghostty surface only.

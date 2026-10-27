@@ -187,7 +187,7 @@ struct V2StepButton: View {
         } label: {
             Text((focus ? "" : "⤢ ") + label + (controller.v2Bar.shortcuts ? " ⌥⌘F" : "")).ui(11, focus ? .semibold : .regular).lineLimit(1)
         } primaryAction: {
-            controller.v2StepOn()
+            controller.v2StepClick()   // LAB-1235: clicks cycle the steps, Focus → Full
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .foregroundStyle(focus ? t.onAccent.color : t.text.color)
@@ -196,7 +196,7 @@ struct V2StepButton: View {
         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(focus ? .clear : t.separator.color, lineWidth: 1))
         // LAB-1274 (owner): a click cycling the steps and a hold listing them was not discoverable from a one-line tooltip.
         // Hovering shows a hint popover with the whole ladder instead (`StepHintAnchor`); `.help` stays for VoiceOver.
-        .help(focus ? "Leave Focus (⌥⌘F). Press and hold for the four steps." : "Focus ladder: step on ⌥⌘F, step back ⇧⌥⌘F. Press and hold for the four steps.")
+        .help("Click: next step (\(win.focusStep.clicked.title)). ⌥⌘F steps on, ⇧⌥⌘F back\(focus ? ", Esc or ⌥⌘F leave Focus" : ""). Press and hold for the four steps.")
         .overlay(StepHintAnchor(dark: scheme == .dark) {
             AnyView(V2StepHint(step: win.focusStep).environment(\.theme, t).environment(\.colorScheme, scheme))
         })
@@ -224,9 +224,9 @@ struct V2StepHint: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Focus steps").font(.system(size: 13, weight: .semibold)).foregroundStyle(t.text.color)
             VStack(alignment: .leading, spacing: 3) {
-                row("Click", step == .focus ? "Leave Focus" : "Next step: \(step.next.title)")
+                row("Click", "Next step: \(step.clicked.title)")
                 row("Hold", "Choose a step from the list")
-                row("⌥⌘F", "Next step · ⇧⌥⌘F back · Esc leaves Focus")
+                row("⌥⌘F", step == .focus ? "Leave Focus · ⇧⌥⌘F back · Esc leaves too" : "Next step · ⇧⌥⌘F back · Esc leaves Focus")
             }
             Rectangle().fill(t.separator.color).frame(height: 1)
             VStack(alignment: .leading, spacing: 2) {

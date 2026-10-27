@@ -72,7 +72,7 @@ struct MenuSpecV2 {
         v += [i("Split Right", "pane.splitRight", K.splitRight), i("Split Down", "pane.splitDown", K.splitDown),
               i("Close Pane", "pane.close", K.closePane), i("Maximize Pane", "pane.zoom", K.maximizePane), i("Even Out Panes", "pane.even")]
         v += zip(["Left", "Right", "Up", "Down"], K.focusPane).map { d, k in i("Focus Pane \(d)", "pane.focus\(d)", k) }
-        v += [sep, i("Raw Stream / Run", "terminal.raw", K.rawStream), i("Debug", "file.debug", K.debug), sep,
+        v += [sep, i("Raw Stream / Run", "terminal.raw", K.rawStream), i("Table View", "terminal.table"), i("Debug", "file.debug", K.debug), sep,
               i("Bigger Text", "text.bigger", K.biggerText), i("Smaller Text", "text.smaller", K.smallerText), i("Actual Size", "text.actual", K.actualSize), sep,
               i("Look…", "look.picker")]                                                                                                 // ★ replaces 5 theme submenus
         return v

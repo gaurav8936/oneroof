@@ -85,8 +85,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         window.minSize = NSSize(width: model.settings.ui2 ? CGFloat(V2Layout.minWindowWidth) : PanelMinimums.windowWidth, height: 560)
         window.isReleasedWhenClosed = false
         let autosave = win.id == WorkspaceStore.mainId ? "OneRoofMain" : "OneRoofMain." + win.id
-        if !SelfTest.isActive { window.setFrameAutosaveName(autosave) }   // tests never change the owner's layout
         super.init(window: window)
+        // LAB-1281: the frame is remembered through the controller. Set on the window before `super.init(window:)`
+        // (1.9.2 and before), NSWindowController replaced it with its own empty name, so no main window's frame was
+        // ever saved: every launch opened each window at the first-launch default (1700 × 1000, cascaded), and a
+        // window tiled to half the screen fell back to that size when macOS untiled it. Cascading stays ours (below).
+        shouldCascadeWindows = false
+        // Tests and fresh profiles never read or write the owner's saved layout.
+        if !SelfTest.isActive && !Prefs.freshProfile { windowFrameAutosaveName = autosave }
         window.delegate = self
         Self.all.append(self)
 
@@ -230,6 +236,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
 
     func windowDidBecomeKey(_ notification: Notification) {
         if model.activeWindowId != win.id { model.activeWindowId = win.id }
+        // LAB-1255: Linear's project list is refreshed when a window comes to the front (when it was ever loaded, so a
+        // Mac without a Linear key never gets an error from this; at most once per 30 s).
+        if !model.workstreams.isEmpty, !SelfTest.isActive { model.loadWorkstreams() }
     }
 
     /// LAB-520: a double-click on empty toolbar space is a title-bar double-click, and macOS zooms the window. A window

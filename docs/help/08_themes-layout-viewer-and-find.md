@@ -50,10 +50,15 @@ The window should look the way you like and hold only what you need right now: a
 - **Return** or **⌘G**: next match. **⇧Return** or **⇧⌘G**: previous. **Esc** closes the bar and returns to the terminal.
 - **⇧⌘S** (Edit › Find in Workspace) searches across your repos and shows the results in the centre.
 
-## Wrap for reading
+## Table view: text that wraps, tables that are tables
 
-The terminal wraps long lines at its right edge, letter by letter (that is how every terminal works), and re-wraps them when the pane is resized. Long compiler errors can still be hard to read that way. Click **Wrap** at the top right of a pane: the pane shows the terminal's text, scrollback included, re-wrapped at word boundaries to the pane's width, with runs of blank lines cut to one. It is read-only, you can select and copy from it, and it follows new output once a second (it stays where you are if you scroll up). Click **Wrap** again for the live terminal, to type.
+A terminal draws a table at the width it had when it printed it, and wraps long lines at its right edge letter by letter, so a wide table in a narrow pane breaks every row across two lines. Click **Table** at the top right of a pane (or in the session tabs, or View › Table View): the pane shows the session formatted instead.
 
+- **Claude sessions** show their conversation from the session's transcript: your prompts, each reply as it was written (before the terminal wrapped it) and one short line per tool call ("Ran: swift test").
+- **Other agents and plain terminals** show the terminal's text, scrollback included. Markdown tables (`| a | b |` with a `|---|` line) and box-drawing tables (`┌─┬─┐ │ ├─┼─┤`) become real tables; everything else is text.
+- Prose wraps at word boundaries to the pane's width. Every table keeps its columns lined up and scrolls sideways when it is wider than the pane; code blocks scroll sideways too.
+- It is read-only (select and copy work), newest at the bottom, and follows the session every 2 seconds (it stays where you are if you scroll up).
+- **Back to live** in the bar at the top, **Table** again, or **Esc** while the view has the keyboard brings back the live terminal. Esc in the terminal itself always goes to the agent.
 
 ## Select, copy and paste in a terminal
 

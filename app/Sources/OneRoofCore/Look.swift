@@ -53,6 +53,9 @@ public enum FocusStep: Int, CaseIterable, Codable, Sendable, Comparable {
     public var title: String { ["Full", "Sessions", "Wide", "Focus"][rawValue] }
     public var next: FocusStep { FocusStep(rawValue: min(3, rawValue + 1)) ?? .focus }
     public var previous: FocusStep { FocusStep(rawValue: max(0, rawValue - 1)) ?? .full }
+    /// The step a click on the toolbar's step button goes to: the next one, and from Focus round to Full (LAB-1235).
+    /// ⌥⌘F keeps `next` and leaves Focus to the step before it; ⇧⌥⌘F is `previous`.
+    public var clicked: FocusStep { self == .focus ? .full : next }
 
     public var showsRail: Bool { self == .full || self == .wide }
     public var showsIconRow: Bool { self == .sessions }
