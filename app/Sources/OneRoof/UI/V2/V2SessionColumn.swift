@@ -14,7 +14,8 @@ struct V2SessionColumn: View {
 
     var body: some View {
         Group {
-            if win.focusStep == .focus && !overlay { V2AvatarColumn(model: model, win: win, controller: controller) }
+            // LAB-1366: a Focus lane dragged wide shows the full list.
+            if win.focusStep == .focus && win.focusColumnWidth == nil && !overlay { V2AvatarColumn(model: model, win: win, controller: controller) }
             else { V2SessionList(model: model, win: win, controller: controller, overlay: overlay) }
         }
         .themed(model.themes.sidebar, scale: win.textScale)
@@ -271,7 +272,8 @@ struct V2AvatarColumn: View {
                     .opacity(i.status.isLive ? 1 : 0.45)
                 }
                 if rest > 0 {
-                    Button { controller.v2Open(.sessions) } label: {
+                    // LAB-1366: widens the lane to the full list (v2Open(.sessions) did nothing at Focus in Sessions).
+                    Button { controller.v2SetFocusLane(250) } label: {
                         Text("+\(rest)").ui(11, .semibold).foregroundStyle(t.text2.color)
                             .frame(width: 36, height: 24)
                             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.surface.color))

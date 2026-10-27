@@ -97,6 +97,11 @@ final class BoardMergeTests: XCTestCase {
         let late = Board.merge(stored: [s], snapshot: snap, now: now.addingTimeInterval(60))
         XCTAssertNil(late[0].liveAgent)
         XCTAssertEqual(late[0].status, .exited)
+        // LAB-1362: …and its terminal (the shell the agent ran in) is kept, so the pane keeps the text and can resume.
+        XCTAssertEqual(late[0].endedShell, "roof-7")
+        XCTAssertEqual(late.count, 1, "the leftover shell is not a second row")
+        // Gone from roofd entirely: nothing to show.
+        XCTAssertNil(Board.merge(stored: [s], snapshot: RuntimeSnapshot(), now: now.addingTimeInterval(60))[0].endedShell)
     }
 
     /// Owner 10-20: sessions start at the workspace root, which is not a repo; group by the repo they work in.

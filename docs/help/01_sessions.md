@@ -20,7 +20,7 @@ You should be able to look at the left panel and know, without clicking, which a
 | Idle | roofd | Alive at its prompt with nothing new for you; not executing. Plain terminals are always Idle (they have no agent). |
 | Next | One Roof | Planned and up next (When › Next, Mark as Next, or the Next sticker). |
 | Planned | One Roof | Written ahead of time, not started. |
-| Exited | One Roof | The agent's process has ended. Relaunch it, or remove it. |
+| Exited | One Roof | The agent's process has ended. Resume the conversation (Claude), start a new session, or remove it. |
 | Parked (Do not use) | One Roof | Put aside by you. The name is struck through. |
 
 Working, Ready and Idle are all **Active**: alive and not waiting on you. The list groups them together, so a session that switches between working and resting keeps its place; its dot and the line under its name say which it is right now. Grouped by status the panel shows **Needs you · Active · Next · Planned · Exited**, needs you first, and rows inside a group stay in name order. A row moves to another group only once its new status has held for a moment (2 seconds for Needs you, 6 for the rest), so a quick flicker never moves it. Pinned sessions always sit in a Pinned group on top.
@@ -34,6 +34,7 @@ Every session runs in **roofd**, One Roof's own session manager, which ships ins
 | When | Your sessions |
 |---|---|
 | You quit, update or reopen One Roof | keep running; each terminal comes back with its screen and history |
+| You quit Claude (⌃D twice, /exit) | the pane keeps the terminal and its text; a strip says the session ended, with **Resume** (types `claude --resume <id>` in the same terminal and folder), **New session** and the handoff |
 | One session's process crashes | only that session ends (Exited, with Relaunch) |
 | The Mac sleeps | keep running |
 | You log out or restart the Mac | end; their rows stay, with Relaunch (Claude and Codex can resume the conversation) |
@@ -110,6 +111,7 @@ The top of a running agent's pane lists its **steps**: each prompt you gave it (
 
 - **Capped:** the list shows six steps; more scroll inside it, and it keeps the current step in view.
 - **Rewind:** click a step to scroll the terminal back to where it started, then scroll on from there. The pane shows **Viewing step n**; **Back to current** (or the **Current** button above the steps, or clicking the same step again) returns to the live bottom.
+- **Current ↓:** scrolled up in a terminal (for any reason), a **Current** button floats at the bottom right; click it, or press **⌘↓**, to jump to the live bottom (**⌘↑** jumps to the top).
 - **Step review (right panel, off until you switch it on):** each step it reviews is one more Claude call, so the box has its own switch (also in Settings › Captions). On, the Plan tab shows a **Step review** of the latest finished step, without a click: Claude (Haiku, run with no tools and nothing saved, on the session's Claude account) reads that step and says **what was asked**, **what happened**, the **decisions** and the **risks**, in a small scrolling box. Click a step above the terminal and the review follows it (marked *selected*; **Latest** goes back). ↻ reads it again. It reads only the terminal text, so check anything that matters.
 
 The steps cover the session's last 5,000 lines; an older step can no longer be rewound to or explained.

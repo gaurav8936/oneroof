@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.9.12 — bug fixes: blank terminals, Current ↓, resume (27 Oct 2026)
+
+- **Terminals no longer come back cut off or blank** (LAB-1365). Since 1.9.10 a terminal you have not shown lately is
+  re-attached when you show it again, and roofd redraws its history. A long session's redraw is bigger than roofd's
+  4 MB send limit, so roofd dropped the terminal part way: part of the history or nothing when you scrolled back. The
+  redraw is now exempt (live output still has the limit). And a terminal resized or re-attached while hidden is
+  redrawn in full at its size when it shows, instead of at its old size until the program printed again.
+- **Current ↓ and ⌘↓** (LAB-1363). Scrolled up in a terminal, a **Current** button floats at the bottom right; click
+  it or press ⌘↓ to jump to the live bottom (⌘↑ to the top).
+- **Edge panels wait for you** (LAB-1367, LAB-1368). At Focus the session list (left edge) and the Plan (right edge)
+  open after the pointer rests at the edge for a second, not the moment it touches it.
+- **The Focus lane widens** (LAB-1366). Drag the thin avatar lane out to see the full session list; drag it back to
+  return to avatars. **+N** widens it too.
+- **Resume after you quit Claude** (LAB-1362). Quitting Claude (⌃D) keeps the terminal and its text; a strip says the
+  session ended, with **Resume** (the same conversation, in the same terminal and folder), **New session** and the
+  handoff. "Relaunch", which started a new session, is gone from there.
+
 ## 1.9.11 — lighter under heavy output (27 Oct 2026)
 
 - **roofd spends a third less CPU on heavy output** (LAB-1324). A session's process read the terminal a few KB at a

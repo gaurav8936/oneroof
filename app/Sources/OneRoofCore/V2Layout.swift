@@ -26,12 +26,37 @@ public enum V2Layout {
     }
 
     /// Session column width at a step: the width you dragged it to (kept per window), else the handover's (280 pt at
-    /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is always 52 pt avatars.
-    public static func columnWidth(step: FocusStep, saved: Double?) -> Double {
-        if step == .focus { return 52 }
+    /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is 52 pt avatars unless the lane was
+    /// dragged wide (`focusWide`, LAB-1366).
+    public static func columnWidth(step: FocusStep, saved: Double?, focusWide: Double? = nil) -> Double {
+        if step == .focus { return focusWide.map { min(440, max(200, $0)) } ?? 52 }
         if let saved, saved > 0 { return min(440, max(200, saved)) }
         return step == .sessions ? 280 : 250
     }
+
+    /// LAB-1366: the Focus lane's width after a drag: back to the avatars (nil) below the snap point, else the full
+    /// list within the column's limits.
+    public static let focusLaneSnapPoint: Double = 130
+    public static func focusLaneSnap(dragged: Double) -> Double? {
+        dragged < focusLaneSnapPoint ? nil : min(440, max(200, dragged))
+    }
+
+    /// LAB-1363: whether the terminal shows "Current ↓": scrolled up from the live bottom (libghostty has reported
+    /// a position and it is not the bottom), and the pane shows the live terminal (not the Table view or raw stream).
+    public static func showsCurrentPill(atBottom: Bool?, raw: Bool, table: Bool) -> Bool {
+        atBottom == false && !raw && !table
+    }
+
+    /// LAB-1363: terminal keys added to libghostty's defaults: ⌘↓ / ⌘↑ jump to the live bottom / the top, as in
+    /// standalone terminals. Bound in the terminal (not a menu) so the editor and composer keep ⌘↓ for themselves.
+    public static let terminalKeybinds = """
+    keybind = super+arrow_down=scroll_to_bottom
+    keybind = super+arrow_up=scroll_to_top
+    """
+
+    /// LAB-1367 / LAB-1368: seconds the pointer rests at a window edge at Focus before the session column (left) or
+    /// the Plan (right) slides in. Opening on contact made them flash while the pointer just passed the edge.
+    public static let edgeRevealDwell: TimeInterval = 1.0
 
     /// Plan inspector width at Full: the dragged width (kept per window), else 270 pt, within 240–520.
     public static func planWidth(saved: Double?) -> Double {

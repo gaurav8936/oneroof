@@ -38,6 +38,8 @@ final class Holder {
         let fd: Int32
         var inbuf: [UInt8] = []
         var out = ByteQueue()
+        /// Bytes of the attach redraw still queued: they don't count against `clientQueueLimit` (LAB-1365).
+        var redrawLeft = 0
         var attached = false
         var closeAfterFlush = false
         init(_ fd: Int32) { self.fd = fd }
@@ -423,7 +425,11 @@ final class Holder {
                     defer { if let p { rvt_bytes_free(p, len) } }
                     return p.map { Array(UnsafeBufferPointer(start: $0, count: len)) } ?? []
                 }
-                if !snapshot.isEmpty { enqueue(c, Wire.encodeChunked(.redraw, snapshot)) }
+                if !snapshot.isEmpty {
+                    let frames = Wire.encodeChunked(.redraw, snapshot)
+                    enqueue(c, frames)
+                    c.redrawLeft = c.out.count
+                }
             }
             enqueue(c, Wire.encode(.redrawn, []))
             c.attached = true
@@ -670,7 +676,12 @@ final class Holder {
 
     private func flush(_ c: Client) {
         guard c.out.write(to: c.fd) else { drop(c); return }
-        if c.out.count > Holder.clientQueueLimit { drop(c); return }   // a slow client reattaches with a redraw
+        // LAB-1365: the redraw of a long session is often over the limit by itself (an SGR per coloured cell), and
+        // since 1.9.10 terminals re-attach whenever they are shown again: dropping the client mid-redraw left the
+        // terminal with part of its history, or none. The redraw is sent once and bounded by the scrollback, so it
+        // is exempt; only what queues behind it (live output) counts.
+        c.redrawLeft = min(c.redrawLeft, c.out.count)
+        if c.out.count - c.redrawLeft > Holder.clientQueueLimit { drop(c); return }   // a slow client reattaches with a redraw
         if c.out.isEmpty && c.closeAfterFlush { drop(c) }
     }
 

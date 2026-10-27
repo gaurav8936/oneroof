@@ -40,6 +40,42 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320), 52)
     }
 
+    /// LAB-1366: at Focus the avatar lane can be dragged wide to show the full list; its own width, kept apart from
+    /// the other steps' column width; narrow again snaps back to the 52 pt avatars.
+    func test_LAB1366_focusLaneWidensAndSnapsBack() {
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: nil), 52)
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: 260), 260)
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: nil, focusWide: 900), 440)
+        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 300, focusWide: 260), 300, "other steps keep theirs")
+        XCTAssertNil(V2Layout.focusLaneSnap(dragged: 52))
+        XCTAssertNil(V2Layout.focusLaneSnap(dragged: 129))
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 140), 200, "past the snap point: at least the list's minimum")
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 300), 300)
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 700), 440)
+    }
+
+    /// LAB-1363: "Current ↓" shows whenever the terminal is scrolled up from its live bottom (not only while a step
+    /// is open), never over the Table view or the raw stream, and not before libghostty has reported a position.
+    func test_LAB1363_currentPillShowsWhenScrolledUp() {
+        XCTAssertTrue(V2Layout.showsCurrentPill(atBottom: false, raw: false, table: false))
+        XCTAssertFalse(V2Layout.showsCurrentPill(atBottom: true, raw: false, table: false))
+        XCTAssertFalse(V2Layout.showsCurrentPill(atBottom: nil, raw: false, table: false))
+        XCTAssertFalse(V2Layout.showsCurrentPill(atBottom: false, raw: true, table: false))
+        XCTAssertFalse(V2Layout.showsCurrentPill(atBottom: false, raw: false, table: true))
+    }
+
+    /// LAB-1363: ⌘↓ jumps to the live bottom (⌘↑ to the top), as in Terminal and Warp, while a terminal has focus.
+    func test_LAB1363_commandDownScrollsToBottom() {
+        XCTAssertTrue(V2Layout.terminalKeybinds.contains("keybind = super+arrow_down=scroll_to_bottom"))
+        XCTAssertTrue(V2Layout.terminalKeybinds.contains("keybind = super+arrow_up=scroll_to_top"))
+    }
+
+    /// LAB-1367 / LAB-1368: the edge panels open only after the pointer rests at the edge (owner: 1–2 s).
+    func test_LAB1367_edgeRevealWaits() {
+        XCTAssertGreaterThanOrEqual(V2Layout.edgeRevealDwell, 1.0)
+        XCTAssertLessThanOrEqual(V2Layout.edgeRevealDwell, 2.0)
+    }
+
     func testPlanWidth() {
         XCTAssertEqual(V2Layout.planWidth(saved: nil), 270)
         XCTAssertEqual(V2Layout.planWidth(saved: 300), 300)
