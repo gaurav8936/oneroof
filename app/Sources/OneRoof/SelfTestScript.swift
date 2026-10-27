@@ -15,6 +15,7 @@ import OneRoofCore
 ///   roof <dir>                     centre <view>                menu <Menu>/<Item>
 ///   answer allowOnce|always|deny   snap <name>   dump <name>   screen <name>   (selected session's text)
 ///   copytest <name>                (drag-select, copy, paste text, paste an image → <name>.copytest.txt)
+///   compose                        (LAB-1298: the focused pane's composer on/off, as the pane header's Compose does)
 ///   table                          (LAB-1286: the focused pane's Table view on/off, as the Table button does)
 ///   tablescroll left|right         (scroll every table in the Table view to its left or right end)
 ///   tableprobe                     (log: Table view on?, what it shows, who has the keyboard)
@@ -135,6 +136,7 @@ enum SelfTestScript {
             delay = 1
         case "probe": log(out, "  " + app.main.terminalArea.debugState())
         case "table": app.main.terminalArea.toggleTable(app.main.terminalArea.focusedPane); delay = 2.5
+        case "compose": app.main.terminalArea.toggleComposer(app.main.terminalArea.focusedPane); delay = 1.5
         case "tablescroll": app.main.terminalArea.scrollTables(toEnd: arg == "right"); delay = 0.8
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
         case "esc":

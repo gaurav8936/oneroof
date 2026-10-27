@@ -126,14 +126,18 @@ struct FormattedPaneView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .table(let header, let aligns, let rows):
-            MarkdownBlockView(block: .table(header: header, alignments: aligns, rows: rows), path: "", t: t, scale: scale, depth: 0)
+            FormattedTableView(header: header, aligns: aligns, rows: rows, t: t, scale: scale)
         }
     }
 
     private func blocks(_ b: [MarkdownBlock]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(b.enumerated()), id: \.offset) { _, block in
-                MarkdownBlockView(block: block, path: "", t: t, scale: scale, depth: 0)
+                if case .table(let header, let aligns, let rows) = block {
+                    FormattedTableView(header: header, aligns: aligns, rows: rows, t: t, scale: scale)
+                } else {
+                    MarkdownBlockView(block: block, path: "", t: t, scale: scale, depth: 0)
+                }
             }
         }
     }
@@ -146,5 +150,61 @@ final class FormattedHostView: NSHostingView<AnyView> {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         super.mouseDown(with: event)
+    }
+}
+
+/// LAB-1299: a table in the Table view. Every cell stays on one line in monospace, so the columns line up the way the
+/// terminal printed them and a table wider than the pane scrolls sideways instead of wrapping its cells. (The document
+/// table wrapped cells at 380 pt; inside the lazy stack and a sideways scroll its rows were measured too short and
+/// drew over each other.) The scroll view takes the grid's own height.
+struct FormattedTableView: View {
+    let header: [String]
+    let aligns: [MarkdownAlignment]
+    let rows: [[String]]
+    let t: ThemeTokens
+    let scale: CGFloat
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(header.enumerated()), id: \.offset) { i, h in
+                        cell(h, i, bold: true).gridColumnAlignment(gridAlign(i))
+                    }
+                }
+                .background(t.surface2.color)
+                ForEach(Array(rows.enumerated()), id: \.offset) { r, row in
+                    GridRow {
+                        ForEach(0..<max(header.count, row.count), id: \.self) { i in cell(i < row.count ? row[i] : "", i, bold: false) }
+                    }
+                    .background(r % 2 == 1 ? t.surface2.color.opacity(0.5) : Color.clear)
+                    .overlay(alignment: .top) { Rectangle().fill(t.separator.color).frame(height: 1) }
+                }
+            }
+            .fixedSize()
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(t.separator.color))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(1)
+            .padding(.bottom, 6)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func cell(_ s: String, _ i: Int, bold: Bool) -> some View {
+        Text(s).font(.system(size: 12.5 * scale, weight: bold ? .semibold : .regular, design: .monospaced))
+            .foregroundStyle(bold ? t.text.color : t.text.color.opacity(0.92))
+            .lineLimit(1).fixedSize()
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            // Fill the column, so the row stripe and the rule between rows run the table's full width.
+            .frame(maxWidth: .infinity, alignment: frameAlign(i))
+    }
+
+    private func frameAlign(_ i: Int) -> Alignment {
+        switch i < aligns.count ? aligns[i] : .leading { case .center: return .center; case .trailing: return .trailing; default: return .leading }
+    }
+
+    private func gridAlign(_ i: Int) -> HorizontalAlignment {
+        switch i < aligns.count ? aligns[i] : .leading { case .center: return .center; case .trailing: return .trailing; default: return .leading }
     }
 }

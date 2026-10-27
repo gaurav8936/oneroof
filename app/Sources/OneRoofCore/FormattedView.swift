@@ -150,10 +150,20 @@ public enum TerminalFormat {
         guard i < lines.count, isBoxRule(lines[i]) || isBoxRow(lines[i]) || isAsciiTableStart(lines, i) else { return nil }
         var j = i
         var kinds: [(rule: Bool, line: String)] = []
+        // LAB-1299: a box-drawing table takes only box-drawing lines (never ASCII `|` rows) and ends at its bottom
+        // frame; an ASCII grid ends where a Markdown table starts. Otherwise a table printed right after this one was
+        // swallowed, its rule counted as an interior separator, and every group of rows merged into one row.
+        let ascii = isAsciiTableStart(lines, i)
         while j < lines.count {
             let l = lines[j]
-            if isBoxRule(l) { kinds.append((true, l)) }
-            else if isBoxRow(l) || (isAsciiRow(l) && kinds.contains(where: { $0.rule })) { kinds.append((false, l)) }
+            if isBoxRule(l) {
+                kinds.append((true, l))
+                j += 1
+                if !ascii, isBottomFrame(l) { break }
+                continue
+            }
+            if pipeTable(lines, at: j) != nil { break }
+            if isBoxRow(l) || (ascii && isAsciiRow(l) && kinds.contains(where: { $0.rule })) { kinds.append((false, l)) }
             else { break }
             j += 1
         }
@@ -193,6 +203,12 @@ public enum TerminalFormat {
         }
         if header.isEmpty { header = Array(repeating: "", count: width) }
         return (.table(header: header, alignments: Array(repeating: .leading, count: width), rows: rows), j)
+    }
+
+    /// The closing frame of a box-drawing table: a rule carrying a bottom corner or a bottom tee (└ ┴ ┘ and the heavy,
+    /// double and rounded forms).
+    static func isBottomFrame(_ line: String) -> Bool {
+        line.contains { "└┘┴╰╯┗┛┻╚╝╩".contains($0) }
     }
 
     /// `+---+` followed by an ASCII `| a | b |` row (psql, MySQL, prettytable).

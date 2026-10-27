@@ -18,8 +18,6 @@ struct V2Composer: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     let item: BoardItem
-    var raw: Bool
-    var onRaw: () -> Void
     @State private var note: String?
     @State private var focused = false
 
@@ -38,11 +36,7 @@ struct V2Composer: View {
                 .help("↩ send · ⇧↩ new line · ↑ last message · ⌃↩ run as shell · ⌘. interrupt")
             if let note { Text(note).ui(11).foregroundStyle(t.text3.color).lineLimit(1) }
             else { Text("/ skill · @ file · ⌃↩ run as shell · ⌘. interrupt").ui(11).foregroundStyle(t.text3.color).lineLimit(1) }
-            Button(action: onRaw) {
-                Text(raw ? "Chapters ⌘R" : "Raw stream ⌘R").ui(11, mono: true).foregroundStyle(t.text2.color)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(t.surface2.color))
-            }.buttonStyle(.plain)
+            // LAB-1298: no Raw stream chip here; Raw is in the session tabs and View › Raw Stream (⌘R).
         }
         .padding(.horizontal, 14)
         .frame(height: 38)

@@ -451,11 +451,21 @@ struct V2FocusHint: View {
     }
 }
 
-/// Shows the Focus hint only at step 3.
+/// Shows the Focus hint at step 3, for a few seconds after Focus starts, then fades it (LAB-1298: it sat between the
+/// agent's prompt and the composer for as long as Focus lasted).
 struct V2FocusHintSlot: View {
     @ObservedObject var win: WindowState
+    @State private var shown = false
     var body: some View {
-        if win.focusStep == .focus { V2FocusHint() } else { Color.clear.frame(width: 1, height: 1) }
+        Group {
+            if win.focusStep == .focus && shown { V2FocusHint().transition(.opacity) } else { Color.clear.frame(width: 1, height: 1) }
+        }
+        .task(id: win.focusStep == .focus) {
+            guard win.focusStep == .focus else { shown = false; return }
+            shown = true
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            withAnimation(.easeOut(duration: 0.6)) { shown = false }
+        }
     }
 }
 

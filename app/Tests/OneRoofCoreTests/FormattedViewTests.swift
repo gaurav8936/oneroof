@@ -20,6 +20,76 @@ final class TerminalFormatTests: XCTestCase {
         ])
     }
 
+    /// LAB-1299 (owner, 1.9.3): a box table printed right before the same table as Markdown. The bottom frame must
+    /// end the box table; the Markdown lines are a table of their own, and no rows are merged.
+    func testBoxTableThenMarkdownTableStaySeparate() {
+        let raw = """
+        ┌──────────┬─────────┬────────┐
+        │ ID       │ Repo    │ Tests  │
+        ├──────────┼─────────┼────────┤
+        │ LAB-1280 │ oneroof │ 666    │
+        │ LAB-1281 │ labs-ae │ 588    │
+        │ LAB-1282 │ roofd   │ 437    │
+        └──────────┴─────────┴────────┘
+        | ID | Repo | Tests |
+        |---|:---:|---:|
+        | LAB-1280 | oneroof | 666 |
+        | LAB-1281 | labs-ae | 588 |
+        """
+        XCTAssertEqual(TerminalFormat.items(raw), [
+            .table(header: ["ID", "Repo", "Tests"], alignments: [.leading, .leading, .leading],
+                   rows: [["LAB-1280", "oneroof", "666"], ["LAB-1281", "labs-ae", "588"], ["LAB-1282", "roofd", "437"]]),
+            .table(header: ["ID", "Repo", "Tests"], alignments: [.leading, .center, .trailing],
+                   rows: [["LAB-1280", "oneroof", "666"], ["LAB-1281", "labs-ae", "588"]]),
+        ])
+    }
+
+    /// LAB-1299: the owner's 15-column sample (box form, then Markdown form) gives two 15 × 10 tables.
+    func testOwnerFifteenColumnSample() throws {
+        let h = ["ID", "Repo", "Branch", "Version", "Status", "Owner", "Tests", "Pass %", "Build s", "Size MB", "Notarized",
+                 "Channel", "Released", "Lane", "Notes"]
+        let rows = (0..<10).map { i in h.map { "\($0.prefix(3))\(i)" } }
+        let w = h.indices.map { c in max(h[c].count, rows.map { $0[c].count }.max()!) }
+        func rule(_ l: String, _ m: String, _ r: String) -> String {
+            let parts: [String] = w.map { String(repeating: "─", count: $0 + 2) }
+            return l + parts.joined(separator: m) + r
+        }
+        func row(_ cs: [String]) -> String {
+            var parts: [String] = []
+            for (i, c) in cs.enumerated() { parts.append(" " + c.padding(toLength: w[i], withPad: " ", startingAt: 0) + " ") }
+            return "│" + parts.joined(separator: "│") + "│"
+        }
+        var box: [String] = [rule("┌", "┬", "┐"), row(h), rule("├", "┼", "┤")]
+        box += rows.map(row)
+        box.append(rule("└", "┴", "┘"))
+        let mdHead: String = "| " + h.joined(separator: " | ") + " |"
+        let mdRule: String = "|" + Array(repeating: "---", count: 15).joined(separator: "|") + "|"
+        let mdRows: [String] = rows.map { (r: [String]) -> String in "| " + r.joined(separator: " | ") + " |" }
+        var lines: [String] = ["Release summary."]
+        lines += box
+        lines += [mdHead, mdRule]
+        lines += mdRows
+        lines.append("% ")
+        let items = TerminalFormat.items(lines.joined(separator: "\n"))
+        let tables = items.compactMap { item -> ([String], [[String]])? in
+            if case .table(let hd, _, let rs) = item { return (hd, rs) } else { return nil }
+        }
+        XCTAssertEqual(tables.count, 2)
+        for t in tables {
+            XCTAssertEqual(t.0, h)
+            XCTAssertEqual(t.1, rows)
+        }
+    }
+
+    /// An ASCII grid table (psql) ends at its last rule when a Markdown table follows.
+    func testAsciiGridTableThenMarkdownTableStaySeparate() {
+        let raw = "+----+----+\n| a  | b  |\n+----+----+\n| 1  | 2  |\n+----+----+\n| x | y |\n|---|---|\n| 3 | 4 |"
+        XCTAssertEqual(TerminalFormat.items(raw), [
+            .table(header: ["a", "b"], alignments: [.leading, .leading], rows: [["1", "2"]]),
+            .table(header: ["x", "y"], alignments: [.leading, .leading], rows: [["3", "4"]]),
+        ])
+    }
+
     func testPipeLikeTextWithoutSeparatorStaysText() {
         XCTAssertEqual(TerminalFormat.items("grep a | sort | uniq\nnext"), [.text("grep a | sort | uniq\nnext")])
     }
