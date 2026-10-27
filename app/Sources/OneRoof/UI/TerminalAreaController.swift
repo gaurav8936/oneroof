@@ -11,6 +11,9 @@ final class TerminalAreaController: NSViewController {
     /// The window (workspace) this terminal area belongs to: its selection drives the focused pane.
     let win: WindowState
     private var surfaces: [String: TerminalSurfaceView] = [:]
+    /// LAB-1321: when each session's terminal was last in a pane; terminals beyond `liveSurfaces` are freed oldest first.
+    private var surfaceUsed: [String: Date] = [:]
+    static let liveSurfaces = 8
     /// LAB-290: roofd lets one terminal show a session. A refused attach exits at once; without these the pane rebuilt
     /// the surface on every exit and looped (the blinking window, and a frozen one beside it).
     private var surfaceBorn: [String: Date] = [:]
@@ -135,7 +138,7 @@ final class TerminalAreaController: NSViewController {
             .sink { [weak self] _, _, _, _ in self?.update() }
             .store(in: &bag)
         win.$layout.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] l in self?.applyLayout(l) }.store(in: &bag)
-        model.$decisions.combineLatest(model.$subagents).receive(on: DispatchQueue.main)
+        model.$decisions.combineLatest(EngineState.shared.$subagents).receive(on: DispatchQueue.main)   // LAB-1338
             .sink { [weak self] _, _ in self?.update() }
             .store(in: &bag)
         // LAB-861: what each shown pane's keys go to, every 2 s (only while the window is on screen).
@@ -320,6 +323,22 @@ final class TerminalAreaController: NSViewController {
             if s.superview !== body { s.removeFromSuperview(); body.addSubview(s, positioned: .below, relativeTo: nil) }
             s.isHidden = true
         }
+        // LAB-1321: …but only the most recently shown few. Each terminal holds ~30 MB (screen, scrollback, GPU
+        // buffers); visiting 20 sessions kept 20 alive for good. The rest are freed; the session itself lives in
+        // roofd, so showing one again attaches a new terminal and roofd redraws it.
+        let now = Date()
+        for name in shown { surfaceUsed[name] = now }
+        var excess = surfaces.count - Self.liveSurfaces
+        if excess > 0 {
+            for name in surfaces.keys.filter({ !shown.contains($0) }).sorted(by: { (surfaceUsed[$0] ?? .distantPast) < (surfaceUsed[$1] ?? .distantPast) }) {
+                guard excess > 0, let s = surfaces[name] else { break }
+                s.onProcessExit = nil
+                s.removeFromSuperview()
+                surfaces[name] = nil; surfaceUsed[name] = nil
+                excess -= 1
+            }
+        }
+        for name in Array(surfaceUsed.keys) where surfaces[name] == nil { surfaceUsed[name] = nil }
         sizeBody()
         body.needsLayout = true
 

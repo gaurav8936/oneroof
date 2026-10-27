@@ -5,6 +5,8 @@ import OneRoofCore
 /// Overview (⇧⌘L / ⌃↑, replaces Launchpad): every workspace window as a card with its sessions, and a rail with
 /// the FYI feed, objectives, workstreams in play and the foundations. Covers all windows (one store, one roofd).
 struct OverviewView: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
     @Environment(\.theme) private var t
@@ -198,7 +200,13 @@ struct OverviewView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(model.visibleFeed) { e in FeedRow(entry: e, model: model) }
+                    ForEach(model.visibleFeed) { e in
+                        // LAB-1338 follow-up: a row gets its values, not the model, so it redraws only when they change.
+                        let item = model.item(e.sessionId)
+                        FeedRow(entry: e, item: item, windowName: item.flatMap { model.window(model.workspaceId(of: $0))?.name } ?? "",
+                                reveal: { if let item { model.reveal(item) } })
+                            .equatable()
+                    }
                 }
             }
         }
@@ -353,19 +361,22 @@ struct OverviewView: View {
 /// A feed item (COMPONENTS FeedItem). LAB-591/659: one row per event, read like a table row — when · agent · what
 /// happened (and "Needs you" when the session is waiting on the owner now), then what was done, then the session on
 /// one truncated line (a multi-issue session's long name no longer fills the row twice).
-struct FeedRow: View {
+struct FeedRow: View, Equatable {
     @Environment(\.theme) private var t
     let entry: FeedEntry
-    @ObservedObject var model: AppModel
+    let item: BoardItem?
+    let windowName: String
+    let reveal: () -> Void
+
+    static func == (a: FeedRow, b: FeedRow) -> Bool { a.entry == b.entry && a.item == b.item && a.windowName == b.windowName }
 
     var body: some View {
-        let item = model.item(entry.sessionId)
         let name = item?.session.name ?? entry.sessionName
         let line = FeedLine.describe(kind: entry.feedKind, text: entry.text, sessionName: name)
         let needs = item?.status == .needsYou
         let agent = item.map { $0.account ?? $0.session.agent.displayName } ?? ""
-        let place = [windowName(item), name].filter { !$0.isEmpty }.joined(separator: " › ")
-        Button { if let item { model.reveal(item) } } label: {
+        let place = [windowName, name].filter { !$0.isEmpty }.joined(separator: " › ")
+        Button { reveal() } label: {
             HStack(alignment: .top, spacing: 8) {
                 if let item { AgentBadge(item: item, size: 18, status: false) } else { Color.clear.frame(width: 18, height: 18) }
                 VStack(alignment: .leading, spacing: 3) {
@@ -391,10 +402,6 @@ struct FeedRow: View {
         .accessibilityLabel("\(line.action)\(agent.isEmpty ? "" : ", " + agent)\(needs ? ", needs you" : ""): \(line.detail). Session \(place). \(FeedLine.timeLabel(entry.at))")
     }
 
-    private func windowName(_ i: BoardItem?) -> String {
-        guard let i else { return "" }
-        return model.window(model.workspaceId(of: i))?.name ?? ""
-    }
 
     /// tokens.json `feedKinds`.
     private var kindColor: RGB {

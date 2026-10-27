@@ -169,15 +169,28 @@ public struct FeedLine: Equatable, Sendable {
     /// "1:13 PM" today, "Yesterday 1:13 PM", else "Oct 22 1:13 PM" (the feed covers 7 days; a bare 12-hour time read
     /// as out of order).
     public static func timeLabel(_ at: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
-        let time = DateFormatter()
-        time.locale = locale; time.timeZone = calendar.timeZone
-        time.dateStyle = .none; time.timeStyle = .short
+        // LAB-1338 follow-up: two DateFormatters were made per feed row on every redraw (3 % of the installed app's main
+        // thread with agents working). They are kept per locale and time zone.
+        let (time, day) = formatters(locale: locale, zone: calendar.timeZone)
         let t = time.string(from: at)
         if calendar.isDate(at, inSameDayAs: now) { return t }
         if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(at, inSameDayAs: y) { return "Yesterday " + t }
-        let day = DateFormatter()
-        day.locale = locale; day.timeZone = calendar.timeZone
-        day.setLocalizedDateFormatFromTemplate("MMMd")
         return day.string(from: at) + " " + t
+    }
+
+    private static let formatterLock = NSLock()
+    nonisolated(unsafe) private static var formatterCache: [String: (DateFormatter, DateFormatter)] = [:]
+    private static func formatters(locale: Locale, zone: TimeZone) -> (DateFormatter, DateFormatter) {
+        let key = locale.identifier + "|" + zone.identifier
+        formatterLock.lock(); defer { formatterLock.unlock() }
+        if let f = formatterCache[key] { return f }
+        let time = DateFormatter()
+        time.locale = locale; time.timeZone = zone
+        time.dateStyle = .none; time.timeStyle = .short
+        let day = DateFormatter()
+        day.locale = locale; day.timeZone = zone
+        day.setLocalizedDateFormatFromTemplate("MMMd")
+        formatterCache[key] = (time, day)
+        return (time, day)
     }
 }

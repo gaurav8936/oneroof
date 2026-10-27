@@ -5,6 +5,8 @@ import OneRoofCore
 /// What a pane draws around its terminal (S02 / S06 §1.4): header, summary (strip or card), chapters above the live
 /// surface; approval card and hint strip below. Terminal theme; the summary card uses the centre theme.
 struct PaneTop: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @ObservedObject var model: AppModel
     let item: BoardItem?
     let focused: Bool
@@ -168,6 +170,8 @@ struct PaneHeader: View {
 
 /// One-line summary on the terminal (COMPONENTS SummaryStrip): dot, "Step n of m" + caption, "Summary ▾".
 struct SummaryStrip: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     let item: BoardItem
@@ -194,6 +198,8 @@ struct SummaryStrip: View {
 
 /// The expanded summary (COMPONENTS SummaryCard, S02 §1.2): you asked · right now · steps.
 struct SummaryCard: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     let item: BoardItem
@@ -595,6 +601,8 @@ struct PanePlaceholder: View {
 
 /// The Subagents column beside the terminal when the Plan panel is closed (S02 §1.7), and its list in the Plan panel.
 struct SubagentList: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     let item: BoardItem
@@ -689,6 +697,8 @@ final class HandoffCache {
 /// what happened, decisions, risks). It follows the step the terminal is rewound to; otherwise it is the latest finished
 /// step. It is read on its own, without a click, once per step.
 struct StepReviewSection: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     let item: BoardItem

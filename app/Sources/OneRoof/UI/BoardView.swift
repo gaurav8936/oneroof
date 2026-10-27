@@ -5,6 +5,8 @@ import OneRoofCore
 /// Board (⌘B): every session of every window as a card, by status, agent or workstream. Drag between Planned ·
 /// Next, Tonight and Do not use (One Roof's own states); columns the runtime owns (live status) refuse drops.
 struct BoardView: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
     @Environment(\.theme) private var t

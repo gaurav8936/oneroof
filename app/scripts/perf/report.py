@@ -12,7 +12,7 @@ HEADLINE = ['app_cpu', 'stalls_50_per_min', 'stall_ms_per_s', 'children_per_min'
 TOL = 0.15
 LABEL = dict(app_cpu='App CPU %', roofd_cpu='roofd CPU %', main_busy='Main thread busy %', stalls_50_per_min='Stalls ≥50 ms /min',
              stall_ms_per_s='Stall ms/s', longest_stall_ms='Longest stall ms', model_changes_per_s='Model changes/s',
-             children_per_min='Processes started /min', footprint_mb='Footprint MB', mb_per_terminal='MB per terminal visited')
+             children_per_min='Processes started /min', footprint_mb='Footprint MB', mb_per_terminal='MB per terminal, terminals 11-20')
 
 
 def mb(s):
@@ -36,10 +36,17 @@ for d in sorted(p for p in out.iterdir() if p.is_dir() and p.name not in ('build
                  longest_stall_ms=j['longest_stall_ms'], _top_bodies=j['top_bodies'][:6], _top_frames=j['top_frames'][:6])
     mem = d / 'mem.txt'
     if mem.exists():
-        fp = [v for v in (mb(l.split()[1]) for l in mem.read_text().splitlines() if len(l.split()) > 1) if v]
-        if len(fp) > 6:
-            # growth from the first terminal (after the warm-up, ~10 s in) to the end, over the 10 terminals visited
-            r.update(footprint_start_mb=round(fp[5]), footprint_end_mb=round(fp[-1]), mb_per_terminal=round((fp[-1] - fp[5]) / 10, 1))
+        rows_ = [(float(l.split()[1]), mb(l.split()[2])) for l in mem.read_text().splitlines() if len(l.split()) > 2]
+        rows_ = [(t, v) for t, v in rows_ if v]
+        # When the 11th terminal opened (self-test log, same clock): growth from there to the end over terminals 11-20
+        # is what the 8-terminal cap must hold flat (LAB-1321); the first ones grow by design.
+        st = d / 'st-log.txt'
+        opens = [float(m.group(1)) for m in re.finditer(r'^([\d.]+) \d+: terminal ', st.read_text(), re.M)] if st.exists() else []
+        if rows_ and len(opens) >= 11:
+            before = [v for t, v in rows_ if t <= opens[10]]
+            mid = before[-1] if before else rows_[0][1]
+            r.update(footprint_start_mb=round(rows_[0][1]), footprint_at_10_mb=round(mid), footprint_end_mb=round(rows_[-1][1]),
+                     mb_per_terminal=round((rows_[-1][1] - mid) / 10, 1))
     if r: res[d.name] = r
 
 fails, rows = [], []

@@ -5,6 +5,8 @@ import OneRoofCore
 /// and each subagent as a timeline bar (depth with ├ └ │), and a detail card for the selected node: what it was asked,
 /// what it is doing now, what it touched. Claude subagents are exact (transcript sidechains); others are "inferred".
 struct SubagentTraceView: View {
+    /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
+    @ObservedObject var engineState = EngineState.shared
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState

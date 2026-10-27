@@ -184,10 +184,14 @@ final class Holder {
         for c in clients.values {
             fds.append(pollfd(fd: c.fd, events: Int16(POLLIN) | (c.out.isEmpty ? 0 : Int16(POLLOUT)), revents: 0))
         }
-        let n = poll(&fds, nfds_t(fds.count), 200)
+        // LAB-1322: an idle session process woke 10.5 times a second (a 200 ms poll and a 250 ms status check, with
+        // nothing to do). While output flows it still checks every 250 ms; after 2 s of quiet, once a second. Input,
+        // output, clients and mail wake it at once either way (they are in the poll set).
+        let busy = lastOutput.map { Date().timeIntervalSince($0) < 2 } ?? false
+        let n = poll(&fds, nfds_t(fds.count), busy ? 200 : 1000)
         if n < 0 && errno != EINTR { return false }
         reapChild()
-        if Date().timeIntervalSince(lastEval) >= 0.25 { evaluateStatus() }
+        if Date().timeIntervalSince(lastEval) >= (busy ? 0.25 : 0.95) { evaluateStatus() }
         if Date().timeIntervalSince(lastMemoryCheck) >= Daemon.watchdogInterval, !checkMemory() { return false }
         for f in fds where f.revents != 0 {
             if f.fd == listenFd { acceptClients(); continue }
