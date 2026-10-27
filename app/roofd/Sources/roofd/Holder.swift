@@ -208,11 +208,23 @@ final class Holder {
         return true
     }
 
+    /// LAB-1324: the most one wake-up reads from the PTY before forwarding.
+    static let readBatch = 64 * 1024
+
     private func readMaster(_ buf: inout [UInt8]) {
-        // One read per wake-up: draining the PTY first would hold output back from the terminal.
+        // LAB-1324: read what the PTY holds now, up to 64 KB, then forward and parse it once. A PTY read returns a few
+        // KB; one read per wake-up meant a poll, a read and a parse dispatch per few KB, and under heavy output those
+        // syscalls and worker-thread wake-ups were most of a holder's CPU (the parse itself a few percent). The PTY is
+        // non-blocking, so the extra reads stop at once when it is empty; forwarding waits microseconds, not frames.
         let k = read(master, &buf, buf.count)
-        let n = max(k, 0)
-        let gone = k == 0 || (k < 0 && errno != EAGAIN && errno != EINTR)
+        var n = max(k, 0)
+        var gone = k == 0 || (k < 0 && errno != EAGAIN && errno != EINTR)
+        while n > 0, n < Holder.readBatch, !gone {
+            let more = buf.withUnsafeMutableBytes { read(master, $0.baseAddress! + n, min($0.count, Holder.readBatch) - n) }
+            if more > 0 { n += more; continue }
+            gone = more == 0 || (errno != EAGAIN && errno != EINTR)
+            break
+        }
         if n > 0 {
             // Hot path: forward first (written at once when the client keeps up); the parse runs on vtQ.
             for c in clients.values where c.attached {
@@ -222,14 +234,16 @@ final class Holder {
             seq += n
             lastOutput = Date()
             if !Holder.skipVT {
-                let bytes = Array(buf[0..<n])
-                let t = vt
-                vtQ.async { [weak self] in
-                    bytes.withUnsafeBufferPointer { rvt_feed(t, $0.baseAddress, $0.count) }
-                    var codes = [UInt8](repeating: 0, count: 32)
-                    let n = rvt_take_query_list(t, &codes, codes.count)
-                    if n > 0 { self?.queriesSeen(Array(codes.prefix(n))) }
-                }
+                // LAB-1324: one parse block at a time, fed everything read since it last ran. A block per read (a PTY
+                // read is a few KB) woke a GCD worker hundreds of times a second under heavy output: that churn, not
+                // the parse, was most of a busy holder's CPU. Order is kept: bytes join `vtPending` in read order, and
+                // a drain is always queued ahead of any later vtQ.sync (snapshot, resize, screen), which so sees them.
+                vtLock.lock()
+                vtPending.append(contentsOf: buf[0..<n])
+                let schedule = !vtScheduled
+                vtScheduled = true
+                vtLock.unlock()
+                if schedule { vtQ.async { [weak self] in self?.drainVT() } }
             }
         }
         if gone {
@@ -237,6 +251,27 @@ final class Holder {
             close(master)
             master = -1
             reapChild(block: true)
+        }
+    }
+
+    /// LAB-1324 · bytes read but not yet parsed, and whether a drain is queued (both under vtLock).
+    private let vtLock = NSLock()
+    private var vtPending: [UInt8] = []
+    private var vtScheduled = false
+
+    /// On vtQ: parse everything pending, until nothing is left.
+    private func drainVT() {
+        let t = vt
+        while true {
+            vtLock.lock()
+            if vtPending.isEmpty { vtScheduled = false; vtLock.unlock(); return }
+            let bytes = vtPending
+            vtPending.removeAll(keepingCapacity: true)
+            vtLock.unlock()
+            bytes.withUnsafeBufferPointer { rvt_feed(t, $0.baseAddress, $0.count) }
+            var codes = [UInt8](repeating: 0, count: 32)
+            let n = rvt_take_query_list(t, &codes, codes.count)
+            if n > 0 { queriesSeen(Array(codes.prefix(n))) }
         }
     }
 

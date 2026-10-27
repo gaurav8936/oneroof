@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.11 — lighter under heavy output (27 Oct 2026)
+
+- **roofd spends a third less CPU on heavy output** (LAB-1324). A session's process read the terminal a few KB at a
+  time, with a wake-up and a hand-off to its parser for each piece; under heavy output those system calls and thread
+  wake-ups, not the parsing, were most of its CPU. It now reads everything waiting (up to 64 KB) before forwarding
+  and parsing once. Measured with five terminals printing as fast as they can: 1.0 → 0.66 CPU-seconds per MB, total
+  CPU about 300–400 % → 200 %. Applies to sessions started after the update (running sessions keep their process).
+- Decision record: `docs/decisions/20261027_01_heavy-output-path.md`.
+
 ## 1.9.10 — memory, sessions and layout (27 Oct 2026)
 
 - **Terminal memory stays bounded** (LAB-1321). Every terminal you visited stayed alive (about 30 MB each, never
