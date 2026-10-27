@@ -6,7 +6,7 @@
 #                              [--baseline <json>] [--out <dir>] [--secs 60] [--tp 20]
 #
 #   --app        measure this bundle (copied, re-identified); default: build this checkout (scripts/bundle.sh release)
-#   --scenarios  comma list from scenarios/ (idle home places spinners6 memory learn busy); default idle,places,spinners6,memory
+#   --scenarios  comma list from scenarios/ (idle home places places-sessions places-others spinners6 memory learn busy); default idle,places,spinners6,memory
 #   --gate       a phase in gates.json (1.9.8 …): its thresholds must hold too; default none (baseline check only)
 #   --baseline   default baseline-1.9.3.json (the study's numbers); a headline >15 % worse than it fails the check
 #   --secs/--tp  measurement window and Time Profiler window, seconds
@@ -83,7 +83,7 @@ run_window() {   # run_window <name> <warm s> [VAR=value …]  — the standard 
   python3 "$HERE/measure.py" "$d" "$SECS" "$pid" "$d/st-log.txt" > /dev/null
   xcrun xctrace record --template 'Time Profiler' --attach "$pid" --time-limit "${TP}s" --output "$d/tp.trace" > "$d/tp.log" 2>&1 &&
     python3 "$HERE/parse_tp.py" "$d/tp.trace" "$d/tp.json" > /dev/null
-  rm -rf "$d/tp.trace"
+  [ "${PERF_KEEP_TRACE:-0}" = 1 ] || rm -rf "$d/tp.trace"   # LAB-1370: keep it to dig into a stall
   cleanup
 }
 
@@ -103,7 +103,7 @@ for s in "${LIST[@]}"; do case "$s" in
   spinners6) run_window spinners6 25 ;;
   busy) run_window busy 30 ;;   # LAB-1324: five terminals printing as fast as they can, Grid layout
   learn) run_window learn 15 ONEROOF_SELFTEST_PLACE=learn ONEROOF_SELFTEST_PLAYCARD=loops-first@muted ;;
-  idle|home|places) run_window "$s" 15 ;;
+  idle|home|places|places-sessions|places-others) run_window "$s" 15 ;;   # LAB-1370: into/out of Sessions vs the other places
   *) say "perf-check: unknown scenario $s"; exit 2 ;; esac; done
 
 AFTER=$(installed)

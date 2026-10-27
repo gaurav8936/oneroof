@@ -29,17 +29,30 @@ public enum V2Layout {
     /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is 52 pt avatars unless the lane was
     /// dragged wide (`focusWide`, LAB-1366).
     public static func columnWidth(step: FocusStep, saved: Double?, focusWide: Double? = nil) -> Double {
-        if step == .focus { return focusWide.map { min(440, max(200, $0)) } ?? 52 }
+        if step == .focus { return focusWide.map { min(440, max(focusLaneSnapPoint, $0)) } ?? 52 }
         if let saved, saved > 0 { return min(440, max(200, saved)) }
         return step == .sessions ? 280 : 250
     }
 
-    /// LAB-1366: the Focus lane's width after a drag: back to the avatars (nil) below the snap point, else the full
-    /// list within the column's limits.
-    public static let focusLaneSnapPoint: Double = 130
+    /// LAB-1366 / LAB-1382: the Focus lane's width after a drag: back to the avatars (nil) below the snap point, else
+    /// where you let go (up to the column's maximum).
+    public static let focusLaneSnapPoint: Double = 110
     public static func focusLaneSnap(dragged: Double) -> Double? {
-        dragged < focusLaneSnapPoint ? nil : min(440, max(200, dragged))
+        dragged < focusLaneSnapPoint ? nil : min(440, dragged)
     }
+
+    /// LAB-1383: what a step request (button click, menu, ⌥⌘F) does. At Focus with the lane widened it snaps the lane
+    /// back to the avatars and stays at Focus; entering Focus from another step starts with the thin lane.
+    public enum StepRequest: Equatable { case step(FocusStep), snapLane, enterFocusThin }
+    public static func stepRequest(current: FocusStep, requested: FocusStep, laneWide: Bool) -> StepRequest {
+        if current == .focus && laneWide { return .snapLane }
+        if requested == .focus && current != .focus { return .enterFocusThin }
+        return .step(requested)
+    }
+
+    /// LAB-1382: the Focus lane shows the session list (names cut off, never wrapped) as soon as it is wider than the
+    /// avatars need, so text appears progressively while you drag; narrower, the avatars.
+    public static func focusLaneShowsList(width: Double) -> Bool { width >= focusLaneSnapPoint }
 
     /// LAB-1363: whether the terminal shows "Current ↓": scrolled up from the live bottom (libghostty has reported
     /// a position and it is not the bottom), and the pane shows the live terminal (not the Table view or raw stream).

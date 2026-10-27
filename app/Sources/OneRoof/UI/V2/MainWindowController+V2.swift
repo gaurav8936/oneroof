@@ -124,6 +124,8 @@ extension MainWindowController {
                 if let i = n.userInfo?["NSSplitViewDividerIndex"] as? Int,
                    [.leftMouseDragged, .leftMouseUp].contains(NSApp.currentEvent?.type) {
                     self?.v2RememberWidth(divider: i)
+                } else {
+                    self?.v2PinFocusLane()
                 }
             }.store(in: &v2Bag)
         // LAB-1337: during a live resize only the band's colours follow each frame; fitting the toolbar (a SwiftUI
@@ -241,6 +243,21 @@ extension MainWindowController {
         if i == 3, win.focusStep == .full, !planItemRef.isCollapsed, !v2PlanEdge { win.planWidth = Double(planItemRef.viewController.view.frame.width) }
     }
 
+    /// LAB-1382: at Focus the lane may be dragged (maximum 440), so the split also hands it width it was not asked
+    /// to take (the classic Files item folding gave it its width: an empty box with one avatar). Anything but your
+    /// drag puts it back at its own width.
+    func v2PinFocusLane() {
+        guard win.focusStep == .focus, win.place == .sessions, v2Page == nil, !sideItemRef.isCollapsed,
+              window?.inLiveResize != true else { return }
+        let want = CGFloat(V2Layout.columnWidth(step: .focus, saved: win.columnWidth, focusWide: win.focusColumnWidth))
+        guard abs(sideItemRef.viewController.view.frame.width - want) > 1 else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.win.focusStep == .focus, !self.sideItemRef.isCollapsed else { return }
+            let railW: CGFloat = self.v2RailItem?.isCollapsed == false ? 66 : 0
+            self.splitView.setPosition(railW + want, ofDividerAt: 1)
+        }
+    }
+
     /// LAB-1366: the Focus lane at this width (nil = avatars); re-applied even when the width is unchanged, so a drag
     /// that snaps back lands exactly on the snapped width.
     func v2SetFocusLane(_ width: Double?) {
@@ -304,12 +321,21 @@ extension MainWindowController {
     }
 
     func v2SetStep(_ s: FocusStep) {
+        // LAB-1383: Focus is the thin lane: a widened lane snaps back first; entering Focus starts thin.
+        switch V2Layout.stepRequest(current: win.focusStep, requested: s, laneWide: win.focusColumnWidth != nil) {
+        case .snapLane: v2SetFocusLane(nil); return
+        case .enterFocusThin: win.focusColumnWidth = nil
+        case .step: break
+        }
         if s == .focus && win.focusStep != .focus { v2BeforeFocus = win.focusStep }
         win.focusStep = s
     }
     /// ⌥⌘F steps on; at Focus it leaves Focus again, as the 0.5.2.9 toggle did (Esc can't while the terminal has
     /// the keyboard, so without this a window could stay stuck at step 3, even across launches).
-    func v2StepOn() { if win.focusStep == .focus { v2LeaveFocus() } else { v2SetStep(win.focusStep.next) } }
+    func v2StepOn() {
+        if win.focusStep == .focus && win.focusColumnWidth != nil { v2SetFocusLane(nil); return }   // LAB-1383
+        if win.focusStep == .focus { v2LeaveFocus() } else { v2SetStep(win.focusStep.next) }
+    }
     /// A click on the toolbar's step button: the next step, and from Focus round to Full (LAB-1235).
     func v2StepClick() { v2SetStep(win.focusStep.clicked) }
     func v2StepBack() { win.focusStep = win.focusStep.previous }
