@@ -170,7 +170,7 @@ extension MainWindowController {
                 plan.minimumThickness = planMode.edge ? 28 : 240
                 plan.maximumThickness = planMode.edge ? 28 : 520
             }
-            self.filesItemRef.isCollapsed = self.filesItemRef.isCollapsed
+            self.filesItemRef.isCollapsed = true   // LAB-1306: was a no-op (x = x); the v2 file tree is the Files tab
         }
         apply()
         splitView.layoutSubtreeIfNeeded()

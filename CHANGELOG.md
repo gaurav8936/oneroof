@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.7 — the Files panel closes (26 Oct 2026)
+
+- **The Files panel's × closes it** (LAB-1306). In the new window the file tree lives in the Files tab, but the old
+  Files side panel could still come back (from a saved window layout). Its × sent the same action as ⌥⌘B, which in
+  the new window opens the Files tab, so clicking × opened a second tree instead of closing the first, and the panel
+  could not be closed at all. The × now closes it, and the new window keeps that old panel hidden.
+
 ## 1.9.6 — Learn shows the deck's own card pages, a quieter session column (26 Oct 2026)
 
 - **Includes the Table view fix from 1.9.5** (1.9.5 was never published: a test string failed the release check).
