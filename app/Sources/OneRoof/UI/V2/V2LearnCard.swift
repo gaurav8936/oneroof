@@ -2,8 +2,12 @@ import AppKit
 import SwiftUI
 import OneRoofCore
 
-// LAB-1233 · Learn › the card station (L2): Listen (scene by scene, in step with the narration), Transcript and the
-// card's Skill file, with chapters, triggers, pairs, posts and what is next on the band down the right.
+// LAB-1233 · Learn › the card station (L2): Listen, Transcript and the card's Skill file, with triggers, pairs, posts and
+// what is next on the band down the right.
+// LAB-1305 (1.9.5, owner: Learn has nothing original, it only organises the deck): Listen is the card's own page from the
+// deck (`LearnCardPage`), the same page the repository and the other sites show, with its diagram, sections menu, step pills
+// and narration player. Its sections menu replaces the native Chapters list. The native scene view (`LearnListen`) and
+// the Chapters list are kept only as the fallback for a card the deck has no HTML page for.
 
 struct LearnCardStation: View {
     @ObservedObject var model: AppModel
@@ -19,16 +23,18 @@ struct LearnCardStation: View {
             let scenes = nav.scenes(c.slug, deck)
             let here = audio.playingSlug == c.slug
             let idx = max(0, min(scenes.count - 1, here ? player.index : nav.scene))
+            let page = LearnCardPage.source(c.slug, in: deck)
             HStack(alignment: .top, spacing: 32) {
-                main(c, scenes, idx, here).frame(maxWidth: .infinity)
-                LearnCardSide(nav: nav, player: player, audio: audio, posts: posts, card: c, scenes: scenes, idx: idx, here: here).frame(width: 320)
+                main(c, scenes, idx, here, page).frame(maxWidth: .infinity)
+                LearnCardSide(nav: nav, player: player, audio: audio, posts: posts, card: c, scenes: scenes, idx: idx, here: here,
+                              chapters: page == nil).frame(width: 320)
             }
             .padding(.horizontal, 40).padding(.top, 24).padding(.bottom, 48)
             .frame(maxWidth: 1360, alignment: .leading)
         }
     }
 
-    private func main(_ c: DeckCard, _ scenes: [DeckScene], _ idx: Int, _ here: Bool) -> some View {
+    private func main(_ c: DeckCard, _ scenes: [DeckScene], _ idx: Int, _ here: Bool, _ page: LearnCardPage.Source?) -> some View {
         let b = audio.deck.band(of: c.slug)
         let narrated = here || FileManager.default.fileExists(atPath: (audio.deck.htmlPath(c.slug) as NSString).deletingPathExtension + "_audio")
         return VStack(alignment: .leading, spacing: 0) {
@@ -38,14 +44,22 @@ struct LearnCardStation: View {
                 Text("\(c.scenes) scenes · \(LearnDeck.minutes(c.estSeconds))" + (narrated ? " · narration bundled" : ""))
                     .font(.system(size: 12)).foregroundStyle(t.text3.color)
             }
-            Text(c.title).font(.system(size: 48, weight: .bold)).tracking(-1.4).foregroundStyle(t.text.color).padding(.top, 6).padding(.bottom, 6)
-            Text(c.subtitle.isEmpty ? c.description : c.subtitle).font(.system(size: 17)).foregroundStyle(t.text2.color).padding(.bottom, 16)
-                .fixedSize(horizontal: false, vertical: true)
+            // LAB-1305: on Listen the card's own page carries its title and subtitle, so they are not drawn twice.
+            if page == nil || nav.tab == "transcript" || nav.tab == "skill" {
+                Text(c.title).font(.system(size: 48, weight: .bold)).tracking(-1.4).foregroundStyle(t.text.color).padding(.top, 6).padding(.bottom, 6)
+                Text(c.subtitle.isEmpty ? c.description : c.subtitle).font(.system(size: 17)).foregroundStyle(t.text2.color).padding(.bottom, 16)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Spacer().frame(height: 12)
+            }
             tabs.padding(.bottom, 16)
             switch nav.tab {
             case "transcript": LearnTranscript(nav: nav, audio: audio, card: c, scenes: scenes, idx: idx)
             case "skill": LearnSkillFile(nav: nav, audio: audio, card: c)
-            default: LearnListen(nav: nav, player: player, audio: audio, card: c, scenes: scenes, idx: idx, here: here)
+            default:
+                if let page { LearnCardWeb(nav: nav, player: player, audio: audio, card: c, source: page) }
+                // Fallback: the deck has no HTML page for this card, so the scenes from its spec.json are drawn natively.
+                else { LearnListen(nav: nav, player: player, audio: audio, card: c, scenes: scenes, idx: idx, here: here) }
             }
         }
     }
@@ -70,7 +84,59 @@ struct LearnCardStation: View {
     }
 }
 
-/// Listen: the scene's panel (section, kicker, heading, the section's diagram with this scene's nodes lit, the lede and
+/// LAB-1305 · Listen: the card's own page from the deck, as the repository and the other sites show it. Links: anchors stay in
+/// the page, another card's page opens that card here, other deck pages load in place, web links open in the browser
+/// (WebPage). Audio never doubles: the page starting its narration pauses One Roof's player, and One Roof's player
+/// starting pauses the page; while One Roof plays this card the page shows the scene being heard.
+struct LearnCardWeb: View {
+    @ObservedObject var nav: LearnNav
+    @ObservedObject var player: CoursePlayer
+    let audio: LearnAudio
+    let card: DeckCard
+    let source: LearnCardPage.Source
+    @State private var bridge = WebPageBridge()
+    @Environment(\.theme) private var t
+
+    var body: some View {
+        let deck = audio.deck, player = player, nav = nav, slug = card.slug
+        WebPage(path: source.page, root: source.readRoot, blocked: { LearnExclusions.isExcluded($0) },
+                pageScript: LearnExclusions.hideLinksScript, startScript: LearnCardPage.bridgeScript(muted: CoursePlayer.selfTestMuted),
+                onMessage: { kind in
+                    if kind == "ready" { follow(); selfTestClick(); return }
+                    if player.playing { player.pause() }       // the page started its own narration
+                },
+                onLocalLink: { path in
+                    guard let k = LearnCardPage.linkedCard(path, in: deck), k != slug else { return false }
+                    nav.openCard(k); return true
+                },
+                bridge: bridge)
+            .id(source.page)
+            .containerRelativeFrame(.vertical) { h, _ in max(480, h - 150) }   // the page and its own player bar fit under the tabs
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
+            .onChange(of: player.playing) { _, on in if on { bridge.run(LearnCardPage.pauseScript); follow() } }
+            .onChange(of: player.index) { _, _ in if player.playing { follow() } }
+    }
+
+    /// Show the scene One Roof's player is on, in the page (only while it plays this card).
+    private func follow() {
+        guard audio.playingSlug == card.slug, player.playing else { return }
+        let i = player.index, n = player.tracks.count
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { bridge.run(LearnCardPage.showSceneScript(i, tracks: n)) }
+    }
+
+    /// ONEROOF_SELFTEST_PAGECLICK=<element id>[@<seconds>]: click that element of the card page once it has loaded
+    /// (e.g. playAll, to check the page's own narration pauses One Roof's player).
+    private func selfTestClick() {
+        guard let spec = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PAGECLICK"] else { return }
+        let f = spec.split(separator: "@").map(String.init), id = f.first ?? ""
+        let js = "(function(){ var e = document.getElementById('\(id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })'); if (e) e.click(); })();"
+        DispatchQueue.main.asyncAfter(deadline: .now() + (f.count > 1 ? Double(f[1]) ?? 1 : 1)) { bridge.run(js) }
+    }
+}
+
+/// Fallback Listen for a card without a page (LAB-1305): the scene's panel (section, kicker, heading, the section's diagram with this scene's nodes lit, the lede and
 /// points), scene dots, and the narration text under it.
 struct LearnListen: View {
     @ObservedObject var nav: LearnNav
@@ -277,6 +343,8 @@ struct LearnCardSide: View {
     let scenes: [DeckScene]
     let idx: Int
     let here: Bool
+    /// The native Chapters list: only when the card has no page of its own (LAB-1305; the page has its sections menu).
+    var chapters = true
     @Environment(\.theme) private var t
 
     var body: some View {
@@ -289,6 +357,7 @@ struct LearnCardSide: View {
         let reads = band.posts.compactMap { s in posts.first { $0.slug == s } }
         let current = scenes.indices.contains(idx) ? scenes[idx].sectionIndex : -1
         VStack(alignment: .leading, spacing: 22) {
+            if chapters {
             VStack(alignment: .leading, spacing: 2) {
                 LearnRuleHeading(text: "Chapters")
                 ForEach(Array(card.sections.enumerated()), id: \.offset) { i, sec in
@@ -308,6 +377,7 @@ struct LearnCardSide: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
             }
             VStack(alignment: .leading, spacing: 5) {
                 LearnRuleHeading(text: "Say it in a session").padding(.bottom, 3)

@@ -18,6 +18,7 @@ import OneRoofCore
 ///   compose                        (LAB-1298: the focused pane's composer on/off, as the pane header's Compose does)
 ///   table                          (LAB-1286: the focused pane's Table view on/off, as the Table button does)
 ///   tablescroll left|right         (scroll every table in the Table view to its left or right end)
+///   focusstep <0-3>                (LAB-1302: the window's Focus step, as ⌥⌘F steps it)
 ///   tableprobe                     (log: Table view on?, what it shows, who has the keyboard)
 ///   esc                            (an Esc key event through the app, so key monitors see it)
 ///   width <pt>                     (the main window this wide; the panes follow)
@@ -138,6 +139,7 @@ enum SelfTestScript {
         case "table": app.main.terminalArea.toggleTable(app.main.terminalArea.focusedPane); delay = 2.5
         case "compose": app.main.terminalArea.toggleComposer(app.main.terminalArea.focusedPane); delay = 1.5
         case "tablescroll": app.main.terminalArea.scrollTables(toEnd: arg == "right"); delay = 0.8
+        case "focusstep": if let n = Int(arg), let st = FocusStep(rawValue: n) { app.model.active.focusStep = st }; delay = 1.5
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
         case "esc":
             if let w = app.main.window, let ev = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,

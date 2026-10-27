@@ -112,10 +112,10 @@ final class TerminalFormatTests: XCTestCase {
 
     /// A Markdown row cut into three or more pieces whose middle piece neither starts nor ends with a bar.
     func testMarkdownRowCutIntoThreePieces() {
-        let raw = "| ID | Repo | Branch | Version | Status |\n|---|---|---|---|---|\n| LAB-1287 | diagnostic-analyzer | ga\nnarasi/live | 1.9.3 | Bu\nilding |\n| LAB-1288 | _common |\nBox form:"
+        let raw = "| ID | Repo | Branch | Version | Status |\n|---|---|---|---|---|\n| LAB-1287 | diagnostic-analyzer | fe\nature/main | 1.9.3 | Bu\nilding |\n| LAB-1288 | shared |\nBox form:"
         XCTAssertEqual(TerminalFormat.items(raw).first, .table(header: ["ID", "Repo", "Branch", "Version", "Status"],
             alignments: Array(repeating: .leading, count: 5),
-            rows: [["LAB-1287", "diagnostic-analyzer", "ganarasi/live", "1.9.3", "Building"], ["LAB-1288", "_common", "", "", ""]]))
+            rows: [["LAB-1287", "diagnostic-analyzer", "feature/main", "1.9.3", "Building"], ["LAB-1288", "shared", "", "", ""]]))
     }
 
     /// With the terminal's width known, prose cut at exactly that width is rejoined (words whole again), while a table
