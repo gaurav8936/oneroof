@@ -665,11 +665,24 @@ struct SubagentCard: View {
 extension AppModel {
     /// Exited placeholder › Open … handoff: the newest handoff written during this session (LAB-510) naming one of its issues or its project, and the
     /// id it named (the button says which), else none.
+    /// LAB-1315: called from PanePlaceholder.body on every redraw; the folder is listed and read again only when its
+    /// modification time or the session's keys change (one stat per call otherwise).
     func handoffMatch(for item: BoardItem) -> (path: String, key: String)? {
-        Workspace.handoffMatch(in: settings.sharedFolder + "/docs/next-session-handoff",
-                               project: item.session.workstream, tickets: item.session.allTickets.map(\.key),
-                               since: item.session.launchedAt ?? item.session.createdAt)
+        let dir = settings.sharedFolder + "/docs/next-session-handoff"
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date) ?? .distantPast
+        let tickets = item.session.allTickets.map(\.key), since = item.session.launchedAt ?? item.session.createdAt
+        let key = HandoffCache.Key(dir: dir, mtime: mtime, project: item.session.workstream, tickets: tickets, since: since)
+        if let hit = handoffCache.entries[item.id], hit.key == key { return hit.match }
+        let match = Workspace.handoffMatch(in: dir, project: item.session.workstream, tickets: tickets, since: since)
+        handoffCache.entries[item.id] = (key, match.map { ($0.path, $0.key) })
+        return match.map { ($0.path, $0.key) }
     }
+}
+
+/// LAB-1315 · the handoff each exited session matches, kept until the folder or the session's keys change.
+final class HandoffCache {
+    struct Key: Equatable { let dir: String; let mtime: Date; let project: String?; let tickets: [String]; let since: Date? }
+    var entries: [String: (key: Key, match: (path: String, key: String)?)] = [:]
 }
 
 /// Step review in the right panel (LAB-260): a model's reading of one step of the selected session (what was asked,

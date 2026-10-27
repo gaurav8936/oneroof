@@ -1,0 +1,10 @@
+{
+ "_rule": "every listed metric must be at or under its number; a scenario not listed is checked against the baseline only",
+ "1.9.8":  {"idle": {"app_cpu": 2, "stalls_50_per_min": 5, "children_per_min": 20},
+            "home": {"app_cpu": 2, "stalls_50_per_min": 5, "children_per_min": 20},
+            "places": {"stall_ms_per_s": 60}},
+ "1.9.9":  {"idle": {"app_cpu": 2, "stalls_50_per_min": 5, "children_per_min": 20},
+            "places": {"stall_ms_per_s": 60}, "learn": {"app_cpu": 5}},
+ "1.9.10": {"idle": {"app_cpu": 1, "stalls_50_per_min": 2, "children_per_min": 10},
+            "places": {"stall_ms_per_s": 30}, "learn": {"app_cpu": 5}, "memory": {"mb_per_terminal": 5}}
+}

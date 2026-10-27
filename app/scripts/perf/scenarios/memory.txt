@@ -1,0 +1,44 @@
+menu View/Sessions
+wait 8
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+terminal @DIR@
+wait 1
+send seq 1 400000
+wait 5
+wait 30
+quit

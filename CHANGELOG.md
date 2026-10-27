@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.9.8 — quiet when idle (26 Oct 2026)
+
+- **One Roof does nothing when nothing changes** (LAB-1314). The app model announced a change twice a second with
+  nothing happening (two status values were set again on every poll), so every panel redrew and the main thread
+  stalled about once a second. Values are now set only when they change. Measured on the same Mac against 1.9.3:
+  idle CPU 9.6 % → 0.6 %, main-thread stalls of 50 ms or more 58 → 0 a minute.
+- **No background git storm** (LAB-1319, LAB-1327). Branch and diff counts were read for every session, exited ones
+  included, every 10 s (about 240 git processes a minute). Now: every 10 s for a working or visible session, every
+  60 s for other live ones, every 5 min for the rest; finding a file's repo no longer starts git at all. Idle: 0
+  processes a minute.
+- **Lighter redraws** (LAB-1315, LAB-1316, LAB-1317, LAB-1318, LAB-1328). The handoff lookup and the Related in Learn
+  ranking are kept instead of being redone in every redraw; the session tab strip has a fixed height instead of being
+  measured on every update; the running dot's halo is a Core Animation layer; the poll tick sets the Dock badge only
+  when it changes and builds its session table once. Switching places once a second: stall time 251 → 71 ms a
+  second; six busy terminals: 14 % → 6 % CPU, stalls 43 → 0 a minute.
+- **View timers fire** (LAB-1329). Timers made inside views (the editor's 2 s save flush among them) were made again
+  on every redraw and could miss while the app was busy; they are now shared clocks.
+- **A performance check in the repo** (LAB-1325): `app/scripts/perf/perf-check.sh` builds a test copy, runs fixed
+  scenarios on a copy of a profile, and compares CPU, main-thread stalls, processes started and memory with the 1.9.3
+  baseline and each release's targets.
+
 ## 1.9.7 — the Files panel closes (26 Oct 2026)
 
 - **The Files panel's × closes it** (LAB-1306). In the new window the file tree lives in the Files tab, but the old

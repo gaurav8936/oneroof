@@ -56,14 +56,22 @@ public struct RepoStat: Equatable, Sendable {
 public enum GitDiff {
     public static var git = "/usr/bin/git"
 
-    /// The top of the git repo containing `path`, or nil when it is not in one.
+    /// The top of the git repo containing `path`, or nil when it is not in one: the nearest folder at or above it that
+    /// holds a `.git` (a folder, or a file for worktrees and submodules), on the real path as `rev-parse --show-toplevel`
+    /// gives it. LAB-1327: no process. Views, menu validation and the 10 s repo stats call this on the main thread;
+    /// it was one `git rev-parse` per call (a non-repo folder such as the workspace root asked again every time).
     public static func repoRoot(for path: String) -> String? {
-        var dir: ObjCBool = false
-        let folder = FileManager.default.fileExists(atPath: path, isDirectory: &dir) && !dir.boolValue
-            ? (path as NSString).deletingLastPathComponent : path
-        let (code, out) = Foundations.run(git, ["-C", folder, "rev-parse", "--show-toplevel"], timeout: 5)
-        let root = out.trimmingCharacters(in: .whitespacesAndNewlines)
-        return code == 0 && !root.isEmpty ? root : nil
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return nil }
+        var dir = isDir.boolValue ? path : (path as NSString).deletingLastPathComponent
+        if let real = realpath(dir, nil) { dir = String(cString: real); free(real) }
+        while true {
+            if fm.fileExists(atPath: (dir as NSString).appendingPathComponent(".git")) { return dir }
+            let up = (dir as NSString).deletingLastPathComponent
+            if up == dir || up.isEmpty { return nil }
+            dir = up
+        }
     }
 
     /// Everything changed since HEAD (staged and unstaged), plus untracked files.
