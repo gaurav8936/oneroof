@@ -40,6 +40,20 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320), 52)
     }
 
+    /// LAB-1366: at Focus the avatar lane can be dragged wide to show the full list; its own width, kept apart from
+    /// the other steps' column width; narrow again snaps back to the 52 pt avatars.
+    func test_LAB1366_focusLaneWidensAndSnapsBack() {
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: nil), 52)
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: 260), 260)
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: nil, focusWide: 900), 440)
+        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 300, focusWide: 260), 300, "other steps keep theirs")
+        XCTAssertNil(V2Layout.focusLaneSnap(dragged: 52))
+        XCTAssertNil(V2Layout.focusLaneSnap(dragged: 129))
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 140), 200, "past the snap point: at least the list's minimum")
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 300), 300)
+        XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 700), 440)
+    }
+
     /// LAB-1363: "Current ↓" shows whenever the terminal is scrolled up from its live bottom (not only while a step
     /// is open), never over the Table view or the raw stream, and not before libghostty has reported a position.
     func test_LAB1363_currentPillShowsWhenScrolledUp() {
