@@ -74,6 +74,15 @@ final class WindowState: ObservableObject, Identifiable {
     /// v2 column widths you dragged (1.8.1; 0.5.2.9 kept its panel widths, v2 reset them on every step and launch).
     var columnWidth: Double? { didSet { if let w = columnWidth { save(w, "v2.columnWidth") } } }
     var planWidth: Double? { didSet { if let w = planWidth { save(w, "v2.planWidth") } } }
+    /// LAB-1366: the Focus lane dragged wide to show the full list (nil = 52 pt avatars). Its own width, so widening
+    /// it at Focus leaves the column width of the other steps alone.
+    @Published var focusColumnWidth: Double? {
+        didSet {
+            guard !SelfTest.isActive else { return }
+            if let w = focusColumnWidth { Prefs.defaults.set(w, forKey: "v2.focusColumnWidth." + id) }
+            else { Prefs.defaults.removeObject(forKey: "v2.focusColumnWidth." + id) }
+        }
+    }
     @Published var layout: SessionLayout = .single { didSet { save(layout.rawValue, "layout") } }
     @Published var place: Place = .sessions {
         didSet {
@@ -101,6 +110,7 @@ final class WindowState: ObservableObject, Identifiable {
             if sessionsStep == nil, place == .sessions { sessionsStep = focusStep }
             columnWidth = d.object(forKey: "v2.columnWidth." + id) as? Double
             planWidth = d.object(forKey: "v2.planWidth." + id) as? Double
+            focusColumnWidth = d.object(forKey: "v2.focusColumnWidth." + id) as? Double
         }
     }
 

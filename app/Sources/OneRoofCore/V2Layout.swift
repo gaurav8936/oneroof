@@ -26,11 +26,19 @@ public enum V2Layout {
     }
 
     /// Session column width at a step: the width you dragged it to (kept per window), else the handover's (280 pt at
-    /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is always 52 pt avatars.
-    public static func columnWidth(step: FocusStep, saved: Double?) -> Double {
-        if step == .focus { return 52 }
+    /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is 52 pt avatars unless the lane was
+    /// dragged wide (`focusWide`, LAB-1366).
+    public static func columnWidth(step: FocusStep, saved: Double?, focusWide: Double? = nil) -> Double {
+        if step == .focus { return focusWide.map { min(440, max(200, $0)) } ?? 52 }
         if let saved, saved > 0 { return min(440, max(200, saved)) }
         return step == .sessions ? 280 : 250
+    }
+
+    /// LAB-1366: the Focus lane's width after a drag: back to the avatars (nil) below the snap point, else the full
+    /// list within the column's limits.
+    public static let focusLaneSnapPoint: Double = 130
+    public static func focusLaneSnap(dragged: Double) -> Double? {
+        dragged < focusLaneSnapPoint ? nil : min(440, max(200, dragged))
     }
 
     /// LAB-1363: whether the terminal shows "Current ↓": scrolled up from the live bottom (libghostty has reported

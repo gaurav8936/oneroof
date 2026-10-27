@@ -152,13 +152,14 @@ extension MainWindowController {
         guard let rail = v2RailItem else { return }
         let step = win.focusStep, sessions = win.place == .sessions && v2Page == nil
         v2HidePlanOverlay(); v2HideEdgeReveal()
-        v2EdgeTracker?.isHidden = !(step == .focus && sessions)
+        // LAB-1366: a Focus lane dragged wide already shows the list: no left-edge reveal over it.
+        v2EdgeTracker?.isHidden = !(step == .focus && sessions && win.focusColumnWidth == nil)
         v2RightTracker?.isHidden = !(step == .focus && sessions)
 
         // Outside Sessions the rail stays at every step, so Needs you is always visible (audit D2).
         let showRail = step == .full || step == .wide || !sessions
         let side = sideItemRef, plan = planItemRef
-        let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth))
+        let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth, focusWide: win.focusColumnWidth))
         // At Full the inspector takes its column only while it fits; a narrower window gets the edge tab (LAB-831).
         let fits = v2PlanFits(step: step, column: Double(columnWidth))
         v2PlanFitsLast = fits
@@ -176,8 +177,9 @@ extension MainWindowController {
             rail.isCollapsed = !showRail
             side.isCollapsed = !sessions
             if sessions {
+                // LAB-1366: at Focus the lane can be dragged from the 52 pt avatars out to the full list.
                 side.minimumThickness = step == .focus ? 52 : 200
-                side.maximumThickness = step == .focus ? 52 : 440
+                side.maximumThickness = 440
             }
             plan.isCollapsed = planMode.collapsed
             if !planMode.collapsed {
@@ -232,7 +234,19 @@ extension MainWindowController {
     func v2RememberWidth(divider i: Int) {
         guard win.place == .sessions, v2Page == nil else { return }
         if i == 1 || i == 2, win.focusStep != .focus, !sideItemRef.isCollapsed { win.columnWidth = Double(sideItemRef.viewController.view.frame.width) }
+        // LAB-1366: the Focus lane snaps when the drag ends: back to the avatars, or wide enough for the full list.
+        if i == 1 || i == 2, win.focusStep == .focus, !sideItemRef.isCollapsed, NSApp.currentEvent?.type == .leftMouseUp {
+            v2SetFocusLane(V2Layout.focusLaneSnap(dragged: Double(sideItemRef.viewController.view.frame.width)))
+        }
         if i == 3, win.focusStep == .full, !planItemRef.isCollapsed, !v2PlanEdge { win.planWidth = Double(planItemRef.viewController.view.frame.width) }
+    }
+
+    /// LAB-1366: the Focus lane at this width (nil = avatars); re-applied even when the width is unchanged, so a drag
+    /// that snaps back lands exactly on the snapped width.
+    func v2SetFocusLane(_ width: Double?) {
+        win.focusColumnWidth = width
+        v2LastLayout = nil
+        v2ApplyLayout(animated: false)
     }
 
     /// The toolbar band takes the colour of the column under each part of it.
