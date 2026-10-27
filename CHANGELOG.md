@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.13 — the Focus lane, properly (27 Oct 2026)
+
+- **The Focus lane fills in as you drag it** (LAB-1382). Widening the thin avatar lane showed an empty box with one
+  avatar until you let go. Now the session list appears as soon as it is wide enough, names cut off at first and more
+  of them as it widens, and it stays where you let go. Closing the classic Files panel no longer widens the lane.
+- **Focus snaps the lane back** (LAB-1383). With the lane widened, clicking **Focus** (or ⌥⌘F, or 3 · Focus) returns
+  to the thin avatar lane; Focus always opens with the thin lane.
+- Performance check: two new place-switch scenarios (into/out of Sessions, and between the other places) for
+  LAB-1370, the place-switch hitch that is still being worked on.
+
 ## 1.9.12 — bug fixes: blank terminals, Current ↓, resume (27 Oct 2026)
 
 - **Terminals no longer come back cut off or blank** (LAB-1365). Since 1.9.10 a terminal you have not shown lately is
