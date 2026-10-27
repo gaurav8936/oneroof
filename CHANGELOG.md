@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.6 — Learn shows the deck's own card pages, a quieter session column (26 Oct 2026)
+
+- **Includes the Table view fix from 1.9.5** (1.9.5 was never published: a test string failed the release check).
+- **Learn cards are the deck's own pages** (LAB-1305). A card's Listen tab shows the card's page from the Agentic
+  Engineering deck exactly as the repo and GabbleGrid show it (its diagram, steps, sections and its own player)
+  instead of One Roof's redrawn scenes. When the page narrates, One Roof's player pauses, and the other way round;
+  while One Roof plays the card, the page follows the scene being heard. Transcript, Skill file and the side column
+  (say it in a session, pairs, posts, next on the band) stay. One Roof's own scene view remains only for a card
+  without a page.
+- **The narrow session column shows running sessions only** (LAB-1302). In Focus, exited, parked and not-started
+  sessions no longer look like running agents; they are one "+N" button that opens the session list.
+
 ## 1.9.5 — Table view on a live terminal (26 Oct 2026)
 
 - **Table view finds tables in a live terminal** (LAB-1299). 1.9.4 was checked with whole lines, but a live

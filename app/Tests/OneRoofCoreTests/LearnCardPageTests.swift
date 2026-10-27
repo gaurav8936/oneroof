@@ -51,10 +51,10 @@ final class LearnCardPageTests: XCTestCase {
     }
 
     /// The deck in the repository: every card page has its own sections menu (why the native Chapters list goes) and the
-    /// pause hook's play button. Skipped when the deck is not checked out next to this repository.
+    /// pause hook's play button. Reads the deck the build bundles (ONEROOF_AE_DECK_REPO); skipped when it is not set.
     func testEveryDeckPageHasItsOwnSectionsMenu() throws {
-        let root = NSHomeDirectory() + "/Projects/labs/labs-agentic-engineering"
-        guard let d = LearnDeck.load(deck: root) else { throw XCTSkip("deck not checked out") }
+        guard let root = ProcessInfo.processInfo.environment["ONEROOF_AE_DECK_REPO"], let d = LearnDeck.load(deck: root)
+        else { throw XCTSkip("set ONEROOF_AE_DECK_REPO to the deck checkout to run this") }
         var missing: [String] = []
         for slug in d.cards.keys.sorted() {
             guard let s = LearnCardPage.source(slug, in: d), let html = try? String(contentsOfFile: s.page, encoding: .utf8) else { missing.append(slug + " (no page)"); continue }
