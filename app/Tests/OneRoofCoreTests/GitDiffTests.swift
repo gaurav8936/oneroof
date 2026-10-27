@@ -131,5 +131,28 @@ final class GitDiffTests: XCTestCase {
 
     func testNotARepo() {
         XCTAssertNil(GitDiff.repoRoot(for: NSTemporaryDirectory()))
+        XCTAssertNil(GitDiff.repoRoot(for: NSTemporaryDirectory() + "no-such-folder-\(UUID().uuidString)"))
+    }
+
+    /// LAB-1327: repoRoot reads the file system (no git process) and must give what `git rev-parse --show-toplevel`
+    /// gives: a subfolder and a file inside, a linked worktree (.git is a file), and a path through a symlink.
+    func testRepoRootMatchesGitWithoutAProcess() throws {
+        let base = NSTemporaryDirectory() + "rr-\(UUID().uuidString)"
+        let repo = base + "/repo"
+        try FileManager.default.createDirectory(atPath: repo + "/a/b", withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        func git(_ dir: String, _ a: String...) -> String {
+            Foundations.run(GitDiff.git, ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"] + a).1.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        try "x\n".write(toFile: repo + "/a/b/f.txt", atomically: true, encoding: .utf8)
+        _ = git(repo, "init", "-q"); _ = git(repo, "add", "."); _ = git(repo, "commit", "-qm", "init")
+        let top = git(repo, "rev-parse", "--show-toplevel")
+        XCTAssertEqual(GitDiff.repoRoot(for: repo), top)
+        XCTAssertEqual(GitDiff.repoRoot(for: repo + "/a/b"), top)
+        XCTAssertEqual(GitDiff.repoRoot(for: repo + "/a/b/f.txt"), top)
+        _ = git(repo, "worktree", "add", "-q", base + "/wt")
+        XCTAssertEqual(GitDiff.repoRoot(for: base + "/wt/a/b"), git(base + "/wt", "rev-parse", "--show-toplevel"))
+        try FileManager.default.createSymbolicLink(atPath: base + "/link", withDestinationPath: repo + "/a")
+        XCTAssertEqual(GitDiff.repoRoot(for: base + "/link/b"), git(base + "/link/b", "rev-parse", "--show-toplevel"))
     }
 }

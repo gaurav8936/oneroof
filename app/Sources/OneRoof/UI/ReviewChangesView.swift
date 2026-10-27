@@ -24,7 +24,7 @@ struct ReviewChangesView: View {
     @State private var status: String?
     @State private var confirmRevert: DiffHunk?
     @State private var hoverHunk: String?
-    private let tick = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
+    private let tick = Ticks.tenSeconds   // LAB-1329: a shared clock, not one per redraw
 
     private var repo: String { win.reviewRepo ?? model.selected.map { model.workRepo($0) } ?? Workspace.projectsRoot }
     private var session: BoardItem? { model.reviewTarget(repo: repo) ?? model.selected }
