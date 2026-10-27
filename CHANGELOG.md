@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.9.4 — Table view fixes, one place to type (26 Oct 2026)
+
+- **Table view reads wide tables correctly** (LAB-1299). A box-drawing table printed right before a Markdown table
+  swallowed it: the box table's bottom frame didn't end it, so every row ended up merged into one cell and the second
+  table became a row. A bottom frame now ends a box table, and the two print as two tables.
+- **Table view cells stay on one line** (LAB-1299). Cells are drawn in the terminal's font without wrapping, so the
+  columns line up and a wide table scrolls sideways; rows no longer draw over each other, and the row stripes and
+  rules run the table's full width. Markdown column alignment (centre, right) is kept.
+- **One place to type to an agent** (LAB-1298). You type in the agent's own prompt; One Roof's composer is hidden by
+  default and opens with **Compose** in the pane header, shows by itself in the Table view (so you can keep talking
+  to the agent there), or stays on with Settings › Always show the composer under agents. Skill and file pickers,
+  run as shell and interrupt are all still in it. Its Raw stream chip is gone (Raw is in the session tabs and ⌘R).
+- The Focus reminder ("Focus · ⌥⌘F leaves …") shows for a few seconds when Focus starts, then fades.
+
 ## 1.9.3 — Table view, remembered windows, fresh Linear projects (26 Oct 2026)
 
 - **Table view replaces Wrap** (LAB-1286, LAB-1271). A pane's **Table** button (also View › Table View) shows the

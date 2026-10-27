@@ -54,6 +54,9 @@ struct SettingsView: View {
                 Toggle("Step review: Claude reads each finished step", isOn: $model.settings.stepReview)
                 Text("Shown in the Plan panel (also switched there). Each step it reviews is one Claude (\(StepExplainer.model)) call on your Claude account, so it is off by default.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Always show the composer under agents", isOn: $model.settings.alwaysShowComposer)
+                Text("Off: you type into the agent's own prompt in the terminal; Compose in the pane header opens the composer (/ skill, @ file, ⌃↩ run as shell, ⌘. interrupt) when you want it, and it shows by itself in the Table view.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("In the background") {
                 Toggle("Allow scheduled runs (Tonight, Nightly)", isOn: $model.settings.scheduledRuns)
