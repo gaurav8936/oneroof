@@ -79,7 +79,7 @@ struct LearnPostReader: View {
     }
 
     private func article(_ p: LearnPost, _ i: Int?, _ of: Int, _ bands: [DeckBand]) -> some View {
-        let blocks = MarkdownDoc.parse((try? String(contentsOfFile: p.file, encoding: .utf8)) ?? "").filter {
+        let blocks = FileParseCache.value(p.file, kind: "markdown", parse: MarkdownDoc.parse).filter {   // LAB-1332
             if case .code(let lang, _) = $0, lang.hasPrefix("gg-") { return false }      // site-only diagram and chart blocks
             if case .heading(_, let text, _) = $0, text == "Links" { return false }
             return true

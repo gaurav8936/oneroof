@@ -25,6 +25,8 @@ final class EngineHub {
         var added: Int?
         var removed: Int?
         var plan: CaptionPlan?
+        /// In a pane or selected in a window (LAB-1330: the on-device model is asked for visible sessions only).
+        var visible = false
     }
 
     private let q = DispatchQueue(label: "oneroof.engines", qos: .utility)
@@ -41,9 +43,15 @@ final class EngineHub {
     private var decisions: [Decision] = []
     private var chapters: [String: [Chapter]] = [:]
     private var lastSubagentScan: [String: Date] = [:]
+    private var scannedStatus: [String: SessionStatus] = [:]
     private var subagents: [String: [Subagent]] = [:]
     private var lastCaption: [String: Caption] = [:]
     private let modelClient = CaptionModelClient()
+    /// LAB-1330: model calls run here, one at a time, never on `q`.
+    private let modelQ = DispatchQueue(label: "oneroof.engines.model", qos: .utility)
+    private var modelBusy = Set<String>()
+    private var lastModelAsk: [String: Date] = [:]
+    private var modelStatus: [String: SessionStatus] = [:]
     private var modelUp = false
     private var lastModelCheck = Date.distantPast
     /// Tests and self-tests can feed text instead of reading the runtime.
@@ -121,8 +129,11 @@ final class EngineHub {
             caption(s, now: now)
             changed = true
         }
-        // Claude subagents: scan the transcript every 5 s while the session is live.
-        for s in live where s.agent == .claude && s.status.isLive && now.timeIntervalSince(lastSubagentScan[s.id] ?? .distantPast) > 5 {
+        // Claude subagents: scan the transcript every 5 s while the session is live and on screen, every 20 s out of
+        // sight (LAB-1331), and at once when its status changes.
+        for s in live where s.agent == .claude && s.status.isLive
+            && now.timeIntervalSince(lastSubagentScan[s.id] ?? .distantPast) > (s.visible || statuses[s.id] != scannedStatus[s.id] ? 5 : 20) {
+            scannedStatus[s.id] = statuses[s.id]
             lastSubagentScan[s.id] = now
             if scanSubagents(s, now: now) { changed = true }
         }
@@ -142,14 +153,35 @@ final class EngineHub {
         let input = CaptionInput(text: t, agent: s.agent, status: s.status, objective: s.objective, plan: s.plan,
                                  lastActivity: s.lastActive ?? s.launchedAt, now: now)
         let heur = CaptionEngine.heuristic(input)
-        var reply: String?
-        if checkModel(now) { reply = modelClient.reply(for: input, timeout: 6) }
-        let (cap, events) = CaptionEngine.resolve(heuristic: heur, modelReply: reply, input: input, sessionId: s.id)
-        if let cap {
+        // LAB-1330: the on-device model is asked at most every 30 s per session, only for a session on screen or one
+        // whose status changed, off the engine queue (a call blocked it up to 6 s), one call at a time; a tick that
+        // finds a call running skips it. Between calls a model caption stays up to 90 s while the status holds;
+        // the heuristic caption shows meanwhile otherwise, as before.
+        let statusChanged = modelStatus[s.id] != s.status
+        if checkModel(now), s.visible || statusChanged, !modelBusy.contains(s.id),
+           now.timeIntervalSince(lastModelAsk[s.id] ?? .distantPast) >= 30 || statusChanged {
+            lastModelAsk[s.id] = now; modelStatus[s.id] = s.status; modelBusy.insert(s.id)
+            let client = modelClient, id = s.id
+            modelQ.async { [weak self] in
+                let reply = client.reply(for: input, timeout: 6)
+                self?.q.async {
+                    guard let self else { return }
+                    self.modelBusy.remove(id)
+                    let (cap, events) = CaptionEngine.resolve(heuristic: nil, modelReply: reply, input: input, sessionId: id)
+                    guard let cap else { return }
+                    self.lastCaption[id] = cap
+                    self.store?.saveCaption(cap, session: id)
+                    for e in events { _ = self.add(e) }
+                    self.publishAll()
+                }
+            }
+        }
+        let held = lastCaption[s.id].map { $0.source == .model && now.timeIntervalSince($0.updatedAt) < 90 && !statusChanged } ?? false
+        let cap = held ? lastCaption[s.id] : heur
+        if !held, let cap {
             lastCaption[s.id] = cap
             store?.saveCaption(cap, session: s.id)
         }
-        for e in events { _ = add(e) }
         // File claims from the tool calls in view (S07 claim banner).
         _ = claims.observe(text: t, sessionId: s.id, repo: s.repoPath, step: cap?.step, at: now)
         // Chapters: steps in the terminal, never a copy of the output.
@@ -326,7 +358,7 @@ final class EngineHub {
         // Nothing changed on disk and the time-based done rules were checked within the minute: nothing to redo.
         if let last = scanSig[s.id], last.sig == sigs, now.timeIntervalSince(last.at) < 60 { return false }
         scanSig[s.id] = (sigs, now)
-        let jsonl = Self.tail(main, bytes: 3 << 20).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        let jsonl = TailReader.shared.tail(main, bytes: 3 << 20).map { String(decoding: $0, as: UTF8.self) } ?? ""   // LAB-1331
         let list = ClaudeTranscript.subagents(main: jsonl, files: files, sessionId: s.id, now: now)
         let before = Set((subagents[s.id] ?? []).map(\.id))
         let started = list.filter { !before.contains($0.id) && $0.ended == nil }.map(\.name)

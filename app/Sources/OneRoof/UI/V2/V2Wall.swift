@@ -17,6 +17,7 @@ import OneRoofCore
         refresh(model)
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in Task { @MainActor in self?.refresh(model) } }
+        timer?.tolerance = 3 * 0.1   // LAB-1323: let the system batch wake-ups
     }
     func stop() { timer?.invalidate(); timer = nil }
 
