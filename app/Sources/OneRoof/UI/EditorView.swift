@@ -175,7 +175,7 @@ private struct EditorBody: View {
             toggleSplit()
         }
         .onChange(of: path) { _, p in if state.split == p { state.split = nil } }
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in flushQueuedSave() }
+        .onReceive(Ticks.twoSeconds) { _ in flushQueuedSave() }   // LAB-1329: fires even while the model churns
         .sheet(item: $state.askFor) { req in AskAgentSheet(model: model, request: req) { state.askFor = nil }.themed(t.name) }
         .onAppear(perform: loadProblems)
     }

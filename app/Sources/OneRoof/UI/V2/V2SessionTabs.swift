@@ -28,10 +28,15 @@ struct V2SessionTabs: View {
         }
     }
 
+    /// Shown wherever the centre is one of the session's views (an Editor or Review reached from another place too);
+    /// Find in Workspace is its own page. The centre sizes the strip from this (LAB-1317), so keep the two in step.
+    static func shows(centre: CentreView, viewerPath: String?) -> Bool {
+        [.workspace, .editor, .review, .subagents].contains(centre) && !(centre == .editor && viewerPath == FileKind.searchPath)
+    }
+    static let height: CGFloat = 34
+
     var body: some View {
-        // Shown wherever the centre is one of the session's views (an Editor or Review reached from another place too).
-        if [.workspace, .editor, .review, .subagents].contains(win.centre),
-           !(win.centre == .editor && win.viewerPath == FileKind.searchPath) {   // Find in Workspace is its own page
+        if Self.shows(centre: win.centre, viewerPath: win.viewerPath) {
             let item = win.selectedId.flatMap { model.item($0) }
             let changes = item.flatMap { model.repoStats[model.workRepo($0)]?.files } ?? 0
             let subs = item.map { model.subagentCount($0) } ?? 0
@@ -40,7 +45,7 @@ struct V2SessionTabs: View {
             ViewThatFits(in: .horizontal) {
                 ForEach(0..<5) { level in strip(item: item, changes: changes, subs: subs, level: level) }
             }
-            .padding(.horizontal, 10).frame(height: 34)
+            .padding(.horizontal, 10).frame(height: Self.height)
             .background(model.themes.centre.tokens.window.color)
             .onReceive(NotificationCenter.default.publisher(for: .tableViewChanged)) { n in
                 if n.object as? String == win.id { tableOn = n.userInfo?["on"] as? Bool ?? false }
