@@ -110,6 +110,7 @@ All of these are in the menu bar too. Settings › Shortcuts lets you change any
 | (none) | View › Even Out Panes | Every split back to half and half |
 | ⌥⌘← ⌥⌘→ ⌥⌘↑ ⌥⌘↓ | View › Focus Pane Left / Right / Up / Down | Move focus to the next pane |
 | ⌥⌘F | View › Focus: Terminal Only | Hide both side panels; again to bring them back |
+| ⌘↓ ⌘↑ | (in a terminal) | Jump to the live bottom / the top of the scrollback; **Current ↓** at the bottom right does the same |
 | ⌘L | View › Focus Terminal | Leave the Overview, Board, Work, Learn or an objective and type in the terminal |
 | ⌘R / ⇧⌘R | View › Raw Stream / Run, Debug | In a session: its raw output; in the editor: run or debug the file |
 | ⌘. | Session › Interrupt | Interrupt the selected agent |
