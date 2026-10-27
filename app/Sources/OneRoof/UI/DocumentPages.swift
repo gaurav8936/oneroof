@@ -16,6 +16,13 @@ struct WebPage: NSViewRepresentable {
     /// Local pages this view must not open (Learn, LAB-713), and a script run at the end of each page.
     var blocked: (@Sendable (String) -> Bool)? = nil
     var pageScript: String? = nil
+    /// LAB-1305 · a script run before the page's own (Learn's media bridge), the messages it posts to
+    /// `LearnCardPage.handler`, a clicked local page the caller opens itself (true = handled, the view stays put),
+    /// and a handle the caller runs scripts through.
+    var startScript: String? = nil
+    var onMessage: ((String) -> Void)? = nil
+    var onLocalLink: ((String) -> Bool)? = nil
+    var bridge: WebPageBridge? = nil
 
     func makeCoordinator() -> Coordinator { let c = Coordinator(); c.blocked = blocked; return c }
 
@@ -23,19 +30,40 @@ struct WebPage: NSViewRepresentable {
         let cfg = WKWebViewConfiguration()
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.defaultWebpagePreferences.allowsContentJavaScript = true
+        if SelfTest.isActive { cfg.websiteDataStore = .nonPersistent() }   // tests never read or write the owner's page storage
         if let js = pageScript {
             cfg.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
+        if let js = startScript {
+            cfg.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        if onMessage != nil {
+            cfg.userContentController.add(WebPageMessages(context.coordinator), name: LearnCardPage.handler)
+        }
+        context.coordinator.onMessage = onMessage
+        context.coordinator.onLocalLink = onLocalLink
         let w = WKWebView(frame: .zero, configuration: cfg)
         w.navigationDelegate = context.coordinator
         w.uiDelegate = context.coordinator
         w.allowsBackForwardNavigationGestures = true
         w.setAccessibilityLabel((path as NSString).lastPathComponent)
+        bridge?.web = w
         load(w, context)
         return w
     }
 
+    static func dismantleNSView(_ w: WKWebView, coordinator: Coordinator) {
+        if coordinator.onMessage != nil {
+            w.evaluateJavaScript(LearnCardPage.pauseScript, completionHandler: nil)    // never leave a page talking
+            w.configuration.userContentController.removeScriptMessageHandler(forName: LearnCardPage.handler)
+        }
+        w.stopLoading()
+    }
+
     func updateNSView(_ w: WKWebView, context: Context) {
+        context.coordinator.onMessage = onMessage
+        context.coordinator.onLocalLink = onLocalLink
+        bridge?.web = w
         if context.coordinator.loadedPath != path || context.coordinator.reload != reload { load(w, context) }
     }
 
@@ -49,12 +77,16 @@ struct WebPage: NSViewRepresentable {
         var loadedPath = ""
         var reload = 0
         var blocked: (@Sendable (String) -> Bool)?
+        var onMessage: ((String) -> Void)?
+        var onLocalLink: ((String) -> Bool)?
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url else { decisionHandler(.cancel); return }
             if url.isFileURL, blocked?(url.path) == true { decisionHandler(.cancel); return }
             let clicked = action.navigationType == .linkActivated || action.navigationType == .formSubmitted
+            if clicked, url.isFileURL, action.targetFrame?.isMainFrame != false,
+               let cur = webView.url, cur.path != url.path, onLocalLink?(url.path) == true { decisionHandler(.cancel); return }
             switch WebLinkPolicy.decide(url.absoluteString, clicked: clicked) {
             case .allow: decisionHandler(.allow)
             case .openExternally: NSWorkspace.shared.open(url); decisionHandler(.cancel)
@@ -72,6 +104,21 @@ struct WebPage: NSViewRepresentable {
             }
             return nil
         }
+    }
+}
+
+/// LAB-1305 · lets a view run scripts in the page its WebPage shows (Learn pauses the page's narration).
+final class WebPageBridge {
+    weak var web: WKWebView?
+    func run(_ js: String) { web?.evaluateJavaScript(js, completionHandler: nil) }
+}
+
+/// The page's script messages, held weakly so the content controller does not keep the coordinator alive.
+private final class WebPageMessages: NSObject, WKScriptMessageHandler {
+    weak var owner: WebPage.Coordinator?
+    init(_ owner: WebPage.Coordinator) { self.owner = owner }
+    func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+        if let s = message.body as? String { owner?.onMessage?(s) }
     }
 }
 
