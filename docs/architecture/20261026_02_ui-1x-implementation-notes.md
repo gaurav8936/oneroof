@@ -565,3 +565,32 @@ owner's LAB-1265 screenshots show exactly this). Output a program wrapped itself
 the table at the old width) is not reflowed; the program would have to redraw it. One more finding from roofd's
 headless screen (`roofd read`): its text comes back as physical 120-column rows with trailing spaces trimmed, so it is
 not a reliable logical-line source; the Table view reads the libghostty surface only.
+
+## 1.9.4 – 1.9.7 (26 Oct 2026, evening)
+
+**Table view on real terminal text (LAB-1299).** `TerminalFormat.boxTable` ends a box-drawing table at its bottom frame
+(└┴┘ and heavy/double/rounded forms) and never lets ASCII `|` rows continue one; an ASCII grid ends where a Markdown table
+starts. Before that, a Markdown table printed after a box table was swallowed and the bottom rule counted as an interior
+separator, merging every group of rows into one row. Correction to the 1.9.3 note above: the libghostty surface does
+**not** always give logical lines. After the app reattaches to roofd, replayed output arrives as hard rows, and rows wider
+than the pane come back cut. So `TerminalFormat.items` first runs `rejoinTableRows` (a box row is whole once it is as wide
+as its top frame; a Markdown row once it ends with `|` and the next piece has no bar at its start), then
+`rejoin(columns:skipTableRows:)` with the surface's width (`TerminalSurfaceView.columns()`, libghostty
+`ghostty_surface_size`) for prose. Tables render in `FormattedTableView`: one-line monospace cells filling their column,
+sideways scroll, Markdown alignments kept (the document table wrapped cells at 380 pt and its rows overlapped inside the lazy
+stack). Self-test: `ONEROOF_SELFTEST_TERMCOLS=<n>` gives the fixture's row width.
+
+**One place to type (LAB-1298).** For agents, `V2Composer` shows only with Settings › `alwaysShowComposer`, after **Compose**
+in the pane header (`TerminalAreaController.composerOpen`), or while the pane's Table view is on. The Raw chip left the
+composer (Raw stays in the session tabs and ⌘R). `V2FocusHintSlot` shows the Focus hint for 4 s, then fades.
+
+**Learn cards are the deck's pages (LAB-1305).** The Listen tab is `LearnCardWeb`: the card's packaged HTML in a WKWebView
+with read access to the deck root. `LearnCardPage.bridgeScript` hooks media play and `speechSynthesis.speak` so One Roof's
+player pauses when the page narrates; One Roof's player pauses the page and, while it plays the card, clicks the page's own
+scene dots. The native scene view is only the fallback for a card without a page.
+
+**Focus avatar column (LAB-1302).** `V2AvatarColumn` lists live sessions (`SessionStatus.isLive`) plus the selection; the rest
+is one "+N" button to the session list.
+
+**Classic Files panel (LAB-1306).** The v2 window keeps the classic `filesItem` collapsed (`syncPanels`, the v2 layout pass);
+`toggleFiles` closes it first if it is showing, because its × sends the same action, which in v2 opens the Files tab.
