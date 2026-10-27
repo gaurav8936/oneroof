@@ -233,6 +233,9 @@ private struct V2SessionList: View {
 
 /// Step 3 (A1.4): 52 pt of avatars; the waiting one carries the Needs you badge; the selected one a blue ring, the
 /// session that claimed the open file an outer ring in its colour (today's narrow rail).
+/// LAB-1302: only sessions that are running show here (exited, parked and not-yet-started ones looked exactly like
+/// running agents, so 22 avatars stood for 7 live sessions); the selected one stays, dimmed if it has ended. The rest
+/// are one "+N" button at the foot that opens the full list.
 struct V2AvatarColumn: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -241,9 +244,12 @@ struct V2AvatarColumn: View {
 
     var body: some View {
         let claimer = win.viewerPath.flatMap { model.fileClaims.claim(for: $0)?.sessionId }
+        let all = model.items(in: win)
+        let shown = all.filter { $0.status.isLive || $0.id == win.selectedId }
+        let rest = all.count - shown.count
         ScrollView {
             VStack(spacing: 8) {
-                ForEach(model.items(in: win)) { i in
+                ForEach(shown) { i in
                     let mark = AgentMark(agent: i.session.agent, account: i.account)
                     Button { win.selectedId = i.id; controller.v2Open(.sessions) } label: {
                         AgentBadge(mark, size: 30, status: i.status, ring: t.sidebar)
@@ -258,6 +264,17 @@ struct V2AvatarColumn: View {
                     .help(i.session.name + " · " + model.caption(for: i).text)
                     .accessibilityLabel(i.session.name + (i.status == .needsYou ? ", needs you" : ""))
                     .contextMenu { SessionContextMenu(model: model, item: i, win: win, editStickers: nil) }
+                    .opacity(i.status.isLive ? 1 : 0.45)
+                }
+                if rest > 0 {
+                    Button { controller.v2Open(.sessions) } label: {
+                        Text("+\(rest)").ui(11, .semibold).foregroundStyle(t.text2.color)
+                            .frame(width: 36, height: 24)
+                            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.surface.color))
+                    }
+                    .buttonStyle(.plain)
+                    .help("\(rest) more not running (exited, parked or not started): open the session list")
+                    .accessibilityLabel("\(rest) more sessions not running, open the session list")
                 }
             }
             .padding(.vertical, 10)
@@ -265,4 +282,5 @@ struct V2AvatarColumn: View {
         }
         .background(t.sidebar.color)
     }
+
 }
