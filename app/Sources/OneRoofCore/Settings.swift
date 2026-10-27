@@ -62,6 +62,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Step review (LAB-260): Claude reads each finished step of the session on screen. Off by default: every step it
     /// reviews is one more model call on the owner's Claude account.
     public var stepReview: Bool
+    /// LAB-1298: keep One Roof's composer under every agent pane. Off (default): an agent with its own prompt (Claude's
+    /// ❯ line) is typed into in the terminal, and the composer shows only on demand (Compose in the pane header) or while
+    /// the pane shows its Table view.
+    public var alwaysShowComposer: Bool
     /// One Roof 1.x v2 window (LAB-ONEROOF-UI-REDESIGN). Off: the classic 0.5 layout. On by default from 1.6.0.
     public var ui2: Bool
     /// True once the owner picked a window (Classic layout / Use the new window). Until then 1.6.0 moves them to v2.
@@ -88,6 +92,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         handOffAt = 0
         reviewOtherFamily = true
         stepReview = false
+        alwaysShowComposer = false
         captionsModel = true
         scheduledRuns = false
         tintRows = true
@@ -136,6 +141,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         captionsModel = try c.decodeIfPresent(Bool.self, forKey: .captionsModel) ?? fresh.captionsModel
         scheduledRuns = try c.decodeIfPresent(Bool.self, forKey: .scheduledRuns) ?? fresh.scheduledRuns
         stepReview = try c.decodeIfPresent(Bool.self, forKey: .stepReview) ?? fresh.stepReview
+        alwaysShowComposer = try c.decodeIfPresent(Bool.self, forKey: .alwaysShowComposer) ?? fresh.alwaysShowComposer
         ui2 = try c.decodeIfPresent(Bool.self, forKey: .ui2) ?? fresh.ui2
         ui2Chosen = try c.decodeIfPresent(Bool.self, forKey: .ui2Chosen) ?? false
         if !ui2Chosen { ui2 = true }   // 1.6.0: the new window by default, unless the owner chose the classic one

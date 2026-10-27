@@ -56,9 +56,19 @@ A terminal draws a table at the width it had when it printed it, and wraps long 
 
 - **Claude sessions** show their conversation from the session's transcript: your prompts, each reply as it was written (before the terminal wrapped it) and one short line per tool call ("Ran: swift test").
 - **Other agents and plain terminals** show the terminal's text, scrollback included. Markdown tables (`| a | b |` with a `|---|` line) and box-drawing tables (`┌─┬─┐ │ ├─┼─┤`) become real tables; everything else is text.
-- Prose wraps at word boundaries to the pane's width. Every table keeps its columns lined up and scrolls sideways when it is wider than the pane; code blocks scroll sideways too.
+- Prose wraps at word boundaries to the pane's width. Every table keeps each cell on one line, in the terminal's font, with its columns lined up, and scrolls sideways when it is wider than the pane; code blocks scroll sideways too. Two tables printed one after the other stay two tables.
 - It is read-only (select and copy work), newest at the bottom, and follows the session every 2 seconds (it stays where you are if you scroll up).
 - **Back to live** in the bar at the top, **Table** again, or **Esc** while the view has the keyboard brings back the live terminal. Esc in the terminal itself always goes to the agent.
+- In an agent's pane the composer shows under the Table view, so you can keep talking to the agent without going back to live.
+
+## One place to type to an agent
+
+You type to an agent in its own prompt, in the terminal (Claude's `❯` line). One Roof's composer, a message box under the terminal, is there when you want it:
+
+- **Compose** at the top right of the pane opens it, and Compose again closes it. It brings `/` to pick a skill, `@` to pick a file, ⌃↩ to run the text as a shell command and ⌘. to interrupt the agent; ↑ recalls your last message and ⇧↩ adds a line.
+- It also shows by itself while the pane is in its Table view.
+- To keep it under every agent, turn on Settings › New sessions › **Always show the composer under agents**.
+- Raw output is the **Raw** button in the session tabs, or View › Raw Stream (⌘R).
 
 ## Select, copy and paste in a terminal
 

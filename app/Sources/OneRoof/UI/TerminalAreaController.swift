@@ -248,6 +248,9 @@ final class TerminalAreaController: NSViewController {
                                       onClose: { [weak self] in self?.closePane(leafId) },
                                       table: formatted[leafId] != nil,
                                       onTable: liveSurface ? { [weak self] in self?.toggleTable(leafId) } : nil,
+                                      composer: composerOpen.contains(leafId),
+                                      onCompose: liveSurface && model.settings.ui2 && !model.settings.alwaysShowComposer
+                                          && item?.session.agent.isAgent == true ? { [weak self] in self?.toggleComposer(leafId) } : nil,
                                       onNewTerminal: { [weak self] in self?.newTerminal(in: item?.session.repoPath) },
                                       running: runningCmd,
                                       onStop: runningCmd == nil ? nil : { [weak self] in if let item { self?.stopForeground(item) } })))
@@ -276,8 +279,14 @@ final class TerminalAreaController: NSViewController {
                         NotificationCenter.default.post(name: .rawStream, object: self.win.id)
                     }
                     // v2 (NEW-1): a real composer under the terminal; the classic window keeps the hint strip.
-                    pv.setBottom(model.settings.ui2 ? AnyView(V2Composer(model: model, item: item, raw: raw, onRaw: onRaw).themed(theme))
-                                                    : AnyView(HintStrip(item: item, raw: raw, onRaw: onRaw).themed(theme)))
+                    // LAB-1298: one place to type. The agent's own prompt is it, unless Settings keeps the composer on,
+                    // Compose opened it, or the Table view covers the terminal (then the composer is the way to type).
+                    if model.settings.ui2 {
+                        let showComposer = model.settings.alwaysShowComposer || composerOpen.contains(leafId) || formatted[leafId] != nil
+                        pv.setBottom(showComposer ? AnyView(V2Composer(model: model, item: item).themed(theme)) : nil)
+                    } else {
+                        pv.setBottom(AnyView(HintStrip(item: item, raw: raw, onRaw: onRaw).themed(theme)))
+                    }
                 } else {
                     pv.setBottom(nil)
                 }
@@ -583,6 +592,15 @@ final class TerminalAreaController: NSViewController {
     private var tableTimer: Timer?
     private var tableEscMonitor: Any?
     private var postedTable = false
+
+    /// LAB-1298: panes whose composer was opened with Compose (the agent's own prompt is the default place to type).
+    private var composerOpen: Set<String> = []
+
+    func toggleComposer(_ pane: String) {
+        if composerOpen.remove(pane) == nil { composerOpen.insert(pane) }
+        update()
+        if !composerOpen.contains(pane) { focusTerminal() }
+    }
 
     /// Whether the pane shows its Table view (self-test, menus).
     func showsTable(_ pane: String) -> Bool { formatted[pane] != nil }

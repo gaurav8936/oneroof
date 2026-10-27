@@ -18,6 +18,8 @@ struct PaneTop: View {
     var onClose: () -> Void
     var table = false
     var onTable: (() -> Void)? = nil
+    var composer = false
+    var onCompose: (() -> Void)? = nil
     var onNewTerminal: (() -> Void)? = nil
     /// LAB-861: the program the pane's keys go to when it is not the shell or the session's agent, and its Stop.
     var running: String? = nil
@@ -27,7 +29,8 @@ struct PaneTop: View {
         let term = model.themes.terminal.tokens
         VStack(spacing: 0) {
             PaneHeader(model: model, item: item, focused: focused, split: split, onZoom: onZoom, onClose: onClose,
-                       table: table, onTable: onTable, onNewTerminal: onNewTerminal, running: running, onStop: onStop)
+                       table: table, onTable: onTable, composer: composer, onCompose: onCompose, onNewTerminal: onNewTerminal,
+                       running: running, onStop: onStop)
             if let item, item.session.agent.isAgent, item.liveAgent != nil {
                 if expanded {
                     SummaryCard(model: model, item: item, openChapter: openChapter, onChapter: onChapter, onCollapse: onToggleSummary)
@@ -62,6 +65,10 @@ struct PaneHeader: View {
     /// Table view (LAB-1286, replaced Wrap): nil hides the toggle (no live terminal in the pane).
     var table = false
     var onTable: (() -> Void)? = nil
+    /// LAB-1298: the composer under an agent's terminal, on demand (nil hides the toggle: not an agent, or Settings
+    /// keeps the composer on).
+    var composer = false
+    var onCompose: (() -> Void)? = nil
     /// LAB-745: a new plain terminal in this pane's folder.
     var onNewTerminal: (() -> Void)? = nil
     /// LAB-861: "running: <command>" with Stop (Ctrl-C) while the pane's foreground program is not its shell.
@@ -98,6 +105,24 @@ struct PaneHeader: View {
                 .buttonStyle(.plain)
                 .help("New terminal: a plain shell in this session's folder, shown here (⌘T opens one in your projects folder; right-click the terminal for more). Split this pane: ⌘D right, ⇧⌘D down")
                 .accessibilityLabel("New terminal in this folder")
+            }
+            if let onCompose {
+                Button(action: onCompose) {
+                    HStack(spacing: 4) {
+                        Image(systemName: composer ? "checkmark" : "square.and.pencil").font(.system(size: 9.5, weight: .bold))
+                        Text("Compose").ui(11.5, .medium)
+                    }
+                    .foregroundStyle(composer ? t.text.color : t.text2.color)
+                    .padding(.vertical, 2).padding(.horizontal, 7)
+                    .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(composer ? t.surface.color : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color))
+                    .contentShape(Rectangle())
+                    .fixedSize()
+                }
+                .buttonStyle(.plain)
+                .help(composer ? "Hide the composer; type in the agent's own prompt in the terminal"
+                               : "Compose: a message box under the terminal with / skill, @ file, ⌃↩ run as shell and ⌘. interrupt (Settings can keep it on)")
+                .accessibilityLabel(composer ? "Hide the composer" : "Show the composer")
             }
             if let onTable {
                 Button(action: onTable) {
