@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import WebKit
 import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
@@ -39,6 +40,8 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_HOWDOI=<question>         ask Learn "how do I…" (v2: the best card's station; classic: the best page)
 ///   ONEROOF_SELFTEST_CLICK=x,y                  click the main window at that point (from its top-left)
 ///   ONEROOF_SELFTEST_PLAYCARD=<slug>[@muted]   play that deck card (v2 Learn); @muted plays it silently
+///   ONEROOF_SELFTEST_PAGECLICK=<id>[@<s>]      Learn card page: click that element once loaded (LAB-1305, e.g. playAll;
+///                                               with PLAYCARD=…@muted the page's clips play muted too)
 ///   ONEROOF_SELFTEST_PLAY=<page title>[@terminals]  play that Learn page's narration (then show the terminals)
 ///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
 ///   ONEROOF_SELFTEST_KIND=session|ticket|defect|workstream   ONEROOF_SELFTEST_TEAM=<key>   ONEROOF_SELFTEST_PROJECT=<code>   New session sheet starting state
@@ -485,6 +488,7 @@ enum SelfTest {
     static func snapshot(app: AppDelegate, to out: String) {
         if let view = app.main.window?.contentView?.superview ?? app.main.window?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
             view.cacheDisplay(in: view.bounds, to: rep)
+            drawWebViews(in: view, onto: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out + ".png"))
         }
         for (i, w) in NSApp.windows.enumerated() where w !== app.main.window && w.isVisible {
@@ -517,6 +521,33 @@ enum SelfTest {
                                    "windows": NSApp.windows.map { "\($0.className) visible=\($0.isVisible) sheet=\($0.isSheet) \(Int($0.frame.width))x\(Int($0.frame.height))" }]
         if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: URL(fileURLWithPath: out + ".json"))
+        }
+    }
+
+    /// LAB-1305 · WebKit draws out of process, so cacheDisplay leaves a web view blank: take each visible web view's own
+    /// snapshot (WKWebView.takeSnapshot) and draw it into the capture at its place.
+    static func drawWebViews(in root: NSView, onto rep: NSBitmapImageRep) {
+        func webs(_ v: NSView) -> [WKWebView] { (v as? WKWebView).map { [$0] } ?? v.subviews.flatMap(webs) }
+        let list = webs(root).filter { !$0.isHiddenOrHasHiddenAncestor && $0.window != nil && $0.visibleRect.width > 1 }
+        guard !list.isEmpty, let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return }
+        let scale = CGFloat(rep.pixelsWide) / max(1, root.bounds.width)
+        for w in list {
+            var image: NSImage?
+            var done = false
+            w.takeSnapshot(with: nil) { img, _ in image = img; done = true }
+            let until = Date().addingTimeInterval(3)
+            while !done, Date() < until { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+            guard let image else { continue }
+            let r = w.convert(w.bounds, to: root)
+            let flipped = root.isFlipped ? NSRect(x: r.minX, y: root.bounds.height - r.maxY, width: r.width, height: r.height) : r
+            let visible = w.convert(w.visibleRect, to: root)
+            let clip = root.isFlipped ? NSRect(x: visible.minX, y: root.bounds.height - visible.maxY, width: visible.width, height: visible.height) : visible
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = ctx
+            ctx.cgContext.scaleBy(x: scale, y: scale)
+            NSBezierPath(rect: clip).addClip()
+            image.draw(in: flipped)
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 
