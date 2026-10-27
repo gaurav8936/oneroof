@@ -110,6 +110,7 @@ The top of a running agent's pane lists its **steps**: each prompt you gave it (
 
 - **Capped:** the list shows six steps; more scroll inside it, and it keeps the current step in view.
 - **Rewind:** click a step to scroll the terminal back to where it started, then scroll on from there. The pane shows **Viewing step n**; **Back to current** (or the **Current** button above the steps, or clicking the same step again) returns to the live bottom.
+- **Current ↓:** scrolled up in a terminal (for any reason), a **Current** button floats at the bottom right; click it, or press **⌘↓**, to jump to the live bottom (**⌘↑** jumps to the top).
 - **Step review (right panel, off until you switch it on):** each step it reviews is one more Claude call, so the box has its own switch (also in Settings › Captions). On, the Plan tab shows a **Step review** of the latest finished step, without a click: Claude (Haiku, run with no tools and nothing saved, on the session's Claude account) reads that step and says **what was asked**, **what happened**, the **decisions** and the **risks**, in a small scrolling box. Click a step above the terminal and the review follows it (marked *selected*; **Latest** goes back). ↻ reads it again. It reads only the terminal text, so check anything that matters.
 
 The steps cover the session's last 5,000 lines; an older step can no longer be rewound to or explained.
