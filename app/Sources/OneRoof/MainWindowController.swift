@@ -305,6 +305,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     @Published var panels = PanelState()
 
     func syncPanels() {
+        // LAB-1306: the v2 window never shows the classic Files side panel; whatever opened it, it closes again here.
+        if isV2, !filesItem.isCollapsed { filesItem.isCollapsed = true }
         panels = PanelState(sidebar: !sideItem.isCollapsed, files: !filesItem.isCollapsed,
                             centre: !centreItem.isCollapsed, plan: !planItem.isCollapsed)
         // v2: the 28 pt edge tab is not an open Plan (audit D3). The v2 window shows no Subagents column (LAB-1240).
@@ -330,6 +332,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     }
     func toggleFiles() {
         // v2: the file tree lives in the Files tab (A2.1): ⌥⌘B opens it, or goes back to the terminal from it.
+        // LAB-1306: the classic Files side panel can still come back in the v2 window (a restored split layout); its ×
+        // sends this same action, which opened the Files tab (a second tree) instead of closing it. Close it first.
+        if isV2, !filesItem.isCollapsed { filesItem.isCollapsed = true; syncLater(); return }
         if isV2 {
             if win.centre == .editor { model.show(.workspace, in: win) }
             else if let p = win.viewerPath, EditorState.of(win.id).tabs.contains(p) { win.show(path: p) }
