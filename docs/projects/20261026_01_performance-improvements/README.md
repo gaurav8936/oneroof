@@ -2,13 +2,15 @@
 
 **Status:** PROPOSED · **Date:** 2026-10-26 · **Project:** LAB-ONEROOF-PERFORMANCE-IMPROVEMENTS · **Linear:** LAB-1287 (study), LAB-1314 to LAB-1338 · **Study:** [../../reports/20261026_01_performance-study.md](../../reports/20261026_01_performance-study.md)
 
-> **One line:** fix the measured causes in four releases (1.10.0 to 1.13.0), cheapest and most noticeable first, with a perf check in the repo that proves every change against the 1.9.3 baseline before it ships.
+> **Release numbering (owner, 2026-10-26):** 1.9.6 is the stable release and development stops after it; 1.9.7 is the Files-panel fix; performance work ships as 1.9.8 onwards, nothing else unless a critical item needs fixing.
+
+> **One line:** fix the measured causes in four releases (1.9.8 to 1.9.11), cheapest and most noticeable first, with a perf check in the repo that proves every change against the 1.9.3 baseline before it ships.
 
 ## What "a difference" means
 
 The study measured the feeling. These are the targets the plan is judged by, measured with the perf harness on the same Mac:
 
-| Measure | 1.9.3 today | Target after 1.10.0 | Target after 1.12.0 |
+| Measure | 1.9.3 today | Target after 1.9.8 | Target after 1.9.10 |
 |---|---|---|---|
 | Idle CPU, no live sessions | 9.5 % | ≤ 2 % | ≤ 1 % |
 | Installed, one agent working, nothing else changing | 40 % | ≤ 8 % | ≤ 5 % |
@@ -24,7 +26,7 @@ Stalls are the number to watch: they are what you see as jerkiness. CPU is what 
 
 1. **Measure first, then change.** Every issue names its measured cost and a "done when" number. Nothing is merged on the strength of reasoning alone.
 2. **Remove work; don't optimise it.** The study's biggest costs are work that shouldn't happen at all: re-rendering when nothing changed, lookups recomputed inside views, processes started for repos nobody is looking at, terminals drawn that nobody can see.
-3. **Small, independent changes in the first release.** 1.10.0 is a set of contained fixes that each stand alone and can be reverted alone. The one structural change (splitting the app model) comes later, once the small fixes have made its effect measurable.
+3. **Small, independent changes in the first release.** 1.9.8 is a set of contained fixes that each stand alone and can be reverted alone. The one structural change (splitting the app model) comes later, once the small fixes have made its effect measurable.
 4. **No behaviour change.** Same features, same screens. Each release keeps the visual sign-off rule and adds the perf check next to it.
 
 ## Phase 0: the perf harness (before any fix)
@@ -36,7 +38,7 @@ Stalls are the number to watch: they are what you see as jerkiness. CPU is what 
 
 The study's scripts (kept with the raw data) already do most of this; P0 turns them into one command. Without it, later phases can't prove they helped. Estimated effort: a day.
 
-## Phase 1: 1.10.0 "Quiet idle"
+## Phase 1: 1.9.8 "Quiet idle"
 
 The aim: when nothing changes, nothing runs. This is the release you should feel.
 
@@ -56,7 +58,7 @@ The aim: when nothing changes, nothing runs. This is the release you should feel
 
 **Gate:** idle ≤ 2 % CPU, ≤ 5 stalls ≥ 50 ms per minute, ≤ 20 child processes per minute; installed with one agent working ≤ 8 %. **Effort:** 2–3 days including measurement.
 
-## Phase 2: 1.11.0 "Light in the background"
+## Phase 2: 1.9.9 "Light in the background"
 
 The aim: no work for things you can't see.
 
@@ -73,7 +75,7 @@ The aim: no work for things you can't see.
 
 **Gate:** hidden app ≤ 1 % CPU; Learn playing ≤ 5 %; hidden terminals add ≤ 0.5 points; Table view open on a working session adds ≤ 2 points. **Effort:** 3–4 days, two lanes (app side; daemon side for LAB-1334).
 
-## Phase 3: 1.12.0 "Memory, daemon and resize"
+## Phase 3: 1.9.10 "Memory, daemon and resize"
 
 | Issue | Change | How |
 |---|---|---|
@@ -81,11 +83,11 @@ The aim: no work for things you can't see.
 | LAB-1322 | Quiet session processes | Replace the 200 ms poll and 250 ms status check with waiting on output or a deadline; check status on output, or every 1–2 s when idle. |
 | LAB-1336 | No SQLite on the main thread | Batch session updates from the engines; write on the store's own queue; rebuild once. |
 | LAB-1337 | Smooth live resize | Skip unchanged paints; do the expensive toolbar and Plan fitting once at the end of a live resize; throttle terminal size updates to the display rate. |
-| LAB-1338 | Split the app model | Move to Swift Observation (`@Observable`) so a view re-renders only when a property it reads changes, or split the model into focused stores (sessions, engines, Learn, settings, Linear). Behaviour stays identical; done last in the phase so its gain is visible on top of 1.10.0. |
+| LAB-1338 | Split the app model | Move to Swift Observation (`@Observable`) so a view re-renders only when a property it reads changes, or split the model into focused stores (sessions, engines, Learn, settings, Linear). Behaviour stays identical; done last in the phase so its gain is visible on top of 1.9.8. |
 
 **Gate:** footprint flat after visiting 20 terminals; idle session process ≤ 1 wake-up per second; a 5 s live resize drag with no stall ≥ 50 ms; a status change in one session re-renders only that session's views. **Effort:** about a week; LAB-1338 is the largest single item and gets its own lane.
 
-## Phase 4: 1.13.0 "Heavy output (decide)"
+## Phase 4: 1.9.11 "Heavy output (decide)"
 
 | Issue | Change |
 |---|---|
@@ -98,7 +100,7 @@ The aim: no work for things you can't see.
 | Caching hides a real change (a stale handoff match, stale repo stats) | Every cache has an explicit invalidation (file watcher or modification time) and a test that a change shows up within the stated time. |
 | Fewer updates make something feel laggy | Status, title and output changes still publish immediately; only unchanged values stop publishing. The harness's place-switch and typing scenarios check responsiveness, and the visual sign-off checks the screens. |
 | Occluding or freeing terminals loses output | Output lives in the session process (roofd), not in the app's terminal; a freed terminal re-attaches and redraws from it. Tested by visiting 20 terminals and reading each back. |
-| The model split (LAB-1338) touches most views | Done last, behind the measured gains of 1.10.0–1.11.0, in its own lane, with the full test suite and visual sign-off of every place. |
+| The model split (LAB-1338) touches most views | Done last, behind the measured gains of 1.9.8–1.9.9, in its own lane, with the full test suite and visual sign-off of every place. |
 | Daemon changes (LAB-1322, LAB-1334) affect live sessions | Built and tested on a test daemon only; installed through the normal release; sessions survive app swaps, and the release check confirms the daemon after install. |
 
 Every release can be rolled back with the installer and the previous release's zip; the changes are independent enough to revert one by one.
@@ -108,9 +110,9 @@ Every release can be rolled back with the installer and the previous release's z
 | Release | Content | Rough effort |
 |---|---|---|
 | P0 | Perf harness, release gate | 1 day |
-| 1.10.0 | Quiet idle (9 issues) | 2–3 days |
-| 1.11.0 | Light in the background (8 issues) | 3–4 days |
-| 1.12.0 | Memory, daemon, resize, model split (5 issues) | about a week |
-| 1.13.0 | Heavy output: measure and decide (1 spike) | 1–2 days |
+| 1.9.8 | Quiet idle (9 issues) | 2–3 days |
+| 1.9.9 | Light in the background (8 issues) | 3–4 days |
+| 1.9.10 | Memory, daemon, resize, model split (5 issues) | about a week |
+| 1.9.11 | Heavy output: measure and decide (1 spike) | 1–2 days |
 
-1.10.0 alone should change how the app feels. If it reaches its gate, the remaining phases make the app lighter on battery and memory rather than smoother.
+1.9.8 alone should change how the app feels. If it reaches its gate, the remaining phases make the app lighter on battery and memory rather than smoother.

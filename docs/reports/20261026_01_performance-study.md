@@ -1,6 +1,6 @@
 # One Roof performance study (1.9.3)
 
-**Status:** DONE · **Date:** 2026-10-26 · **Project:** LAB-ONEROOF-UI-REDESIGN · **Linear:** LAB-1287 · **Follow-up:** milestone "Tuning · performance (from LAB-1287)" in One Roof · Later (LAB-1314 to LAB-1324)
+**Status:** DONE · **Date:** 2026-10-26 · **Project:** LAB-ONEROOF-UI-REDESIGN · **Linear:** LAB-1287 · **Plan:** [../projects/20261026_01_performance-improvements/README.md](../projects/20261026_01_performance-improvements/README.md) · **Follow-up:** project LAB-ONEROOF-PERFORMANCE-IMPROVEMENTS (LAB-1314 to LAB-1338)
 
 > **One line:** One Roof re-renders its whole window about twice a second even when nothing changes, and each re-render runs a few expensive lookups inside SwiftUI view code; that idle churn, not the terminals, is why it feels jerky next to Warp.
 
