@@ -48,6 +48,25 @@ final class LearnDeckTests: XCTestCase {
         XCTAssertEqual(d.paths.first?.slugs.filter { d.cards[$0] != nil }, ["done-when", "smoke-prod"])
     }
 
+    /// LAB-1269 · suits are retired: a deck without them still fills every band from the band's own tracks.
+    func testDeckWithoutSuitsOrdersBandsByTheirTracks() throws {
+        let json = """
+        {"version": "0.3.0", "bands": \(try bandsJSON()),
+         "tracks": [{"id": "foundations", "intro": "Big", "cards": ["loops-first", "context-as-structure", "zeta"]},
+                    {"id": "rhythms", "intro": "Daily", "cards": ["done-when", "nightly"]},
+                    {"id": "ship", "intro": "Ship", "cards": ["smoke-prod"]}],
+         "paths": [],
+         "cards": [\(card("loops-first", "foundations")), \(card("context-as-structure", "foundations")), \(card("zeta", "foundations")),
+                   \(card("done-when", "rhythms")), \(card("nightly", "rhythms")), \(card("smoke-prod", "ship"))]}
+        """
+        let d = try XCTUnwrap(LearnDeck.parse(Data(json.utf8), root: "/deck"))
+        XCTAssertTrue(d.suits.isEmpty)
+        XCTAssertEqual(d.lists["context"], ["context-as-structure", "zeta"])
+        XCTAssertEqual(d.lists["loops"], ["loops-first", "done-when", "nightly"])
+        XCTAssertEqual(d.lists["evidence"], ["smoke-prod"])
+        XCTAssertEqual(d.dial.count, 6)
+    }
+
     /// LAB-1257 · the bands, plain track names and By-kind groups read from the catalog the deck repository builds are
     /// exactly the constants One Roof 1.8.2 hard-coded.
     func testCatalogBandsNamesAndKindsEqualThe182Constants() throws {
