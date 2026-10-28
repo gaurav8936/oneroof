@@ -332,6 +332,24 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         conversationPath = try c.decodeIfPresent(String.self, forKey: .conversationPath)
     }
 
+    /// LAB-1516: the launch fields roofd owns when it starts a session (Scheduler, Loops). Saving a row keeps the newer
+    /// launch: if `disk` was started later than `app` knows (or `app` never saw a start), `disk`'s launch fields win, so
+    /// an app save made from a stale copy cannot erase "running as holder X". Everything else is the app's.
+    public static func keepingNewerLaunch(app: Session, disk: Session?) -> Session {
+        guard let disk, let d = disk.launchedAt, app.launchedAt.map({ d > $0 }) ?? true else { return app }
+        var out = app
+        out.copyLaunch(from: disk)
+        return out
+    }
+    /// The fields a launch sets (and nothing else).
+    public mutating func copyLaunch(from o: Session) {
+        runtimeId = o.runtimeId
+        runtimeGroup = o.runtimeGroup
+        launchedAt = o.launchedAt
+        openingSent = o.openingSent
+        lifecycle = o.lifecycle
+    }
+
     /// A waiting message can go in now: the agent is at its prompt (not working, not on a permission question).
     public static func canDeliver(_ status: SessionStatus) -> Bool { status == .idle || status == .done }
 

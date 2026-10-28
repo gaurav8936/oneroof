@@ -82,7 +82,7 @@ enum Scheduler {
                     s.launchedAt = now
                     s.openingSent = true                      // the holder delivers it
                     if s.lifecycle != .doNotUse { s.lifecycle = .idle }
-                    store.save(s)
+                    store.updateLaunch(s)                     // LAB-1516: launch fields only, never the app's edits
                     store.recordScheduledRun(session: r.sessionId, at: now, result: "started")
                 } catch {
                     store.recordScheduledRun(session: r.sessionId, at: now, result: "failed: \(error)")

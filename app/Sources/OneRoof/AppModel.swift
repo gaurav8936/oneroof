@@ -479,7 +479,19 @@ final class AppModel: ObservableObject {
         for s in list {
             if let i = stored.firstIndex(where: { $0.id == s.id }) { stored[i] = s } else { stored.append(s) }
         }
-        if let store { storeQ.async { list.forEach(store.save) } }
+        // LAB-1516: a save keeps a newer launch roofd wrote (Scheduler, Loops) instead of erasing it, and the app adopts it.
+        if let store {
+            storeQ.async { [weak self] in
+                let written = list.map { store.saveKeepingNewerLaunch($0) }
+                let adopted = written.filter { w in !list.contains(w) }
+                guard !adopted.isEmpty else { return }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    for w in adopted { if let i = self.stored.firstIndex(where: { $0.id == w.id }) { self.stored[i].copyLaunch(from: w) } }
+                    self.rebuild()
+                }
+            }
+        }
         rebuild()
     }
     /// LAB-1336: where session rows are written.
