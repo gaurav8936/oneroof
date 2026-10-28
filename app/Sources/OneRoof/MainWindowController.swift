@@ -258,8 +258,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        WindowCloseGuard.shared.shouldClose(sender, what: "the window \u{201C}\(win.name)\u{201D}",
-            detail: "Its sessions keep running in roofd. Reopen the window from Window \u{25B8} Workspaces.")
+        // LAB-1485: say what is in this window (how many keep running, which agents are working, which are finished
+        // shells, how many are saved rows), instead of one sentence for every window.
+        let rows = model.items(in: win).map {
+            WindowCloseText.Row(name: $0.session.name,
+                                kind: WindowCloseText.kind(liveAgent: $0.liveAgent != nil, endedShell: $0.endedShell != nil, status: $0.status))
+        }
+        return WindowCloseGuard.shared.shouldClose(sender, what: "the window \u{201C}\(win.name)\u{201D}", detail: WindowCloseText.detail(rows))
     }
 
     /// Set when the app quits: AppKit then closes every window, and those closes are not the owner closing them.
