@@ -39,3 +39,36 @@ final class ClaudeResumeTests: XCTestCase {
                        ["--append-system-prompt", "be brief", "--resume", id])
     }
 }
+
+/// LAB-1510: a session keeps its agent's conversation id and transcript, so it can be resumed (and listed in the session
+/// catalog) after its terminal is gone or the app restarted.
+final class ConversationMemoryTests: XCTestCase {
+    let id = "3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f"
+
+    func test_LAB1510_conversationIdSurvivesTheStore() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("lab1504-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try SessionStore(path: dir.appendingPathComponent("s.sqlite").path)
+        var s = Session(name: "resume me", repoPath: "/p/a/b", lifecycle: .idle)
+        s.conversationId = id
+        s.conversationPath = "/Users/x/.claude/projects/-p-a-b/\(id).jsonl"
+        store.save(s)
+        let back = try XCTUnwrap(SessionStore(path: dir.appendingPathComponent("s.sqlite").path).all().first { $0.id == s.id })
+        XCTAssertEqual(back.conversationId, id)
+        XCTAssertEqual(back.conversationPath, s.conversationPath)
+        XCTAssertEqual(ClaudeResume.sessionId(transcriptPath: back.conversationPath!), back.conversationId)
+    }
+
+    func test_LAB1510_olderRowsWithoutAConversationStillLoad() throws {
+        var s = Session(name: "old", repoPath: "/p", lifecycle: .idle)
+        s.conversationId = id
+        var json = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(s)) as? [String: Any])
+        json["conversationId"] = nil
+        json["conversationPath"] = nil
+        let old = try JSONDecoder().decode(Session.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(old.conversationId)
+        XCTAssertNil(old.conversationPath)
+        XCTAssertEqual(old.name, "old")
+    }
+}
