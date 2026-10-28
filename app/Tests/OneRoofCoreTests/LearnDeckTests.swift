@@ -102,6 +102,17 @@ final class LearnDeckTests: XCTestCase {
         XCTAssertEqual(LearnDeck.fallbackBand.id, "loops")
     }
 
+    /// LAB-1411 · the deck the release packages (labs-agentic-engineering at main): every card is on a band, so All cards ›
+    /// By band draws all of them, not only each band's start-here cards. Skipped where the deck repository is not checked out.
+    func testRealDeckPutsEveryCardOnABand() throws {
+        let root = NSHomeDirectory() + "/Projects/labs/labs-agentic-engineering"
+        guard FileManager.default.fileExists(atPath: root + "/content/catalog.json") else { throw XCTSkip("deck repository not checked out") }
+        let d = try XCTUnwrap(LearnDeck.parse(try Data(contentsOf: URL(fileURLWithPath: root + "/content/catalog.json")), root: root))
+        XCTAssertFalse(d.bands.isEmpty)
+        XCTAssertEqual(d.bands.reduce(0) { $0 + (d.lists[$1.id]?.count ?? 0) }, d.count)
+        for b in d.bands { XCTAssertGreaterThan(d.lists[b.id]?.count ?? 0, b.key.count, "band \(b.id) holds only its start-here cards") }
+    }
+
     func testSearchMatchesEveryWordInDialOrder() throws {
         let d = try deck()
         XCTAssertEqual(d.search("about done"), ["done-when"])
