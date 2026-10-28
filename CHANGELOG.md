@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.9.14 — All cards › By band shows every card (27 Oct 2026)
+## 1.9.14 — All cards › By band shows every card (28 Oct 2026)
 
 - **By band draws the whole deck again** (LAB-1411). Since the deck dropped suits, each band in Learn › All cards ›
   By band showed only its Start here cards (7, 5, 5, 5). Now every band lists all its cards under Start here, track by
