@@ -72,3 +72,46 @@ final class ConversationMemoryTests: XCTestCase {
         XCTAssertEqual(old.name, "old")
     }
 }
+
+/// LAB-1516: roofd (Scheduler, Loops) and the app write the same session rows. roofd writes only the launch fields; an
+/// app save made from a copy older than roofd's launch keeps that launch instead of erasing it.
+final class LostUpdateTests: XCTestCase {
+    private func store() throws -> (SessionStore, String) {
+        let path = NSTemporaryDirectory() + "lab1516-\(UUID().uuidString).sqlite"
+        return (try SessionStore(path: path), path)
+    }
+
+    func test_LAB1516_appSaveFromAStaleCopyKeepsRoofdsLaunch() throws {
+        let (st, path) = try store(); defer { try? FileManager.default.removeItem(atPath: path) }
+        var s = Session(name: "nightly", repoPath: "/p", lifecycle: .planned)
+        st.save(s)
+        let appCopy = s                                    // the app read the row before the scheduled start
+        s.runtimeId = "roof-abc"; s.runtimeGroup = "g"; s.launchedAt = Date(); s.openingSent = true; s.lifecycle = .idle
+        st.updateLaunch(s)                                 // roofd starts it
+        var edited = appCopy; edited.notes = "renamed by the owner"
+        let written = st.saveKeepingNewerLaunch(edited)    // the app saves its stale copy
+        let row = try XCTUnwrap(st.all().first { $0.id == s.id })
+        XCTAssertEqual(row.runtimeId, "roof-abc")          // the launch survived
+        XCTAssertEqual(row.notes, "renamed by the owner")  // and so did the app's edit
+        XCTAssertEqual(written.runtimeId, "roof-abc")      // the app learns it too
+    }
+
+    func test_LAB1516_roofdNeverOverwritesTheAppsFields() throws {
+        let (st, path) = try store(); defer { try? FileManager.default.removeItem(atPath: path) }
+        var s = Session(name: "a", repoPath: "/p", lifecycle: .planned)
+        st.save(s)
+        var app = s; app.name = "renamed"; app.notes = "n"; st.save(app)
+        s.runtimeId = "roof-1"; s.launchedAt = Date(); st.updateLaunch(s)   // roofd's copy still says "a"
+        let row = try XCTUnwrap(st.all().first { $0.id == s.id })
+        XCTAssertEqual(row.name, "renamed"); XCTAssertEqual(row.notes, "n"); XCTAssertEqual(row.runtimeId, "roof-1")
+    }
+
+    func test_LAB1516_aNewerLaunchByTheAppWins() throws {
+        let (st, path) = try store(); defer { try? FileManager.default.removeItem(atPath: path) }
+        var s = Session(name: "a", repoPath: "/p", lifecycle: .idle)
+        s.runtimeId = "old"; s.launchedAt = Date(timeIntervalSinceNow: -60); st.save(s)
+        var relaunched = s; relaunched.runtimeId = "new"; relaunched.launchedAt = Date()
+        st.saveKeepingNewerLaunch(relaunched)
+        XCTAssertEqual(st.all().first { $0.id == s.id }?.runtimeId, "new")
+    }
+}
