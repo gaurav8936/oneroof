@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.14 — All cards › By band shows every card (27 Oct 2026)
+
+- **By band draws the whole deck again** (LAB-1411). Since the deck dropped suits, each band in Learn › All cards ›
+  By band showed only its Start here cards (7, 5, 5, 5). Now every band lists all its cards under Start here, track by
+  track: Context 35, Loops 62, Evidence 19, Procedure 46. The fix was written for 1.9.9 but missed the release.
+
 ## 1.9.13 — the Focus lane, properly (27 Oct 2026)
 
 - **The Focus lane fills in as you drag it** (LAB-1382). Widening the thin avatar lane showed an empty box with one
