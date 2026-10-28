@@ -48,6 +48,25 @@ final class LearnDeckTests: XCTestCase {
         XCTAssertEqual(d.paths.first?.slugs.filter { d.cards[$0] != nil }, ["done-when", "smoke-prod"])
     }
 
+    /// LAB-1269 · suits are retired: a deck without them still fills every band from the band's own tracks.
+    func testDeckWithoutSuitsOrdersBandsByTheirTracks() throws {
+        let json = """
+        {"version": "0.3.0", "bands": \(try bandsJSON()),
+         "tracks": [{"id": "foundations", "intro": "Big", "cards": ["loops-first", "context-as-structure", "zeta"]},
+                    {"id": "rhythms", "intro": "Daily", "cards": ["done-when", "nightly"]},
+                    {"id": "ship", "intro": "Ship", "cards": ["smoke-prod"]}],
+         "paths": [],
+         "cards": [\(card("loops-first", "foundations")), \(card("context-as-structure", "foundations")), \(card("zeta", "foundations")),
+                   \(card("done-when", "rhythms")), \(card("nightly", "rhythms")), \(card("smoke-prod", "ship"))]}
+        """
+        let d = try XCTUnwrap(LearnDeck.parse(Data(json.utf8), root: "/deck"))
+        XCTAssertTrue(d.suits.isEmpty)
+        XCTAssertEqual(d.lists["context"], ["context-as-structure", "zeta"])
+        XCTAssertEqual(d.lists["loops"], ["loops-first", "done-when", "nightly"])
+        XCTAssertEqual(d.lists["evidence"], ["smoke-prod"])
+        XCTAssertEqual(d.dial.count, 6)
+    }
+
     /// LAB-1257 · the bands, plain track names and By-kind groups read from the catalog the deck repository builds are
     /// exactly the constants One Roof 1.8.2 hard-coded.
     func testCatalogBandsNamesAndKindsEqualThe182Constants() throws {
@@ -81,6 +100,17 @@ final class LearnDeckTests: XCTestCase {
         XCTAssertEqual(LearnDeck.trackNames["vault"]?.name, "Notes & memory")
         XCTAssertEqual(LearnDeck.kinds.count, 4)
         XCTAssertEqual(LearnDeck.fallbackBand.id, "loops")
+    }
+
+    /// LAB-1411 · the deck the release packages (labs-agentic-engineering at main): every card is on a band, so All cards ›
+    /// By band draws all of them, not only each band's start-here cards. Skipped where the deck repository is not checked out.
+    func testRealDeckPutsEveryCardOnABand() throws {
+        let root = NSHomeDirectory() + "/Projects/labs/labs-agentic-engineering"
+        guard FileManager.default.fileExists(atPath: root + "/content/catalog.json") else { throw XCTSkip("deck repository not checked out") }
+        let d = try XCTUnwrap(LearnDeck.parse(try Data(contentsOf: URL(fileURLWithPath: root + "/content/catalog.json")), root: root))
+        XCTAssertFalse(d.bands.isEmpty)
+        XCTAssertEqual(d.bands.reduce(0) { $0 + (d.lists[$1.id]?.count ?? 0) }, d.count)
+        for b in d.bands { XCTAssertGreaterThan(d.lists[b.id]?.count ?? 0, b.key.count, "band \(b.id) holds only its start-here cards") }
     }
 
     func testSearchMatchesEveryWordInDialOrder() throws {

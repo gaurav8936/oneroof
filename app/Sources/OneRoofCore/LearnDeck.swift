@@ -153,7 +153,9 @@ public struct LearnDeck: Sendable {
         var partOf: [String: String] = [:]
         for b in bands { for t in b.tracks { for k in tracks[t]?.cards ?? [] { partOf[k] = b.id } } }
         for b in bands { for k in b.key { partOf[k] = b.id } }
-        let order = suits.flatMap(\.tracks).flatMap { tracks[$0]?.cards ?? [] }.filter { cards[$0] != nil }
+        // LAB-1269 · suits are retired in the deck: a band's own tracks give its card order; suits only for an old deck.
+        let trackOrder = bands.isEmpty ? suits.flatMap(\.tracks) : bands.flatMap(\.tracks)
+        let order = trackOrder.flatMap { tracks[$0]?.cards ?? [] }.filter { cards[$0] != nil }
         var lists: [String: [String]] = [:]
         for b in bands {
             let key = b.key.filter { cards[$0] != nil }
