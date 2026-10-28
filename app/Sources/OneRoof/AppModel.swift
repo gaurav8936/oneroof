@@ -186,14 +186,20 @@ final class AppModel: ObservableObject {
         let loaded = Prefs.loadSettings()
         settings = loaded
         Self.applyFolders(loaded)
-        if let path = ProcessInfo.processInfo.environment["ONEROOF_STORE"] ?? Prefs.freshStorePath {
-            store = try? SessionStore(path: path)
-        } else {
-            store = try? SessionStore()
-        }
+        var openError: Error?
+        let opened: SessionStore?
+        do {
+            if let path = ProcessInfo.processInfo.environment["ONEROOF_STORE"] ?? Prefs.freshStorePath {
+                opened = try SessionStore(path: path)
+            } else {
+                opened = try SessionStore()
+            }
+        } catch { openError = error; opened = nil }
+        store = opened
         stored = store?.all() ?? []
         objectives = store?.allObjectives() ?? []
-        if store == nil { lastError = "Could not open the session store." }
+        // LAB-1517: say why (a newer One Roof's store is refused, never written).
+        if store == nil { lastError = "Could not open the session store. " + (openError?.localizedDescription ?? "") }
         WorkspaceStore.shared.attach(store)
         let records = WorkspaceStore.shared.workspaces
         for id in WindowMembership.toRestore(records.map { ($0.id, $0.open) }) {
