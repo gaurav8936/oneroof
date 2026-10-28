@@ -115,3 +115,20 @@ final class LostUpdateTests: XCTestCase {
         XCTAssertEqual(st.all().first { $0.id == s.id }?.runtimeId, "new")
     }
 }
+
+/// LAB-1517: an older One Roof refuses a store written by a newer one, and writes nothing to it.
+final class NewerStoreTests: XCTestCase {
+    func test_LAB1517_aNewerStoreIsRefused() throws {
+        let path = NSTemporaryDirectory() + "lab1517-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let st = try SessionStore(path: path)
+        st.save(Session(name: "kept", repoPath: "/p"))
+        let newer = st.schemaVersion + 5
+        XCTAssertTrue(st.run("PRAGMA user_version = \(newer)", []))
+        XCTAssertThrowsError(try SessionStore(path: path)) { e in
+            XCTAssertTrue(e.localizedDescription.contains("newer One Roof"))
+        }
+        XCTAssertEqual(st.schemaVersion, newer)          // untouched
+        XCTAssertEqual(st.all().first?.name, "kept")
+    }
+}
