@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.9.18 — sessions look after themselves (29 Oct 2026)
+
+- **Exiting an agent closes its session after 10 minutes** (LAB-1535). Ctrl+D twice or /exit ends Claude; its terminal
+  stays for 10 minutes so you can read the last screen, then the shell and roofd's holder close. The bar says so, and
+  says the conversation stays in All sessions (⌃⌘O). Settings › General › When an agent ends: keep, right away,
+  10 minutes, 1 hour.
+- **Sessions nobody touched for a day close by themselves** (LAB-1535). Never one that is working, waiting for you,
+  pinned, a loop, or one that cannot be resumed. Settings › General › Close sessions untouched for. Closing a window
+  still only hides it.
+- **Remove never deletes** (LAB-1537). A removed session leaves its window's list and stays in All sessions; ⇧⌘T
+  brings it back, and resuming it puts it back in its window. Delete forever, in All sessions, asks first.
+- **All sessions for maintenance** (LAB-1538). It shows what runs at each level (working, waiting, finished shells);
+  Close ends anything that runs, and asks first if an agent is working.
+- **Keep agent conversations on this Mac** (LAB-1533). Claude Code deletes its conversations after 30 days unless told
+  otherwise, and Resume needs them. One setting for every Claude account: 30 days (Claude's default), 90 days, 1 year
+  or Forever. Lowering it asks first. Codex and Kimi keep theirs until you delete them.
+
 ## 1.9.17 — the catalog, one click from your sessions (28 Oct 2026)
 
 - **This window · All sessions** (LAB-1530). A switch at the top of the Sessions column: All sessions opens the session
