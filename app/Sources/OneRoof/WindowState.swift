@@ -5,7 +5,7 @@ import OneRoofCore
 /// What the centre of a main window shows (WINDOW_SHELL §4). Exactly one at a time; the terminal area (Workspace) is
 /// the default. Replaces v0.1's six mode flags (boardMode, workMode, launchpadMode, learnMode, objectiveId, viewerPath).
 enum CentreView: String, CaseIterable, Codable {
-    case workspace, overview, resources, board, decisions, subagents, work, learn, objective, editor, review, loops
+    case workspace, overview, resources, board, decisions, subagents, work, learn, objective, editor, review, loops, catalog
 
     var title: String {
         switch self {
@@ -21,6 +21,7 @@ enum CentreView: String, CaseIterable, Codable {
         case .editor: return "Editor"
         case .review: return "Review changes"
         case .loops: return "Loops"
+        case .catalog: return "Session catalog"   // LAB-1509
         }
     }
 
@@ -28,7 +29,7 @@ enum CentreView: String, CaseIterable, Codable {
     static let switcher: [CentreView] = [.workspace, .overview, .resources, .board, .decisions, .work, .learn]
 
     /// Fleet views fold the Sessions panel away (v0.1 rule); the Plan panel stays for details.
-    var foldsSessions: Bool { [.overview, .resources, .board, .decisions, .subagents, .work, .learn, .loops].contains(self) }
+    var foldsSessions: Bool { [.overview, .resources, .board, .decisions, .subagents, .work, .learn, .loops, .catalog].contains(self) }
 }
 
 /// One main window = one workspace (WINDOW_SHELL §1): its own sessions, selection, centre view and text size. All

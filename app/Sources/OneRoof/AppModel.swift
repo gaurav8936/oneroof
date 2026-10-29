@@ -249,6 +249,7 @@ final class AppModel: ObservableObject {
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
+            if ticks % 60 == 40 { self?.closeIdleFinishedShells() }   // LAB-1524: once a minute
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
             if ticks % 60 == 40 { self?.tickCommitWatch() }
         }
@@ -899,6 +900,55 @@ final class AppModel: ObservableObject {
             rows.append(stored[k])
         }
         if !rows.isEmpty, let store { storeQ.async { rows.forEach(store.save) } }
+    }
+
+    /// LAB-1511 · once per run: find the Claude conversation of sessions saved before One Roof kept its id (only a
+    /// confident match: first message within 10 minutes of the launch, and the opening message when there was one).
+    func backfillConversations(done: @escaping (_ found: Int, _ looked: Int) -> Void = { _, _ in }) {
+        let todo: [Session] = stored.filter { $0.agent == .claude && $0.conversationId == nil && $0.launchedAt != nil }
+        guard !todo.isEmpty, !SelfTest.isActive else { done(0, todo.count); return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let dirs = ConversationBackfill.configDirs()
+            var found: [(String, ConversationBackfill.Candidate)] = []
+            for s in todo {
+                let candidates = ConversationBackfill.candidates(for: s, configDirs: dirs)
+                if case .found(let c) = ConversationBackfill.match(s, candidates) { found.append((s.id, c)) }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                var rows: [Session] = []
+                for (id, c) in found {
+                    guard let k = self.stored.firstIndex(where: { $0.id == id }), self.stored[k].conversationId == nil else { continue }
+                    self.stored[k].conversationId = c.id
+                    self.stored[k].conversationPath = c.path
+                    rows.append(self.stored[k])
+                }
+                if !rows.isEmpty { self.saveAll(rows) }
+                done(rows.count, todo.count)
+            }
+        }
+    }
+
+    /// LAB-1524 · close the shells finished agents left behind (Settings › When an agent ends; default: after an hour
+    /// untouched). Only a shell at its prompt, not pinned, idle long enough; roofd is asked, off the main thread. The
+    /// row stays, as history, resumable from the session catalog.
+    func closeIdleFinishedShells(now: Date = Date()) {
+        let minutes = settings.closeFinishedAfterMinutes
+        guard minutes >= 0, !SelfTest.isActive else { return }
+        let due = items.filter { i in
+            i.endedShell != nil && FinishedShellPolicy.shouldClose(finishedShell: true, liveAgent: i.liveAgent != nil,
+                pinned: i.session.pinned, atPrompt: true, lastActive: lastActiveDate(i), minutes: minutes, now: now)
+        }
+        guard !due.isEmpty else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let ready = due.filter { i in
+                guard let pane = i.endedShell, let p = try? self.runtime.processes(pane: pane) else { return false }
+                return FinishedShellPolicy.atPrompt(shellPid: p.shellPid, foreground: p.foreground.map(\.pid))
+            }
+            guard !ready.isEmpty else { return }
+            DispatchQueue.main.async { ready.forEach { self.closeAgent($0, remember: false) } }
+        }
     }
 
     /// LAB-1362: continue an exited Claude session's conversation. Its terminal usually lives on (roofd runs

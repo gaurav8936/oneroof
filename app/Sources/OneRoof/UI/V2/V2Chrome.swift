@@ -28,7 +28,7 @@ extension CentreView {
     /// follows). Views of a session (editor, review, subagents, objective) stay in the place you were in.
     var place: Place? {
         switch self {
-        case .workspace: return .sessions
+        case .workspace, .catalog: return .sessions   // LAB-1509: the catalog belongs to Sessions
         case .overview: return .home
         case .decisions: return .needsYou
         case .work, .board: return .work

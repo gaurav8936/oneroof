@@ -139,10 +139,19 @@ extension AppModel {
         NotificationCenter.default.post(name: .focusWorkspace, object: w.id)
     }
 
+    /// LAB-1514: a session that ended more than a day ago, with nothing running (no agent, no shell) and not pinned.
+    func isOldHistory(_ i: BoardItem, now: Date = Date()) -> Bool {
+        guard i.liveAgent == nil, i.endedShell == nil, i.status == .exited, !i.session.pinned, !i.adopted else { return false }
+        return (lastActiveDate(i) ?? .distantPast) < now.addingTimeInterval(-24 * 3600)
+    }
+
     /// Rows matching a window's filter and count chip (name, caption, repo, workstream, ticket, stickers, agent, account).
     func visibleItems(in w: WindowState) -> [BoardItem] {
         var list = items(in: w)
         if let chip = w.statusFilter { list = list.filter { chip.matches($0) } }
+        // LAB-1514: in the All list, history older than a day (nothing running, not pinned) leaves the window's live list.
+        // It is still under the Exited chip and in View › Session Catalog; nothing is deleted.
+        else { list = list.filter { !isOldHistory($0) } }
         let q = w.filter.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return list }
         return list.filter { i in

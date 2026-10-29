@@ -45,6 +45,12 @@ struct SettingsView: View {
                 Text("Checks roofd (the session manager), agent logins, skill links, hooks, the memory pin and, when a shared folder is set, its doors and MCP list. Red items ask before an agent launches.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Show sessions that need you on the Dock icon", isOn: $model.settings.dockBadge)
+            // LAB-1524
+            Picker("When an agent ends", selection: $model.settings.closeFinishedAfterMinutes) {
+                ForEach(FinishedShellPolicy.choices, id: \.minutes) { c in Text(c.label).tag(c.minutes) }
+            }
+            Text("The agent's shell stays so you can read its last screen. One Roof closes it after this long untouched — never while something runs in it, never a pinned session. The row stays, and Resume works from View › Session Catalog.")
+                .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Sessions") { Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .green : .red) }
             }
             Section("New sessions") {
