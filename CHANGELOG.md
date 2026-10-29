@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.16 — the session catalog, and no more quit on launch (28 Oct 2026)
+
+- **Session catalog** (View › Session Catalog, LAB-1509). Every session One Roof knows — live and history, every
+  window, open or closed — grouped by repo, newest first, with search and Working / Waiting / Finished / History /
+  Planned filters. Each row says what it can do: Open (running), Resume (a saved Claude conversation), Launch (planned),
+  New terminal here (a shell), or why it cannot be resumed (LAB-1512, LAB-1513).
+- **Older Claude sessions found again** (LAB-1511). On first opening the catalog, One Roof matches sessions saved before
+  1.9.15 to their conversations on disk — only confident matches (first message within 10 minutes of the launch, and
+  the opening message when there was one); the rest say so instead of guessing.
+- **Close finished sessions in one step** (LAB-1514). Shells whose agent has ended are closed together; their rows stay.
+- **New Session picks its window** (LAB-1514), each window shown with its session count. History older than a day
+  leaves the All list (still under Exited and in the catalog; nothing is deleted).
+- **No more quit on launch** (LAB-1385). A caption claiming a billion-billion steps made the Plan panel try to draw them
+  and the app aborted. Step counts are now kept only when they are a real plan (1–50), on load as well.
+
 ## 1.9.15 — sessions you can trust: resume, safe saves, honest closing (28 Oct 2026)
 
 - **Every Claude session remembers its conversation** (LAB-1510). One Roof saves the conversation id the first time it
