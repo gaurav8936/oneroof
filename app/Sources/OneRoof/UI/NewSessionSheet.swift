@@ -16,6 +16,9 @@ struct NewSessionSheet: View {
     enum When: String, CaseIterable { case now, next, tonight, every, onDemand }
 
     @State private var kind: Kind = .session
+    /// LAB-1514: the window the new session joins (nil = this window). Case C: sessions piled into whichever window
+    /// was in front, so a busy window collected unrelated work.
+    @State private var targetWindowId: String?
     @State private var ticketType: WorkKind = .deliverable
     @State private var kindTouched = false
     @State private var text = ""
@@ -81,6 +84,7 @@ struct NewSessionSheet: View {
                         Spacer(minLength: 0)
                     }
                 }
+                if model.windows.count > 1 { windowPicker }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("What should happen").ui(12, .semibold).foregroundStyle(t.text.color)
                     TextField("", text: $text, prompt: Text(textForIssue.isEmpty ? "e.g. Help search returns results as you type" : textForIssue))
@@ -326,6 +330,20 @@ struct NewSessionSheet: View {
         if kind == .defect { return "New bug" }
         if kind == .ticket { return "New " + (ticketType.labelNames.first ?? "issue").lowercased() }
         return "No issue"
+    }
+
+    /// LAB-1514: which window the session joins; each window is shown with its session count, so two windows with the
+    /// same name can be told apart.
+    private var windowPicker: some View {
+        let target = targetWindowId.flatMap { model.window($0) } ?? win
+        return Menu {
+            ForEach(model.windows, id: \.id) { w in
+                Button("\(w.name) · \(model.items(in: w).count) sessions\(w.id == win.id ? " (this window)" : "")") { targetWindowId = w.id }
+            }
+        } label: { pickerLabel("Window", target.name, warn: false) }
+        .menuStyle(.borderlessButton).fixedSize()
+        .accessibilityLabel("Window for the new session")
+        .accessibilityValue(target.name)
     }
 
     /// Issue: none, one or several existing ones (LAB-518: one session works on all of them), or a new one (LAB-242).
@@ -917,7 +935,7 @@ struct NewSessionSheet: View {
                             ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
             if several { s.moreTickets = moreTickets.map { SessionIssue(key: $0.identifier, id: $0.id, team: s.ticketTeam) } }
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
-            model.createPlanned(s, launchNow: launch && !forcePlanned, in: win)
+            model.createPlanned(s, launchNow: launch && !forcePlanned, in: targetWindowId.flatMap { model.window($0) } ?? win)   // LAB-1514
             if when == .tonight && !forcePlanned, let i = model.item(s.id) { model.schedule(i, hour: 2, minute: 0, nightly: nightly) }
             if when == .every && !forcePlanned, let i = model.item(s.id) { model.repeatEvery(i, minutes: everyMinutes) }
             close()
