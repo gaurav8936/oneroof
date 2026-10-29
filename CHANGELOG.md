@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.24 — permission mode per agent, a steadier session catalog, Needs you fixes, the test harness (29 Oct 2026)
+
+- **Permission mode per agent** (LAB-1600). Settings › Permissions sets how much each agent may do without asking:
+  Manual, Plan or Auto (Codex: Manual, Read only, Auto). New sessions start in Auto unless you choose otherwise; the
+  New session sheet can change it for one session. Each session shows its mode in its header and in the Plan panel.
+- **The session catalog holds still** (LAB-1584). Rows keep their place while the page is open, so a row you act on
+  does not jump; a row you resumed stays listed under the filter you found it with. Resume says what it is doing on
+  the row itself: Starting…, then its new state, or why it did not work.
+- **Resume, stress-tested** (LAB-1583). Every resumable session in a copy of a real profile was resumed one by one
+  (35 of 35 came back with their conversation).
+- **Search by what a session worked on** (LAB-1585). The catalog's search reads each session's conversation, not just
+  its name, and shows the line that matched. Press Return to widen the question with related words from the
+  on-device model ("a bug where the screen hangs" also finds stalls and freezes).
+- **Needs you** (LAB-1592). A permission you denied, or a question you cancelled, no longer leaves the session stuck in
+  Needs you. Claude's newer command prompts show the real command, and prompts with long or wrapped options are
+  recognised without hooks.
+- **For testing One Roof**: a simulator that runs sessions of every agent over three windows and keeps the
+  conversations going, and `app/scripts/oneroof-test`, one command for functional journeys, performance against the
+  last release and a side-by-side comparison, with HTML and Markdown reports (LAB-1590–1599).
+
 ## 1.9.23 — Claude's last screen stays after it exits (29 Oct 2026)
 
 - **The last screen stays when Claude exits** (LAB-1582). Since 1.9.20 Claude runs in its fullscreen view, which draws
