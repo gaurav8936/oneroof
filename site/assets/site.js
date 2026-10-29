@@ -4,9 +4,9 @@
 // ---- Launch config: edit here, then push. ----
 const LAUNCH = {
   released: true,
-  version: '1.9.21',
+  version: '1.9.22',
   releaseDate: 'Sun 25 Oct 2026',
-  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-1.9.21.zip',
+  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-1.9.22.zip',
   repo: 'https://github.com/gaurav8936/oneroof',
   blogUrl: 'https://gabblegrid.ai/blog/one-workspace',
 };
