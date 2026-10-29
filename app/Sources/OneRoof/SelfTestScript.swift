@@ -21,6 +21,7 @@ import OneRoofCore
 ///   strayfiles · togglefiles · panels   (LAB-1306: show the classic Files panel, send its × action, log panels)
 ///   dragdivider <i> <x>            (LAB-1556: drag split divider i to window x with real mouse events)
 ///   focusstep <0-3>                (LAB-1302: the window's Focus step, as ⌥⌘F steps it)
+///   railsessions                   (LAB-1576: a click on Sessions in the rail)
 ///   tableprobe                     (log: Table view on?, what it shows, who has the keyboard)
 ///   esc                            (an Esc key event through the app, so key monitors see it)
 ///   width <pt>                     (the main window this wide; the panes follow)
@@ -153,6 +154,7 @@ enum SelfTestScript {
             if parts.count == 2, let w = app.main.window { SelfTest.dragDivider(app.main.splitView, in: w, index: Int(parts[0]), toX: CGFloat(parts[1])) }
             delay = 1.5
         case "focusstep": if let n = Int(arg), let st = FocusStep(rawValue: n) { app.model.active.focusStep = st }; delay = 1.5
+        case "railsessions": app.main.v2Open(.sessions); delay = 1.0   // LAB-1576: the rail's Sessions button
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
         case "esc":
             if let w = app.main.window, let ev = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
