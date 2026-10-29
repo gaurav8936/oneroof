@@ -249,6 +249,7 @@ final class AppModel: ObservableObject {
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
+            if ticks % 60 == 40 { self?.closeIdleFinishedShells() }   // LAB-1524: once a minute
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
             if ticks % 60 == 40 { self?.tickCommitWatch() }
         }
@@ -925,6 +926,28 @@ final class AppModel: ObservableObject {
                 if !rows.isEmpty { self.saveAll(rows) }
                 done(rows.count, todo.count)
             }
+        }
+    }
+
+    /// LAB-1524 · close the shells finished agents left behind (Settings › When an agent ends; default: after an hour
+    /// untouched). Only a shell at its prompt, not pinned, idle long enough; roofd is asked, off the main thread. The
+    /// row stays, as history, resumable from the session catalog.
+    func closeIdleFinishedShells(now: Date = Date()) {
+        let minutes = settings.closeFinishedAfterMinutes
+        guard minutes >= 0, !SelfTest.isActive else { return }
+        let due = items.filter { i in
+            i.endedShell != nil && FinishedShellPolicy.shouldClose(finishedShell: true, liveAgent: i.liveAgent != nil,
+                pinned: i.session.pinned, atPrompt: true, lastActive: lastActiveDate(i), minutes: minutes, now: now)
+        }
+        guard !due.isEmpty else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let ready = due.filter { i in
+                guard let pane = i.endedShell, let p = try? self.runtime.processes(pane: pane) else { return false }
+                return FinishedShellPolicy.atPrompt(shellPid: p.shellPid, foreground: p.foreground.map(\.pid))
+            }
+            guard !ready.isEmpty else { return }
+            DispatchQueue.main.async { ready.forEach { self.closeAgent($0, remember: false) } }
         }
     }
 

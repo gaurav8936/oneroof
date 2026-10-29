@@ -44,6 +44,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var setupDone: Bool
     /// "bold" (filled stickers, white text) or "soft" (tinted stickers, coloured text). Owner picks.
     public var stickerStyle: String
+    /// LAB-1524 · When an agent ends, its shell stays (so its last screen can be read). Close that shell after this many
+    /// minutes untouched: -1 = keep it (the old behaviour), 0 = right away. The row stays and Resume works from the
+    /// session catalog (the conversation id is saved since 1.9.15).
+    public var closeFinishedAfterMinutes: Int
     /// Panels follow macOS light/dark: in Dark Mode light themes use their dark twins.
     public var followSystemAppearance: Bool
     /// Menu shortcut overrides by item title; "" removes a shortcut.
@@ -101,6 +105,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         shortcuts = [:]
         globalHotkey = ""
         stickerStyle = "bold"
+        closeFinishedAfterMinutes = 60   // owner, 10-28: close after an hour
         agents = ["claude": AgentDefaults(account: "Claude1")]
         dockBadge = true
         notifyNeedsYou = true
@@ -129,6 +134,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notifyDone = try c.decodeIfPresent(Bool.self, forKey: .notifyDone) ?? fresh.notifyDone
         notifyLongCommands = try c.decodeIfPresent(Bool.self, forKey: .notifyLongCommands) ?? fresh.notifyLongCommands
         longCommandSeconds = try c.decodeIfPresent(Int.self, forKey: .longCommandSeconds) ?? fresh.longCommandSeconds
+        closeFinishedAfterMinutes = try c.decodeIfPresent(Int.self, forKey: .closeFinishedAfterMinutes) ?? fresh.closeFinishedAfterMinutes
         startupCheck = try c.decodeIfPresent(Bool.self, forKey: .startupCheck) ?? fresh.startupCheck
         agenticEngineeringPath = try c.decodeIfPresent(String.self, forKey: .agenticEngineeringPath) ?? fresh.agenticEngineeringPath
         commonPath = try c.decodeIfPresent(String.self, forKey: .commonPath) ?? fresh.commonPath

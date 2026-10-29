@@ -12,6 +12,9 @@
 - **Close finished sessions in one step** (LAB-1514). Shells whose agent has ended are closed together; their rows stay.
 - **New Session picks its window** (LAB-1514), each window shown with its session count. History older than a day
   leaves the All list (still under Exited and in the catalog; nothing is deleted).
+- **Finished sessions tidy themselves** (LAB-1524). When an agent ends, its shell stays so you can read the last
+  screen; after an hour untouched One Roof now closes it (Settings › When an agent ends: keep, right away, 15 min,
+  1 hour, 4 hours). Never while something runs in it, never a pinned session; the row stays, resumable from the catalog.
 - **No more quit on launch** (LAB-1385). A caption claiming a billion-billion steps made the Plan panel try to draw them
   and the app aborted. Step counts are now kept only when they are a real plan (1–50), on load as well.
 
