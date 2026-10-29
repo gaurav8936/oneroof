@@ -132,3 +132,25 @@ final class NewerStoreTests: XCTestCase {
         XCTAssertEqual(st.all().first?.name, "kept")
     }
 }
+
+/// LAB-1385: a caption with an absurd step count (the model once wrote 10^15) can never reach the Plan panel.
+final class CaptionStepGuardTests: XCTestCase {
+    func test_LAB1385_absurdStepCountIsDropped() {
+        let c = Caption(text: "Exited", step: 1, steps: 1_000_000_000_000_000, source: .model)
+        XCTAssertNil(c.steps)
+        XCTAssertEqual(c.step, 1)
+        XCTAssertEqual(Caption(text: "x", step: 3, steps: 5).steps, 5)
+        XCTAssertNil(Caption(text: "x", step: 9, steps: 5).step)       // a step beyond the plan is dropped
+        XCTAssertNil(Caption(text: "x", step: 2, steps: 0).steps)
+    }
+
+    func test_LAB1385_storedBadCaptionHealsOnLoad() throws {
+        let path = NSTemporaryDirectory() + "lab1385-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let st = try SessionStore(path: path)
+        XCTAssertTrue(st.run("INSERT INTO captions(session_id,text,step,steps,now,updated_at,source) VALUES('s','Exited',1,1000000000000000,NULL,0,'model')", []))
+        let loaded = st.caption(session: "s")
+        XCTAssertNotNil(loaded)
+        XCTAssertNil(loaded?.steps)
+    }
+}

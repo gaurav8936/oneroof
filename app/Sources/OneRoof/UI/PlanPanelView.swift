@@ -390,7 +390,8 @@ struct PlanDetail: View {
                                      state: done ? .done : (s.id == mine ? .now : .todo))
             }
         }
-        if let c = model.captions[it.id], let n = c.steps, let i = c.step, n > 0 {
+        // LAB-1385: never draw more rows than a plan can have (a bad count once aborted the app on launch).
+        if let c = model.captions[it.id], let n = c.steps, let i = c.step, (1...Caption.maxSteps).contains(n) {
             return (1...n).map { k in StepList.Step(id: k, title: "Step \(k)", note: k == i ? c.text : nil, state: k < i ? .done : (k == i ? .now : .todo)) }
         }
         return []

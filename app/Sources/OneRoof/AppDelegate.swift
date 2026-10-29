@@ -243,6 +243,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     /// Loops (LAB-678): work that repeats until a check passes, or nightly; run by roofd.
     @objc func showLoops(_ sender: Any?) { model.centre = model.centre == .loops ? .workspace : .loops }
+    /// LAB-1509: every session One Roof knows, by repo, with Resume.
+    @objc func showCatalog(_ sender: Any?) { model.centre = model.centre == .catalog ? .workspace : .catalog }
     /// ⌘R: Run in the Editor, Raw stream in a session (SHORTCUTS: context-dependent).
     @objc func toggleRawStream(_ sender: Any?) {
         if model.centre == .editor { NotificationCenter.default.post(name: .runFile, object: [model.active.id]) }
@@ -370,6 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Decisions", "\(m.openDecisionCount) waiting (⌘I)", "hand.raised", "View") { m.centre = .decisions }
         add("Subagents", "Trace of every subagent (⇧⌘A)", "point.3.connected.trianglepath.dotted", "View") { m.centre = .subagents }
         add("Loops", "Work that repeats until a check passes, or every night", "arrow.triangle.2.circlepath", "View") { m.centre = .loops }
+        add("Session catalog", "Every session ever run, by repo; resume any of them", "books.vertical", "View") { m.centre = .catalog }
         add("New loop", "Goal, check, agent, limits; test the check first", "plus.arrow.triangle.2.circlepath", "Action") {
             m.centre = .loops
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { NotificationCenter.default.post(name: .newLoop, object: nil) }
@@ -654,6 +657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(item("Decisions", #selector(showDecisions(_:)), "i"))
         view.addItem(item("Subagents", #selector(showSubagents(_:)), "a", [.command, .shift]))
         view.addItem(item("Loops", #selector(showLoops(_:)), ""))
+        view.addItem(item("Session Catalog", #selector(showCatalog(_:)), ""))
         view.addItem(item("Learn", #selector(toggleLearn(_:)), "e", [.command, .shift]))
         view.addItem(item("Work: Projects and Roadmap", #selector(toggleWork(_:)), "w", [.command, .shift]))
         view.addItem(.separator())
