@@ -60,6 +60,12 @@ extension SessionStore {
         """,
     ]
 
+    /// LAB-1517: the refusal an older app gives a newer store.
+    static func newerStore(_ found: Int, known: Int) -> NSError {
+        NSError(domain: "SessionStore", code: 2, userInfo: [NSLocalizedDescriptionKey:
+            "This session store was written by a newer One Roof (store version \(found), this app knows \(known)). Quit this copy and open One Roof from Applications."])
+    }
+
     public var schemaVersion: Int {
         query("PRAGMA user_version", []) { $0.int(0) }.first ?? 0
     }
@@ -67,6 +73,9 @@ extension SessionStore {
     /// Runs every migration newer than the file's user_version, each in its own transaction.
     func migrate() throws {
         let current = schemaVersion
+        // LAB-1517: a store written by a newer One Roof is not opened by an older one (an old copy launched from
+        // Spotlight or a release folder would read and write tables it does not know). Nothing is written.
+        if current > Self.migrations.count { throw Self.newerStore(current, known: Self.migrations.count) }
         for (i, sql) in Self.migrations.enumerated() where i + 1 > current {
             try exec("BEGIN")
             do {

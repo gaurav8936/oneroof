@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.9.15 — sessions you can trust: resume, safe saves, honest closing (28 Oct 2026)
+
+- **Every Claude session remembers its conversation** (LAB-1510). One Roof saves the conversation id the first time it
+  sees it, so Resume works after the terminal is gone or One Roof restarts. First step of the session catalog (LAB-1509).
+- **No more lost updates between roofd and the app** (LAB-1516). When a scheduled run or a loop starts a session, roofd
+  writes only the launch fields, and an app save never erases a newer launch.
+- **An older One Roof will not open a newer store** (LAB-1517). It says why and writes nothing.
+- **roofd tidies its folder** (LAB-1518). Lock and socket files left by sessions that ended without cleaning up are
+  removed when roofd starts; live sessions keep theirs.
+- **Closing a window says what is in it** (LAB-1485). How many sessions keep running, which agents are working or
+  waiting, which are finished shells, and how many are saved rows — no more "keep running in roofd" for an empty window.
+- **Repro copies clean up after themselves** (LAB-1486). `app/scripts/test-copy.sh` runs a throwaway copy that always
+  stops its roofd and unregisters itself.
+
 ## 1.9.14 — All cards › By band shows every card (28 Oct 2026)
 
 - **By band draws the whole deck again** (LAB-1411). Since the deck dropped suits, each band in Learn › All cards ›

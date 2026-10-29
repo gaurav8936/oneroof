@@ -215,6 +215,11 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var lastRepo: String?
     /// A run terminal's agent session (LAB-598): Right-click › Run in Terminal made this shell for that session.
     public var parentSessionId: String?
+    /// LAB-1510: the agent's own conversation id (Claude's `<id>.jsonl`) and its transcript, saved the first time One
+    /// Roof sees them, so the session can be resumed after its terminal is gone or the app restarted (and found again in
+    /// the session catalog). Nil until seen; the last one wins when the agent moves to another conversation.
+    public var conversationId: String?
+    public var conversationPath: String?
 
     /// Everything after the agent command: the model flag, then any extra arguments.
     public var launchArgs: [String] {
@@ -283,7 +288,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
-             moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles, parentSessionId
+             moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles, parentSessionId,
+             conversationId, conversationPath
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -322,6 +328,26 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         lastRepo = try c.decodeIfPresent(String.self, forKey: .lastRepo)
         writtenFiles = try c.decodeIfPresent([String].self, forKey: .writtenFiles) ?? []
         parentSessionId = try c.decodeIfPresent(String.self, forKey: .parentSessionId)
+        conversationId = try c.decodeIfPresent(String.self, forKey: .conversationId)
+        conversationPath = try c.decodeIfPresent(String.self, forKey: .conversationPath)
+    }
+
+    /// LAB-1516: the launch fields roofd owns when it starts a session (Scheduler, Loops). Saving a row keeps the newer
+    /// launch: if `disk` was started later than `app` knows (or `app` never saw a start), `disk`'s launch fields win, so
+    /// an app save made from a stale copy cannot erase "running as holder X". Everything else is the app's.
+    public static func keepingNewerLaunch(app: Session, disk: Session?) -> Session {
+        guard let disk, let d = disk.launchedAt, app.launchedAt.map({ d > $0 }) ?? true else { return app }
+        var out = app
+        out.copyLaunch(from: disk)
+        return out
+    }
+    /// The fields a launch sets (and nothing else).
+    public mutating func copyLaunch(from o: Session) {
+        runtimeId = o.runtimeId
+        runtimeGroup = o.runtimeGroup
+        launchedAt = o.launchedAt
+        openingSent = o.openingSent
+        lifecycle = o.lifecycle
     }
 
     /// A waiting message can go in now: the agent is at its prompt (not working, not on a permission question).
