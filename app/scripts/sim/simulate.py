@@ -131,12 +131,20 @@ class Sim:
             repo = os.path.join(root, name)
             os.makedirs(repo, exist_ok=True)
             subprocess.run(["git", "init", "-q", repo], check=False)
-            with open(os.path.join(repo, "README.md"), "w") as f:
-                f.write(f"# {name}\n\nScratch repo for the One Roof simulator.\n")
-            shutil.copy(os.path.join(HERE, "scenarios", scen + ".txt"), os.path.join(repo, ".sim-scenario"))
+            if self.a.real:
+                # Something small for the real agent to work on, so it stays in its repo.
+                with open(os.path.join(repo, "README.md"), "w") as f:
+                    f.write("# greeter\n\nA tiny script that prints a greeting. Run: python3 hello.py\n")
+                with open(os.path.join(repo, "hello.py"), "w") as f:
+                    f.write('print("hello")\n')
+            else:
+                with open(os.path.join(repo, "README.md"), "w") as f:
+                    f.write(f"# {name}\n\nScratch repo for the One Roof simulator.\n")
+                shutil.copy(os.path.join(HERE, "scenarios", scen + ".txt"), os.path.join(repo, ".sim-scenario"))
             persona = "prompt" if self.a.real else personas[i % len(personas)]
-            opening = ("Read README.md and tell me in two lines what this repo is. Then ask me, with your question tool, "
-                       "which of two next steps I want." if self.a.real else "Look around the repo and start on the plan.")
+            opening = ("Read README.md and hello.py in this folder and tell me in two lines what they do. Then ask me, with "
+                       "your question tool, which of two small next steps I want." if self.a.real
+                       else "Look around the repo and start on the plan.")
             self.sessions.append({"name": name, "agent": agent, "repo": repo, "window": windows[i % 3], "persona": persona,
                                   "scenario": scen, "id": None, "status": None, "since": time.time(), "turn": 0,
                                   "worked": False, "next_at": None, "answer_at": None, "blocked_at": None,
@@ -272,12 +280,20 @@ class Sim:
                     if g:
                         self.log(s["name"], "gate", g)
                         continue
+                if (s["answer_at"] is None and s.get("answered_at") and now - s["answered_at"] > 6
+                        and PERSONAS[s["persona"]] is not None):
+                    # Still blocked after an answer: the next ask came at once (real Claude asks for one tool after
+                    # another faster than a 1 s poll sees a change).
+                    s["answered_at"] = None
+                    s["answer_at"] = now + self.rng.uniform(*PERSONAS[s["persona"]])
+                    self.log(s["name"], "ask-seen", f"next ask, no status change between; answer in {s['answer_at'] - now:.0f}s")
                 if s["answer_at"] and now >= s["answer_at"]:
                     scr = scr or self.screen(s)
                     key, why = self.pick_answer(s, scr)
                     s["answer_at"] = None
                     if key:
                         how = self.press(s, key)
+                        s["answered_at"] = time.time()
                         self.log(s["name"], "answer", f"{why} (typed {how})")
                     else:
                         self.log(s["name"], "answer-skip", why)
@@ -341,6 +357,17 @@ class Sim:
         for r in self._agent_log():
             if len(r) >= 5 and r[1] in by_id and r[3] in ("ask", "answered"):
                 events.setdefault(r[1], []).append((float(r[0]), r[3], r[4]))
+        if self.a.real:
+            # Real agents keep no log of their own: an ask is a stretch roofd reported blocked (gates and asks shorter
+            # than a Needs you read are listed as answered before a read).
+            ids = {x["name"]: i for i, x in by_id.items()}
+            for r in (l.rstrip("\n").split("\t") for l in open(os.path.join(self.run, "turns.tsv"))):
+                if len(r) >= 5 and r[2] in ids and r[3] == "status":
+                    old_st, new_st = r[4].split(" -> ")
+                    if new_st == "blocked":
+                        events.setdefault(ids[r[2]], []).append((float(r[0]), "ask", "roofd blocked"))
+                    elif old_st == "blocked":
+                        events.setdefault(ids[r[2]], []).append((float(r[0]), "answered", new_st))
         end = max([d["at"] for d in dumps] + [time.time()])
         lines = ["# One Roof simulator run", "", f"Run folder: `{self.run}`", "",
                  f"Sessions: {len(self.sessions)} · minutes: {self.a.minutes} · mode: {'real' if self.a.real else 'stand-in'}"
@@ -412,7 +439,8 @@ def main():
     p.add_argument("--every", type=int, default=5, help="seconds between Needs you checks")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--deny", type=float, default=0.15, help="share of permission asks the simulated owner denies")
-    p.set_defaults(real=False, model="haiku")
+    p.add_argument("--real", action="store_true", help="one real Claude session instead of stand-ins")
+    p.add_argument("--model", default="haiku", help="--real: the Claude model (ANTHROPIC_MODEL)")
     p.add_argument("--out", help="run folder (default $TMPDIR/oneroof-sim-<time>)")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args()
