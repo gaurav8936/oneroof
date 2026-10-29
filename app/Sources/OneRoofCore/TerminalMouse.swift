@@ -7,7 +7,12 @@ import AppKit
 public enum TerminalMouse {
     #if canImport(AppKit)
     /// A left drag selects text unless Option is held (Option sends the mouse to the program).
-    public static func selects(flags: NSEvent.ModifierFlags) -> Bool { !flags.contains(.option) }
+    /// LAB-1554: when the program has turned mouse reporting on (Claude's fullscreen view, most full-screen tools),
+    /// clicks and drags go to it, as in other Mac terminals: its buttons work ("Jump to bottom") and it does its own
+    /// selection. Option then selects in the terminal instead.
+    public static func selects(flags: NSEvent.ModifierFlags, captured: Bool = false) -> Bool {
+        captured ? flags.contains(.option) : !flags.contains(.option)
+    }
     #endif
 
     /// Dropped files become their paths, shell-quoted and space-separated, with a trailing space (as Terminal.app does).
