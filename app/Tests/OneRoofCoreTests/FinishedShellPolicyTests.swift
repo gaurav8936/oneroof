@@ -84,4 +84,13 @@ final class FinishedShellPolicyTests: XCTestCase {
                        "Claude session ended. The conversation stays in All sessions (⌃⌘O), where you can resume it any time.")
         XCTAssertFalse(FinishedShellPolicy.endedLine(agent: .codex, minutes: 10).contains("All sessions"))
     }
+
+    /// LAB-1545: a finished session (no live agent, no group under roofd) is closed by its shell's id — the bug that made
+    /// "Close finished" and the 10-minute rule do nothing in 1.9.16–1.9.18.
+    func test_LAB1545_finishedShellHasACloseTarget() {
+        XCTAssertEqual(FinishedShellPolicy.closeTarget(liveAgent: nil, endedShell: "roof-1", runtimeId: "roof-1", hasGroup: false), "roof-1")
+        XCTAssertEqual(FinishedShellPolicy.closeTarget(liveAgent: "roof-2", endedShell: nil, runtimeId: "roof-2", hasGroup: false), "roof-2")
+        XCTAssertNil(FinishedShellPolicy.closeTarget(liveAgent: nil, endedShell: nil, runtimeId: "roof-3", hasGroup: false))   // nothing runs
+        XCTAssertEqual(FinishedShellPolicy.closeTarget(liveAgent: nil, endedShell: nil, runtimeId: "g", hasGroup: true), "g")
+    }
 }

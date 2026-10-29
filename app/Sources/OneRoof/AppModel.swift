@@ -1083,8 +1083,10 @@ final class AppModel: ObservableObject {
     /// End the session in the runtime (its agent or shell process).
     func closeAgent(_ item: BoardItem, remember: Bool = true) {
         let group = item.workspaceId ?? item.session.runtimeGroup
-        guard group != nil || item.liveAgent != nil else { return }
-        let id = item.liveAgent ?? item.session.runtimeId ?? ""
+        // LAB-1545: a finished session (agent gone, shell open) has neither a live agent nor a group under roofd; its
+        // shell's runtime id is what to close. Without this, "Close finished" and the 10-minute rule did nothing.
+        guard let id = FinishedShellPolicy.closeTarget(liveAgent: item.liveAgent, endedShell: item.endedShell,
+                                                       runtimeId: item.session.runtimeId, hasGroup: group != nil) else { return }
         if remember { rememberClosed(item.session) }
         queue.async { [weak self] in
             do { try self?.runtime.close(id, group: group) }

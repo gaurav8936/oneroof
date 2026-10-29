@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.19 — finished sessions really close (29 Oct 2026)
+
+- **Finished sessions close as promised** (LAB-1545). A session whose agent had ended was never actually closed: "Close
+  finished" (1.9.16), Close in All sessions and the 10-minute rule (1.9.18) all stopped short because such a session has
+  no live agent. They now close the shell the agent left, as described in 1.9.18.
+
 ## 1.9.18 — sessions look after themselves (29 Oct 2026)
 
 - **Exiting an agent closes its session after 10 minutes** (LAB-1535). Ctrl+D twice or /exit ends Claude; its terminal
