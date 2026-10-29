@@ -79,7 +79,7 @@ if locked:
 # baseline comparison
 bp = find_baseline()
 base = json.loads(bp.read_text()) if bp else {}
-if not bp: notes.append('No earlier baseline in scratchpad/perf/: nothing to compare yet (a passing full run stores this version's baseline).')
+if not bp: notes.append('No earlier baseline in scratchpad/perf/: nothing to compare yet (a passing full run stores the baseline for this version).')
 elif base.get('screen_locked') != locked:
     notes.append(f"Baseline {base.get('version')} was taken with the screen {'locked' if base.get('screen_locked') else 'unlocked'}, "
                  f"this run with it {'locked' if locked else 'unlocked'}: CPU and timing differ for that reason alone, so "
