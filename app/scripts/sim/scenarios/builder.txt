@@ -1,0 +1,21 @@
+# A builder: reads, runs commands and edits, asking permission for most of them.
+work 3
+tool Read README.md
+say I read the repo: a small service with tests under tests/.
+permission command | pytest -q | Run the test suite
+say 12 tests pass. Next I would tidy the config loader.
+---
+work 4
+tool Read src/config.py
+permission edit | src/config.py | Split the loader into read and validate
+say The loader is split; the old entry point still works.
+maybe 0.6 permission command | pytest -q tests/test_config.py | Run the config tests
+say Config tests pass.
+---
+work 2
+maybe 0.5 permission command | rm -rf build | Remove the stale build folder
+say Cleaned up. Anything else?
+---
+work 3
+permission command | git push origin work | Push the branch so CI runs
+say Pushed. CI will take a few minutes.
