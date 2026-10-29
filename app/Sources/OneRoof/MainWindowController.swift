@@ -141,8 +141,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         planItem = NSSplitViewItem(viewController: plan)
         planItem.minimumThickness = PanelMinimums.plan; planItem.canCollapse = true
         planItem.holdingPriority = .init(251)
-        // LAB-1556: in the v2 window a drag never folds the Sessions column away (it stops at its narrowest); the layout
-        // still folds and unfolds it itself (other places, Focus).
+        // LAB-1556: in the v2 window no drag can open the classic Files item (it has no width). LAB-1576: a drag left
+        // still folds the Sessions column away, as before; the Sessions rail button and ⌥⌘S bring it back.
         if isV2 {
             // The v2 file tree is the Files tab: the classic item has no width to give, so no drag can open it.
             filesItem.minimumThickness = 0; filesItem.maximumThickness = 0
@@ -151,7 +151,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             roof.keepOnDrag = { [weak self] v in
                 guard let self else { return false }
                 // The split view hands over the wrapper AppKit puts around each item's view.
-                return self.sideItem.viewController.view.isDescendant(of: v) || self.filesItem.viewController.view.isDescendant(of: v)
+                return self.filesItem.viewController.view.isDescendant(of: v)
+            }
+            // LAB-1576: a drag that folds the Sessions column hands its place to the classic Files item, which has no
+            // width in v2; fold it straight back so nothing reads it as open.
+            roof.afterResize = { [weak self] in
+                guard let self, !self.filesItem.isCollapsed else { return }
+                DispatchQueue.main.async { if !self.filesItem.isCollapsed { self.filesItem.isCollapsed = true } }
             }
         }
         for i in [sideItem, filesItem, centreItem, planItem] {
@@ -678,6 +684,13 @@ final class RoofSplitViewController: NSSplitViewController {
     override func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
         if keepOnDrag?(subview) == true { return false }
         return super.splitView(splitView, canCollapseSubview: subview)
+    }
+
+    /// LAB-1576: runs after every layout change, drags included.
+    var afterResize: (() -> Void)?
+    override func splitViewDidResizeSubviews(_ notification: Notification) {
+        super.splitViewDidResizeSubviews(notification)
+        afterResize?()
     }
 }
 

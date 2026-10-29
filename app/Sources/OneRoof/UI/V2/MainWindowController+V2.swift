@@ -315,6 +315,11 @@ extension MainWindowController {
         v2Page = nil
         if p == .sessions && win.place == .sessions {
             if win.centre != .workspace { model.show(.workspace, in: win) }
+            // LAB-1576: a Sessions column folded away by a drag comes back with one click on Sessions.
+            if sideItemRef.isCollapsed && win.focusStep != .focus {
+                sideItemRef.animator().isCollapsed = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.v2PaintBand() }
+            }
             return
         }
         win.open(p)
