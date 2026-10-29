@@ -123,7 +123,18 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         guard let surface else { return }
         let scaled = convertToBacking(size)
         ghostty_surface_set_size(surface, UInt32(max(scaled.width, 1)), UInt32(max(scaled.height, 1)))
+        // LAB-1596: count the grid size changes (each one resizes the session's terminal), for the release harness.
+        let g = ghostty_surface_size(surface)
+        if g.columns != lastGrid.0 || g.rows != lastGrid.1 {
+            lastGrid = (g.columns, g.rows)
+            Self.gridChanges += 1
+            Self.lastGridChange = CACurrentMediaTime()
+        }
     }
+    private var lastGrid: (UInt16, UInt16) = (0, 0)
+    /// Grid size changes across every terminal surface since launch, and when the last one happened (LAB-1596).
+    nonisolated(unsafe) static var gridChanges = 0
+    nonisolated(unsafe) static var lastGridChange: CFTimeInterval = 0
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
