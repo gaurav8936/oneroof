@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.22 — the Sessions column can be dragged closed again (29 Oct 2026)
+
+- **Drag the Sessions column closed** (LAB-1576). 1.9.21 stopped the column at its narrowest, so it could no longer be
+  closed by dragging its edge left. A drag left folds it away again; the old folder panel stays shut. One click on
+  Sessions in the rail, or ⌥⌘S, brings the column back.
+
 ## 1.9.21 — clicks reach Claude, the Sessions column stays, searchable pickers (29 Oct 2026)
 
 - **Clicks reach Claude's fullscreen view** (LAB-1554). Every plain click in a terminal was turned into a text-selection
