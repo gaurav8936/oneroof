@@ -38,6 +38,10 @@ enum Daemon {
         // app, blocks here and never binds the socket). The lock is held for life; the kernel frees it on any exit.
         guard let lockFd = try FileLock.acquire(Paths.dir + "/roofd.lock", wait: true) else { throw RoofdError("lock failed") }
         _ = lockFd
+        // LAB-1518: a holder that ended without its own cleanup (restart, logout, kill) left its lock and socket here.
+        // Before serving anything, remove every pair whose lock nobody holds; live holders keep theirs.
+        let swept = sweepStaleSessionFiles(in: Paths.dir)
+        if swept > 0 { MemoryLog.append("\(ISO8601DateFormatter().string(from: Date())) daemon: removed \(swept) stale session lock(s)") }
         let fd = try Sock.listen(Paths.control)
         Scheduler.start()
         startWatchdog()
@@ -47,6 +51,23 @@ enum Daemon {
             if c < 0 { if errno == EINTR { continue }; break }
             DispatchQueue.global().async { autoreleasepool { serve(c) } }
         }
+    }
+
+    /// LAB-1518: delete `roof-*.lock` files no process holds, with their `.sock`. Taking the lock proves nobody holds it
+    /// (a live holder keeps it for life and the kernel frees it on any exit). Returns how many sessions were swept.
+    @discardableResult
+    static func sweepStaleSessionFiles(in dir: String) -> Int {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        var n = 0
+        for name in names where name.hasPrefix("roof-") && name.hasSuffix(".lock") {
+            let lock = dir + "/" + name
+            guard let fd = try? FileLock.acquire(lock, wait: false) else { continue }   // held: a live session
+            unlink(dir + "/" + name.dropLast(5) + ".sock")
+            unlink(lock)
+            close(fd)
+            n += 1
+        }
+        return n
     }
 
     /// The memory guard (LAB-310): the daemon keeps no session state, so it is a few MB; far above that something is

@@ -74,6 +74,42 @@ public final class SessionStore: @unchecked Sendable {
         sqlite3_step(stmt)
     }
 
+    /// LAB-1516 · the app's save: keeps a newer launch already on disk (roofd's Scheduler or Loops started the session
+    /// after the app last read it). Read and write happen in one transaction. Returns what was written.
+    @discardableResult
+    public func saveKeepingNewerLaunch(_ s: Session) -> Session {
+        lock.lock()
+        sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil)
+        let out = Session.keepingNewerLaunch(app: s, disk: rowLocked(s.id))
+        lock.unlock()
+        save(out)
+        lock.lock(); sqlite3_exec(db, "COMMIT", nil, nil, nil); lock.unlock()
+        return out
+    }
+
+    /// LAB-1516 · roofd's write when it starts a session: only the launch fields, read and written in one transaction,
+    /// so the app's edits to the same row (name, notes, issues…) are never overwritten. A row that is not there yet is
+    /// inserted whole (a brand-new loop round).
+    public func updateLaunch(_ s: Session) {
+        lock.lock()
+        sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil)
+        var row = rowLocked(s.id) ?? s
+        row.copyLaunch(from: s)
+        lock.unlock()
+        save(row)
+        lock.lock(); sqlite3_exec(db, "COMMIT", nil, nil, nil); lock.unlock()
+    }
+
+    /// One row by id (the caller holds `lock`).
+    private func rowLocked(_ id: String) -> Session? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT json FROM sessions WHERE id=?", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_ROW, let c = sqlite3_column_text(stmt, 0) else { return nil }
+        return try? Self.decoder.decode(Session.self, from: Data(String(cString: c).utf8))
+    }
+
     public func delete(id: String) {
         lock.lock(); defer { lock.unlock() }
         var stmt: OpaquePointer?

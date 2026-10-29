@@ -186,14 +186,20 @@ final class AppModel: ObservableObject {
         let loaded = Prefs.loadSettings()
         settings = loaded
         Self.applyFolders(loaded)
-        if let path = ProcessInfo.processInfo.environment["ONEROOF_STORE"] ?? Prefs.freshStorePath {
-            store = try? SessionStore(path: path)
-        } else {
-            store = try? SessionStore()
-        }
+        var openError: Error?
+        let opened: SessionStore?
+        do {
+            if let path = ProcessInfo.processInfo.environment["ONEROOF_STORE"] ?? Prefs.freshStorePath {
+                opened = try SessionStore(path: path)
+            } else {
+                opened = try SessionStore()
+            }
+        } catch { openError = error; opened = nil }
+        store = opened
         stored = store?.all() ?? []
         objectives = store?.allObjectives() ?? []
-        if store == nil { lastError = "Could not open the session store." }
+        // LAB-1517: say why (a newer One Roof's store is refused, never written).
+        if store == nil { lastError = "Could not open the session store. " + (openError?.localizedDescription ?? "") }
         WorkspaceStore.shared.attach(store)
         let records = WorkspaceStore.shared.workspaces
         for id in WindowMembership.toRestore(records.map { ($0.id, $0.open) }) {
@@ -357,6 +363,9 @@ final class AppModel: ObservableObject {
             if let store { storeQ.async { rows.forEach(store.save) } }   // LAB-1336: off the main thread
             new = Board.merge(stored: stored, snapshot: lastSnapshot, accounts: accounts)
         }
+        // LAB-1510: remember each agent's conversation (Claude's transcript the engines follow) on the session itself,
+        // so Resume and the session catalog work after the terminal is gone or the app restarts.
+        rememberConversations(new)
         // Last active (LAB-258): what roofd says, since its holders outlive the app; for a runtime that does not say,
         // any status change seen while the app runs, or while an agent is working. Not the first statuses after a
         // (re)start: those are the app catching up, not the session doing something.
@@ -476,7 +485,19 @@ final class AppModel: ObservableObject {
         for s in list {
             if let i = stored.firstIndex(where: { $0.id == s.id }) { stored[i] = s } else { stored.append(s) }
         }
-        if let store { storeQ.async { list.forEach(store.save) } }
+        // LAB-1516: a save keeps a newer launch roofd wrote (Scheduler, Loops) instead of erasing it, and the app adopts it.
+        if let store {
+            storeQ.async { [weak self] in
+                let written = list.map { store.saveKeepingNewerLaunch($0) }
+                let adopted = written.filter { w in !list.contains(w) }
+                guard !adopted.isEmpty else { return }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    for w in adopted { if let i = self.stored.firstIndex(where: { $0.id == w.id }) { self.stored[i].copyLaunch(from: w) } }
+                    self.rebuild()
+                }
+            }
+        }
         rebuild()
     }
     /// LAB-1336: where session rows are written.
@@ -865,6 +886,21 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// LAB-1510: save a session's conversation id and transcript the first time the engines see it (and again if the
+    /// agent moves to another conversation). Only rows that change are written, off the main thread.
+    private func rememberConversations(_ items: [BoardItem]) {
+        var rows: [Session] = []
+        for i in items where i.session.agent == .claude {
+            guard let path = engines.transcriptPath(i.id), let id = ClaudeResume.sessionId(transcriptPath: path),
+                  let k = stored.firstIndex(where: { $0.id == i.id }),
+                  stored[k].conversationId != id || stored[k].conversationPath != path else { continue }
+            stored[k].conversationId = id
+            stored[k].conversationPath = path
+            rows.append(stored[k])
+        }
+        if !rows.isEmpty, let store { storeQ.async { rows.forEach(store.save) } }
+    }
+
     /// LAB-1362: continue an exited Claude session's conversation. Its terminal usually lives on (roofd runs
     /// `claude …; exec zsh`): type `claude --resume <id>` into it, so the folder, account, environment and scrollback
     /// are the same. Otherwise start it again with `--resume <id>` and no opening message. The id comes from the
@@ -873,7 +909,8 @@ final class AppModel: ObservableObject {
         guard item.session.agent == .claude else { launch(item); return }
         var s = item.session
         let shell = item.endedShell
-        let known = engines.transcriptPath(item.id).flatMap(ClaudeResume.sessionId(transcriptPath:))
+        // LAB-1510: the saved conversation id covers a session whose terminal is gone and that the engines no longer follow.
+        let known = engines.transcriptPath(item.id).flatMap(ClaudeResume.sessionId(transcriptPath:)) ?? s.conversationId
         busy.insert(s.id)
         queue.async { [weak self] in
             guard let self else { return }

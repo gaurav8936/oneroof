@@ -142,7 +142,7 @@ enum LoopEngine {
             let ref = try RoofdRuntime(roofdPath: roofdPath ?? Daemon.selfPath(), dir: Paths.dir).start(spec)
             if ref.id != spec.id || ref.groupId != nil {
                 s.runtimeId = ref.id; s.runtimeGroup = ref.groupId
-                sessions?.save(s)
+                sessions?.updateLaunch(s)                        // LAB-1516: launch fields only
             }
             _ = try? store.update(fresh.id) { $0 = LoopController.started($0, n: n, sessionId: s.id, runtimeId: ref.id, now: now) }
         } catch {
