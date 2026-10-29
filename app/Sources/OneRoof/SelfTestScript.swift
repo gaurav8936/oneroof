@@ -21,6 +21,8 @@ import OneRoofCore
 ///   strayfiles · togglefiles · panels   (LAB-1306: show the classic Files panel, send its × action, log panels)
 ///   dragdivider <i> <x>            (LAB-1556: drag split divider i to window x with real mouse events)
 ///   focusstep <0-3>                (LAB-1302: the window's Focus step, as ⌥⌘F steps it)
+///   resumeall [max]                (LAB-1583: Resume every catalog row that offers it, one by one → <out>-resume.tsv)
+///   catalogsearch <q> [!]          (LAB-1585: rank sessions for <q>; " !" widens with the model → log)
 ///   railsessions                   (LAB-1576: a click on Sessions in the rail)
 ///   tableprobe                     (log: Table view on?, what it shows, who has the keyboard)
 ///   esc                            (an Esc key event through the app, so key monitors see it)
@@ -154,6 +156,28 @@ enum SelfTestScript {
             if parts.count == 2, let w = app.main.window { SelfTest.dragDivider(app.main.splitView, in: w, index: Int(parts[0]), toX: CGFloat(parts[1])) }
             delay = 1.5
         case "focusstep": if let n = Int(arg), let st = FocusStep(rawValue: n) { app.model.active.focusStep = st }; delay = 1.5
+        case "resumeall":   // LAB-1583: the next step starts when every row is done
+            SelfTestResume.run(app, out: out, max: Int(arg) ?? 1000) { step(steps, i + 1, app: app, out: out) }
+            return
+        case "catalogresume":   // LAB-1584: press Resume on the catalog's History row number <n> (1 = first), as a click does
+            let rows = m.catalogEntries().filter { $0.state == .history && $0.resume.buttonTitle != nil }
+            if let n = Int(arg), rows.indices.contains(n - 1) { log(out, "  resume \(rows[n - 1].name)"); m.catalogResume(rows[n - 1].id) }
+            delay = 1
+        case "catalogsearch":   // LAB-1585: <query> (append " !" to widen with the model) → top hits in the log
+            let deep = arg.hasSuffix(" !"), q = deep ? String(arg.dropLast(2)) : arg
+            let rows = m.catalogSearchRows()
+            DispatchQueue.global().async {
+                let docs = SessionSearch.docs(rows)
+                let extra = deep ? LocalModel.shared.expandSearch(q) : []
+                let hits = SessionSearch.rank(q, extra: extra, docs: docs)
+                let names = Dictionary(uniqueKeysWithValues: docs.map { ($0.id, $0.title) })
+                DispatchQueue.main.async {
+                    log(out, "  search '\(q)' docs=\(docs.count) withText=\(docs.filter { !$0.lines.isEmpty }.count) related=\(extra) hits=\(hits.count)")
+                    for h in hits.prefix(5) { log(out, "    \(String(format: "%.1f", h.score)) \(names[h.id] ?? h.id) | \(h.snippet.prefix(120))") }
+                    step(steps, i + 1, app: app, out: out)
+                }
+            }
+            return
         case "railsessions": app.main.v2Open(.sessions); delay = 1.0   // LAB-1576: the rail's Sessions button
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
         case "esc":
