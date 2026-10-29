@@ -48,6 +48,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// minutes untouched: -1 = keep it (the old behaviour), 0 = right away. The row stays and Resume works from the
     /// session catalog (the conversation id is saved since 1.9.15).
     public var closeFinishedAfterMinutes: Int
+    /// LAB-1535 · close a running session nobody touched for this many hours (agent, shell and holder); -1 = never.
+    /// Never a working, waiting, pinned or loop session, nor one that cannot be resumed.
+    public var closeIdleSessionsAfterHours: Int
+    /// LAB-1535 · 2 = "When an agent ends" defaults to 10 minutes (owner rules, 10-29: exiting Claude closes its roofd
+    /// session); settings saved by 1.9.16/1.9.17 with the old 60-minute default move to 10 minutes once.
+    public var finishedPolicyVersion: Int
     /// Panels follow macOS light/dark: in Dark Mode light themes use their dark twins.
     public var followSystemAppearance: Bool
     /// Menu shortcut overrides by item title; "" removes a shortcut.
@@ -105,7 +111,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         shortcuts = [:]
         globalHotkey = ""
         stickerStyle = "bold"
-        closeFinishedAfterMinutes = 60   // owner, 10-28: close after an hour
+        closeFinishedAfterMinutes = FinishedShellPolicy.defaultMinutes   // owner rules, 10-29: 10 minutes after the agent exits
+        finishedPolicyVersion = 2
+        closeIdleSessionsAfterHours = 24 // owner, 10-28: a day untouched
         agents = ["claude": AgentDefaults(account: "Claude1")]
         dockBadge = true
         notifyNeedsYou = true
@@ -135,6 +143,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notifyLongCommands = try c.decodeIfPresent(Bool.self, forKey: .notifyLongCommands) ?? fresh.notifyLongCommands
         longCommandSeconds = try c.decodeIfPresent(Int.self, forKey: .longCommandSeconds) ?? fresh.longCommandSeconds
         closeFinishedAfterMinutes = try c.decodeIfPresent(Int.self, forKey: .closeFinishedAfterMinutes) ?? fresh.closeFinishedAfterMinutes
+        closeIdleSessionsAfterHours = try c.decodeIfPresent(Int.self, forKey: .closeIdleSessionsAfterHours) ?? fresh.closeIdleSessionsAfterHours
+        finishedPolicyVersion = try c.decodeIfPresent(Int.self, forKey: .finishedPolicyVersion) ?? 1
+        if finishedPolicyVersion < 2 {                       // LAB-1535: the old untouched default (1 h) becomes 10 minutes
+            if closeFinishedAfterMinutes == 60 { closeFinishedAfterMinutes = FinishedShellPolicy.defaultMinutes }
+            finishedPolicyVersion = 2
+        }
         startupCheck = try c.decodeIfPresent(Bool.self, forKey: .startupCheck) ?? fresh.startupCheck
         agenticEngineeringPath = try c.decodeIfPresent(String.self, forKey: .agenticEngineeringPath) ?? fresh.agenticEngineeringPath
         commonPath = try c.decodeIfPresent(String.self, forKey: .commonPath) ?? fresh.commonPath
