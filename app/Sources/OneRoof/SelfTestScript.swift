@@ -29,6 +29,9 @@ import OneRoofCore
 ///   width <pt>                     (the main window this wide; the panes follow)
 ///   alltext <name>                 (the focused terminal's whole text as libghostty gives it → <name>.alltext.txt)
 ///   expect · newwindow · switchwindow · place · search · textcount · hitch · resizegesture · windowsize   (SelfTestHarness)
+///   window <name> · activate <name>   (LAB-1591: a new workspace window, active; or make an open one active)
+///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
+///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
     static func run(_ path: String, app: AppDelegate) {
@@ -42,6 +45,24 @@ enum SelfTestScript {
         perfBag = app.model.objectWillChange.sink { changes += 1 }
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in log(out, "perf: \(changes) model changes in 5 s"); changes = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { step(steps, 0, app: app, out: out) }
+    }
+
+    /// LAB-1592: Needs you as the place shows it (open decisions, oldest first), plus every session's status and the
+    /// badge count, so a run can say which asks reached it.
+    static func writeNeeds(_ m: AppModel, to path: String) {
+        let open = m.openDecisions.map { d -> [String: Any] in
+            ["session": m.item(d.sessionId)?.session.name ?? d.sessionId, "agent": d.agent.rawValue, "kind": d.kind.rawValue,
+             "headline": d.command.map { "Run " + $0 } ?? d.headline, "askedAt": d.askedAt.timeIntervalSince1970]
+        }
+        let rows = m.items.map { i -> [String: Any] in
+            ["name": i.session.name, "status": i.status.rawValue, "agent": i.session.agent.rawValue, "live": i.liveAgent ?? "",
+             "window": m.window(m.workspaceId(of: i))?.name ?? ""]
+        }
+        let meta: [String: Any] = ["at": Date().timeIntervalSince1970, "open": open, "badge": max(m.openDecisionCount, m.items.filter { $0.status == .needsYou }.count),   // V2Counts.needsYou
+                                   "decisionsAll": m.decisions.count, "rows": rows]
+        if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
+            try? d.write(to: URL(fileURLWithPath: path))
+        }
     }
 
     static func log(_ out: String, _ line: String) {
@@ -194,6 +215,16 @@ enum SelfTestScript {
             delay = 2
         case "alltext":
             try? (app.main.terminalArea.focusedAllText() ?? "(none)").write(toFile: out + "-" + arg + ".alltext.txt", atomically: true, encoding: .utf8)
+        case "window":   // LAB-1591: a new workspace window, as New Workspace Window… creates it; it becomes the active one
+            NotificationCenter.default.post(name: .newWorkspace, object: [arg, ""])
+            delay = 1.5
+        case "activate":   // LAB-1591: make an open window (by name) the active one, so the next plan lands in it
+            if let w = m.windows.first(where: { $0.name == arg }) { m.activeWindowId = w.id } else { log(out, "  no window \(arg)") }
+        case "place":   // LAB-1592: open a place in the active window (home, needsYou, sessions, work, machine, loops, learn)
+            if let p = Place(rawValue: arg) { app.main.v2Open(p) } else { log(out, "  bad place") }
+            delay = 1
+        case "needs":   // LAB-1592: what Needs you holds now → <name>.needs.json (the simulator compares it with what was asked)
+            SelfTestScript.writeNeeds(m, to: out + "-" + arg + ".needs.json")
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":
