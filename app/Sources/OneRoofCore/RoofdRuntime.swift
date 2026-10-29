@@ -258,6 +258,14 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         env["SSL_CERT_FILE"] = bundle
     }
 
+    /// LAB-1550: Claude Code draws either "classic" (into the terminal's history, reprinting the whole conversation on
+    /// every width change: copies pile up and tables break) or "fullscreen" (its own screen, redrawn cleanly at any width).
+    /// It picks per launch from its own settings and rollouts; One Roof asks for fullscreen every time.
+    static func addRendererDefault(_ env: inout [String: String], agent: AgentKind) {
+        guard agent == .claude, env["CLAUDE_CODE_NO_FLICKER"] == nil else { return }
+        env["CLAUDE_CODE_NO_FLICKER"] = "1"
+    }
+
     func environment(_ spec: LaunchSpec) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }
@@ -282,6 +290,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
             if let z = env["ZDOTDIR"] { env["GHOSTTY_ZSH_ZDOTDIR"] = z }
             env["ZDOTDIR"] = res + "/shell-integration/zsh"
         }
+        RoofdRuntime.addRendererDefault(&env, agent: spec.agent)
         for (k, v) in spec.env { env[k] = v }
         return env
     }

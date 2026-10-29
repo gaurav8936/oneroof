@@ -135,7 +135,10 @@ fn trailingBlankRows(screen: *const gvt.Screen, rows: usize) usize {
 fn writeScreen(w: *std.Io.Writer, screen: *const gvt.Screen, rows: usize) !void {
     var aw: std.Io.Writer.Allocating = .init(alloc);
     defer aw.deinit();
-    const sf: gvt.formatter.ScreenFormatter = .init(screen, .{ .emit = .vt });
+    // LAB-1550: keep soft wraps (a long line goes out as one line and the client wraps it again), so history the client
+    // receives still reflows when its pane widens or narrows. Without it every wrap became a hard line break at attach,
+    // and text stayed at the width it had then (a third of a wide pane).
+    const sf: gvt.formatter.ScreenFormatter = .init(screen, .{ .emit = .vt, .unwrap = true });
     try aw.writer.print("{f}", .{sf});
     const body = aw.written();
     if (body.len == 0) return;
@@ -383,3 +386,25 @@ test "resize reflows" {
     defer alloc.free(t);
     try std.testing.expectEqualStrings("abcdefghijklmnopqrstuvwxyz", t);
 }
+
+test "redraw keeps soft wraps, so the rebuilt history still reflows (LAB-1550)" {
+    const a = rvt_new(20, 4, 1 << 20).?;
+    defer rvt_free(a);
+    feedStr(a, "abcdefghijklmnopqrstuvwxyz\r\nnext line\r\n");
+    var p: [*c]u8 = null;
+    const n = rvt_redraw(a, &p);
+    defer rvt_bytes_free(p, n);
+    const b = rvt_new(20, 4, 1 << 20).?;
+    defer rvt_free(b);
+    rvt_feed(b, p, n);
+    const same = try takeText(b, 0);
+    defer alloc.free(same);
+    const orig = try takeText(a, 0);
+    defer alloc.free(orig);
+    try std.testing.expectEqualStrings(orig, same);
+    try std.testing.expect(rvt_resize(b, 40, 4));
+    const t = try takeText(b, 0);
+    defer alloc.free(t);
+    try std.testing.expect(std.mem.indexOf(u8, t, "abcdefghijklmnopqrstuvwxyz") != null);
+}
+

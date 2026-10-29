@@ -102,4 +102,17 @@ final class RoofdRuntimeTests: XCTestCase {
         XCTAssertNil(RoofdRuntime.sessionState(["id": "old"])?.activeAt, "an older holder does not say")
         XCTAssertNil(RoofdRuntime.sessionState(["id": "x", "exited": 1.0]))
     }
+
+    /// LAB-1550: every Claude starts in its fullscreen renderer (clean redraws on resize); other agents are untouched.
+    func test_LAB1550_claudeStartsFullscreen() {
+        var env: [String: String] = [:]
+        RoofdRuntime.addRendererDefault(&env, agent: .claude)
+        XCTAssertEqual(env["CLAUDE_CODE_NO_FLICKER"], "1")
+        var codex: [String: String] = [:]
+        RoofdRuntime.addRendererDefault(&codex, agent: .codex)
+        XCTAssertNil(codex["CLAUDE_CODE_NO_FLICKER"])
+        var shell: [String: String] = [:]
+        RoofdRuntime.addRendererDefault(&shell, agent: .shell)
+        XCTAssertNil(shell["CLAUDE_CODE_NO_FLICKER"])
+    }
 }
