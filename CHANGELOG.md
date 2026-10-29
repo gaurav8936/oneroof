@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.21 — clicks reach Claude, the Sessions column stays, searchable pickers (29 Oct 2026)
+
+- **Clicks reach Claude's fullscreen view** (LAB-1554). Every plain click in a terminal was turned into a text-selection
+  click, so Claude's own buttons ("Jump to bottom") did nothing. When the program in a terminal asks for the mouse,
+  clicks now go to it, as in other Mac terminals; hold Option to select text there instead.
+- **Dragging the Sessions column can't trap you** (LAB-1556). Dragging its edge far to the left folded the column away
+  and opened an old folder panel in its place; closing that left no way back but Home → Sessions. The column now stops
+  at its narrowest, and the old panel never opens.
+- **Search in New session** (LAB-1559). Team and Project open a list with a search box (type any words, any order;
+  ↑ ↓ and Return to pick); the Issue picker's filter is ready to type into as soon as it opens.
+- **Active only** (LAB-1571). The Project picker shows In Progress projects only (switch it off to see all); the Issue
+  picker has the same switch for In Progress and In Review issues (off by default). Both remember your choice.
+
 ## 1.9.20 — terminal text stays whole when a pane changes width (29 Oct 2026)
 
 - **Claude starts in its fullscreen view** (LAB-1550). Claude has two ways of drawing; in the older one it reprinted
