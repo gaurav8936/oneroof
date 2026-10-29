@@ -23,6 +23,9 @@ public struct StatusEngine: Sendable {
     public static let doneAfter: TimeInterval = 3
     /// A hook's "working" with nothing on screen to back it, after this long, is stale.
     public static let staleHook: TimeInterval = 8
+    /// LAB-1592: a hook's "blocked" whose prompt left the screen after the owner typed is answered once the screen
+    /// has been quiet this long (a redraw in between is the CLI replacing the prompt).
+    public static let answeredAfter: TimeInterval = 1.5
 
     public private(set) var status: RuntimeStatus = .unknown
     public private(set) var ready = false
@@ -34,6 +37,8 @@ public struct StatusEngine: Sendable {
     private var lastInput: Date?
     /// When the CLI first drew and went quiet; output before it is start-up, not work.
     private var readyAt: Date?
+    /// LAB-1592: someone typed into the session after a hook said it was blocked (an answer, or Esc).
+    private var inputSinceBlockedHook = false
 
     public init() {}
 
@@ -47,7 +52,7 @@ public struct StatusEngine: Sendable {
         case "Notification":
             // Permission and question notifications block; "waiting for your input" is just idle.
             let m = (message ?? "").lowercased()
-            if m.contains("permission") || m.contains("approve") || m.contains("needs your") { hookStatus = .blocked }
+            if m.contains("permission") || m.contains("approve") || m.contains("needs your") { hookStatus = .blocked; inputSinceBlockedHook = false }
             else { return }
         case "Stop": hookStatus = .done; ready = true
         case "SessionEnd": hookStatus = nil; status = .unknown; ready = false; return
@@ -59,6 +64,7 @@ public struct StatusEngine: Sendable {
     /// Someone typed into the session: a finished turn is no longer news.
     public mutating func input(at now: Date) {
         lastInput = now
+        if hookStatus == .blocked { inputSinceBlockedHook = true }
         workedSinceInput = false
         if status == .done { status = .idle }
         if hookStatus == .done { hookStatus = .idle }
@@ -78,7 +84,7 @@ public struct StatusEngine: Sendable {
         if o.agent != agent {
             agent = o.agent
             agentSince = o.agent == nil ? nil : o.now
-            hookStatus = nil; hookAt = nil; workedSinceInput = false; ready = false; readyAt = nil
+            hookStatus = nil; hookAt = nil; workedSinceInput = false; ready = false; readyAt = nil; inputSinceBlockedHook = false
         }
         guard let kind = o.agent else { status = .unknown; ready = false; return status }
 
@@ -104,6 +110,14 @@ public struct StatusEngine: Sendable {
         var next: RuntimeStatus
         if prompt {
             next = .blocked                                    // a permission or question prompt is on screen
+        } else if hookStatus == .blocked, inputSinceBlockedHook, spinner || quietFor >= Self.answeredAfter {
+            // LAB-1592: the prompt the hook reported is gone from the screen and the owner has typed since: it was
+            // answered. Claude sends no hook when a permission is denied or a question cancelled (no PostToolUse, no
+            // Stop), so without this the session stayed in Needs you, over an idle input box, until its next turn.
+            // An approved tool that is still running keeps its spinner line: working until PostToolUse says more.
+            hookStatus = spinner ? .working : .idle
+            inputSinceBlockedHook = false
+            next = hookStatus ?? .idle
         } else if let h = hookStatus {
             // Hooks decide (UserPromptSubmit / PreToolUse → working, Stop → done): screen repaints after a Stop are
             // not a new turn; a new turn sends its own hook. Only a prompt on screen overrides them (above).
@@ -137,7 +151,11 @@ public struct StatusEngine: Sendable {
         let lines = TerminalText.lines(screen).map(TerminalText.unboxed)
         guard let q = lines.lastIndex(of: m.question) else { return true }
         let after = lines[(q + 1)...].filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !TerminalText.isChrome($0) }
-        return after.count <= m.options.count + 1
+        if after.count <= m.options.count + 1 { return true }
+        // LAB-1592: an option that wraps (Claude 2.1: "2. Yes, and always allow access to" / <path> / "this project")
+        // takes several lines: live when the last option is followed by at most its hint line.
+        guard let last = after.lastIndex(where: DecisionMatcher.isOption) else { return false }
+        return after.count - 1 - last <= 1
     }
 
     /// A choice menu waiting at the bottom of the screen: a selection marker plus the CLI's confirm / cancel hint.
@@ -147,7 +165,14 @@ public struct StatusEngine: Sendable {
         let marker = tail.contains("❯") || tail.contains("›") || tail.contains("> 1.") || tail.contains("●") || tail.contains("○")
         let hint = ["enter to confirm", "enter to select", "space to select", "esc to reject", "to navigate", "↑/↓",
                     "use arrow keys", "press enter"].contains { tail.contains($0) }
-        return marker && hint
+        guard hint else { return false }
+        if marker { return true }
+        // LAB-1592: a tall menu (Claude's question with four options, each with a wrapped description, then "Type
+        // something." and "Chat about this") puts its selected option more than 14 lines above the hint. Higher up,
+        // only a numbered option with the selection marker counts ("❯ 1. Postgres"), never the idle input box.
+        return bottomLines(screen.trimmingCharacters(in: .whitespacesAndNewlines), 40).split(separator: "\n").contains { l in
+            l.trimmingCharacters(in: .whitespaces).range(of: #"^[❯›●]\s*\d+\.\s+\S"#, options: .regularExpression) != nil
+        }
     }
 
     /// The screen without its bottom status area, so a repaint of the status bar alone is not activity: everything
