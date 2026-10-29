@@ -12,6 +12,14 @@ public enum FinishedShellPolicy {
     /// LAB-1535 (owner rules, 10-29): exiting an agent closes its session after 10 minutes untouched.
     public static let defaultMinutes = 10
 
+    /// LAB-1545: what to close in roofd for a session — its live agent's pane, else the shell a finished agent left,
+    /// else (with a group) its stored runtime id; nil = nothing runs for it.
+    public static func closeTarget(liveAgent: String?, endedShell: String?, runtimeId: String?, hasGroup: Bool) -> String? {
+        if let liveAgent { return liveAgent }
+        if let endedShell { return endedShell }
+        return hasGroup ? (runtimeId ?? "") : nil
+    }
+
     /// LAB-1535: the line under a finished terminal — what happens next, and where the conversation lives.
     public static func endedLine(agent: AgentKind, minutes: Int) -> String {
         let when = minutes < 0 ? nil : minutes == 0 ? "This terminal closes in a moment." : "This terminal closes in \(minutes) minute\(minutes == 1 ? "" : "s")."
