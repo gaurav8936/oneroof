@@ -356,6 +356,7 @@ struct PlanDetail: View {
     private func facts(_ it: BoardItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             fact("Agent", [it.session.agent.displayName, it.account, it.session.model].compactMap { $0 }.joined(separator: " · "))
+            if let mode = PermissionBadge.label(for: it.session) { fact("Permissions", mode) }   // LAB-1600
             fact("Repo", it.repoLabel)
             HStack(alignment: .top) {
                 Text("Start folder").ui(12).foregroundStyle(t.text3.color).frame(width: 82, alignment: .leading)

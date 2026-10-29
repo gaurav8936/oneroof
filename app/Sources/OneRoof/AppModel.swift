@@ -881,7 +881,13 @@ final class AppModel: ObservableObject {
     }
 
     /// A new session, in `window` (the window that asked for it) or the window in front (LAB-705).
+    /// LAB-1600: a new agent session takes its agent's permission mode from Settings › Permissions (Auto by default),
+    /// unless it was given one (New session sheet, objective step) or its own arguments already set one.
     func createPlanned(_ s: Session, launchNow: Bool, in window: WindowState? = nil) {
+        var s = s
+        if s.agent.isAgent, s.permissionMode == nil, !PermissionMode.hasExplicit(s.agentArgs, agent: s.agent) {
+            s.permissionMode = settings.permissionMode(for: s.agent)
+        }
         assign(s.id, to: window)
         save(s)
         (self.window(of: s.id) ?? active).selectedId = s.id
