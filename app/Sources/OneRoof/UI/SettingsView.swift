@@ -290,6 +290,12 @@ struct SettingsView: View {
                 Text("Soft").tag("soft")
             }
             .pickerStyle(.segmented)
+            // LAB-1524
+            Picker("When an agent ends", selection: $model.settings.closeFinishedAfterMinutes) {
+                ForEach(FinishedShellPolicy.choices, id: \.minutes) { c in Text(c.label).tag(c.minutes) }
+            }
+            Text("The agent's shell stays so you can read its last screen. One Roof closes it after this long untouched — never while something runs in it, never a pinned session. The row stays, and Resume works from View › Session Catalog.")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }
