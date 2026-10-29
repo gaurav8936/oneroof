@@ -19,6 +19,7 @@ import OneRoofCore
 ///   table                          (LAB-1286: the focused pane's Table view on/off, as the Table button does)
 ///   tablescroll left|right         (scroll every table in the Table view to its left or right end)
 ///   strayfiles · togglefiles · panels   (LAB-1306: show the classic Files panel, send its × action, log panels)
+///   dragdivider <i> <x>            (LAB-1556: drag split divider i to window x with real mouse events)
 ///   focusstep <0-3>                (LAB-1302: the window's Focus step, as ⌥⌘F steps it)
 ///   tableprobe                     (log: Table view on?, what it shows, who has the keyboard)
 ///   esc                            (an Esc key event through the app, so key monitors see it)
@@ -142,7 +143,15 @@ enum SelfTestScript {
         case "tablescroll": app.main.terminalArea.scrollTables(toEnd: arg == "right"); delay = 0.8
         case "strayfiles": app.main.filesItemRef.isCollapsed = false; delay = 1   // LAB-1306: the classic panel shows
         case "togglefiles": app.main.toggleFiles(); delay = 1.5
-        case "panels": log(out, "  files=\(!app.main.filesItemRef.isCollapsed) centre=\(app.model.active.centre)")
+        case "panels":
+            let sv = app.main.splitView
+            let widths = sv.arrangedSubviews.map { "\(Int($0.frame.width))" }.joined(separator: ",")
+            log(out, "  files=\(!app.main.filesItemRef.isCollapsed) sessions=\(!app.main.sideItemRef.isCollapsed) widths=\(widths) centre=\(app.model.active.centre)")
+        case "dragdivider":
+            // LAB-1556: a real divider drag (mouse down on divider <i>, drags to x, mouse up), as a hand drag sends it.
+            let parts = arg.split(separator: " ").compactMap { Double($0) }
+            if parts.count == 2, let w = app.main.window { SelfTest.dragDivider(app.main.splitView, in: w, index: Int(parts[0]), toX: CGFloat(parts[1])) }
+            delay = 1.5
         case "focusstep": if let n = Int(arg), let st = FocusStep(rawValue: n) { app.model.active.focusStep = st }; delay = 1.5
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
         case "esc":
