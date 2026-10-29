@@ -56,7 +56,11 @@ public enum SessionCatalog {
         public let lastActive: Date?
         public let state: State
         public let resume: Resume
+        /// LAB-1537: removed from its window, kept here.
+        public var archived: Bool = false
         public var when: Date { lastActive ?? started }
+        /// Something runs for it (an agent, or the shell an agent left): Close ends it.
+        public var running: Bool { [.working, .waiting, .finishedShell].contains(state) }
 
         public init(id: String, name: String, agent: String, account: String?, repo: String, ticket: String?, window: String?,
                     started: Date, lastActive: Date?, state: State, resume: Resume) {
@@ -89,9 +93,11 @@ public enum SessionCatalog {
     }
 
     public static func entry(_ s: Session, state: State, window: String?, lastActive: Date?) -> Entry {
-        Entry(id: s.id, name: s.name, agent: s.agent.displayName, account: s.account, repo: s.lastRepo ?? s.repoPath,
+        var e = Entry(id: s.id, name: s.name, agent: s.agent.displayName, account: s.account, repo: s.lastRepo ?? s.repoPath,
               ticket: s.ticket, window: window, started: s.launchedAt ?? s.createdAt, lastActive: state == .planned ? nil : lastActive,
               state: state, resume: resume(for: s, state: state))
+        e.archived = s.archived
+        return e
     }
 
     /// Grouped by repo; each group newest first; groups ordered by their newest session. `query` matches name, repo,

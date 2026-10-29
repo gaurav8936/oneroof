@@ -249,7 +249,7 @@ final class AppModel: ObservableObject {
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
-            if ticks % 60 == 40 { self?.closeIdleFinishedShells() }   // LAB-1524: once a minute
+            if ticks % 60 == 40 { self?.closeIdleFinishedShells(); self?.closeIdleSessions() }   // LAB-1524 · LAB-1535: once a minute
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
             if ticks % 60 == 40 { self?.tickCommitWatch() }
         }
@@ -550,7 +550,9 @@ final class AppModel: ObservableObject {
     /// Bring back the newest closed session: restore its row if it was removed, select it, and relaunch it.
     func reopenClosed() {
         guard let s = recentlyClosed.popLast() else { lastError = "Nothing closed to reopen."; return }
-        if !stored.contains(where: { $0.id == s.id }) {
+        if let k = stored.firstIndex(where: { $0.id == s.id }), stored[k].archived {   // LAB-1537: back in its window
+            var back = stored[k]; back.archived = false; save(back)
+        } else if !stored.contains(where: { $0.id == s.id }) {
             var back = s
             back.runtimeId = nil; back.runtimeGroup = nil; back.openingSent = false
             save(back)
@@ -604,7 +606,23 @@ final class AppModel: ObservableObject {
         update(item) { $0.lifecycle = status }
     }
 
+    /// LAB-1537 · Remove: the row leaves its window's list and stays in All sessions (archived); its terminal, if any, is
+    /// closed. Nothing is deleted — Delete forever in All sessions does that. ⇧⌘T brings it back.
     func delete(_ item: BoardItem) {
+        guard !item.adopted else { return }
+        rememberClosed(item.session)
+        if item.liveAgent == nil, let ws = item.session.runtimeGroup {
+            let id = item.session.runtimeId ?? ""
+            queue.async { [weak self] in try? self?.runtime.close(id, group: ws) }
+        }
+        guard let k = stored.firstIndex(where: { $0.id == item.id }) else { return }
+        var s = stored[k]
+        s.archived = true
+        save(s)
+    }
+
+    /// LAB-1537 · Delete forever (All sessions only, asked first): the record itself goes.
+    func deleteForever(_ item: BoardItem) {
         guard !item.adopted else { return }
         rememberClosed(item.session)
         if item.liveAgent == nil, let ws = item.session.runtimeGroup {
@@ -944,6 +962,29 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             let ready = due.filter { i in
                 guard let pane = i.endedShell, let p = try? self.runtime.processes(pane: pane) else { return false }
+                return FinishedShellPolicy.atPrompt(shellPid: p.shellPid, foreground: p.foreground.map(\.pid))
+            }
+            guard !ready.isEmpty else { return }
+            DispatchQueue.main.async { ready.forEach { self.closeAgent($0, remember: false) } }
+        }
+    }
+
+    /// LAB-1535 · close running sessions nobody touched for a day (Settings › General); see IdleSessionPolicy. Agent
+    /// sessions need no probe (status says working or not); a plain terminal is closed only at its prompt (asked of roofd).
+    func closeIdleSessions(now: Date = Date()) {
+        let hours = settings.closeIdleSessionsAfterHours
+        guard hours >= 0, !SelfTest.isActive else { return }
+        let candidates = items.filter { i in
+            i.liveAgent != nil && !i.adopted && IdleSessionPolicy.shouldClose(running: true, status: i.status, pinned: i.session.pinned,
+                tags: i.session.tags, agent: i.session.agent, conversationId: i.session.conversationId, atPrompt: true,
+                lastActive: lastActiveDate(i), hours: hours, now: now)
+        }
+        guard !candidates.isEmpty else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let ready = candidates.filter { i in
+                guard !i.session.agent.isAgent else { return true }
+                guard let pane = i.liveAgent, let p = try? self.runtime.processes(pane: pane) else { return false }
                 return FinishedShellPolicy.atPrompt(shellPid: p.shellPid, foreground: p.foreground.map(\.pid))
             }
             guard !ready.isEmpty else { return }

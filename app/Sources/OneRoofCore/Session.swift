@@ -220,6 +220,9 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     /// the session catalog). Nil until seen; the last one wins when the agent moves to another conversation.
     public var conversationId: String?
     public var conversationPath: String?
+    /// LAB-1537: removed from its window's list but kept (All sessions shows it; Resume brings it back). Remove never
+    /// deletes a record; Delete forever in All sessions does.
+    public var archived: Bool = false
 
     /// Everything after the agent command: the model flag, then any extra arguments.
     public var launchArgs: [String] {
@@ -289,7 +292,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
              moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles, parentSessionId,
-             conversationId, conversationPath
+             conversationId, conversationPath, archived
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -330,6 +333,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         parentSessionId = try c.decodeIfPresent(String.self, forKey: .parentSessionId)
         conversationId = try c.decodeIfPresent(String.self, forKey: .conversationId)
         conversationPath = try c.decodeIfPresent(String.self, forKey: .conversationPath)
+        archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
     }
 
     /// LAB-1516: the launch fields roofd owns when it starts a session (Scheduler, Loops). Saving a row keeps the newer

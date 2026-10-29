@@ -4,6 +4,11 @@ import OneRoofCore
 
 /// Settings (⌘,): General · Appearance · Agents · Foundations · Shortcuts.
 struct SettingsView: View {
+    /// LAB-1533: Claude's conversation limit as its settings file says now (read when General opens), and a lower choice
+    /// waiting for confirmation (lowering lets Claude delete older conversations).
+    @State private var retention: Int? = ConversationRetention.current()
+    @State private var pendingRetention: Int??
+    @State private var retentionError: String?
     @ObservedObject var model: AppModel
     @State var tab = Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETTINGS_TAB"] ?? "") ?? 0
     /// What macOS says about One Roof's notifications (LAB-197).
@@ -49,8 +54,23 @@ struct SettingsView: View {
             Picker("When an agent ends", selection: $model.settings.closeFinishedAfterMinutes) {
                 ForEach(FinishedShellPolicy.choices, id: \.minutes) { c in Text(c.label).tag(c.minutes) }
             }
-            Text("The agent's shell stays so you can read its last screen. One Roof closes it after this long untouched — never while something runs in it, never a pinned session. The row stays, and Resume works from View › Session Catalog.")
+            Text("The agent's shell stays so you can read its last screen. One Roof closes it after this long untouched — never while something runs in it, never a pinned session. The row stays, and Resume works from All sessions (⌃⌘O).")
                 .font(.caption).foregroundStyle(.secondary)
+            // LAB-1535
+            Picker("Close sessions untouched for", selection: $model.settings.closeIdleSessionsAfterHours) {
+                ForEach(IdleSessionPolicy.choices, id: \.hours) { c in Text(c.label).tag(c.hours) }
+            }
+            Text(verbatim: "Housekeeping, so you don't have to: a session nobody touched this long is closed (agent, shell and roofd's holder) and stays in All sessions, where Resume brings its conversation back. Never one that is working or waiting for you, a pinned session, a loop, or one that can't be resumed. Closing a window only hides it.")
+                .font(.caption).foregroundStyle(.secondary)
+            // LAB-1533
+            Picker("Keep agent conversations on this Mac", selection: Binding(get: { retention }, set: { new in
+                if ConversationRetention.deletes(from: retention, to: new) { pendingRetention = .some(new) } else { setRetention(new) }
+            })) {
+                ForEach(ConversationRetention.choices, id: \.label) { c in Text(c.label).tag(c.days) }
+            }
+            Text(verbatim: "Resume needs an agent's conversation file. By default Claude Code deletes its conversations on this Mac (~/.claude/projects) after 30 days, so older sessions can no longer be resumed. One Roof sets this for every Claude account. Codex (~/.codex/sessions) and Kimi (~/.kimi-code/sessions) keep theirs until you delete them; there is no limit to set. Lowering the limit lets Claude delete older conversations the next time it starts.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let retentionError { Text(retentionError).font(.caption).foregroundStyle(.red) }
                 LabeledContent("Sessions") { Text(model.runtimeState).foregroundStyle(model.runtimeOK ? .green : .red) }
             }
             Section("New sessions") {
@@ -182,6 +202,11 @@ struct SettingsView: View {
         .frame(width: 660, height: 500)
     }
 
+    private func setRetention(_ days: Int?) {
+        do { try ConversationRetention.apply(days); retention = days; retentionError = nil }
+        catch { retentionError = "Could not update Claude's settings: \(error.localizedDescription)" }
+    }
+
     private var general: some View {
         Form {
             LabeledContent("Start folder") {
@@ -201,6 +226,13 @@ struct SettingsView: View {
             LabeledContent("Window") { Button("Use the new window…") { Self.switchToNew(model) } }
         }
         .formStyle(.grouped)
+        .alert("Keep conversations for less time?", isPresented: Binding(get: { pendingRetention != nil }, set: { if !$0 { pendingRetention = nil } }),
+               presenting: pendingRetention) { new in
+            Button("Keep \(ConversationRetention.label(new).lowercased())", role: .destructive) { setRetention(new); pendingRetention = nil }
+            Button("Cancel", role: .cancel) { pendingRetention = nil }
+        } message: { new in
+            Text("The next time Claude starts, it deletes conversations older than \(ConversationRetention.effective(new)) days from this Mac. Those sessions can no longer be resumed, and raising the limit again does not bring them back.")
+        }
     }
 
     /// Desktop notifications (LAB-197): what is worth a banner, and whether macOS lets One Roof show them.
