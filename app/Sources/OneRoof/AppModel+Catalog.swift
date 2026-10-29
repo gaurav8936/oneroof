@@ -19,13 +19,31 @@ extension AppModel {
     /// still-open shell, else a new terminal with `--resume <id>`), or open a new terminal for a shell. Rows that
     /// cannot be resumed say why instead of starting something new.
     func catalogResume(_ id: String) {
-        guard let i = item(id) else { return }
+        guard var i = item(id) else { return }
+        // LAB-1537: opening an archived session puts it back in its window first.
+        if i.session.archived {
+            var s = i.session; s.archived = false; save(s)
+            guard let back = item(id) else { return }
+            i = back
+        }
         switch SessionCatalog.resume(for: i.session, state: catalogState(i)) {
         case .open: reveal(i)
         case .claude: resume(i)
         case .terminal, .launch: launch(i)
         case let r: lastError = r.why
         }
+    }
+
+    /// LAB-1538 · Close from All sessions: end what runs for it (agent, shell, holder); the row stays.
+    func catalogClose(_ id: String) {
+        guard let i = item(id) else { return }
+        closeAgent(i, remember: false)
+    }
+
+    /// LAB-1537 · the only way a session's record is deleted (All sessions, asked first).
+    func catalogDeleteForever(_ id: String) {
+        guard let i = item(id) else { return }
+        deleteForever(i)
     }
 
     /// LAB-1514 · end every finished session (agent gone, shell still open) in roofd. The rows stay, as history.

@@ -12,6 +12,9 @@ struct CatalogView: View {
     @State private var states: Set<SessionCatalog.State> = []
     @State private var note: String?
     @State private var backfilled = false
+    /// LAB-1538: a Close that would stop a working agent, and a Delete forever, ask first.
+    @State private var confirmClose: SessionCatalog.Entry?
+    @State private var confirmDelete: SessionCatalog.Entry?
 
     var body: some View {
         let entries = model.catalogEntries()
@@ -53,6 +56,14 @@ struct CatalogView: View {
                 }
             }
         }
+        .alert("Close a working session?", isPresented: Binding(get: { confirmClose != nil }, set: { if !$0 { confirmClose = nil } }), presenting: confirmClose) { e in
+            Button("Close it", role: .destructive) { model.catalogClose(e.id); confirmClose = nil }
+            Button("Cancel", role: .cancel) { confirmClose = nil }
+        } message: { e in Text("\(e.name) has an agent working right now. Closing stops it mid-task; Resume brings the conversation back.") }
+        .alert("Delete this session for good?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }), presenting: confirmDelete) { e in
+            Button("Delete forever", role: .destructive) { model.catalogDeleteForever(e.id); confirmDelete = nil }
+            Button("Cancel", role: .cancel) { confirmDelete = nil }
+        } message: { e in Text("\(e.name) leaves All sessions and can no longer be resumed from One Roof. The agent's own conversation file is not touched.") }
         .onAppear {
             guard !backfilled else { return }
             backfilled = true
@@ -96,6 +107,14 @@ struct CatalogView: View {
             } else {
                 Text("Can't resume").ui(11.5).foregroundStyle(t.text3.color).help(e.resume.why ?? "")
             }
+            // LAB-1538 · maintenance: close anything that runs; delete a record for good (both from here only).
+            if e.running {
+                RoofButton("Close") { if e.state == .working { confirmClose = e } else { model.catalogClose(e.id) } }
+                    .help("End its agent, shell and roofd holder. The row stays here; Resume brings the conversation back.")
+            } else if e.state == .history {
+                RoofButton("Delete forever", .plain) { confirmDelete = e }
+                    .help("Remove the record itself. It can no longer be found or resumed from One Roof.")
+            }
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
         .accessibilityElement(children: .combine)
@@ -103,7 +122,7 @@ struct CatalogView: View {
     }
 
     private func details(_ e: SessionCatalog.Entry) -> String {
-        [e.agent + (e.account.map { " · \($0)" } ?? ""), e.ticket, e.window.map { "window \($0)" }].compactMap { $0 }.joined(separator: " · ")
+        [e.agent + (e.account.map { " · \($0)" } ?? ""), e.ticket, e.window.map { "window \($0)" }, e.archived ? "archived" : nil].compactMap { $0 }.joined(separator: " · ")
     }
 
     private func help(_ e: SessionCatalog.Entry) -> String {
@@ -127,9 +146,10 @@ struct CatalogView: View {
 
     private func subtitle(_ entries: [SessionCatalog.Entry]) -> String {
         let repos = Set(entries.map(\.repo)).count
-        let live = entries.filter { [.working, .waiting, .finishedShell].contains($0.state) }.count
-        let resumable = entries.filter { $0.resume.buttonTitle != nil }.count
-        return "\(entries.count) sessions · \(repos) repos · \(live) running · \(resumable) you can open or resume"
+        // LAB-1538: what runs, at each level, so maintenance is one look.
+        let working = entries.filter { $0.state == .working }.count, waiting = entries.filter { $0.state == .waiting }.count
+        let shells = entries.filter { $0.state == .finishedShell }.count
+        return "\(entries.count) sessions · \(repos) repos · running now: \(working) working, \(waiting) waiting, \(shells) finished shell\(shells == 1 ? "" : "s")"
     }
 
     private static let when: RelativeDateTimeFormatter = {
