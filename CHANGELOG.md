@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.23 — Claude's last screen stays after it exits (29 Oct 2026)
+
+- **The last screen stays when Claude exits** (LAB-1582). Since 1.9.20 Claude runs in its fullscreen view, which draws
+  on a separate screen that the terminal drops on exit, so Ctrl+D twice left an empty terminal. When an agent leaves
+  that screen, roofd now copies it into the terminal's history first, so the end of the conversation stays in view.
+  Editors and pagers run from a plain shell still clear on exit, as usual. Applies to sessions started after updating.
+
 ## 1.9.22 — the Sessions column can be dragged closed again (29 Oct 2026)
 
 - **Drag the Sessions column closed** (LAB-1576). 1.9.21 stopped the column at its narrowest, so it could no longer be
