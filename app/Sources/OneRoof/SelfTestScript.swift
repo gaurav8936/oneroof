@@ -28,6 +28,7 @@ import OneRoofCore
 ///   esc                            (an Esc key event through the app, so key monitors see it)
 ///   width <pt>                     (the main window this wide; the panes follow)
 ///   alltext <name>                 (the focused terminal's whole text as libghostty gives it → <name>.alltext.txt)
+///   expect · newwindow · switchwindow · place · search · textcount · hitch · resizegesture · windowsize   (SelfTestHarness)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
     static func run(_ path: String, app: AppDelegate) {
@@ -220,7 +221,12 @@ enum SelfTestScript {
             if let w = app.main.window, let sheet = w.attachedSheet { w.endSheet(sheet) }
             NSApp.terminate(nil)
             return
-        default: log(out, "  unknown step")
+        default:
+            // LAB-1595: the release harness's steps (checks, windows, gesture probes) live in SelfTestHarness.
+            if SelfTestHarness.step(cmd, arg, app: app, out: out, done: { d in
+                DispatchQueue.main.asyncAfter(deadline: .now() + d) { step(steps, i + 1, app: app, out: out) }
+            }) { return }
+            log(out, "  unknown step")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { step(steps, i + 1, app: app, out: out) }
     }
