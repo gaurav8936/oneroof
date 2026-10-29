@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.20 — terminal text stays whole when a pane changes width (29 Oct 2026)
+
+- **Claude starts in its fullscreen view** (LAB-1550). Claude has two ways of drawing; in the older one it reprinted
+  the whole conversation into the terminal's history on every width change (switching Full / Wide, resizing a
+  window), so copies piled up at different widths and tables broke. One Roof now starts Claude in the fullscreen view,
+  which redraws cleanly at any width. A session already running keeps its old view until restarted
+  (`/tui fullscreen` inside it restarts and resumes the same conversation).
+- **History reflows after a terminal reconnects** (LAB-1550). When a pane reconnected to its session (switching
+  sessions, showing a window again, restarting the app), long wrapped lines came back as fixed line breaks and stayed
+  at that width. Wrapped lines now stay wrapped, so older text fills the pane as it widens or narrows. Applies to
+  sessions started after the update.
+
 ## 1.9.19 — finished sessions really close (29 Oct 2026)
 
 - **Finished sessions close as promised** (LAB-1545). A session whose agent had ended was never actually closed: "Close
