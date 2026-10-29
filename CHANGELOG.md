@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.17 — the catalog, one click from your sessions (28 Oct 2026)
+
+- **This window · All sessions** (LAB-1530). A switch at the top of the Sessions column: All sessions opens the session
+  catalog (every session from every window, by repo, with Resume); This window is today's list. Where older sessions
+  left the list, a link says how many and opens them. ⌃⌘O does the same from anywhere.
+
 ## 1.9.16 — the session catalog, and no more quit on launch (28 Oct 2026)
 
 - **Session catalog** (View › Session Catalog, LAB-1509). Every session One Roof knows — live and history, every
