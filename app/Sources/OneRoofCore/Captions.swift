@@ -20,6 +20,9 @@ public enum CaptionSource: String, Codable, CaseIterable, Sendable {
 public struct Caption: Codable, Equatable, Sendable {
     public static let maxText = 72
     public static let maxNow = 90
+    /// LAB-1385: a step count larger than this is not a plan (the on-device model once wrote 1,000,000,000,000,000
+    /// steps; the Plan panel's step list asked for that many rows and the app aborted on launch, exit 6).
+    public static let maxSteps = 50
 
     public var text: String
     public var step: Int?
@@ -30,7 +33,11 @@ public struct Caption: Codable, Equatable, Sendable {
     public var source: CaptionSource
 
     public init(text: String, step: Int? = nil, steps: Int? = nil, now: String? = nil, updatedAt: Date = Date(), source: CaptionSource = .heuristic) {
-        self.text = text; self.step = step; self.steps = steps; self.now = now; self.updatedAt = updatedAt; self.source = source
+        // LAB-1385: keep a step count only when it is a real plan (1…maxSteps) and a step only inside it. Every caption,
+        // including one loaded from the store, comes through here, so a bad stored row heals on load.
+        let n = steps.flatMap { (1...Caption.maxSteps).contains($0) ? $0 : nil }
+        self.text = text; self.steps = n; self.now = now; self.updatedAt = updatedAt; self.source = source
+        self.step = step.flatMap { s in s >= 1 && s <= (n ?? Caption.maxSteps) ? s : nil }
     }
 }
 
@@ -388,6 +395,7 @@ public enum CaptionEngine {
         if cap.count > Caption.maxText { return "caption longer than \(Caption.maxText)" }
         if let n = r.now, n.count > Caption.maxNow { return "now longer than \(Caption.maxNow)" }
         if let s = r.step, s < 1 { return "step below 1" }
+        if let t = r.steps, t < 1 || t > Caption.maxSteps { return "steps outside 1…\(Caption.maxSteps)" }   // LAB-1385
         if let s = r.step, let t = r.steps, s > t { return "step beyond steps" }
         if let plan = input.plan, let t = r.steps, t != plan.titles.count { return "steps differ from the plan" }
         var known = Set(numbers(in: input.text) + numbers(in: input.objective))
