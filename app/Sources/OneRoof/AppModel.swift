@@ -901,6 +901,33 @@ final class AppModel: ObservableObject {
         if !rows.isEmpty, let store { storeQ.async { rows.forEach(store.save) } }
     }
 
+    /// LAB-1511 · once per run: find the Claude conversation of sessions saved before One Roof kept its id (only a
+    /// confident match: first message within 10 minutes of the launch, and the opening message when there was one).
+    func backfillConversations(done: @escaping (_ found: Int, _ looked: Int) -> Void = { _, _ in }) {
+        let todo: [Session] = stored.filter { $0.agent == .claude && $0.conversationId == nil && $0.launchedAt != nil }
+        guard !todo.isEmpty, !SelfTest.isActive else { done(0, todo.count); return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let dirs = ConversationBackfill.configDirs()
+            var found: [(String, ConversationBackfill.Candidate)] = []
+            for s in todo {
+                let candidates = ConversationBackfill.candidates(for: s, configDirs: dirs)
+                if case .found(let c) = ConversationBackfill.match(s, candidates) { found.append((s.id, c)) }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                var rows: [Session] = []
+                for (id, c) in found {
+                    guard let k = self.stored.firstIndex(where: { $0.id == id }), self.stored[k].conversationId == nil else { continue }
+                    self.stored[k].conversationId = c.id
+                    self.stored[k].conversationPath = c.path
+                    rows.append(self.stored[k])
+                }
+                if !rows.isEmpty { self.saveAll(rows) }
+                done(rows.count, todo.count)
+            }
+        }
+    }
+
     /// LAB-1362: continue an exited Claude session's conversation. Its terminal usually lives on (roofd runs
     /// `claude …; exec zsh`): type `claude --resume <id>` into it, so the folder, account, environment and scrollback
     /// are the same. Otherwise start it again with `--resume <id>` and no opening message. The id comes from the
