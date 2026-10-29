@@ -66,14 +66,20 @@ struct IssuePickerView: View {
 
     @State private var state: String?
     @State private var query = ""
+    /// LAB-1559: the filter takes the keyboard when the picker opens, so typing searches straight away.
+    @FocusState private var filterFocused: Bool
     @State private var selected: LinearIssue.ID?
     /// LAB-547: the clicked column (none = the default order), kept for the next time the panel opens.
     @State private var sortOrder: [KeyPathComparator<LinearIssue>] = IssuePickerView.lastSort
     static var lastSort: [KeyPathComparator<LinearIssue>] = []
 
     private var open: [LinearIssue] {
-        (model.issues[workstreamId] ?? []).filter { !["completed", "canceled"].contains($0.stateType) }.reversed()
+        (model.issues[workstreamId] ?? []).filter {
+            !["completed", "canceled"].contains($0.stateType) && (!activeOnly || ActiveFilter.issue($0.stateType) || selection.issues.contains($0))
+        }.reversed()
     }
+    /// LAB-1571: In Progress and In Review only, until switched off (remembered; off by default: new work is in Backlog).
+    @AppStorage("newSession.issuesActiveOnly") private var activeOnly = false
     private var pickedNow: [LinearIssue] { selection.issues }
     private var rows: [LinearIssue] {
         // LAB-533: the "Not ready" chip shows every open issue below the quality bar.
@@ -131,11 +137,15 @@ struct IssuePickerView: View {
             .help("Refresh from Linear (also on opening, on every filter click and every minute)")
             .accessibilityLabel(loading ? "Refreshing issues" : "Refresh issues from Linear")
             Spacer()
+            Toggle("Active only", isOn: $activeOnly).toggleStyle(.checkbox).ui(12)
+                .help("Only issues In Progress or In Review")
             TextField("", text: $query, prompt: Text("Filter by key, title or text"))
                 .textFieldStyle(.plain).ui(12.5).padding(.horizontal, 8).frame(width: 240, height: 26)
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.surface.color))
                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(t.separator.color))
                 .accessibilityLabel("Filter issues")
+                .focused($filterFocused)
+                .onAppear { DispatchQueue.main.async { filterFocused = true } }
         }
     }
 
