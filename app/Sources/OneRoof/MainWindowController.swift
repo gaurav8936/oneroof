@@ -122,7 +122,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         sidebar.sizingOptions = []; plan.sizingOptions = []; files.sizingOptions = []
         centre = CentreController(model: model, win: win, terminalArea: terminalArea, v2: isV2)
 
-        split = NSSplitViewController()
+        split = RoofSplitViewController()
         split.splitView.isVertical = true
         split.splitView.dividerStyle = .thin
         // LAB-596: the minimum widths of all four panels fit the window's minimum width (PanelMinimums), so opening a
@@ -141,6 +141,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         planItem = NSSplitViewItem(viewController: plan)
         planItem.minimumThickness = PanelMinimums.plan; planItem.canCollapse = true
         planItem.holdingPriority = .init(251)
+        // LAB-1556: in the v2 window a drag never folds the Sessions column away (it stops at its narrowest); the layout
+        // still folds and unfolds it itself (other places, Focus).
+        if isV2 {
+            // The v2 file tree is the Files tab: the classic item has no width to give, so no drag can open it.
+            filesItem.minimumThickness = 0; filesItem.maximumThickness = 0
+        }
+        if isV2, let roof = split as? RoofSplitViewController {
+            roof.keepOnDrag = { [weak self] v in
+                guard let self else { return false }
+                // The split view hands over the wrapper AppKit puts around each item's view.
+                return self.sideItem.viewController.view.isDescendant(of: v) || self.filesItem.viewController.view.isDescendant(of: v)
+            }
+        }
         for i in [sideItem, filesItem, centreItem, planItem] {
             i!.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
             split.addSplitViewItem(i!)
@@ -656,3 +669,15 @@ struct CentreThemed<Content: View>: View {
             .background(model.themes.centre.tokens.window.color)
     }
 }
+
+/// LAB-1556: a split view controller that can refuse a drag-collapse for some panels.
+final class RoofSplitViewController: NSSplitViewController {
+    /// Panels a divider drag may not fold away.
+    var keepOnDrag: ((NSView) -> Bool)?
+
+    override func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
+        if keepOnDrag?(subview) == true { return false }
+        return super.splitView(splitView, canCollapseSubview: subview)
+    }
+}
+
