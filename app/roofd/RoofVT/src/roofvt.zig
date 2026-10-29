@@ -190,6 +190,29 @@ export fn rvt_redraw(r: *Rvt, out: [*c][*c]u8) usize {
     return bytesOut(s, out);
 }
 
+/// LAB-1582 · the alternate screen as VT bytes, ending with styles reset, without its trailing blank rows.
+fn altSnapshot(r: *Rvt) !?[]u8 {
+    const t = &r.term;
+    if (t.screens.active_key != .alternate) return null;
+    const screen = t.screens.active;
+    const rows: usize = t.rows;
+    if (trailingBlankRows(screen, rows) == rows) return null;
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    errdefer aw.deinit();
+    const sf: gvt.formatter.ScreenFormatter = .init(screen, .{ .emit = .vt, .unwrap = true, .trim = true });
+    try aw.writer.print("{f}", .{sf});
+    try aw.writer.writeAll("\x1b[0m");
+    return try aw.toOwnedSlice();
+}
+
+export fn rvt_alt_snapshot(r: *Rvt, out: [*c][*c]u8) usize {
+    const s = (altSnapshot(r) catch null) orelse {
+        out.* = null;
+        return 0;
+    };
+    return bytesOut(s, out);
+}
+
 fn text(r: *Rvt, last_lines: u32) ![]u8 {
     var aw: std.Io.Writer.Allocating = .init(alloc);
     errdefer aw.deinit();
@@ -408,3 +431,21 @@ test "redraw keeps soft wraps, so the rebuilt history still reflows (LAB-1550)" 
     try std.testing.expect(std.mem.indexOf(u8, t, "abcdefghijklmnopqrstuvwxyz") != null);
 }
 
+
+test "the alternate screen can be copied into history when a full-screen program leaves (LAB-1582)" {
+    const r = rvt_new(30, 6, 1 << 20).?;
+    defer rvt_free(r);
+    feedStr(r, "$ claude\r\n");
+    var p: [*c]u8 = null;
+    try std.testing.expectEqual(@as(usize, 0), rvt_alt_snapshot(r, &p));
+    feedStr(r, "\x1b[?1049h\x1b[H\x1b[2J\x1b[1mlast answer\x1b[0m\r\nsecond line");
+    const n = rvt_alt_snapshot(r, &p);
+    try std.testing.expect(n > 0);
+    defer rvt_bytes_free(p, n);
+    feedStr(r, "\x1b[?1049l");
+    rvt_feed(r, p, n);
+    feedStr(r, "\r\nResume this session with:");
+    const all = try takeText(r, 0);
+    defer alloc.free(all);
+    try std.testing.expect(std.mem.indexOf(u8, all, "$ claude\nlast answer\nsecond line\nResume this session with:") != null);
+}
