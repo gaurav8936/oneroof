@@ -233,7 +233,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         window?.makeFirstResponder(self)
         guard let surface else { return }
         let flags = event.modifierFlags
-        leftButtonSelects = TerminalMouse.selects(flags: flags)
+        leftButtonSelects = TerminalMouse.selects(flags: flags, captured: mouseCaptured)
         // A plain single click clears an existing selection (with shift held Ghostty would extend it instead).
         mouseMoved(with: event)
         if leftButtonSelects, !flags.contains(.shift), event.clickCount == 1, ghostty_surface_has_selection(surface) {

@@ -328,6 +328,14 @@ final class TerminalMouseTests: XCTestCase {
         XCTAssertFalse(TerminalMouse.selects(flags: [.option]))
     }
 
+    /// LAB-1554: a program with mouse reporting on gets plain clicks (Claude's "Jump to bottom"); Option selects.
+    func test_LAB1554_clicksGoToAProgramThatAsksForTheMouse() {
+        XCTAssertFalse(TerminalMouse.selects(flags: [], captured: true))
+        XCTAssertFalse(TerminalMouse.selects(flags: [.command], captured: true))
+        XCTAssertTrue(TerminalMouse.selects(flags: [.option], captured: true))
+        XCTAssertTrue(TerminalMouse.selects(flags: [], captured: false))
+    }
+
     func testDroppedPathsAreShellQuoted() {
         XCTAssertEqual(TerminalMouse.droppedPaths(["/tmp/a.txt"]), "/tmp/a.txt ")
         XCTAssertEqual(TerminalMouse.droppedPaths(["/tmp/my file.png", "/x/it's"]), "'/tmp/my file.png' '/x/it'\\''s' ")

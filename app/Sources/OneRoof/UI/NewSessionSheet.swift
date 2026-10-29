@@ -8,6 +8,8 @@ import OneRoofCore
 /// opening message once the agent is ready and idle.
 struct NewSessionSheet: View {
     @Environment(\.theme) private var t
+    /// LAB-1571: the Project picker lists In Progress projects only, until switched off (remembered).
+    @AppStorage("newSession.projectsActiveOnly") private var projectsActiveOnly = true
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
     var close: () -> Void
@@ -261,6 +263,7 @@ struct NewSessionSheet: View {
     private var openWorkstreams: [LinearWorkstream] {
         Intake.rankWorkstreams(text, model.workstreams.filter {
             !["completed", "canceled"].contains($0.state) && (teamKey.isEmpty || $0.team == teamKey)
+                && (!projectsActiveOnly || ActiveFilter.project($0.state) || $0.id == wsId)
         })
     }
 
@@ -279,32 +282,31 @@ struct NewSessionSheet: View {
 
     /// Team first (LAB-237): a ticket or project always has one; a plain session may have none.
     private var teamPicker: some View {
-        Menu {
-            if kind == .session { Button("No team") { pickTeam("") } }
-            ForEach(model.linearTeams) { tm in Button("\(tm.key) · \(tm.name)") { pickTeam(tm.key) } }
-        } label: {
+        SearchPicker(prompt: "Search teams",
+                     rows: model.linearTeams.map { tm in .init(id: tm.key, title: "\(tm.key) · \(tm.name)") { pickTeam(tm.key) } },
+                     top: kind == .session ? [.init(id: "∅team", title: "No team") { pickTeam("") }] : []) {
             pickerLabel("Team", currentTeam.map { "\($0.key) · \($0.name)" }
                         ?? (model.linearLoading ? "Loading teams…" : kind == .session ? "No team" : "Pick a team"),
                         warn: needsTeam && teamKey.isEmpty)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 170, alignment: .leading)
+        .frame(maxWidth: 170, alignment: .leading)
         .accessibilityLabel("Team")
     }
 
     private var workstreamPicker: some View {
-        Menu {
-            if linked { Button("No project") { wsId = ""; selection.issues = []; if kind == .workstream { kind = .session }; refreshOpening() } }
-            ForEach(openWorkstreams) { w in Button(Self.short("\(w.wsId ?? "") · \(w.title)")) { pickWorkstream(w) } }
-            if linked {
-                Divider()
-                Button("New project…") { wsId = ""; selection.issues = []; kind = .workstream; kindTouched = true; refreshOpening() }
-            }
-        } label: {
+        SearchPicker(prompt: "Search projects",
+                     rows: openWorkstreams.map { w in .init(id: w.id, title: Self.short("\(w.wsId ?? "") · \(w.title)")) { pickWorkstream(w) } },
+                     top: linked ? [.init(id: "∅project", title: "No project") {
+                         wsId = ""; selection.issues = []; if kind == .workstream { kind = .session }; refreshOpening() }] : [],
+                     bottom: linked ? [.init(id: "+project", title: "New project…") {
+                         wsId = ""; selection.issues = []; kind = .workstream; kindTouched = true; refreshOpening() }] : [],
+                     activeOnly: $projectsActiveOnly,
+                     openOnAppear: ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PROJECTS"] == "1") {
             pickerLabel("Project", kind == .workstream ? "New project" : currentWorkstream.map { "\($0.wsId ?? "") · \($0.title)" }
                         ?? (model.linearLoading ? "Loading projects…" : linked ? "No project" : "Pick a project"),
                         warn: !linked && currentWorkstream == nil)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: 290, alignment: .leading)
+        .frame(maxWidth: 290, alignment: .leading)
         .accessibilityLabel("Project")
     }
 

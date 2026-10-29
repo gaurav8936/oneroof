@@ -628,4 +628,27 @@ enum SelfTest {
             }
         }
     }
+
+    /// LAB-1556: drag divider `index` of `split` to window x `toX` with real mouse events: the split view's own drag
+    /// loop reads them, so collapse rules apply exactly as for a hand drag.
+    static func dragDivider(_ split: NSSplitView, in w: NSWindow, index: Int, toX: CGFloat) {
+        let views = split.arrangedSubviews
+        guard views.indices.contains(index) else { return }
+        let x = views[index].frame.maxX + split.dividerThickness / 2
+        let y = split.bounds.midY
+        let start = split.convert(NSPoint(x: x, y: y), to: nil)
+        let end = split.convert(NSPoint(x: toX, y: y), to: nil)
+        func ev(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+        }
+        let steps = 12
+        for i in 1...steps {
+            let p = NSPoint(x: start.x + (end.x - start.x) * CGFloat(i) / CGFloat(steps), y: start.y)
+            if let e = ev(.leftMouseDragged, p) { NSApp.postEvent(e, atStart: false) }
+        }
+        if let up = ev(.leftMouseUp, end) { NSApp.postEvent(up, atStart: false) }
+        if let down = ev(.leftMouseDown, start) { split.mouseDown(with: down) }
+    }
 }
+
