@@ -53,6 +53,7 @@ private struct V2SessionList: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 switcher
+                scope
                 search
                 chips
                 HStack {
@@ -86,6 +87,7 @@ private struct V2SessionList: View {
                         } header: { groupHeader(g) }
                     }
                     if groups.isEmpty { empty }
+                    olderLink
                 }
                 .padding(.horizontal, 6).padding(.bottom, 8)
             }
@@ -98,6 +100,31 @@ private struct V2SessionList: View {
     }
 
     // MARK: Top
+
+    /// LAB-1530 · "This window · All sessions": the catalog is this list without the "this window, live or recent" limit,
+    /// so it opens from here (owner, 10-28). All sessions shows the catalog in the centre; ⌃⌘O does the same.
+    private var scope: some View {
+        Picker("Sessions", selection: Binding(get: { win.centre == .catalog ? 1 : 0 },
+                                               set: { model.show($0 == 1 ? .catalog : .workspace, in: win) })) {
+            Text("This window").tag(0)
+            Text("All sessions").tag(1)
+        }
+        .pickerStyle(.segmented).labelsHidden()
+        .accessibilityLabel("Show this window's sessions or all sessions")
+        .help("All sessions: every session from every window, by repo, with Resume (⌃⌘O)")
+    }
+
+    /// LAB-1530 · where the history went: sessions that ended over a day ago left this list (LAB-1514).
+    @ViewBuilder private var olderLink: some View {
+        let older = model.items(in: win).filter { model.isOldHistory($0) }.count
+        if older > 0 {
+            Button { model.show(.catalog, in: win) } label: {
+                Text("\(older) older session\(older == 1 ? "" : "s") → All sessions").ui(11.5).foregroundStyle(t.accentText.color)
+            }
+            .buttonStyle(.plain).padding(.horizontal, 8).padding(.vertical, 8)
+            .accessibilityLabel("\(older) older sessions, open All sessions")
+        }
+    }
 
     /// "● Blogs & Public Presence   1 of 3 ▾": the window switcher (A10.4 right menu).
     private var switcher: some View {

@@ -657,7 +657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(item("Decisions", #selector(showDecisions(_:)), "i"))
         view.addItem(item("Subagents", #selector(showSubagents(_:)), "a", [.command, .shift]))
         view.addItem(item("Loops", #selector(showLoops(_:)), ""))
-        view.addItem(item("Session Catalog", #selector(showCatalog(_:)), ""))
+        view.addItem(item("All Sessions (Session Catalog)", #selector(showCatalog(_:)), "o", [.command, .control]))   // LAB-1530
         view.addItem(item("Learn", #selector(toggleLearn(_:)), "e", [.command, .shift]))
         view.addItem(item("Work: Projects and Roadmap", #selector(toggleWork(_:)), "w", [.command, .shift]))
         view.addItem(.separator())
