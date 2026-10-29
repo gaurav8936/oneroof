@@ -36,6 +36,10 @@ def fmt(v):
     return str(v)
 
 
+def was(r):
+    return f' (was {fmt(r[4])}, {r[5]})' if r[4] not in (None, '–') else ''
+
+
 # ── Markdown ──
 md = [f"# One Roof {env.get('version', '?')} · test run · **{overall}**", '',
       f"{env.get('started', '')} · commit `{env.get('commit', '?')}` · {'quick' if env.get('quick') else 'full'} run · "
@@ -51,7 +55,7 @@ detail = dict(
 for n in ('functional', 'perf', 'compare', 'sim'):
     md.append(f"| {n}{' (required)' if n in required else ''} | {status[n]} | {times.get(n, '–')} s | {detail.get(n, '')} |")
 md += ['']
-md.append('**Regressions:** ' + ('none' if not regress else '; '.join(f'{r[1]} {r[2]} {fmt(r[3])} (was {fmt(r[4])}, {r[5]}) {r[6]}' for r in regress)))
+md.append('**Regressions and budget misses:** ' + ('none' if not regress else '; '.join(f'{r[1]} {r[2]} {fmt(r[3])}{was(r)} {r[6]}' for r in regress)))
 md.append('')
 md.append('**Changes vs last release:** ' + ('no baseline yet' if not perf.get('baseline', {}).get('version') else
           (f"{len(better)} measures better, {len(regress)} worse beyond limits; full table below")))
@@ -156,7 +160,7 @@ total {E(str(env.get('total_seconds', '?')))} s · screen {'<b>locked</b>' if en
 H.append(table(['Suite', 'Result', 'Time', 'Detail'],
                [[E(n) + (' <span class="meta">(required)</span>' if n in required else ''), badge(status[n]), f'{times.get(n, "–")} s', E(detail.get(n, ''))]
                 for n in ('functional', 'perf', 'compare', 'sim')]))
-H.append('<p><b>Regressions:</b> ' + ('none' if not regress else '; '.join(E(f'{r[1]} {r[2]} {fmt(r[3])} (was {fmt(r[4])}, {r[5]}) {r[6]}') for r in regress)) + '</p>')
+H.append('<p><b>Regressions and budget misses:</b> ' + ('none' if not regress else '; '.join(E(f'{r[1]} {r[2]} {fmt(r[3])}{was(r)} {r[6]}') for r in regress)) + '</p>')
 fl = [x for n in required for x in ((S.get(n) or {}).get('fails') or [])]
 if fl: H.append('<ul>' + ''.join(f'<li>{E(x)}</li>' for x in fl[:30]) + '</ul>')
 if perf.get('notes'): H.append('<p><b>Notes</b></p><ul>' + ''.join(f'<li>{E(n)}</li>' for n in perf['notes']) + '</ul>')
