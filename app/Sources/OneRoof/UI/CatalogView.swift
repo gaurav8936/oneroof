@@ -15,10 +15,22 @@ struct CatalogView: View {
     /// LAB-1538: a Close that would stop a working agent, and a Delete forever, ask first.
     @State private var confirmClose: SessionCatalog.Entry?
     @State private var confirmDelete: SessionCatalog.Entry?
+    /// LAB-1584: rows keep the place they had when the page opened; rows you acted on stay listed under any filter.
+    @State private var order: [String: Int] = [:]
+    @State private var touched: Set<String> = []
+    /// LAB-1585: search by what a session worked on.
+    @State private var docs: [SessionSearch.Doc] = []
+    @State private var hits: [SessionSearch.Hit]?
+    @State private var related: [String] = []
+    @State private var searching = false
+    @State private var searchTask: DispatchWorkItem?
+    /// A search asked for before the conversations finished loading: run once they are in.
+    @State private var pendingDeep: Bool?
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         let entries = model.catalogEntries()
-        let groups = SessionCatalog.groups(entries, query: query, states: states)
+        let groups = shownGroups(entries)
         let finished = entries.filter { $0.state == .finishedShell }.count
         FleetPage(title: "Session catalog", subtitle: subtitle(entries)) {
             HStack(spacing: 8) {
@@ -32,6 +44,10 @@ struct CatalogView: View {
         } content: {
             VStack(alignment: .leading, spacing: 12) {
                 filters
+                if let hits {
+                    Text("\(hits.count) session\(hits.count == 1 ? "" : "s") match" + (related.isEmpty ? "" : " · also searched: " + related.joined(separator: ", ")))
+                        .ui(12).foregroundStyle(t.text2.color).lineLimit(2)
+                }
                 if let note { Text(note).ui(12.5).foregroundStyle(t.text2.color) }
                 if groups.isEmpty {
                     Card(padding: 20) {
@@ -48,6 +64,8 @@ struct CatalogView: View {
                                         Text("\(g.entries.count)").ui(11, mono: true).foregroundStyle(t.text3.color)
                                     }
                                     .padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 2)
+                                    .opacity(hits == nil ? 1 : 0)
+                                    .frame(height: hits == nil ? nil : 0)
                                     ForEach(g.entries) { row($0) }
                                 }
                             }
@@ -65,6 +83,13 @@ struct CatalogView: View {
             Button("Cancel", role: .cancel) { confirmDelete = nil }
         } message: { e in Text("\(e.name) leaves All sessions and can no longer be resumed from One Roof. The agent's own conversation file is not touched.") }
         .onAppear {
+            if order.isEmpty { order = SessionCatalog.order(of: SessionCatalog.groups(model.catalogEntries())) }
+            loadDocs()
+            // Self-test: a search already typed and asked (LAB-1585 captures).
+            if let q = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_CATALOG_QUERY"], query.isEmpty {
+                query = q
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { search(deep: true) }
+            }
             guard !backfilled else { return }
             backfilled = true
             model.backfillConversations { found, looked in
@@ -75,10 +100,25 @@ struct CatalogView: View {
 
     private var filters: some View {
         HStack(spacing: 8) {
-            TextField("Find a session: name, repo, issue, agent, window", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 360)
-                .accessibilityLabel("Find a session")
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(t.text3.color)
+                TextField("Search what a session worked on, e.g. a bug about frames freezing", text: $query)
+                    .textFieldStyle(.plain).ui(13)
+                    .focused($searchFocused)
+                    .onSubmit { search(deep: true) }
+                    .onChange(of: query) { _, _ in search(deep: false) }
+                    .accessibilityLabel("Search sessions")
+                if searching { ProgressView().controlSize(.small) }
+                else if !query.isEmpty {
+                    Button { search(deep: true) } label: { Text("Ask ↩").ui(11.5, .semibold) }
+                        .buttonStyle(.borderless)
+                        .help("Widen the search with related words from the on-device model (Return)")
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 7).fill(t.surface.color))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(searchFocused ? t.accent.color : t.border.color, lineWidth: searchFocused ? 2 : 1))
+            .frame(minWidth: 320, maxWidth: 520)
             ForEach(SessionCatalog.State.allCases, id: \.self) { s in
                 RoofButton(s.label, states.contains(s) ? .primary : .secondary) {
                     if states.contains(s) { states.remove(s) } else { states.insert(s) }
@@ -86,9 +126,52 @@ struct CatalogView: View {
                 .accessibilityLabel("Show \(s.label) sessions")
             }
             if !states.isEmpty || !query.isEmpty {
-                RoofButton("Clear", .plain) { states = []; query = "" }
+                RoofButton("Clear", .plain) { states = []; query = ""; hits = nil; related = [] }
             }
         }
+    }
+
+    // MARK: LAB-1584 · rows in place
+
+    private func shownGroups(_ entries: [SessionCatalog.Entry]) -> [SessionCatalog.Group] {
+        guard let hits else { return SessionCatalog.groups(entries, states: states, order: order, keep: touched) }
+        // A search lists best matches first, in one list.
+        let byId = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        let ranked = hits.compactMap { byId[$0.id] }.filter { states.isEmpty || states.contains($0.state) || touched.contains($0.id) }
+        return ranked.isEmpty ? [] : [SessionCatalog.Group(repo: "", entries: ranked)]
+    }
+
+    // MARK: LAB-1585 · search by content
+
+    private func loadDocs() {
+        let rows = model.catalogSearchRows()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let d = SessionSearch.docs(rows)
+            DispatchQueue.main.async {
+                docs = d
+                if let deep = pendingDeep { pendingDeep = nil; search(deep: deep) }
+            }
+        }
+    }
+
+    /// Typing ranks by words at once; Return (or Ask) first asks the on-device model for related words.
+    private func search(deep: Bool) {
+        searchTask?.cancel()
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { hits = nil; related = []; searching = false; return }
+        guard !docs.isEmpty else { pendingDeep = deep || (pendingDeep ?? false); searching = true; return }
+        let all = docs
+        let work = DispatchWorkItem {
+            let extra = deep ? LocalModel.shared.expandSearch(q) : []
+            let found = SessionSearch.rank(q, extra: extra, docs: all)
+            DispatchQueue.main.async {
+                guard query.trimmingCharacters(in: .whitespaces) == q else { return }
+                hits = found; related = extra; searching = false
+            }
+        }
+        searchTask = work
+        searching = deep
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + (deep ? 0 : 0.2), execute: work)
     }
 
     private func row(_ e: SessionCatalog.Entry) -> some View {
@@ -98,11 +181,25 @@ struct CatalogView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(e.name).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                 Text(details(e)).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+                if let snip = hits?.first(where: { $0.id == e.id })?.snippet, !snip.isEmpty {
+                    Text(snip).ui(11.5).foregroundStyle(t.text2.color).lineLimit(2)
+                }
+                if case .failed(let why)? = model.catalogNotes[e.id], e.state == .history {
+                    Text("Resume didn't work: " + why).ui(11.5).foregroundStyle(t.needsText.color).lineLimit(3)
+                }
             }
             Spacer(minLength: 8)
             Text((e.state == .planned ? "created " : "") + Self.when.localizedString(for: e.when, relativeTo: Date())).ui(11.5).foregroundStyle(t.text3.color)
-            if let title = e.resume.buttonTitle {
-                RoofButton(title, e.resume == .open ? .secondary : .primary) { model.catalogResume(e.id) }
+            if case .starting(let at)? = model.catalogNotes[e.id], e.state == .history {
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    if ctx.date.timeIntervalSince(at) < 40 {
+                        HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Starting…").ui(11.5).foregroundStyle(t.text2.color) }
+                    } else {
+                        RoofButton("Didn't start · Try again", .primary) { touched.insert(e.id); model.catalogResume(e.id) }
+                    }
+                }
+            } else if let title = e.resume.buttonTitle {
+                RoofButton(title, e.resume == .open ? .secondary : .primary) { touched.insert(e.id); model.catalogResume(e.id) }
                     .help(help(e))
             } else {
                 Text("Can't resume").ui(11.5).foregroundStyle(t.text3.color).help(e.resume.why ?? "")

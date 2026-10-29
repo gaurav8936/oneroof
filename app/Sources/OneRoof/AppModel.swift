@@ -55,7 +55,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var runtimeOK = false
     /// The version the running roofd reports (LAB-526), for the footer's "older than the app" note.
     @Published private(set) var daemonVersion: String?
-    @Published var lastError: String?
+    @Published var lastError: String? {
+        // LAB-1584: an error while a catalog row is resuming belongs on that row, where the button was pressed.
+        didSet { if let e = lastError, let id = catalogPending { catalogNotes[id] = .failed(e); catalogPending = nil } }
+    }
+    /// LAB-1584 · what Resume did, per catalog row, and the row waiting for its answer.
+    @Published var catalogNotes: [String: CatalogNote] = [:]
+    var catalogPending: String?
     @Published var busy: Set<String> = []
     /// A Learn page to open (e.g. a skill's page from Foundations › Skills).
     @Published var learnTarget: String?
