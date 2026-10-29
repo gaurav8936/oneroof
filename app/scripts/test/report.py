@@ -60,7 +60,7 @@ md.append('')
 md.append('**Changes vs last release:** ' + ('no baseline yet' if not perf.get('baseline', {}).get('version') else
           (f"{len(better)} measures better, {len(regress)} worse beyond limits; full table below")))
 for fl in [x for n in required for x in ((S.get(n) or {}).get('fails') or [])][:20]: md.append(f'- ✗ {fl}')
-if perf.get('notes') or (S['compare'] or {}).get('notes'):
+if perf.get('notes'):
     md += ['', '**Notes:**'] + [f'- {n}' for n in perf.get('notes', [])]
 md += ['']
 

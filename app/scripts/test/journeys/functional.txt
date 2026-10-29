@@ -37,7 +37,7 @@ terminal
 wait 2
 expect sessions = 1
 expect live = 1
-snap j4-window2
+snap j4-second-win
 newwindow Test C
 expect window = Test C
 expect windows >= 3
@@ -46,7 +46,7 @@ terminal
 terminal
 wait 2
 expect sessions = 2
-snap j4-window3
+snap j4-third-win
 
 ## J5 · switch windows
 switchwindow Test B
@@ -57,7 +57,7 @@ expect window = Test C
 expect sessions = 2
 switchwindow #1
 expect window != Test C
-snap j5-back-to-window1
+snap j5-back-to-first
 
 ## J6 · Focus steps 0-3 and back (Full, Sessions, Wide, Focus)
 switchwindow Test C
