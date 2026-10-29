@@ -228,24 +228,22 @@ final class Holder {
             break
         }
         if n > 0 {
-            // Hot path: forward first (written at once when the client keeps up); the parse runs on vtQ.
-            for c in clients.values where c.attached {
-                c.out.appendFrame(.output, buf[0..<n])
-                flush(c)
-            }
-            seq += n
-            lastOutput = Date()
-            if !Holder.skipVT {
-                // LAB-1324: one parse block at a time, fed everything read since it last ran. A block per read (a PTY
-                // read is a few KB) woke a GCD worker hundreds of times a second under heavy output: that churn, not
-                // the parse, was most of a busy holder's CPU. Order is kept: bytes join `vtPending` in read order, and
-                // a drain is always queued ahead of any later vtQ.sync (snapshot, resize, screen), which so sees them.
-                vtLock.lock()
-                vtPending.append(contentsOf: buf[0..<n])
-                let schedule = !vtScheduled
-                vtScheduled = true
-                vtLock.unlock()
-                if schedule { vtQ.async { [weak self] in self?.drainVT() } }
+            if let cut = keepsLastScreen(buf[0..<n]) {
+                // LAB-1582: a full-screen agent is leaving its screen. Pass on what came before, copy that screen as it
+                // stands, then send the leave sequence followed by the copy, so it stays in the terminal's history
+                // (here and in every attached terminal) instead of vanishing with the alternate screen.
+                if cut.lowerBound > 0 { output(buf[0..<cut.lowerBound]) }
+                var rest = Array(buf[cut])
+                vtQ.sync {
+                    drainVT()
+                    var p: UnsafeMutablePointer<UInt8>?
+                    let len = rvt_alt_snapshot(vt, &p)
+                    if let p, len > 0 { rest += Array(UnsafeBufferPointer(start: p, count: len)) + [13, 10]; rvt_bytes_free(p, len) }
+                }
+                rest += buf[cut.upperBound..<n]
+                output(rest[...])
+            } else {
+                output(buf[0..<n])
             }
         }
         if gone {
@@ -253,6 +251,52 @@ final class Holder {
             close(master)
             master = -1
             reapChild(block: true)
+        }
+    }
+
+    /// LAB-1582 · the sequences that leave the alternate screen (1049 is what full-screen agents use).
+    static let altLeaves: [[UInt8]] = ["\u{1b}[?1049l", "\u{1b}[?1047l", "\u{1b}[?47l"].map { Array($0.utf8) }
+
+    /// Where an agent leaves the alternate screen in this output, if one is in the foreground and that screen is up.
+    /// Only agents: an editor or pager run from a plain shell clears its screen on exit, as in any terminal.
+    private func keepsLastScreen(_ bytes: ArraySlice<UInt8>) -> Range<Int>? {
+        guard agent != nil, !Holder.skipVT, bytes.contains(0x1b) else { return nil }
+        for seqBytes in Holder.altLeaves {
+            if let r = Holder.find(seqBytes, in: bytes) { return r }
+        }
+        return nil
+    }
+
+    static func find(_ needle: [UInt8], in hay: ArraySlice<UInt8>) -> Range<Int>? {
+        guard hay.count >= needle.count else { return nil }
+        var i = hay.startIndex
+        while i <= hay.endIndex - needle.count {
+            if hay[i] == needle[0], hay[i..<(i + needle.count)].elementsEqual(needle) { return i..<(i + needle.count) }
+            i += 1
+        }
+        return nil
+    }
+
+    /// Forward program output to attached terminals, then queue it for the parse.
+    private func output(_ bytes: ArraySlice<UInt8>) {
+        // Hot path: forward first (written at once when the client keeps up); the parse runs on vtQ.
+        for c in clients.values where c.attached {
+            c.out.appendFrame(.output, bytes)
+            flush(c)
+        }
+        seq += bytes.count
+        lastOutput = Date()
+        if !Holder.skipVT {
+            // LAB-1324: one parse block at a time, fed everything read since it last ran. A block per read (a PTY
+            // read is a few KB) woke a GCD worker hundreds of times a second under heavy output: that churn, not
+            // the parse, was most of a busy holder's CPU. Order is kept: bytes join `vtPending` in read order, and
+            // a drain is always queued ahead of any later vtQ.sync (snapshot, resize, screen), which so sees them.
+            vtLock.lock()
+            vtPending.append(contentsOf: bytes)
+            let schedule = !vtScheduled
+            vtScheduled = true
+            vtLock.unlock()
+            if schedule { vtQ.async { [weak self] in self?.drainVT() } }
         }
     }
 

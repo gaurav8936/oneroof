@@ -17,6 +17,9 @@ void     rvt_feed(rvt_t *t, const uint8_t *bytes, size_t len);
 bool     rvt_resize(rvt_t *t, uint16_t cols, uint16_t rows);
 /// VT bytes that rebuild this state (history, both screens, modes, cursor) in a fresh terminal of the same size.
 size_t   rvt_redraw(rvt_t *t, uint8_t **out);
+/// LAB-1582: VT bytes of the alternate screen's content (styles kept, trailing blank rows dropped), to copy it into the
+/// primary screen's history when a full-screen agent leaves; 0 when the alternate screen is not active or is empty.
+size_t   rvt_alt_snapshot(rvt_t *t, uint8_t **out);
 /// Plain text of the last `last_lines` lines of history + screen (0 = all).
 size_t   rvt_text(rvt_t *t, uint32_t last_lines, uint8_t **out);
 /// A DEC private (`ansi` false, e.g. 2004, 1049, 1000) or ANSI mode.
