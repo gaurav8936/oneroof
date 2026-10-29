@@ -68,7 +68,7 @@ struct SessionsPanel: View {
                     LazyVStack(alignment: .leading, spacing: 1, pinnedViews: [.sectionHeaders]) {
                         if win.statusFilter == .exited, !model.groups(in: win).isEmpty {
                             // Exited agents: relaunch one (select it), or clear them all at once.
-                            Button("Remove all exited sessions") { model.removeExited() }
+                            Button("Remove all exited (they stay in All sessions)") { model.removeExited() }
                                 .buttonStyle(.link).ui(12).padding(.horizontal, 8).padding(.vertical, 6)
                         }
                         ForEach(model.groups(in: win)) { g in
@@ -166,7 +166,7 @@ struct SessionsPanel: View {
         private func row(_ item: BoardItem, now: Date) -> some View {
             SessionRow(row: model.rowData(item, now: now), density: .full, selected: win.selectedId == item.id, ring: t.sidebar,
                        onRename: { model.rename(item, $0) }, onClose: closeAction(item),
-                       closeHelp: item.liveAgent != nil ? "Close session (asks first)" : "Remove session (⇧⌘T reopens it)")
+                       closeHelp: item.liveAgent != nil ? "Close session (asks first)" : "Remove from this list: it stays in All sessions (⇧⌘T brings it back)")
                 .modifier(RunTerminalIndent(isRun: item.session.parentSessionId != nil, colour: t.text2.color))
                 .onTapGesture { win.selectedId = item.id; model.show(.workspace, in: win) }
                 .contextMenu { SessionContextMenu(model: model, item: item, win: win, editStickers: { popoverFor = item.id }) }

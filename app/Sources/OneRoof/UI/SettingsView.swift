@@ -56,6 +56,12 @@ struct SettingsView: View {
             }
             Text("The agent's shell stays so you can read its last screen. One Roof closes it after this long untouched — never while something runs in it, never a pinned session. The row stays, and Resume works from All sessions (⌃⌘O).")
                 .font(.caption).foregroundStyle(.secondary)
+            // LAB-1535
+            Picker("Close sessions untouched for", selection: $model.settings.closeIdleSessionsAfterHours) {
+                ForEach(IdleSessionPolicy.choices, id: \.hours) { c in Text(c.label).tag(c.hours) }
+            }
+            Text(verbatim: "Housekeeping, so you don't have to: a session nobody touched this long is closed (agent, shell and roofd's holder) and stays in All sessions, where Resume brings its conversation back. Never one that is working or waiting for you, a pinned session, a loop, or one that can't be resumed. Closing a window only hides it.")
+                .font(.caption).foregroundStyle(.secondary)
             // LAB-1533
             Picker("Keep agent conversations on this Mac", selection: Binding(get: { retention }, set: { new in
                 if ConversationRetention.deletes(from: retention, to: new) { pendingRetention = .some(new) } else { setRetention(new) }

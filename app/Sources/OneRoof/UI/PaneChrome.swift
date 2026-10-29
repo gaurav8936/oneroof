@@ -534,7 +534,8 @@ struct ExitedStrip: View {
         HStack {
             Spacer()
             HStack(spacing: 10) {
-                Text("\(item.session.agent.displayName) session ended").ui(12, .medium).foregroundStyle(t.text2.color).lineLimit(1)
+                // LAB-1535: say what happens next and where the conversation lives.
+                Text(FinishedShellPolicy.endedLine(agent: item.session.agent, minutes: model.settings.closeFinishedAfterMinutes)).ui(12, .medium).foregroundStyle(t.text2.color).lineLimit(2)
                 if item.session.agent == .claude {
                     RoofButton("Resume", .primary) { model.resume(item) }
                         .help("Continue this conversation here (claude --resume), in the same terminal and folder")
@@ -593,6 +594,9 @@ struct PanePlaceholder: View {
                 } else if item.status == .exited {
                     Text("This agent has exited").ui(18, .semibold).foregroundStyle(t.text.color)
                     Text(item.session.name).ui(13).foregroundStyle(t.text2.color)
+                    if item.session.agent == .claude {   // LAB-1535
+                        Text("The conversation is in All sessions (⌃⌘O); Resume brings it back.").ui(12.5).foregroundStyle(t.text3.color)
+                    }
                     if !item.session.objective.isEmpty {
                         Text(item.session.objective).ui(12.5).foregroundStyle(t.text3.color).multilineTextAlignment(.center).frame(maxWidth: 440)
                     }

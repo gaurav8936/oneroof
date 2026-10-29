@@ -80,3 +80,23 @@ final class FirstUserMessageTests: XCTestCase {
         XCTAssertEqual(f?.at, ClaudeTranscript.date("2026-10-28T10:00:00.000Z"))
     }
 }
+
+/// LAB-1537 archive · LAB-1538 maintenance.
+final class ArchiveAndMaintenanceTests: XCTestCase {
+    func test_LAB1537_archivedIsKeptAndMarked() throws {
+        var s = Session(name: "old", repoPath: "/p", lifecycle: .idle)
+        s.archived = true
+        let back = try JSONDecoder().decode(Session.self, from: JSONEncoder().encode(s))
+        XCTAssertTrue(back.archived)
+        var json = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(s)) as? [String: Any])
+        json["archived"] = nil
+        XCTAssertFalse(try JSONDecoder().decode(Session.self, from: JSONSerialization.data(withJSONObject: json)).archived)   // older rows
+        XCTAssertTrue(SessionCatalog.entry(s, state: .history, window: nil, lastActive: nil).archived)
+    }
+
+    func test_LAB1538_runningRowsCanBeClosed() {
+        let s = Session(name: "x", repoPath: "/p", lifecycle: .idle)
+        for st in [SessionCatalog.State.working, .waiting, .finishedShell] { XCTAssertTrue(SessionCatalog.entry(s, state: st, window: nil, lastActive: nil).running) }
+        for st in [SessionCatalog.State.history, .planned] { XCTAssertFalse(SessionCatalog.entry(s, state: st, window: nil, lastActive: nil).running) }
+    }
+}
