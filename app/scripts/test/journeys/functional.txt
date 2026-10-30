@@ -92,6 +92,14 @@ railsessions
 expect sessionsopen = true
 panels
 snap j7-reopened
+# LAB-1612: closed by a drag, it drags back open from the same spot (beside the rail).
+dragdivider 1 30
+expect sessionsopen = false
+dragdivider 0 350
+wait 1.5
+expect sessionsopen = true
+panels
+snap j7-dragged-open
 
 ## J8 · Full and Wide
 focusstep 0

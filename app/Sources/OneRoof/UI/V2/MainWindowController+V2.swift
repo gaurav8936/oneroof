@@ -23,6 +23,7 @@ extension MainWindowController {
         filesItemRef.isCollapsed = true
 
         // Dividers: 0 rail|column · 1 column|files · 2 files|centre · 3 centre|plan.
+        (splitController as? RoofSplitViewController)?.fixedDividers = [0, 2]   // LAB-1612: only the column's edge drags
         let tb = NSToolbar(identifier: "OneRoofToolbarV2." + win.id)
         let d = V2ToolbarDelegate(model: model, win: win, controller: self, splitView: splitView, centreDivider: 2)
         v2V2Toolbar = d
