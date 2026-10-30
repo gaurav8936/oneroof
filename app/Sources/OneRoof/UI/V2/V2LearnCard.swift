@@ -65,7 +65,7 @@ struct LearnCardStation: View {
             case "transcript": LearnTranscript(nav: nav, audio: audio, card: c, scenes: scenes, idx: idx)
             case "skill": LearnSkillFile(nav: nav, audio: audio, card: c)
             default:
-                if let page { LearnCardWeb(nav: nav, player: player, audio: audio, card: c, source: page, autoAdvance: model.settings.learnAutoAdvance) }
+                if let page { LearnCardWeb(nav: nav, player: player, audio: audio, card: c, source: page, autoAdvance: model.settings.learnAutoAdvance && ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_AUTOADVANCE"] != "0") }
                 // Fallback: the deck has no HTML page for this card, so the scenes from its spec.json are drawn natively.
                 else { LearnListen(nav: nav, player: player, audio: audio, card: c, scenes: scenes, idx: idx, here: here) }
             }
@@ -233,13 +233,16 @@ struct LearnCardWeb: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { bridge.run(LearnRollover.playScript) }
     }
 
-    /// ONEROOF_SELFTEST_CARDENDED=<seconds>: once, that long after the first card page loads, the page posts its end
+    /// ONEROOF_SELFTEST_CARDENDED=<seconds> or finish@<seconds> (ONEROOF_SELFTEST_AUTOADVANCE=0 = the switch off): once, that long after the first card page loads, the page posts its end
     /// (as a card played to its end does), to capture the countdown and the roll-over.
     private func selfTestEnded() {
         guard let s = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_CARDENDED"], !LearnCardWeb.selfTestEndedFired else { return }
         LearnCardWeb.selfTestEndedFired = true
-        let js = LearnRollover.endedScript(card: card.slug)
-        DispatchQueue.main.asyncAfter(deadline: .now() + (Double(s) ?? 1)) { bridge.run(js) }
+        // "finish@<s>": the page's own end (its test hook plays the last scene and steps past it), not a posted message.
+        let real = s.hasPrefix("finish@")
+        let js = real ? "window.__AE__ && window.__AE__.finish && window.__AE__.finish();" : LearnRollover.endedScript(card: card.slug)
+        let at = Double(real ? String(s.dropFirst(7)) : s) ?? 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + at) { bridge.run(js) }
     }
     @MainActor private static var selfTestEndedFired = false
     /// Seconds per countdown step: 1, or ONEROOF_SELFTEST_ROLLTICK (self-tests slow it down to capture it).
@@ -257,10 +260,17 @@ struct LearnCardWeb: View {
     /// Several clicks: "playAll@1,nextCard@4" (seconds after the first card page loaded; only that first page, so a click
     /// that opens another card does not repeat on it).
     private func selfTestClick() {
-        guard let spec = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PAGECLICK"], !LearnCardWeb.selfTestClicked else { return }
+        let env = ProcessInfo.processInfo.environment
+        guard !LearnCardWeb.selfTestClicked, env["ONEROOF_SELFTEST_PAGECLICK"] != nil || env["ONEROOF_SELFTEST_PAGEJS"] != nil else { return }
         LearnCardWeb.selfTestClicked = true
         let bridge = bridge
-        for one in spec.split(separator: ",") {
+        // ONEROOF_SELFTEST_PAGEJS=<seconds>@<script>: run a script in the first card page (e.g. its __AE__.openScene(12)).
+        if let pj = env["ONEROOF_SELFTEST_PAGEJS"], let at = pj.firstIndex(of: "@") {
+            let js = String(pj[pj.index(after: at)...])
+            DispatchQueue.main.asyncAfter(deadline: .now() + (Double(pj[..<at]) ?? 1)) { bridge.run(js) }
+        }
+        let spec = env["ONEROOF_SELFTEST_PAGECLICK"] ?? ""
+        for one in spec.split(separator: ",") where !one.isEmpty {
             let f = one.split(separator: "@").map(String.init), id = f.first ?? ""
             let js = "(function(){ var e = document.getElementById('\(id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })'); if (e) e.click(); })();"
             DispatchQueue.main.asyncAfter(deadline: .now() + (f.count > 1 ? Double(f[1]) ?? 1 : 1)) { bridge.run(js) }
