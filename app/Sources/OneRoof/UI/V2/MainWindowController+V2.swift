@@ -200,6 +200,8 @@ extension MainWindowController {
             let sv = self.splitView
             let railW: CGFloat = showRail ? 66 : 0
             if sessions && !side.isCollapsed { sv.setPosition(railW + columnWidth, ofDividerAt: 1) }
+            // LAB-1601: the lane has its width now; it follows its live width again (the drag to widen it).
+            if self.win.focusLaneSettling { self.win.focusLaneSettling = false }
             if !plan.isCollapsed {
                 let w: CGFloat = planMode.edge ? 28 : CGFloat(V2Layout.planWidth(saved: self.win.planWidth))
                 sv.setPosition(sv.bounds.width - w, ofDividerAt: 3)
@@ -237,7 +239,12 @@ extension MainWindowController {
         guard win.place == .sessions, v2Page == nil else { return }
         if i == 1 || i == 2, win.focusStep != .focus, !sideItemRef.isCollapsed { win.columnWidth = Double(sideItemRef.viewController.view.frame.width) }
         // LAB-1366: the Focus lane snaps when the drag ends: back to the avatars, or wide enough for the full list.
-        if i == 1 || i == 2, win.focusStep == .focus, !sideItemRef.isCollapsed, NSApp.currentEvent?.type == .leftMouseUp {
+        // LAB-1601: only after a real drag of it. A click (the Focus button's mouse-up) is also the last event while the
+        // step lays out; read as a drag's end, it snapped the lane to 200, the step put it back to 52, and the two
+        // fought for ~1,700 layouts (two seconds of a stuck window on every click into Focus).
+        if i == 1 || i == 2, win.focusStep == .focus, NSApp.currentEvent?.type == .leftMouseDragged { v2LaneDragged = true }
+        if i == 1 || i == 2, win.focusStep == .focus, !sideItemRef.isCollapsed, v2LaneDragged, NSApp.currentEvent?.type == .leftMouseUp {
+            v2LaneDragged = false
             v2SetFocusLane(V2Layout.focusLaneSnap(dragged: Double(sideItemRef.viewController.view.frame.width)))
         }
         if i == 3, win.focusStep == .full, !planItemRef.isCollapsed, !v2PlanEdge { win.planWidth = Double(planItemRef.viewController.view.frame.width) }

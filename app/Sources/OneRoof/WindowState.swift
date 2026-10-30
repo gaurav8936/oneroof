@@ -66,9 +66,22 @@ final class WindowState: ObservableObject, Identifiable {
     @Published var focusStep: FocusStep = .sessions {
         didSet {
             save(focusStep.rawValue, "focusStep")
+            if focusStep != oldValue { TerminalSurfaceView.holdSizes() }   // LAB-1601: one terminal resize per step
             if place == .sessions, sessionsStep != focusStep { sessionsStep = focusStep; save(focusStep.rawValue, "sessionsStep") }
+            // LAB-1601: entering the thin Focus lane shows the avatars at once, until the column has narrowed.
+            if focusStep == .focus, oldValue != .focus, focusColumnWidth == nil {
+                focusLaneSettling = true
+                // Never left on: the layout clears it once the lane is narrow; this covers a layout that had nothing to do.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    if self?.focusLaneSettling == true { self?.focusLaneSettling = false }
+                }
+            } else if focusStep != .focus, focusLaneSettling { focusLaneSettling = false }
         }
     }
+    /// LAB-1601 · the Focus lane is still narrowing to its avatars. Until it has, the column shows the avatars rather
+    /// than reading its old width (250 pt) and building the whole session list for one layout pass, then again as it
+    /// narrowed: about a second of a busy main thread on every step into Focus.
+    @Published var focusLaneSettling = false
     /// The step the Sessions place was last at (1.8.1): coming back from Home, Work… returns to it instead of resetting
     /// to step 1, so a Plan or dock you opened at Full does not fold away each time you visit another place.
     private(set) var sessionsStep: FocusStep?
