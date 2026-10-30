@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.25 — Focus is smooth (29 Oct 2026)
+
+- **Clicking Focus no longer locks the window** (LAB-1601). The click was read as the end of a drag of the Focus
+  lane, so the lane and the step fought over its width for about two seconds. Focus now takes a third of a second,
+  as smoothly as Full and Wide.
+- **Terminals resize once per step.** Switching Full, Wide or Focus no longer re-fits the terminal (and makes the
+  agent redraw) on every frame of the switch: the terminal takes its new size when the panels stop.
+- **Less work on every width change.** Pages you are not looking at (Files, the catalog, Learn…) no longer take part
+  in the window's layout.
+
 ## 1.9.24 — permission mode per agent, a steadier session catalog, Needs you fixes, the test harness (29 Oct 2026)
 
 - **Permission mode per agent** (LAB-1600). Settings › Permissions sets how much each agent may do without asking:
