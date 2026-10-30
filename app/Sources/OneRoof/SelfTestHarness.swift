@@ -179,9 +179,10 @@ enum SelfTestHarness {
 /// surfaces made in the window; settle = the last one after the gesture ended.
 final class FrameProbe: NSObject {
     private var link: CADisplayLink?
-    private var timer: Timer?
     private var frames: [CFTimeInterval] = []
-    private var ticks: [CFTimeInterval] = []
+    private var waits: [Double] = []
+    private var running = false
+    private let lock = NSLock()
     private var frameDur: CFTimeInterval = 1.0 / 120
     private var grid0 = 0
     private var t0: CFTimeInterval = 0
@@ -191,10 +192,22 @@ final class FrameProbe: NSObject {
     func start(in window: NSWindow?) {
         grid0 = TerminalSurfaceView.gridChanges
         t0 = CACurrentMediaTime()
-        let t = Timer(timeInterval: 0.004, repeats: true) { [weak self] _ in self?.ticks.append(CACurrentMediaTime()) }
-        t.tolerance = 0
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+        // Main-thread responsiveness: a background thread posts a block to the main queue every 4 ms and times how long it
+        // waits to run. A busy main thread delays it; an idle one runs it at once. (A main-run-loop timer read gaps that
+        // were the system holding the timer back while the screen was locked, with the main thread idle: LAB-1596.)
+        running = true
+        let th = Thread { [weak self] in
+            while let me = self, me.running {
+                let sent = CACurrentMediaTime(), done = DispatchSemaphore(value: 0)
+                DispatchQueue.main.async { done.signal() }
+                _ = done.wait(timeout: .now() + 10)
+                let waited = (CACurrentMediaTime() - sent) * 1000
+                me.lock.lock(); me.waits.append(waited); me.lock.unlock()
+                usleep(4_000)
+            }
+        }
+        th.qualityOfService = .userInteractive
+        th.start()
         guard let view = window?.contentView else { return }
         let l = view.displayLink(target: self, selector: #selector(tick(_:)))
         l.add(to: .main, forMode: .common)
@@ -210,7 +223,7 @@ final class FrameProbe: NSObject {
     func markGestureStart() { gestureStart = CACurrentMediaTime(); grid0 = TerminalSurfaceView.gridChanges }
     func markGestureEnd() { gestureEnd = CACurrentMediaTime() }
 
-    func stop() { link?.invalidate(); link = nil; timer?.invalidate(); timer = nil }
+    func stop() { link?.invalidate(); link = nil; running = false }
 
     private static func gaps(_ s: [CFTimeInterval]) -> [Double] { zip(s.dropFirst(), s).map { ($0 - $1) * 1000 }.sorted() }
     private static func pct(_ v: [Double], _ p: Double) -> Double { v.isEmpty ? 0 : v[min(v.count - 1, Int(Double(v.count) * p))] }
@@ -218,10 +231,11 @@ final class FrameProbe: NSObject {
     func report() -> String {
         let now = CACurrentMediaTime()
         let fd = frameDur * 1000
-        let f = Self.gaps(frames), g = Self.gaps(ticks)
-        // Hitch time: for every main-thread gap longer than 1.5 frames, the part beyond one frame (Apple's hitch time).
-        let hitch = g.filter { $0 > fd * 1.5 }.reduce(0) { $0 + ($1 - fd) }
-        let span = max(0.001, (ticks.last ?? now) - (ticks.first ?? t0))
+        lock.lock(); let g = waits.sorted(); lock.unlock()
+        let f = Self.gaps(frames)
+        // Hitch time: for every wait longer than a frame, the part beyond the frame (what shows as a dropped frame).
+        let hitch = g.filter { $0 > fd }.reduce(0) { $0 + ($1 - fd) }
+        let span = max(0.001, now - t0)
         let changes = TerminalSurfaceView.gridChanges - grid0
         let last = TerminalSurfaceView.lastGridChange
         let end = gestureEnd ?? t0

@@ -34,12 +34,16 @@ import OneRoofCore
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
+    nonisolated(unsafe) static var noNap: NSObjectProtocol?
     static func run(_ path: String, app: AppDelegate) {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
         let steps = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("#") }
         let out = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_OUT"] ?? "/tmp/oneroof-script"
         log(out, "start \(steps.count) steps")
+        // LAB-1596: a scripted run must not nap. With the screen locked or the window covered, App Nap holds timers back
+        // for a second or more, which the gesture probes then read as main-thread stalls the app never had.
+        noNap = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "self-test run")
         // Perf probe: how often the model announces a change (each one re-renders every panel), per 5 s.
         var changes = 0
         perfBag = app.model.objectWillChange.sink { changes += 1 }
