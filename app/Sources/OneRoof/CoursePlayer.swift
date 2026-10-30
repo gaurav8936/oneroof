@@ -168,6 +168,10 @@ struct PlayerBar: View {
     @ObservedObject var player: CoursePlayer
     let tokens: ThemeTokens
     var onOpenPage: (() -> Void)? = nil
+    /// LAB-1629 · Learn: ⏮ ⏭ previous and next card (playing on) and back to the band the card came from; nil hides them.
+    var onPrevCard: (() -> Void)? = nil
+    var onNextCard: (() -> Void)? = nil
+    var onBand: (() -> Void)? = nil
     @State private var showQueue = false
 
     var body: some View {
@@ -182,10 +186,13 @@ struct PlayerBar: View {
             }
             .frame(width: 260, alignment: .leading)
             HStack(spacing: 6) {
+                if let onPrevCard { icon("backward.end.fill", "Previous card", onPrevCard) }
                 icon("backward.fill", "Previous part") { player.previous() }
                 icon(player.playing ? "pause.circle.fill" : "play.circle.fill", player.playing ? "Pause" : "Play", size: 24) { player.toggle() }
                 icon("forward.fill", "Next part") { player.next() }
+                if let onNextCard { icon("forward.end.fill", "Next card", onNextCard) }
             }
+            if let onBand { icon("square.grid.2x2", "Back to the band", onBand) }
             PlaybackScrubber(player: player, clock: player.clock, tokens: tokens)
             Picker("", selection: $player.rate) {
                 ForEach(CoursePlayer.rates, id: \.self) { r in Text(r == 1 ? "1×" : String(format: "%g×", r)).tag(r) }

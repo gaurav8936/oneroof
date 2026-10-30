@@ -38,6 +38,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var projectsPath: String
     /// Extra folders shown in Learn: every .md file is a page, every sub-folder of .mp3 files a narration list.
     public var learnFolders: [String]
+    /// LAB-1621 · Learn: a card played to its end counts down three seconds and opens the next card, playing. On by default.
+    public var learnAutoAdvance: Bool
     /// The on-device router model (.gguf); "" = `LocalModel.defaultModelPath`.
     public var localModelPath: String
     /// The first-run setup window has been completed (or skipped by a settings migration).
@@ -128,6 +130,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         commonPath = ""
         projectsPath = ""
         learnFolders = []
+        learnAutoAdvance = true
         localModelPath = ""
         setupDone = false
     }
@@ -182,6 +185,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         permissionModes = (try? c.decodeIfPresent([String: PermissionMode].self, forKey: .permissionModes)) ?? [:]
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
+        learnAutoAdvance = try c.decodeIfPresent(Bool.self, forKey: .learnAutoAdvance) ?? fresh.learnAutoAdvance
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath
         setupDone = try c.decodeIfPresent(Bool.self, forKey: .setupDone) ?? fresh.setupDone
     }
