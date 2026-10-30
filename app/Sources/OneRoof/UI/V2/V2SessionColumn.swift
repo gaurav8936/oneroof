@@ -13,24 +13,74 @@ struct V2SessionColumn: View {
     var overlay = false
 
     var body: some View {
-        Group {
-            if win.focusStep == .focus && !overlay && win.focusLaneSettling {
-                V2AvatarColumn(model: model, win: win, controller: controller)   // LAB-1601
-            } else if win.focusStep == .focus && !overlay {
-                // LAB-1366 / LAB-1382: at Focus the lane follows its live width: the avatars while narrow, the list
-                // (cut off, more of it as it widens) as soon as it is wide enough, during the drag too.
-                GeometryReader { g in
-                    if V2Layout.focusLaneShowsList(width: g.size.width) {
-                        V2SessionList(model: model, win: win, controller: controller, overlay: false)
-                    } else {
-                        V2AvatarColumn(model: model, win: win, controller: controller)
-                    }
-                }
-            } else {
+        // LAB-1736: the list is built once and kept. At the Focus lane it waits, hidden, at its last width under the
+        // avatars, so a step into or out of Focus neither tears the list down nor builds it again (search, chips,
+        // menus, rows: half of a step's main-thread stall), and its text is not measured again at a passing width.
+        // LAB-1366 / LAB-1382: a lane dragged wide shows the list (cut off, more of it as it widens).
+        StepReader(step: win.step) { step in GeometryReader { g in
+            let lane = step.focusStep == .focus && !overlay
+            let avatars = lane && (step.focusLaneSettling || !V2Layout.focusLaneShowsList(width: g.size.width))   // LAB-1601
+            ZStack(alignment: .topLeading) {
                 V2SessionList(model: model, win: win, controller: controller, overlay: overlay)
+                    .keptLaidOut(hidden: avatars, minWidth: 200, room: g.size.width)
+                if avatars {
+                    V2AvatarColumn(model: model, win: win, controller: controller)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
             }
-        }
+            .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+        } }
         .themed(model.themes.sidebar, scale: win.textScale)
+    }
+}
+
+/// The dock's one-line summary under the list at step 1, while the dock is folded. LAB-1736: it alone follows the step
+/// (and the dock), so a step does not redraw the list.
+private struct V2DockLineSlot: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var step: WindowStep
+    @ObservedObject var controller: MainWindowController
+    var body: some View {
+        if step.focusStep == .sessions && controller.v2DockFolded {
+            Hairline()
+            V2DockLine(model: model, controller: controller)
+        }
+    }
+}
+
+/// LAB-1736 · a heavy panel kept alive while a step hides it: laid out at the last width it was shown at and clipped,
+/// so hiding and showing it neither rebuilds it nor measures its text again. Below `minWidth` (a split item passing
+/// through a narrow width, an edge tab) it keeps that width too. Never shown yet and hidden: not built at all.
+struct KeptLaidOut: ViewModifier {
+    let hidden: Bool
+    let minWidth: CGFloat
+    let room: CGFloat
+    @State private var shownWidth: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        let showable = !hidden && room >= minWidth
+        let width: CGFloat? = showable ? nil : (shownWidth > 0 ? shownWidth : nil)
+        if showable || shownWidth > 0 {
+            content
+                .frame(width: width)
+                // The container's width, never the kept one: a wider child would widen the stack it sits in, and the
+                // edge tab or avatars beside it with it.
+                .frame(width: max(0, room), alignment: .topLeading)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .clipped()
+                .opacity(hidden ? 0 : 1)
+                .allowsHitTesting(!hidden)
+                .accessibilityHidden(hidden)
+                .onAppear { if showable { shownWidth = room } }
+                .onChange(of: room) { _, w in if !hidden && w >= minWidth { shownWidth = w } }
+                .onChange(of: hidden) { _, h in if !h && room >= minWidth { shownWidth = room } }
+        }
+    }
+}
+
+extension View {
+    func keptLaidOut(hidden: Bool, minWidth: CGFloat, room: CGFloat) -> some View {
+        modifier(KeptLaidOut(hidden: hidden, minWidth: minWidth, room: room))
     }
 }
 
@@ -93,10 +143,7 @@ private struct V2SessionList: View {
                 }
                 .padding(.horizontal, 6).padding(.bottom, 8)
             }
-            if win.focusStep == .sessions && !overlay && controller.v2DockFolded {
-                Hairline()
-                V2DockLine(model: model, controller: controller)
-            }
+            if !overlay { V2DockLineSlot(model: model, step: win.step, controller: controller) }
         }
         .background(t.sidebar.color)
     }
