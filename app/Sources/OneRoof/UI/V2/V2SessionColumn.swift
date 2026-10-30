@@ -14,7 +14,9 @@ struct V2SessionColumn: View {
 
     var body: some View {
         Group {
-            if win.focusStep == .focus && !overlay {
+            if win.focusStep == .focus && !overlay && win.focusLaneSettling {
+                V2AvatarColumn(model: model, win: win, controller: controller)   // LAB-1601
+            } else if win.focusStep == .focus && !overlay {
                 // LAB-1366 / LAB-1382: at Focus the lane follows its live width: the avatars while narrow, the list
                 // (cut off, more of it as it widens) as soon as it is wide enough, during the drag too.
                 GeometryReader { g in

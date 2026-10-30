@@ -58,6 +58,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     var v2PlanFitsLast: Bool?
     /// LAB-1337: the layout v2ApplyLayout last put in place (target + the split's state after it).
     var v2LastLayout: String?
+    /// LAB-1601: the Focus lane's edge is being dragged by the mouse (set by a drag event, cleared when it snaps).
+    var v2LaneDragged = false
     var splitView: NSSplitView { split.splitView }
     var splitController: NSSplitViewController { split }
     var centreItemRef: NSSplitViewItem { centreItem }
@@ -614,8 +616,7 @@ final class CentreController: NSViewController {
         }
         let h = NSHostingView(rootView: v)
         h.sizingOptions = []
-        pin(h, in: content)
-        h.isHidden = true
+        h.isHidden = true   // attached by show(c) (LAB-1601: off screen, out of the window)
         hosts[c] = h
         return h
     }
@@ -624,10 +625,11 @@ final class CentreController: NSViewController {
         let next = host(c)
         let prev = hosts[current]
         current = c
-        guard prev !== next else { next.isHidden = false; return }
+        guard prev !== next else { unpark(next); next.isHidden = false; return }
+        unpark(next)
         next.isHidden = false
         if Motion.reduce || prev == nil {
-            prev?.isHidden = true
+            if let prev { park(prev) }
         } else {
             next.alphaValue = 0
             NSAnimationContext.runAnimationGroup({ ctx in
@@ -637,11 +639,23 @@ final class CentreController: NSViewController {
                 prev?.animator().alphaValue = 0
             }, completionHandler: { [weak prev, weak self] in
                 guard let prev, let self, self.hosts[self.current] !== prev else { return }
-                prev.isHidden = true
+                self.park(prev)
                 prev.alphaValue = 1
             })
         }
         if c == .workspace { terminalArea.focusTerminal() }
+    }
+
+    /// LAB-1601 · a centre page that is not on screen leaves the window. A hidden view still takes part in layout: every
+    /// width change (a Focus step, Full/Wide, a window resize) laid out every page opened since launch (the Files tab's
+    /// whole tree, the catalog, Learn…), on each animation frame. The terminal area stays: its terminals live on.
+    private func park(_ v: NSView) {
+        v.isHidden = true
+        if v !== hosts[.workspace], v.superview != nil { v.removeFromSuperview() }
+    }
+
+    private func unpark(_ v: NSView) {
+        if v.superview == nil { pin(v, in: content) }
     }
 }
 
