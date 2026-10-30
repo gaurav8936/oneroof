@@ -60,6 +60,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     var v2LastLayout: String?
     /// LAB-1601: the Focus lane's edge is being dragged by the mouse (set by a drag event, cleared when it snaps).
     var v2LaneDragged = false
+    /// LAB-1612: the rail is showing only because the Sessions column was dragged closed at a step that hides it.
+    var v2RailShownForFold = false
+
+    /// LAB-1612 · a Sessions column dragged closed leaves the rail on screen, so there is always an edge to drag it back
+    /// from (and the Sessions button): at the Sessions step the rail is hidden, and folding the column left nothing at
+    /// the window's left edge. Once the column is back, the step's own layout returns.
+    func v2RailForFoldedColumn() {
+        guard isV2, let rail = v2RailItem, win.place == .sessions, v2Page == nil else { return }
+        let folded = sideItem.isCollapsed
+        if folded, rail.isCollapsed, win.focusStep != .focus {
+            v2RailShownForFold = true
+            DispatchQueue.main.async { rail.isCollapsed = false }
+        } else if !folded, v2RailShownForFold {
+            v2RailShownForFold = false
+            DispatchQueue.main.async { [weak self] in self?.v2LastLayout = nil; self?.v2ApplyLayout(animated: false) }
+        }
+    }
     var splitView: NSSplitView { split.splitView }
     var splitController: NSSplitViewController { split }
     var centreItemRef: NSSplitViewItem { centreItem }
@@ -158,8 +175,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             // LAB-1576: a drag that folds the Sessions column hands its place to the classic Files item, which has no
             // width in v2; fold it straight back so nothing reads it as open.
             roof.afterResize = { [weak self] in
-                guard let self, !self.filesItem.isCollapsed else { return }
-                DispatchQueue.main.async { if !self.filesItem.isCollapsed { self.filesItem.isCollapsed = true } }
+                guard let self else { return }
+                if !self.filesItem.isCollapsed {
+                    DispatchQueue.main.async { if !self.filesItem.isCollapsed { self.filesItem.isCollapsed = true } }
+                }
+                self.v2RailForFoldedColumn()
             }
         }
         for i in [sideItem, filesItem, centreItem, planItem] {
@@ -698,6 +718,16 @@ final class RoofSplitViewController: NSSplitViewController {
     override func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
         if keepOnDrag?(subview) == true { return false }
         return super.splitView(splitView, canCollapseSubview: subview)
+    }
+
+    /// LAB-1612: dividers no drag may take (v2: the rail's, fixed at 66 pt, and the folded classic Files item's). With
+    /// the Sessions column folded, all of them sit on the same spot as the column's own edge; a grab there took one of
+    /// these and nothing moved, so the column could not be dragged back out.
+    var fixedDividers: Set<Int> = []
+    override func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect, forDrawnRect drawnRect: NSRect,
+                            ofDividerAt dividerIndex: Int) -> NSRect {
+        if fixedDividers.contains(dividerIndex) { return .zero }
+        return super.splitView(splitView, effectiveRect: proposedEffectiveRect, forDrawnRect: drawnRect, ofDividerAt: dividerIndex)
     }
 
     /// LAB-1576: runs after every layout change, drags included.
