@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.28 — switching views is about twice as fast (30 Oct 2026)
+
+- **Full, Wide, Focus and Sessions switch faster** (LAB-1736). Each switch used to hold the window still for 70–120 ms;
+  now about half that. Three causes: every switch redrew the whole app (toolbar, rail, tabs, Plan, Learn) instead of
+  only what shows the step; the Plan and the session list were rebuilt from scratch on each switch (now they are kept
+  and hidden); and the bottom dock's slide laid every panel out again on each frame (it now fades in instead).
+
 ## 1.9.27 — Learn: a bigger card, sit-back listening, code that looks like code (29 Oct 2026)
 
 - **Includes 1.9.26** (below), which was not released on its own: the Sessions column drags back open, and the
