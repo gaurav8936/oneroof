@@ -21,3 +21,12 @@ final class PickerSearchTests: XCTestCase {
         for st in ["backlog", "unstarted", "triage", "completed", "canceled"] { XCTAssertFalse(ActiveFilter.issue(st), st) }
     }
 }
+
+final class TrafficLightTests: XCTestCase {
+    /// LAB-1620: macOS's spacing (20 pt, 14 pt buttons) puts the zoom button 4 pt inside the 66 pt rail.
+    func test_LAB1620_buttonsSitInsideTheRail() {
+        let x = V2Layout.trafficLightsStart(rail: 66, gap: 20, button: 14)
+        XCTAssertEqual(x, 8)
+        XCTAssertLessThanOrEqual(x + 2 * 20 + 14, 66 - 4)
+    }
+}

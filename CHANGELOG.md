@@ -5,6 +5,8 @@
 - **Drag the Sessions column back open** (LAB-1612). After dragging the column closed, dragging its edge back to the
   right did nothing; only the rail's Sessions button or a step change brought it back. Now the drag reopens it. At
   the Sessions step the rail also stays on screen while the column is closed, so there is always an edge to drag.
+- **Window buttons inside the rail** (LAB-1620). The green button no longer sits half across the rail's edge: the three
+  buttons move a little to the left, with their usual spacing.
 
 ## 1.9.25 — Focus is smooth (29 Oct 2026)
 

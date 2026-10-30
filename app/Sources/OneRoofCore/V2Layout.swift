@@ -54,6 +54,12 @@ public enum V2Layout {
     /// avatars need, so text appears progressively while you drag; narrower, the avatars.
     public static func focusLaneShowsList(width: Double) -> Bool { width >= focusLaneSnapPoint }
 
+    /// LAB-1620 · where the window's first button goes so all three sit inside the rail (zoom button 4 pt clear of its
+    /// edge), never closer than 8 pt to the window's corner.
+    public static func trafficLightsStart(rail: Double, gap: Double, button: Double) -> Double {
+        max(8, rail - 4 - button - 2 * gap)
+    }
+
     /// LAB-1363: whether the terminal shows "Current ↓": scrolled up from the live bottom (libghostty has reported
     /// a position and it is not the bottom), and the pane shows the live terminal (not the Table view or raw stream).
     public static func showsCurrentPill(atBottom: Bool?, raw: Bool, table: Bool) -> Bool {
