@@ -66,10 +66,15 @@ struct LearnBandPage: View {
                 .padding(.horizontal, 22).padding(.vertical, 18)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(t.display.fill.color))
                 .padding(.top, 24)
-            group("Start here", "the four cards to hear first", "\(key.count) cards", key, list)
+            group("Start here", "the cards to hear first", "\(key.count) cards", key, list)
             ForEach(b.tracks, id: \.self) { tr in
                 let ks = list.filter { deck.cards[$0]?.track == tr && !b.key.contains($0) }
-                if !ks.isEmpty {
+                let themes = deck.themes(ofTrack: tr)
+                if !themes.isEmpty {
+                    // LAB-1668: People grouped by the catalog's six themes, with photos and contributions.
+                    LearnThemedTrack(nav: nav, player: player, audio: audio, track: tr, themes: themes, queue: list, marked: nav.focusTrack == tr)
+                        .id(LearnRadioRoute.anchor(track: tr))
+                } else if !ks.isEmpty {
                     group(LearnDeck.label(tr), deck.tracks[tr]?.intro ?? "", "\(ks.count) cards", ks, list, marked: nav.focusTrack == tr)
                         .id(LearnRadioRoute.anchor(track: tr))
                 }

@@ -15,6 +15,10 @@ struct LearnCardStation: View {
     @ObservedObject var player: CoursePlayer
     let audio: LearnAudio
     let posts: [LearnPost]
+    /// LAB-1619 · the right rail folds away (remembered); folded, the card's page takes the whole width.
+    @AppStorage("learn.cardRailFolded") private var railStored = false
+    /// ONEROOF_SELFTEST_RAILFOLDED=1 shows the rail folded without writing the setting.
+    private var railFolded: Bool { railStored || ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_RAILFOLDED"] == "1" }
     @Environment(\.theme) private var t
 
     var body: some View {
@@ -24,13 +28,17 @@ struct LearnCardStation: View {
             let here = audio.playingSlug == c.slug
             let idx = max(0, min(scenes.count - 1, here ? player.index : nav.scene))
             let page = LearnCardPage.source(c.slug, in: deck)
-            HStack(alignment: .top, spacing: 32) {
+            // LAB-1619 (owner, 10-29): the stage fills the window and grows with it, in width and height (no fixed max
+            // width); the rail is narrower and folds away.
+            HStack(alignment: .top, spacing: railFolded ? 0 : 24) {
                 main(c, scenes, idx, here, page).frame(maxWidth: .infinity)
-                LearnCardSide(nav: nav, player: player, audio: audio, posts: posts, card: c, scenes: scenes, idx: idx, here: here,
-                              chapters: page == nil).frame(width: 320)
+                if !railFolded {
+                    LearnCardSide(nav: nav, player: player, audio: audio, posts: posts, card: c, scenes: scenes, idx: idx, here: here,
+                                  chapters: page == nil).frame(width: LearnCardStation.railWidth)
+                }
             }
-            .padding(.horizontal, 40).padding(.top, 24).padding(.bottom, 48)
-            .frame(maxWidth: 1360, alignment: .leading)
+            .padding(.horizontal, 24).padding(.top, 14).padding(.bottom, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -57,7 +65,7 @@ struct LearnCardStation: View {
             case "transcript": LearnTranscript(nav: nav, audio: audio, card: c, scenes: scenes, idx: idx)
             case "skill": LearnSkillFile(nav: nav, audio: audio, card: c)
             default:
-                if let page { LearnCardWeb(nav: nav, player: player, audio: audio, card: c, source: page) }
+                if let page { LearnCardWeb(nav: nav, player: player, audio: audio, card: c, source: page, autoAdvance: model.settings.learnAutoAdvance && ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_AUTOADVANCE"] != "0") }
                 // Fallback: the deck has no HTML page for this card, so the scenes from its spec.json are drawn natively.
                 else { LearnListen(nav: nav, player: player, audio: audio, card: c, scenes: scenes, idx: idx, here: here) }
             }
@@ -78,10 +86,23 @@ struct LearnCardStation: View {
                     .buttonStyle(.plain)
                 }
                 Spacer()
+                Button { withAnimation(.easeOut(duration: 0.15)) { railStored = !railFolded } } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "sidebar.right").font(.system(size: 12))
+                        Text(railFolded ? "Show side panel" : "Hide side panel").font(.system(size: 12))
+                    }
+                    .foregroundStyle(t.text2.color).padding(.horizontal, 8).padding(.vertical, 6).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(railFolded ? "Show Say it in a session, Pairs with, Read about it and Next on the band" : "Hide the side panel: the card takes the whole width")
+                .accessibilityLabel(railFolded ? "Show side panel" : "Hide side panel")
             }
             Rectangle().fill(t.separatorStrong.color).frame(height: 1)
         }
     }
+
+    /// LAB-1619 · the rail's width (was 320).
+    static let railWidth: CGFloat = 248
 }
 
 /// LAB-1305 · Listen: the card's own page from the deck, as the repository and the other sites show it. Links: anchors stay in
@@ -94,30 +115,138 @@ struct LearnCardWeb: View {
     let audio: LearnAudio
     let card: DeckCard
     let source: LearnCardPage.Source
+    /// LAB-1621 · Settings › Learn › Auto-advance to the next card.
+    var autoAdvance = true
     @State private var bridge = WebPageBridge()
+    /// LAB-1621 · the roll-over countdown: the next card and the seconds left (nil = none running).
+    @State private var rollNext: String?
+    @State private var rollLeft = 0
+    @State private var rollTask: Task<Void, Never>?
     @Environment(\.theme) private var t
 
     var body: some View {
         let deck = audio.deck, player = player, nav = nav, slug = card.slug
-        WebPage(path: source.page, root: source.readRoot, blocked: { LearnExclusions.isExcluded($0) },
-                pageScript: LearnExclusions.hideLinksScript, startScript: LearnCardPage.bridgeScript(muted: CoursePlayer.selfTestMuted),
-                onMessage: { kind in
-                    if kind == "ready" { follow(); selfTestClick(); return }
-                    if player.playing { player.pause() }       // the page started its own narration
-                },
-                onLocalLink: { path in
-                    guard let k = LearnCardPage.linkedCard(path, in: deck), k != slug else { return false }
-                    nav.openCard(k); return true
-                },
-                bridge: bridge)
-            .id(source.page)
-            .containerRelativeFrame(.vertical) { h, _ in max(480, h - 150) }   // the page and its own player bar fit under the tabs
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
-            .onChange(of: player.playing) { _, on in if on { bridge.run(LearnCardPage.pauseScript); follow() } }
-            .onChange(of: player.index) { _, _ in if player.playing { follow() } }
+        VStack(spacing: 10) {
+            // The countdown sits above the page (WebKit draws out of process, so nothing is layered over the page itself).
+            if let n = rollNext { countdown(n).transition(.opacity) }
+            WebPage(path: source.page, root: source.readRoot, blocked: { LearnExclusions.isExcluded($0) },
+                    pageScript: LearnExclusions.hideLinksScript,
+                    startScript: LearnCardPage.bridgeScript(muted: CoursePlayer.selfTestMuted) + "\n" + LearnRollover.escapeScript(media: LearnCardPage.handler),
+                    onMessage: { kind in
+                        if kind == "ready" { follow(); startAutoplay(); selfTestClick(); selfTestEnded(); return }
+                        if kind == "escape" { cancelRollover(); return }
+                        cancelRollover()                            // the page started playing again: stay on this card
+                        if player.playing { player.pause() }       // the page started its own narration
+                    },
+                    onLocalLink: { path in
+                        guard let k = LearnCardPage.linkedCard(path, in: deck), k != slug else { return false }
+                        nav.openCard(k); return true
+                    },
+                    bridge: bridge,
+                    onCardMessage: { body in cardEnded(body) },
+                    autoplay: nav.autoplay == slug)
+                .id(source.page)
+                // LAB-1619: the page and its own player bar fill the height under the kicker and tabs (was h - 150).
+                .containerRelativeFrame(.vertical) { h, _ in max(480, h - 112 - (rollNext == nil ? 0 : 54)) }
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
+        }
+        .onChange(of: player.playing) { _, on in if on { cancelRollover(); bridge.run(LearnCardPage.pauseScript); follow() } }
+        .onChange(of: player.index) { _, _ in if player.playing { follow() } }
+        .onDisappear { cancelRollover() }
     }
+
+    // MARK: Roll-over (LAB-1621)
+
+    /// "Next: <title> in 3…" with Stay (Esc) and Play now.
+    private func countdown(_ next: String) -> some View {
+        let title = audio.deck.cards[next]?.title ?? next
+        return HStack(spacing: 12) {
+            Image(systemName: "forward.end.fill").font(.system(size: 12)).foregroundStyle(t.accentText.color)
+            Text(LearnRollover.label(title: title, left: rollLeft)).font(.system(size: 14, weight: .semibold)).foregroundStyle(t.text.color)
+                .monospacedDigit().lineLimit(1)
+            Button { cancelRollover() } label: { Text("Stay").font(.system(size: 12, weight: .semibold)) }
+                .buttonStyle(LearnChipStyle()).keyboardShortcut(.cancelAction).help("Stay on this card (Esc)")
+            Button { go(next) } label: { Text("Play now").font(.system(size: 12, weight: .semibold)) }
+                .buttonStyle(LearnChipStyle()).help("Open \(title) now")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).frame(height: 44)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(t.selection.color))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(t.accent.color, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(LearnRollover.label(title: title, left: rollLeft))
+    }
+
+    /// LAB-1629 · the page's player bar asks for ⏮ ⏭ or back to band; the next and previous cards play on when the page
+    /// was playing.
+    private func cardNav(_ r: LearnRollover.NavRequest) {
+        cancelRollover()
+        let deck = audio.deck, slug = card.slug
+        switch r.to {
+        case .band: nav.backToBand(slug, in: deck)
+        case .prevCard, .nextCard:
+            guard let k = r.to == .nextCard ? LearnRollover.next(after: slug, in: deck) : LearnRollover.previous(before: slug, in: deck) else { return }
+            let open = { (play: Bool) in
+                if play { nav.autoplay = k }
+                nav.openCard(k)
+            }
+            if let p = r.playing { open(p) } else { bridge.ask(LearnRollover.isPlayingScript) { open($0) } }
+        }
+    }
+
+    /// The page says it ended: count down to the next card (when auto-advance is on and there is one).
+    private func cardEnded(_ body: Any) {
+        if let r = LearnRollover.navRequest(body, fallback: card.slug) { cardNav(r); return }
+        guard autoAdvance, rollNext == nil, LearnRollover.endedCard(body, fallback: card.slug) == card.slug,
+              let next = LearnRollover.next(after: card.slug, in: audio.deck) else { return }
+        rollNext = next; rollLeft = LearnRollover.seconds
+        rollTask?.cancel()
+        rollTask = Task { @MainActor in
+            for left in stride(from: LearnRollover.seconds, to: 0, by: -1) {
+                rollLeft = left
+                try? await Task.sleep(nanoseconds: UInt64(LearnCardWeb.tick * 1_000_000_000))
+                if Task.isCancelled || rollNext != next { return }
+            }
+            go(next)
+        }
+    }
+
+    private func cancelRollover() {
+        rollTask?.cancel(); rollTask = nil
+        if rollNext != nil { rollNext = nil }
+    }
+
+    /// Open the next card; its page starts playing by itself (`?autoplay=1`, then the fallback once loaded).
+    private func go(_ next: String) {
+        cancelRollover()
+        nav.autoplay = next
+        nav.openCard(next)
+    }
+
+    /// The card a roll-over opened has loaded: make sure it plays, then forget the flag.
+    private func startAutoplay() {
+        guard nav.autoplay == card.slug else { return }
+        nav.autoplay = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { bridge.run(LearnRollover.playScript) }
+    }
+
+    /// ONEROOF_SELFTEST_CARDENDED=<seconds> or finish@<seconds> (ONEROOF_SELFTEST_AUTOADVANCE=0 = the switch off): once, that long after the first card page loads, the page posts its end
+    /// (as a card played to its end does), to capture the countdown and the roll-over.
+    private func selfTestEnded() {
+        guard let s = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_CARDENDED"], !LearnCardWeb.selfTestEndedFired else { return }
+        LearnCardWeb.selfTestEndedFired = true
+        // "finish@<s>": the page's own end (its test hook plays the last scene and steps past it), not a posted message.
+        let real = s.hasPrefix("finish@")
+        let js = real ? "window.__AE__ && window.__AE__.finish && window.__AE__.finish();" : LearnRollover.endedScript(card: card.slug)
+        let at = Double(real ? String(s.dropFirst(7)) : s) ?? 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + at) { bridge.run(js) }
+    }
+    @MainActor private static var selfTestEndedFired = false
+    /// Seconds per countdown step: 1, or ONEROOF_SELFTEST_ROLLTICK (self-tests slow it down to capture it).
+    private static let tick: Double = Double(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_ROLLTICK"] ?? "") ?? 1
 
     /// Show the scene One Roof's player is on, in the page (only while it plays this card).
     private func follow() {
@@ -128,12 +257,26 @@ struct LearnCardWeb: View {
 
     /// ONEROOF_SELFTEST_PAGECLICK=<element id>[@<seconds>]: click that element of the card page once it has loaded
     /// (e.g. playAll, to check the page's own narration pauses One Roof's player).
+    /// Several clicks: "playAll@1,nextCard@4" (seconds after the first card page loaded; only that first page, so a click
+    /// that opens another card does not repeat on it).
     private func selfTestClick() {
-        guard let spec = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PAGECLICK"] else { return }
-        let f = spec.split(separator: "@").map(String.init), id = f.first ?? ""
-        let js = "(function(){ var e = document.getElementById('\(id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })'); if (e) e.click(); })();"
-        DispatchQueue.main.asyncAfter(deadline: .now() + (f.count > 1 ? Double(f[1]) ?? 1 : 1)) { bridge.run(js) }
+        let env = ProcessInfo.processInfo.environment
+        guard !LearnCardWeb.selfTestClicked, env["ONEROOF_SELFTEST_PAGECLICK"] != nil || env["ONEROOF_SELFTEST_PAGEJS"] != nil else { return }
+        LearnCardWeb.selfTestClicked = true
+        let bridge = bridge
+        // ONEROOF_SELFTEST_PAGEJS=<seconds>@<script>: run a script in the first card page (e.g. its __AE__.openScene(12)).
+        if let pj = env["ONEROOF_SELFTEST_PAGEJS"], let at = pj.firstIndex(of: "@") {
+            let js = String(pj[pj.index(after: at)...])
+            DispatchQueue.main.asyncAfter(deadline: .now() + (Double(pj[..<at]) ?? 1)) { bridge.run(js) }
+        }
+        let spec = env["ONEROOF_SELFTEST_PAGECLICK"] ?? ""
+        for one in spec.split(separator: ",") where !one.isEmpty {
+            let f = one.split(separator: "@").map(String.init), id = f.first ?? ""
+            let js = "(function(){ var e = document.getElementById('\(id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })'); if (e) e.click(); })();"
+            DispatchQueue.main.asyncAfter(deadline: .now() + (f.count > 1 ? Double(f[1]) ?? 1 : 1)) { bridge.run(js) }
+        }
     }
+    @MainActor private static var selfTestClicked = false
 }
 
 /// Fallback Listen for a card without a page (LAB-1305): the scene's panel (section, kicker, heading, the section's diagram with this scene's nodes lit, the lede and
@@ -299,33 +442,14 @@ struct LearnSkillFile: View {
     let audio: LearnAudio
     let card: DeckCard
     @Environment(\.theme) private var t
-    @Environment(\.textScale) private var scale
 
     var body: some View {
         let path = audio.deck.skillPath(card.slug)
         VStack(alignment: .leading, spacing: 0) {
             Text(card.skill).font(.system(size: 12, design: .monospaced)).foregroundStyle(t.text3.color).padding(.bottom, 10)
-            if let s = nav.skill(card.slug, audio.deck) {
-                VStack(spacing: 0) {
-                    ForEach(Array(s.front.enumerated()), id: \.offset) { i, f in
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Text(f.key).foregroundStyle(t.text3.color).frame(width: 140, alignment: .leading)
-                            Text(f.value).foregroundStyle(t.text.color).frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .font(.system(size: 12, design: .monospaced)).padding(.vertical, 6)
-                        .overlay(alignment: .bottom) { if i < s.front.count - 1 { Rectangle().fill(t.separator.color).frame(height: 1) } }
-                    }
-                }
-                .padding(.horizontal, 14).padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.toolbar.color))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
-                .padding(.bottom, 18)
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(MarkdownDoc.parse(s.body).enumerated()), id: \.offset) { _, b in
-                        MarkdownBlockView(block: b, path: path, t: t, scale: scale, depth: 0)
-                    }
-                }
-                .textSelection(.enabled)
+            // LAB-1628: the front-matter is YAML in the dark code panel, the body is rendered under it.
+            if nav.skill(card.slug, audio.deck) != nil, let text = DeckFolders.text(path) {
+                MarkdownWithFrontMatter(text: text, path: path, frontLabel: "SKILL.md · front-matter")
             } else {
                 Text("The bundled deck has no SKILL.md for this card.").font(.system(size: 14)).foregroundStyle(t.text2.color)
             }
@@ -357,6 +481,10 @@ struct LearnCardSide: View {
         let reads = band.posts.compactMap { s in posts.first { $0.slug == s } }
         let current = scenes.indices.contains(idx) ? scenes[idx].sectionIndex : -1
         VStack(alignment: .leading, spacing: 22) {
+            // LAB-1668: a person's card shows their profile first.
+            if let person = card.person {
+                LearnPersonProfile(card: card, person: person, profile: nav.profile(card.slug, deck), root: deck.root)
+            }
             if chapters {
             VStack(alignment: .leading, spacing: 2) {
                 LearnRuleHeading(text: "Chapters")

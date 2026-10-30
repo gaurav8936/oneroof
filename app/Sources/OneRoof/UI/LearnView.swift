@@ -272,10 +272,14 @@ private struct LearnPlayerBar: View {
     @ObservedObject var player: CoursePlayer
     let tokens: ThemeTokens
     let openPage: () -> Void
+    /// LAB-1629 · the v2 window's ⏮ ⏭ and back to band.
+    var onPrevCard: (() -> Void)? = nil
+    var onNextCard: (() -> Void)? = nil
+    var onBand: (() -> Void)? = nil
     var body: some View {
         if player.pageId != nil {
             Divider()
-            PlayerBar(player: player, tokens: tokens, onOpenPage: openPage)
+            PlayerBar(player: player, tokens: tokens, onOpenPage: openPage, onPrevCard: onPrevCard, onNextCard: onNextCard, onBand: onBand)
         }
     }
 }
@@ -290,7 +294,10 @@ extension LearnView {
             v2RadioHeader
             V2LearnRadio(model: model, player: model.player, nav: lnav, deck: deck, posts: posts)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            LearnPlayerBar(player: model.player, tokens: t) { v2OpenPlaying() }
+            LearnPlayerBar(player: model.player, tokens: t, openPage: { v2OpenPlaying() },
+                           onPrevCard: deck == nil ? nil : { v2PlayCard(next: false) },
+                           onNextCard: deck == nil ? nil : { v2PlayCard(next: true) },
+                           onBand: deck == nil ? nil : { v2BackToBand() })
         }
         .background(t.window.color)
         .overlay(alignment: .top) { v2Toast }
@@ -353,6 +360,23 @@ extension LearnView {
     private func v2OpenHelp(_ page: String) {
         model.helpTarget = page
         (NSApp.delegate as? AppDelegate)?.openHelp(nil)
+    }
+
+    /// LAB-1629 · ⏮ ⏭ on the player bar: the previous or next card in the roll-over order plays on (and its station opens
+    /// when a card station is showing).
+    private func v2PlayCard(next: Bool) {
+        guard let deck, let id = model.player.pageId, let slug = deck.slug(forPage: id) else { return }
+        guard let k = next ? LearnRollover.next(after: slug, in: deck) : LearnRollover.previous(before: slug, in: deck) else { return }
+        let audio = LearnAudio(deck: deck, player: model.player, nav: lnav)
+        audio.play(k, then: audio.bandFrom(k))
+        if lnav.place == .card { lnav.openCard(k) }
+    }
+
+    /// LAB-1629 · back to band from the player bar: the band (or Radio) the card was opened from.
+    private func v2BackToBand() {
+        guard let deck else { return }
+        let slug = lnav.place == .card ? lnav.slug : (model.player.pageId.flatMap { deck.slug(forPage: $0) } ?? lnav.slug)
+        lnav.backToBand(slug, in: deck)
     }
 
     /// The player bar's title: the card station of the card playing.
