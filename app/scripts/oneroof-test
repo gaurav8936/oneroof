@@ -89,7 +89,8 @@ suite_perf() {
   ONEROOF_PERF_PROFILE="$PROFILE" bash "$APPDIR/scripts/perf/perf-check.sh" --app "$APP" --scenarios "$scen" --secs "$secs" --tp "$tp" \
     --out "$OUT/perf/scenarios" >> "$LOG" 2>&1
   say "· perf: gestures (resize, drag, Focus steps)"
-  bash "$T/run-app.sh" "$APP" "$T/journeys/gestures.txt" "$OUT/perf/gestures" "$PROFILE" 300
+  # Three runs; perf.py takes each measure's median (one run's resize hitches varied 2x between back-to-back runs).
+  for n in "" -2 -3; do bash "$T/run-app.sh" "$APP" "$T/journeys/gestures.txt" "$OUT/perf/gestures$n" "$PROFILE" 300; done
   python3 "$T/perf.py" "$OUT" "$VERSION" "$LIMITS" "$BASE" "$MAIN/scratchpad/perf" "$QUICK" "$LOCKED" | tee -a "$LOG"
 }
 suite_compare() {
