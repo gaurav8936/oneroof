@@ -123,6 +123,15 @@ final class LearnNav: ObservableObject {
         return s
     }
     private var skillCache: [String: DeckSkill?] = [:]
+
+    /// LAB-1668 · a person card's profile (spec.json), read once.
+    func profile(_ slug: String, _ deck: LearnDeck) -> DeckProfile? {
+        if let p = profileCache[slug] { return p }
+        let p = DeckProfile.load(deck.specPath(slug))
+        profileCache[slug] = p
+        return p
+    }
+    private var profileCache: [String: DeckProfile?] = [:]
 }
 
 /// Playing deck cards through today's player.

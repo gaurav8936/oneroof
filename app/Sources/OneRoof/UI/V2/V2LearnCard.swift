@@ -254,12 +254,19 @@ struct LearnCardWeb: View {
 
     /// ONEROOF_SELFTEST_PAGECLICK=<element id>[@<seconds>]: click that element of the card page once it has loaded
     /// (e.g. playAll, to check the page's own narration pauses One Roof's player).
+    /// Several clicks: "playAll@1,nextCard@4" (seconds after the first card page loaded; only that first page, so a click
+    /// that opens another card does not repeat on it).
     private func selfTestClick() {
-        guard let spec = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PAGECLICK"] else { return }
-        let f = spec.split(separator: "@").map(String.init), id = f.first ?? ""
-        let js = "(function(){ var e = document.getElementById('\(id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })'); if (e) e.click(); })();"
-        DispatchQueue.main.asyncAfter(deadline: .now() + (f.count > 1 ? Double(f[1]) ?? 1 : 1)) { bridge.run(js) }
+        guard let spec = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PAGECLICK"], !LearnCardWeb.selfTestClicked else { return }
+        LearnCardWeb.selfTestClicked = true
+        let bridge = bridge
+        for one in spec.split(separator: ",") {
+            let f = one.split(separator: "@").map(String.init), id = f.first ?? ""
+            let js = "(function(){ var e = document.getElementById('\(id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })'); if (e) e.click(); })();"
+            DispatchQueue.main.asyncAfter(deadline: .now() + (f.count > 1 ? Double(f[1]) ?? 1 : 1)) { bridge.run(js) }
+        }
     }
+    @MainActor private static var selfTestClicked = false
 }
 
 /// Fallback Listen for a card without a page (LAB-1305): the scene's panel (section, kicker, heading, the section's diagram with this scene's nodes lit, the lede and
@@ -464,6 +471,10 @@ struct LearnCardSide: View {
         let reads = band.posts.compactMap { s in posts.first { $0.slug == s } }
         let current = scenes.indices.contains(idx) ? scenes[idx].sectionIndex : -1
         VStack(alignment: .leading, spacing: 22) {
+            // LAB-1668: a person's card shows their profile first.
+            if let person = card.person {
+                LearnPersonProfile(card: card, person: person, profile: nav.profile(card.slug, deck), root: deck.root)
+            }
             if chapters {
             VStack(alignment: .leading, spacing: 2) {
                 LearnRuleHeading(text: "Chapters")
