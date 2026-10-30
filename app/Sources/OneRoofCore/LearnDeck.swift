@@ -21,6 +21,43 @@ public struct DeckCard: Equatable, Sendable {
     public var sections: [Section]
     public var scenes: Int
     public var estSeconds: Int
+    /// LAB-1668 · a card about a person (People / Influences, deck 0.2.4+): who, their theme and contribution.
+    public var person: DeckPerson? = nil
+}
+
+/// LAB-1668 · the person a card is about, from the catalog (deck 0.2.4+: `person`, `tagline`, `theme`, `role`, `photo`,
+/// `monogram`, `sources`).
+public struct DeckPerson: Equatable, Sendable {
+    /// "Full Name (handle)".
+    public var display: String
+    /// The contribution in one line (readers show it instead of the card's description).
+    public var tagline: String
+    public var theme: String
+    public var role: String
+    /// Path relative to the deck root (nil: show `monogram`).
+    public var photo: String?
+    public var monogram: String
+    /// How many sources the card's Go deeper lists.
+    public var sources: Int
+    public init(display: String, tagline: String, theme: String, role: String, photo: String?, monogram: String, sources: Int) {
+        self.display = display; self.tagline = tagline; self.theme = theme; self.role = role; self.photo = photo
+        self.monogram = monogram; self.sources = sources
+    }
+    /// Initials for a person without a photo (the catalog's `monogram`, else from the name).
+    public var initials: String {
+        if !monogram.isEmpty { return monogram }
+        let name = display.split(separator: "(").first.map(String.init) ?? display
+        return String(name.split(separator: " ").compactMap(\.first).prefix(2)).uppercased()
+    }
+}
+
+/// LAB-1668 · one theme of a themed track (People: six themes), in display order; its cards are sorted by surname.
+public struct DeckTheme: Equatable, Sendable, Identifiable {
+    public var id: String
+    public var title: String
+    public var question: String
+    public var track: String
+    public var cards: [String]
 }
 
 public struct DeckTrack: Equatable, Sendable { public var id: String; public var suit: String; public var intro: String; public var cards: [String] }
@@ -65,6 +102,10 @@ public struct LearnDeck: Sendable {
     public var trackNames: [String: (name: String, question: String)] = [:]
     /// All cards › By kind, from the catalog's `kinds`.
     public var kinds: [(title: String, sub: String, tracks: [String])] = []
+    /// LAB-1668 · the catalog's `themes` (People grouped in six), in display order. Empty for an older deck.
+    public var themes: [DeckTheme] = []
+    /// The themes of one track, in order (empty: the track is not themed).
+    public func themes(ofTrack track: String) -> [DeckTheme] { themes.filter { $0.track == track } }
 
     // MARK: The deck in use (LAB-1257)
 
@@ -120,7 +161,11 @@ public struct LearnDeck: Sendable {
                                    subtitle: c["subtitle"] as? String ?? "", description: c["description"] as? String ?? "",
                                    triggers: strs(c["triggers"]), skill: c["skill"] as? String ?? "", spec: c["spec"] as? String ?? "",
                                    html: c["html"] as? String ?? "", sections: secs, scenes: c["scenes"] as? Int ?? secs.reduce(0) { $0 + $1.scenes },
-                                   estSeconds: c["est_seconds"] as? Int ?? 0)
+                                   estSeconds: c["est_seconds"] as? Int ?? 0,
+                                   person: (c["person"] as? String).flatMap { p in p.isEmpty ? nil : DeckPerson(
+                                       display: p, tagline: c["tagline"] as? String ?? "", theme: c["theme"] as? String ?? "",
+                                       role: c["role"] as? String ?? "", photo: (c["photo"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                                       monogram: c["monogram"] as? String ?? "", sources: c["sources"] as? Int ?? 0) })
         }
         var tracks: [String: DeckTrack] = [:]
         var trackNames: [String: (name: String, question: String)] = [:]
@@ -148,6 +193,17 @@ public struct LearnDeck: Sendable {
             guard let id = p["id"] as? String else { return nil }
             return DeckPath(id: id, title: p["title"] as? String ?? id, tag: p["tag"] as? String ?? "", why: p["why"] as? String ?? "", slugs: strs(p["slugs"]))
         }
+        // LAB-1668 · themes (deck 0.2.4+): a themed track plays and lists in theme order, surname order inside a theme.
+        let themes = (j["themes"] as? [[String: Any]] ?? []).compactMap { t -> DeckTheme? in
+            guard let id = t["id"] as? String else { return nil }
+            return DeckTheme(id: id, title: t["title"] as? String ?? id, question: t["question"] as? String ?? "",
+                             track: t["track"] as? String ?? "", cards: strs(t["cards"]).filter { cards[$0] != nil })
+        }
+        for tr in Set(themes.map(\.track)) where tracks[tr] != nil {
+            let themed = themes.filter { $0.track == tr }.flatMap(\.cards)
+            let rest = (tracks[tr]?.cards ?? []).filter { !themed.contains($0) }
+            tracks[tr]?.cards = themed + rest
+        }
         guard !cards.isEmpty else { return nil }
         // Bands: a track's cards belong to its band; a band's start-here cards belong to it whatever their track.
         var partOf: [String: String] = [:]
@@ -164,7 +220,7 @@ public struct LearnDeck: Sendable {
         }
         let dial = bands.flatMap { lists[$0.id] ?? [] }
         return LearnDeck(root: root, version: j["version"] as? String ?? "", cards: cards, tracks: tracks, suits: suits, paths: paths,
-                         partOf: partOf, lists: lists, dial: dial, bands: bands, trackNames: trackNames, kinds: kinds)
+                         partOf: partOf, lists: lists, dial: dial, bands: bands, trackNames: trackNames, kinds: kinds, themes: themes)
     }
 
     // MARK: Lookups
