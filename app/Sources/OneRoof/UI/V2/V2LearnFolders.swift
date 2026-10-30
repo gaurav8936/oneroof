@@ -30,7 +30,7 @@ struct LearnFolderView<Intro: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(t.surface.color))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
-            .frame(width: 380)
+            .frame(width: 420)   // LAB-1628: wider, so the code panel reads (was 380)
         }
     }
 
@@ -155,14 +155,19 @@ struct LearnFolderView<Intro: View>: View {
         }
         .padding(.bottom, 12)
         if e.readable {
-            ScrollView {
-                Text(DeckFolders.text(e.path) ?? "This file is not text.")
-                    .font(.system(size: 11.5, design: .monospaced)).foregroundStyle(t.text.color)
-                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10)
+            // LAB-1628: the shared dark code panel, wrapped so no line is cut; a Markdown file shows its front-matter as
+            // YAML and its body rendered below (the page itself scrolls, so the panel has no inner scroller to clip it).
+            if let text = DeckFolders.text(e.path) {
+                let lang = CodeText.language(path: e.path)
+                if lang == .markdown {
+                    MarkdownWithFrontMatter(text: text, path: e.path, frontLabel: e.name + " · front-matter")
+                } else {
+                    let p = CodeText.preview(text)
+                    CodePanel(code: p.text, language: lang, label: e.name, note: p.cut ? "First 400 lines. Show in Finder for the whole file." : nil)
+                }
+            } else {
+                Text("This file is not text.").font(.system(size: 12)).foregroundStyle(t.text2.color)
             }
-            .frame(maxHeight: 560)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.toolbar.color))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(t.separator.color, lineWidth: 1))
         } else if e.isDir {
             Text(e.size.isEmpty ? "" : e.size + " in this folder.").font(.system(size: 12)).foregroundStyle(t.text2.color)
         }

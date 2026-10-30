@@ -16,6 +16,8 @@ final class LearnNav: ObservableObject {
     @Published var slug = "loops-first"
     @Published var tab = "listen"           // listen · transcript · skill
     @Published var scene = 0
+    /// LAB-1621 · the card a roll-over opened: its page loads with `?autoplay=1` and starts playing (cleared once loaded).
+    @Published var autoplay: String?
     @Published var post = ""
     @Published var path = "vibe-to-prod"
     @Published var query = ""
@@ -71,7 +73,21 @@ final class LearnNav: ObservableObject {
     }
 
     func go(_ p: Place) { place = p }
-    func openCard(_ slug: String, tab: String = "listen", scene: Int = 0) { self.slug = slug; self.tab = tab; self.scene = scene; place = .card }
+    func openCard(_ slug: String, tab: String = "listen", scene: Int = 0) {
+        if place != .card { origin = place }          // LAB-1629: where "back to band" returns to
+        self.slug = slug; self.tab = tab; self.scene = scene; place = .card
+    }
+    /// LAB-1629 · the place a card was opened from (Radio, a band, All cards …).
+    private(set) var origin: Place = .radio
+
+    /// LAB-1629 · back to band: the band page (or Radio) the card was opened from; from anywhere else, the card's band.
+    func backToBand(_ slug: String, in deck: LearnDeck) {
+        switch origin {
+        case .radio: go(.radio)
+        case .band: openBand(band)
+        default: openBand(deck.band(of: slug).id)
+        }
+    }
     func openBand(_ id: String, track: String? = nil) { band = id; focusTrack = track; place = .band }
 
     /// LAB-1247: what a click on Radio home does (`LearnRadioRoute`): band keys and chips navigate, play controls play.

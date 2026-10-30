@@ -23,6 +23,10 @@ struct WebPage: NSViewRepresentable {
     var onMessage: ((String) -> Void)? = nil
     var onLocalLink: ((String) -> Bool)? = nil
     var bridge: WebPageBridge? = nil
+    /// LAB-1621 · messages the card page posts to `LearnRollover.handler` (`aeCard`: `{type: 'ended', card}`), and the
+    /// page opened with `?autoplay=1` (the next card of a roll-over starts playing by itself).
+    var onCardMessage: ((Any) -> Void)? = nil
+    var autoplay = false
 
     func makeCoordinator() -> Coordinator { let c = Coordinator(); c.blocked = blocked; return c }
 
@@ -40,7 +44,11 @@ struct WebPage: NSViewRepresentable {
         if onMessage != nil {
             cfg.userContentController.add(WebPageMessages(context.coordinator), name: LearnCardPage.handler)
         }
+        if onCardMessage != nil {
+            cfg.userContentController.add(WebPageMessages(context.coordinator, card: true), name: LearnRollover.handler)
+        }
         context.coordinator.onMessage = onMessage
+        context.coordinator.onCardMessage = onCardMessage
         context.coordinator.onLocalLink = onLocalLink
         let w = WKWebView(frame: .zero, configuration: cfg)
         w.navigationDelegate = context.coordinator
@@ -57,12 +65,16 @@ struct WebPage: NSViewRepresentable {
             w.evaluateJavaScript(LearnCardPage.pauseScript, completionHandler: nil)    // never leave a page talking
             w.configuration.userContentController.removeScriptMessageHandler(forName: LearnCardPage.handler)
         }
+        if coordinator.onCardMessage != nil {
+            w.configuration.userContentController.removeScriptMessageHandler(forName: LearnRollover.handler)
+        }
         w.stopLoading()
     }
 
     func updateNSView(_ w: WKWebView, context: Context) {
         context.coordinator.onMessage = onMessage
         context.coordinator.onLocalLink = onLocalLink
+        context.coordinator.onCardMessage = onCardMessage
         bridge?.web = w
         if context.coordinator.loadedPath != path || context.coordinator.reload != reload { load(w, context) }
     }
@@ -70,7 +82,7 @@ struct WebPage: NSViewRepresentable {
     private func load(_ w: WKWebView, _ context: Context) {
         context.coordinator.loadedPath = path
         context.coordinator.reload = reload
-        w.loadFileURL(URL(fileURLWithPath: path), allowingReadAccessTo: URL(fileURLWithPath: root, isDirectory: true))
+        w.loadFileURL(LearnRollover.url(path, autoplay: autoplay), allowingReadAccessTo: URL(fileURLWithPath: root, isDirectory: true))
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
@@ -79,6 +91,7 @@ struct WebPage: NSViewRepresentable {
         var blocked: (@Sendable (String) -> Bool)?
         var onMessage: ((String) -> Void)?
         var onLocalLink: ((String) -> Bool)?
+        var onCardMessage: ((Any) -> Void)?
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -111,13 +124,21 @@ struct WebPage: NSViewRepresentable {
 final class WebPageBridge {
     weak var web: WKWebView?
     func run(_ js: String) { web?.evaluateJavaScript(js, completionHandler: nil) }
+    /// LAB-1629 · a script's Bool result (false when there is no page or it fails).
+    func ask(_ js: String, _ answer: @escaping (Bool) -> Void) {
+        guard let web else { answer(false); return }
+        web.evaluateJavaScript(js) { v, _ in answer((v as? Bool) ?? (v as? NSNumber)?.boolValue ?? false) }
+    }
 }
 
 /// The page's script messages, held weakly so the content controller does not keep the coordinator alive.
 private final class WebPageMessages: NSObject, WKScriptMessageHandler {
     weak var owner: WebPage.Coordinator?
-    init(_ owner: WebPage.Coordinator) { self.owner = owner }
+    /// True: the card page's `aeCard` channel (any body, LAB-1621); false: the media bridge's strings.
+    let card: Bool
+    init(_ owner: WebPage.Coordinator, card: Bool = false) { self.owner = owner; self.card = card }
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+        if card { owner?.onCardMessage?(message.body); return }
         if let s = message.body as? String { owner?.onMessage?(s) }
     }
 }
@@ -276,27 +297,10 @@ struct MarkdownBlockView: View {
         }
     }
 
+    /// LAB-1628 · a fenced block is the shared dark code panel (wraps, copy, syntax colour).
     private func codeBlock(_ lang: String, _ code: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(lang.isEmpty ? "code" : lang).font(.system(size: 10.5 * scale, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(t.text3.color)
-                Spacer()
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(code, forType: .string)
-                } label: { Image(systemName: "doc.on.doc").font(.system(size: 11 * scale)).foregroundStyle(t.text3.color) }
-                    .buttonStyle(.borderless).help("Copy").accessibilityLabel("Copy code")
-            }
-            .padding(.horizontal, 12).padding(.top, 7)
-            ScrollView(.horizontal, showsIndicators: true) {
-                Text(highlighted(code, lang)).font(.system(size: 12.5 * scale, design: .monospaced)).lineSpacing(2)
-                    .fixedSize(horizontal: true, vertical: true)
-                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 11)
-            }
-        }
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.surface2.color))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(t.separator.color))
+        let language = CodeText.language(fence: lang)
+        return CodePanel(code: code, language: language, label: lang.isEmpty ? nil : lang.lowercased(), scale: scale)
     }
 
     private func table(_ header: [String], _ aligns: [MarkdownAlignment], _ rows: [[String]]) -> some View {
@@ -351,24 +355,6 @@ struct MarkdownBlockView: View {
         return a
     }
 
-    /// Code coloured with the editor's lexer when the fence names a language it knows.
-    private func highlighted(_ code: String, _ lang: String) -> AttributedString {
-        let language = MarkdownDoc.sourceLanguage(fence: lang)
-        guard language != .plain else { return AttributedString(code) }
-        let ns = code as NSString
-        var out = AttributedString()
-        var at = 0
-        for tok in Lexer.tokens(code, language: language).sorted(by: { $0.location < $1.location })
-        where tok.kind != .plain && tok.location >= at && tok.end <= ns.length {
-            if tok.location > at { out += AttributedString(ns.substring(with: NSRange(location: at, length: tok.location - at))) }
-            var piece = AttributedString(ns.substring(with: NSRange(location: tok.location, length: tok.length)))
-            piece.foregroundColor = t.syntax(tok.kind).color
-            out += piece
-            at = tok.end
-        }
-        if at < ns.length { out += AttributedString(ns.substring(from: at)) }
-        return out
-    }
 }
 
 /// An image in a Markdown page: a local file relative to the page, or a web image; the alt text when it cannot load.
