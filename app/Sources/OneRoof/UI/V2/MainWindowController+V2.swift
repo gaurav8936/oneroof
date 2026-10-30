@@ -285,6 +285,22 @@ extension MainWindowController {
         }
         backdropRef.setSegments(segs)
         if fit { v2FitToolbar() }
+        v2NudgeTrafficLights()
+    }
+
+    /// LAB-1620 · the window's close, minimise and zoom buttons sit inside the rail's colour (66 pt): at macOS's own
+    /// place the green one straddled the line where the rail's band ends, half in each colour. Same spacing, moved left.
+    func v2NudgeTrafficLights() {
+        guard let w = window, !w.styleMask.contains(.fullScreen),
+              let close = w.standardWindowButton(.closeButton), let mini = w.standardWindowButton(.miniaturizeButton),
+              let zoom = w.standardWindowButton(.zoomButton) else { return }
+        let gap = mini.frame.minX - close.frame.minX
+        guard gap > 0 else { return }
+        let first = V2Layout.trafficLightsStart(rail: 66, gap: Double(gap), button: Double(zoom.frame.width))
+        for (k, b) in [close, mini, zoom].enumerated() {
+            let x = CGFloat(first) + CGFloat(k) * gap
+            if abs(b.frame.minX - x) > 0.5 { b.setFrameOrigin(NSPoint(x: x, y: b.frame.minY)) }
+        }
     }
 
     /// The toolbar's room right of the column (LAB-1237): published only when the fit changes.
