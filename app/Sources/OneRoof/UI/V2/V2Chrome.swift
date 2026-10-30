@@ -65,7 +65,9 @@ struct V2Rail: View {
                               labelled: true) { controller.v2Open(p) }
             }
             Spacer(minLength: 8)
-            if win.focusStep == .wide { V2RailSeats(model: model) { controller.v2OpenSettings(tab: 2) }.padding(.bottom, 6) }
+            StepReader(step: win.step) { s in   // LAB-1736: only this part follows the step
+                if s.focusStep == .wide { V2RailSeats(model: model) { controller.v2OpenSettings(tab: 2) }.padding(.bottom, 6) }
+            }
             Button { controller.v2ShowLooks() } label: {
                 VStack(spacing: 3) {
                     Image(systemName: "circle.lefthalf.filled").font(.system(size: 14, weight: .medium))
@@ -456,7 +458,9 @@ struct V2FocusHint: View {
 /// agent's prompt and the composer for as long as Focus lasted).
 struct V2FocusHintSlot: View {
     @ObservedObject var win: WindowState
+    @ObservedObject private var step: WindowStep   // LAB-1736
     @State private var shown = false
+    init(win: WindowState) { self.win = win; _step = ObservedObject(wrappedValue: win.step) }
     var body: some View {
         Group {
             if win.focusStep == .focus && shown { V2FocusHint().transition(.opacity) } else { Color.clear.frame(width: 1, height: 1) }
