@@ -2,6 +2,8 @@
 
 ## 1.9.27 — Learn: a bigger card, sit-back listening, code that looks like code (29 Oct 2026)
 
+- **Includes 1.9.26** (below), which was not released on its own: the Sessions column drags back open, and the
+  window buttons sit inside the rail.
 - **The card fills the window** (LAB-1619). Learn › a card's Listen tab no longer sits in a narrow column: the card
   grows with the window, in width and height. The panel on the right (Say it in a session, Pairs with, Read about it,
   Next on the band) is narrower and folds away with Hide side panel; One Roof remembers it.
