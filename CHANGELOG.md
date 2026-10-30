@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.27 — Learn: a bigger card, sit-back listening, code that looks like code (29 Oct 2026)
+
+- **The card fills the window** (LAB-1619). Learn › a card's Listen tab no longer sits in a narrow column: the card
+  grows with the window, in width and height. The panel on the right (Say it in a session, Pairs with, Read about it,
+  Next on the band) is narrower and folds away with Hide side panel; One Roof remembers it.
+- **Roll over to the next card** (LAB-1621). When a card finishes, "Next: <title> in 3…" counts down, then the next
+  card on the band opens and keeps playing (at the end of a band, the next band's first start-here card). Stay, Esc or
+  pressing play cancels it. Speed, voice and captions carry over. Settings › Learn › Auto-advance to the next card
+  turns it off.
+- **Previous card, next card, back to the band** (LAB-1629). The card's player bar ⏮ ⏭ and Band buttons work in One
+  Roof, and One Roof's own player bar has them too.
+- **Code looks like code** (LAB-1628). Code blocks, a card's Skill file and All cards › By folder previews show code in
+  one dark panel, in light and dark mode: monospace, coloured, with Copy, and long lines wrap instead of being cut. A
+  SKILL.md shows its front-matter as YAML with the rest rendered below.
+
 ## 1.9.26 — the Sessions column drags back open (29 Oct 2026)
 
 - **Drag the Sessions column back open** (LAB-1612). After dragging the column closed, dragging its edge back to the
