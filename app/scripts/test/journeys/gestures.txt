@@ -1,0 +1,58 @@
+# LAB-1596 · gesture measures (oneroof-test --suite perf). Each `hitch start … hitch stop <label>` logs one
+# "PROBE <label> frames= p50_ms= p99_ms= hitch_ms_per_s= stalls_50= size_changes= settle_ms= …" line.
+# size_changes = terminal grid size changes (each one resizes the session's terminal) during the gesture.
+wait 4
+place sessions
+windowsize 1500 940
+terminal
+terminal
+wait 3
+send printf 'OR%sMK\n' 4242
+wait 1.5
+textcount OR4242MK = 1
+focusstep 1
+wait 1
+
+hitch start
+wait 2
+hitch stop idle-2s
+
+hitch start
+resizegesture 1500 1000 500
+hitch stop resize-shrink
+hitch start
+resizegesture 1000 1500 500
+hitch stop resize-grow
+hitch start
+resizegesture 1500 1100 250
+resizegesture 1100 1500 250
+hitch stop resize-wiggle
+textcount OR4242MK = 1
+alltext after-resize
+
+hitch start
+gesturemark
+dragdivider 1 120
+hitch stop drag-sessions-edge
+railsessions
+wait 1
+
+hitch start
+gesturemark
+focusstep 0
+hitch stop step-full
+hitch start
+gesturemark
+focusstep 2
+hitch stop step-wide
+hitch start
+gesturemark
+focusstep 3
+hitch stop step-focus
+hitch start
+gesturemark
+focusstep 1
+hitch stop step-sessions
+textcount OR4242MK = 1
+snap gestures-end
+quit

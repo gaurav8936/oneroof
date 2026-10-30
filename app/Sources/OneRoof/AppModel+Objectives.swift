@@ -178,12 +178,14 @@ extension AppModel {
         let marker = "\n\nWhen this step is finished and its done-when check passes, write a short summary to \(runDir)/\(step.id).done. If it cannot be done, write the reason to \(runDir)/\(step.id).failed. Do not start other steps."
         let prompt = step.prompt.contains(".done") ? step.prompt : step.prompt + marker
         let account = agent == .claude ? (step.account ?? settings.defaults(for: .claude).account) : nil
-        let s = Session(name: "\(o.title) · \(step.id) \(step.title)", agent: agent, account: account, repoPath: repo,
+        var s = Session(name: "\(o.title) · \(step.id) \(step.title)", agent: agent, account: account, repoPath: repo,
                         workstream: o.workstream, objective: step.done_when ?? step.title, openingMessage: prompt,
                         tags: [step.kind ?? "step"].filter { Sticker.resolve($0).builtIn }, lifecycle: .next,
                         startInRepo: repo != Workspace.projectsRoot,
                         agentArgs: o.autoApprove ? agent.autoApproveArgs : [],
                         model: step.model ?? (settings.defaults(for: agent).model.isEmpty ? nil : settings.defaults(for: agent).model))
+        // Objective steps keep their own Auto-approve switch (LAB-1600): off means the CLI asks, whatever Settings say.
+        if !o.autoApprove { s.permissionMode = .manual }
         o.stepSessions[step.id] = s.id
         createPlanned(s, launchNow: true)
     }

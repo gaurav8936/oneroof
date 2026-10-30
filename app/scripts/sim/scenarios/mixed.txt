@@ -1,0 +1,19 @@
+# Mixed: some turns just work, some ask permission at random, some ask a question.
+work 4
+tool Grep TODO
+say Found 7 TODOs; 3 are in the parser.
+maybe 0.4 permission command | swift test --filter ParserTests | Run the parser tests
+say Parser tests pass.
+---
+work 5
+maybe 0.5 choose Fix all three TODOs now, or only the crash one? | All three :: About 20 minutes. | Only the crash :: The other two wait for the refactor.
+say OK: {answer}.
+maybe 0.5 permission edit | Sources/Parser.swift | Fix the crash on empty input
+say Fixed.
+---
+work 3
+say Nothing else is blocking. Shall I write the changelog line?
+---
+work 2
+maybe 0.3 permission command | curl -s https://example.com/status | Check the status page
+say Status page is green.

@@ -88,6 +88,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var handOffAt: Int
     /// Seat routing (NEW-6): a review step goes to a different model family from the one that wrote the code.
     public var reviewOtherFamily: Bool
+    /// LAB-1600: Settings › Permissions, one mode per agent (AgentKind raw value). Missing = Auto.
+    public var permissionModes: [String: PermissionMode]
     /// The look, or nil when the panels were customised one by one.
     public var look: Look? {
         get { Look(rawValue: lookName) }
@@ -101,6 +103,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         doneWhenRequired = false
         handOffAt = 0
         reviewOtherFamily = true
+        permissionModes = [:]
         stepReview = false
         alwaysShowComposer = false
         captionsModel = true
@@ -127,6 +130,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         learnFolders = []
         localModelPath = ""
         setupDone = false
+    }
+
+    /// The permission mode new sessions of `agent` start in (LAB-1600; Auto unless the owner chose another).
+    public func permissionMode(for agent: AgentKind) -> PermissionMode {
+        permissionModes[agent.rawValue] ?? PermissionMode.defaultMode
     }
 
     public func defaults(for agent: AgentKind) -> AgentDefaults {
@@ -171,6 +179,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         doneWhenRequired = try c.decodeIfPresent(Bool.self, forKey: .doneWhenRequired) ?? false
         handOffAt = try c.decodeIfPresent(Int.self, forKey: .handOffAt) ?? 0
         reviewOtherFamily = try c.decodeIfPresent(Bool.self, forKey: .reviewOtherFamily) ?? true
+        permissionModes = (try? c.decodeIfPresent([String: PermissionMode].self, forKey: .permissionModes)) ?? [:]
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath

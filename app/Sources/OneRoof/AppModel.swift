@@ -55,7 +55,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var runtimeOK = false
     /// The version the running roofd reports (LAB-526), for the footer's "older than the app" note.
     @Published private(set) var daemonVersion: String?
-    @Published var lastError: String?
+    @Published var lastError: String? {
+        // LAB-1584: an error while a catalog row is resuming belongs on that row, where the button was pressed.
+        didSet { if let e = lastError, let id = catalogPending { catalogNotes[id] = .failed(e); catalogPending = nil } }
+    }
+    /// LAB-1584 · what Resume did, per catalog row, and the row waiting for its answer.
+    @Published var catalogNotes: [String: CatalogNote] = [:]
+    var catalogPending: String?
     @Published var busy: Set<String> = []
     /// A Learn page to open (e.g. a skill's page from Foundations › Skills).
     @Published var learnTarget: String?
@@ -875,7 +881,13 @@ final class AppModel: ObservableObject {
     }
 
     /// A new session, in `window` (the window that asked for it) or the window in front (LAB-705).
+    /// LAB-1600: a new agent session takes its agent's permission mode from Settings › Permissions (Auto by default),
+    /// unless it was given one (New session sheet, objective step) or its own arguments already set one.
     func createPlanned(_ s: Session, launchNow: Bool, in window: WindowState? = nil) {
+        var s = s
+        if s.agent.isAgent, s.permissionMode == nil, !PermissionMode.hasExplicit(s.agentArgs, agent: s.agent) {
+            s.permissionMode = settings.permissionMode(for: s.agent)
+        }
         assign(s.id, to: window)
         save(s)
         (self.window(of: s.id) ?? active).selectedId = s.id

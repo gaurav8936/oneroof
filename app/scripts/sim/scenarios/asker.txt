@@ -1,0 +1,16 @@
+# An asker: stops to ask the owner a question most turns (Claude: its question menu; others: in the answer).
+work 2
+tool Read docs/plan.md
+choose Which config format should the loader keep? | TOML :: The format the CLI tools already read. | YAML :: What the deploy scripts use today. | Both, TOML first :: Read TOML, fall back to YAML for one release.
+say Going with {answer}.
+---
+work 3
+choose Which database do you want for the cache? | Postgres :: A powerful, open-source relational database with advanced features like JSON support and full-text search. Excellent for production systems requiring reliability and scalability. | SQLite :: A lightweight, file-based database that requires no server setup. Perfect for development, testing, and applications that need portability. | MySQL :: A fast, widely-used relational database with strong performance for read-heavy applications. Popular in web development and paired with many frameworks. | DuckDB :: An in-process analytical database designed for fast OLAP queries on large datasets. Ideal for data analysis and reporting workloads.
+say {answer} it is. I'll wire it in next.
+---
+work 2
+maybe 0.5 permission command | npm install better-sqlite3 | Add the driver
+say Driver added. Should I also write the migration now, or wait for review?
+---
+work 2
+say Done for now. What next?

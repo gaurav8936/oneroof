@@ -1,0 +1,24 @@
+{
+ "_rule": "perf suite (LAB-1596). A measure regresses when it is worse than the previous release's baseline by more than regression_pct AND by more than its min_delta; budgets are absolute ceilings for every run. Edit here, or pass --limits <file>.",
+ "regression_pct": 25,
+ "min_delta": {
+  "app_cpu": 1.0, "roofd_cpu": 1.0, "main_busy": 2.0, "stalls_50_per_min": 5, "stall_ms_per_s": 10, "children_per_min": 10,
+  "footprint_mb": 25, "mb_per_terminal": 3,
+  "hitch_ms_per_s": 10, "longest_ms": 50, "gap_p99_ms": 16, "stalls_50": 2, "size_changes": 3, "settle_ms": 100, "frame_p99_ms": 8
+ },
+ "lower_is_better": ["app_cpu", "roofd_cpu", "main_busy", "stalls_50_per_min", "stall_ms_per_s", "children_per_min", "footprint_mb",
+                     "mb_per_terminal", "hitch_ms_per_s", "longest_ms", "gap_p99_ms", "stalls_50", "size_changes", "settle_ms", "frame_p99_ms"],
+ "budgets": {
+  "gestures": {
+   "step-full":     {"size_changes": 8, "longest_ms": 400},
+   "step-wide":     {"size_changes": 8, "longest_ms": 400},
+   "step-focus":    {"size_changes": 8, "longest_ms": 400},
+   "step-sessions": {"size_changes": 8, "longest_ms": 400},
+   "drag-sessions-edge": {"longest_ms": 400},
+   "resize-shrink": {"hitch_ms_per_s": 250, "longest_ms": 400},
+   "resize-grow":   {"hitch_ms_per_s": 250, "longest_ms": 400},
+   "resize-wiggle": {"hitch_ms_per_s": 250, "longest_ms": 400},
+   "idle-2s":       {"hitch_ms_per_s": 20, "longest_ms": 100}
+  }
+ }
+}

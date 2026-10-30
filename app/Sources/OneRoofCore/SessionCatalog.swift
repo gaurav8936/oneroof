@@ -73,6 +73,7 @@ public enum SessionCatalog {
         public let repo: String
         public let entries: [Entry]
         public var id: String { repo }
+        public init(repo: String, entries: [Entry]) { self.repo = repo; self.entries = entries }
     }
 
     /// A session's state from what the board knows.
@@ -102,15 +103,35 @@ public enum SessionCatalog {
 
     /// Grouped by repo; each group newest first; groups ordered by their newest session. `query` matches name, repo,
     /// issue, agent, account and window (case-insensitive); `states` keeps only those states (empty = all).
-    public static func groups(_ entries: [Entry], query: String = "", states: Set<State> = []) -> [Group] {
+    /// LAB-1584: `order` (id → place, from when the page opened) keeps every row where it was while the page is open,
+    /// so a row you act on does not jump; rows new since then come first. `keep` rows stay listed whatever the state
+    /// filter says (a History row you resumed is still there, now Working).
+    public static func groups(_ entries: [Entry], query: String = "", states: Set<State> = [], order: [String: Int] = [:],
+                              keep: Set<String> = []) -> [Group] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let kept = entries.filter { e in
-            (states.isEmpty || states.contains(e.state)) &&
+            (states.isEmpty || states.contains(e.state) || keep.contains(e.id)) &&
             (q.isEmpty || [e.name, e.repo, e.ticket ?? "", e.agent, e.account ?? "", e.window ?? ""].contains { $0.lowercased().contains(q) })
         }
+        func before(_ a: Entry, _ b: Entry) -> Bool {
+            switch (order[a.id], order[b.id]) {
+            case let (x?, y?): return x < y
+            case (nil, _?): return true
+            case (_?, nil): return false
+            case (nil, nil): return a.when > b.when
+            }
+        }
         return Dictionary(grouping: kept, by: \.repo)
-            .map { Group(repo: $0.key, entries: $0.value.sorted { $0.when > $1.when }) }
-            .sorted { ($0.entries.first?.when ?? .distantPast) > ($1.entries.first?.when ?? .distantPast) }
+            .map { Group(repo: $0.key, entries: $0.value.sorted(by: before)) }
+            .sorted { a, b in
+                guard let x = a.entries.first, let y = b.entries.first else { return false }
+                return before(x, y)
+            }
+    }
+
+    /// The order rows are in now (for `groups(order:)`).
+    public static func order(of groups: [Group]) -> [String: Int] {
+        Dictionary(uniqueKeysWithValues: groups.flatMap(\.entries).enumerated().map { ($1.id, $0) })
     }
 }
 

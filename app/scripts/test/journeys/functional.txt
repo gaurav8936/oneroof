@@ -1,0 +1,149 @@
+# LAB-1595 · functional journeys across three windows (oneroof-test --suite functional).
+# Lines "## <journey>" name the journey the following checks belong to; @DIR@ is a scratch folder.
+# Every `expect` / `textcount` logs CHECK PASS|FAIL; a FAIL fails the suite. `snap` = a screenshot for the report.
+wait 4
+## J1 · start: the v2 window opens on the copy of the profile
+place sessions
+expect windows >= 1
+expect openwindows >= 1
+expect place = sessions
+snap j1-start
+
+## J2 · create sessions in window 1
+mark sessions
+terminal
+terminal
+wait 2
+expect sessions >= 2
+expect sessions > @sessions
+expect live >= 2
+send printf 'OR%sMK\n' 4242
+wait 1.5
+textcount OR4242MK = 1
+snap j2-window1-sessions
+
+## J3 · switch sessions
+selectindex 1
+mark selected
+selectindex 2
+expect selected != @selected
+snap j3-switched
+
+## J4 · a second and third window, each with its own sessions
+newwindow Test B
+expect window = Test B
+expect windows >= 2
+terminal
+wait 2
+expect sessions = 1
+expect live = 1
+snap j4-second-win
+newwindow Test C
+expect window = Test C
+expect windows >= 3
+expect openwindows >= 3
+terminal
+terminal
+wait 2
+expect sessions = 2
+snap j4-third-win
+
+## J5 · switch windows
+switchwindow Test B
+expect window = Test B
+expect sessions = 1
+switchwindow Test C
+expect window = Test C
+expect sessions = 2
+switchwindow #1
+expect window != Test C
+snap j5-back-to-first
+
+## J6 · Focus steps 0-3 and back (Full, Sessions, Wide, Focus)
+switchwindow Test C
+windowsize 1500 940
+focusstep 0
+expect focusstep = 0
+snap j6-step0-full
+focusstep 1
+expect focusstep = 1
+expect sessionsopen = true
+snap j6-step1-sessions
+focusstep 2
+expect focusstep = 2
+snap j6-step2-wide
+focusstep 3
+expect focusstep = 3
+snap j6-step3-focus
+focusstep 2
+focusstep 1
+expect focusstep = 1
+expect sessionsopen = true
+snap j6-back-to-sessions
+
+## J7 · drag the Sessions edge closed and reopen it
+place sessions
+expect sessionsopen = true
+dragdivider 1 30
+panels
+expect sessionsopen = false
+snap j7-dragged
+railsessions
+expect sessionsopen = true
+panels
+snap j7-reopened
+
+## J8 · Full and Wide
+focusstep 0
+expect focusstep = 0
+snap j8-full
+focusstep 2
+expect focusstep = 2
+snap j8-wide
+focusstep 1
+
+## J9 · resize the window; terminal text stays whole
+send printf 'OR%sMK\n' 4343
+wait 1.5
+textcount OR4343MK = 1
+width 1100
+expect width = 1100
+width 1600
+expect width = 1600
+width 1300
+expect width = 1300
+textcount OR4343MK = 1
+snap j9-resized
+
+## J10 · Needs you place
+place needsYou
+expect place = needsYou
+snap j10-needs-you
+place sessions
+expect place = sessions
+
+## J11 · session catalog: open, search, resume a row
+centre catalog
+expect centre = catalog
+expect catalog >= 3
+search Terminal
+expect searchhits >= 1
+snap j11-catalog
+mark alllive
+catalogresume 1
+wait 4
+expect alllive > @alllive
+snap j11-resumed
+centre workspace
+expect centre = workspace
+
+## J12 · close a session
+switchwindow Test C
+selectindex 1
+mark live
+close
+wait 2
+expect live < @live
+snap j12-closed
+dump final
+quit

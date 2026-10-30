@@ -163,6 +163,7 @@ struct PaneHeader: View {
     private func meta(_ i: BoardItem) -> String {
         var parts = [i.account ?? i.session.agent.displayName]
         if let m = i.session.model, !m.isEmpty { parts.append(m.capitalized) }
+        if let mode = PermissionBadge.label(for: i.session) { parts.append(mode) }   // LAB-1600
         if let b = model.repoStats[i.session.repoPath]?.branch { parts.append(b) } else { parts.append(i.repoLabel) }
         return parts.joined(separator: " · ")
     }

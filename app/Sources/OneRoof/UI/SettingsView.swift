@@ -21,8 +21,9 @@ struct SettingsView: View {
         if let p = v2Pane { v2Content(p) } else { tabs05 }
     }
 
-    /// The nine panes (B1.x, LAB-1084 order): every 0.5 setting is in one of them.
-    static let v2Panes = ["General", "Appearance", "Seats & accounts", "Notifications", "On-device model", "Foundations", "Learn", "Shortcuts", "Updates"]
+    /// The panes (B1.x, LAB-1084 order): every 0.5 setting is in one of them. Permissions (LAB-1600) is added last so
+    /// the self-test pane numbers stay the same.
+    static let v2Panes = ["General", "Appearance", "Seats & accounts", "Notifications", "On-device model", "Foundations", "Learn", "Shortcuts", "Updates", "Permissions"]
 
     @ViewBuilder private func v2Content(_ p: Int) -> some View {
         switch p {
@@ -34,6 +35,7 @@ struct SettingsView: View {
         case 5: v2Foundations
         case 6: Form { aeRow; learnFoldersRow }.formStyle(.grouped)
         case 7: ShortcutsSettings(model: model)
+        case 9: permissions
         default: v2Updates
         }
     }
@@ -197,6 +199,7 @@ struct SettingsView: View {
             captions.tabItem { Label("Captions", systemImage: "text.bubble") }.tag(5)
             foundations.tabItem { Label("Foundations", systemImage: "building.columns") }.tag(3)
             ShortcutsSettings(model: model).tabItem { Label("Shortcuts", systemImage: "keyboard") }.tag(4)
+            permissions.tabItem { Label("Permissions", systemImage: "lock.shield") }.tag(6)
         }
         .padding(20)
         .frame(width: 660, height: 500)
@@ -382,6 +385,33 @@ struct SettingsView: View {
                     }
                     ModelField(agent: agent, model: binding(agent, \.model))
                     TextField("Extra arguments", text: binding(agent, \.args), prompt: Text("optional"))
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    /// LAB-1600: one permission mode per agent, used by every new session (Auto unless chosen otherwise). The New
+    /// session sheet can pick another for one session; arguments that set a mode win. Loops keep their own setting.
+    private var permissions: some View {
+        Form {
+            Text("How much each agent may do without asking. Every new session starts in its agent's mode; the New session sheet can change it for one session, and arguments that set a mode win. Loops and objective steps keep their own setting.")
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(AgentKind.allCases.filter(\.isAgent)) { agent in
+                Section(agent.displayName) {
+                    Picker("Mode", selection: Binding(
+                        get: { model.settings.permissionMode(for: agent) },
+                        set: { model.settings.permissionModes[agent.rawValue] = $0 })) {
+                        ForEach(PermissionMode.allCases) { m in Text(m.label(for: agent)).tag(m) }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("\(agent.displayName) permission mode")
+                    let m = model.settings.permissionMode(for: agent)
+                    LabeledContent("Flags") {
+                        Text(m.args(for: agent).isEmpty ? "none (the CLI asks)" : m.args(for: agent).joined(separator: " "))
+                            .font(.system(size: 11.5, design: .monospaced)).textSelection(.enabled)
+                    }
+                    Text(m.meaning(for: agent)).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

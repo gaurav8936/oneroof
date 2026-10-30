@@ -146,7 +146,14 @@ public enum DecisionMatcher {
         guard !opts.isEmpty else { return nil }
         let header = lines[..<q].lastIndex { ["Bash command", "Edit file", "Create file", "Write file", "Fetch", "Read file", "Web fetch", "Tool use"].contains($0) }
         let start = header ?? q
-        let body = header.map { lines[($0 + 1)..<q].filter { !$0.isEmpty && !TerminalText.isChrome($0) } } ?? []
+        var body = header.map { lines[($0 + 1)..<q].filter { !$0.isEmpty && !TerminalText.isChrome($0) } } ?? []
+        // LAB-1592: Claude Code 2.1 puts the description first and the command between two dashed rules
+        // ("Create empty file x" / ╌╌╌ / "touch x" / ╌╌╌): the command is what sits between the rules.
+        let isRule: (String) -> Bool = { l in l.count >= 3 && l.unicodeScalars.allSatisfy { "╌┄┈╍┅┉".unicodeScalars.contains($0) } }
+        if let r1 = body.firstIndex(where: isRule), let r2 = body[(r1 + 1)...].firstIndex(where: isRule), r2 > r1 + 1 {
+            body = [body[(r1 + 1)..<r2].joined(separator: " ")] + body[..<r1]
+        }
+        body = body.filter { !isRule($0) }
         var m = PromptMatch(agent: .claude, ask: .other, question: lines[q], options: opts, startLine: start)
         let question = lines[q]
         switch header.map({ lines[$0] }) {
@@ -294,9 +301,26 @@ public enum DecisionMatcher {
     /// Numbered options under the question: "❯ 1. Yes", "2. Yes, and don't ask again (a)", "3. No … (esc)".
     static func options(after q: Int, in lines: [String]) -> [PromptMatch.Option] {
         var out: [PromptMatch.Option] = []
-        for l in lines[(q + 1)...] {
+        var lastNumber = -9
+        let number: (String) -> Int? = { Int($0.replacingOccurrences(of: #"^[❯›>●▸]?\s*"#, with: "", options: .regularExpression).prefix { $0.isNumber }) }
+        let rest = Array(lines[(q + 1)...])
+        var i = 0
+        while i < rest.count {
+            let l = rest[i]
+            i += 1
             if l.isEmpty && out.isEmpty { continue }
-            guard isOption(l) else { if out.isEmpty { continue } else { break } }
+            guard isOption(l) else {
+                if out.isEmpty { continue }
+                // LAB-1592: a long option wraps onto the next lines ("2. Yes, and always allow access to" / "<path>
+                // from" / "this project" / "3. No"): those lines belong to it when the next option follows.
+                let next = rest[(i - 1)...].prefix(4).firstIndex(where: isOption)
+                if let n = next, !l.isEmpty, number(rest[n]) == lastNumber + 1 {
+                    out[out.count - 1].label += " " + rest[(i - 1)..<n].filter { !$0.isEmpty && !TerminalText.isChrome($0) }.joined(separator: " ")
+                    i = n
+                    continue
+                }
+                break
+            }
             let s = l.replacingOccurrences(of: #"^[❯›>●▸]?\s*"#, with: "", options: .regularExpression)
             let num = String(s.prefix { $0.isNumber })
             var label = s.drop { $0.isNumber || $0 == "." }.trimmingCharacters(in: .whitespaces)
@@ -307,6 +331,7 @@ public enum DecisionMatcher {
                 label = label[..<r.lowerBound].trimmingCharacters(in: .whitespaces)
             }
             out.append(.init(label: label, key: key))
+            lastNumber = Int(num) ?? -9
         }
         return out
     }
