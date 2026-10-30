@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.26 — the Sessions column drags back open (29 Oct 2026)
+
+- **Drag the Sessions column back open** (LAB-1612). After dragging the column closed, dragging its edge back to the
+  right did nothing; only the rail's Sessions button or a step change brought it back. Now the drag reopens it. At
+  the Sessions step the rail also stays on screen while the column is closed, so there is always an edge to drag.
+
 ## 1.9.25 — Focus is smooth (29 Oct 2026)
 
 - **Clicking Focus no longer locks the window** (LAB-1601). The click was read as the end of a drag of the Focus
