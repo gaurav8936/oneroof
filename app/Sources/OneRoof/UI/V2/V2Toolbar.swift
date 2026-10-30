@@ -83,6 +83,10 @@ private struct V2PlacesSlot: View {
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
     let controller: MainWindowController
+    @ObservedObject private var step: WindowStep   // LAB-1736
+    init(model: AppModel, win: WindowState, controller: MainWindowController) {
+        self.model = model; self.win = win; self.controller = controller; _step = ObservedObject(wrappedValue: win.step)
+    }
     var body: some View {
         if win.focusStep == .sessions && win.place == .sessions {
             V2PlacesIconRow(model: model, win: win, controller: controller).padding(.leading, 4)
@@ -176,6 +180,10 @@ struct V2StepButton: View {
     @Environment(\.theme) private var t
     @ObservedObject var win: WindowState
     @ObservedObject var controller: MainWindowController
+    @ObservedObject private var step: WindowStep   // LAB-1736
+    init(win: WindowState, controller: MainWindowController) {
+        self.win = win; self.controller = controller; _step = ObservedObject(wrappedValue: win.step)
+    }
 
     var body: some View {
         let focus = win.focusStep == .focus

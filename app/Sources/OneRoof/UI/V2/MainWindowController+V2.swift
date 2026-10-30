@@ -83,7 +83,7 @@ extension MainWindowController {
 
     func v2Start() {
         if let c = win.centre.place, c != win.place { win.place = c }
-        win.$focusStep.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
+        win.step.$focusStep.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
             self?.v2DockOverride = nil
             self?.v2ApplyLayout(animated: true)
         }.store(in: &v2Bag)
@@ -167,7 +167,7 @@ extension MainWindowController {
         let fits = v2PlanFits(step: step, column: Double(columnWidth))
         v2PlanFitsLast = fits
         let planMode: (collapsed: Bool, edge: Bool) = !sessions || step == .focus ? (true, false) : (step == .full && fits ? (false, false) : (false, true))
-        v2PlanEdge = planMode.edge
+        if v2PlanEdge != planMode.edge { v2PlanEdge = planMode.edge }   // LAB-1736: a same-value set still redraws every observer
 
         // LAB-1337: places outside Sessions share one layout (rail, no column, no Plan): moving between them changed
         // nothing here but still forced a full layout of every panel, the largest cost of switching places.
@@ -212,10 +212,8 @@ extension MainWindowController {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.v2PaintBand(); self?.syncPanels() }
         }
         let dockShown = v2DockOverride ?? (step == .full)
-        v2DockFolded = !dockShown
-        if animated && !Motion.reduce {
-            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; v2DockHeight?.animator().constant = dockShown ? 50 : 0 }
-        } else { v2DockHeight?.constant = dockShown ? 50 : 0 }
+        if v2DockFolded != !dockShown { v2DockFolded = !dockShown }
+        v2SetDock(shown: dockShown, animated: animated)
         window?.toolbar?.items.forEach { $0.view?.needsLayout = true }
     }
 
@@ -376,8 +374,19 @@ extension MainWindowController {
         let shown = v2DockOverride ?? (win.focusStep == .full)
         v2DockOverride = !shown
         v2DockFolded = shown
-        if Motion.reduce { v2DockHeight?.constant = shown ? 0 : 50 }
-        else { NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; v2DockHeight?.animator().constant = shown ? 0 : 50 } }
+        v2SetDock(shown: !shown, animated: true)
+    }
+
+    /// LAB-1736 · the split's bottom is pinned to the dock's top, so animating the dock's height re-laid out every panel
+    /// and the terminal on each frame of the animation (Full ↔ Wide, ⌃⌘J). The height changes once; the dock fades in.
+    func v2SetDock(shown: Bool, animated: Bool) {
+        let h: CGFloat = shown ? 50 : 0
+        guard let c = v2DockHeight, c.constant != h else { return }
+        c.constant = h
+        if animated && !Motion.reduce && shown, let dock = v2Dock {
+            dock.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; dock.animator().alphaValue = 1 }
+        } else { v2Dock?.alphaValue = 1 }
     }
 
     /// ⌥⌘S: the session column on or off, without changing the step.
@@ -552,13 +561,33 @@ struct V2PlanSlot: View {
     @ObservedObject var win: WindowState
     @ObservedObject var controller: MainWindowController
     var body: some View {
-        if controller.v2PlanEdge {
-            V2InspectorEdgeTab { tab in controller.v2ShowPlanOverlay(tab: tab) }
-                .themed(model.themes.plan, scale: win.textScale)
-        } else {
-            PlanPanelView(model: model, win: win) { controller.togglePlanPanel() }
+        // LAB-1736: the Plan is built once and kept under the edge tab (Wide, a narrow window) at its last width, so a
+        // step between Full and Wide neither builds it again nor measures its text again (a third of the step's stall).
+        GeometryReader { g in
+            let edge = controller.v2PlanEdge
+            ZStack(alignment: .topLeading) {
+                V2PlanPanel(model: model, win: win, controller: controller).equatable()
+                    .keptLaidOut(hidden: edge, minWidth: 200, room: g.size.width)
+                if edge {
+                    V2InspectorEdgeTab { tab in controller.v2ShowPlanOverlay(tab: tab) }
+                        .themed(model.themes.plan, scale: win.textScale)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
         }
     }
+}
+
+/// LAB-1736 · the docked Plan, redrawn only by its own model and window changes. Built in V2PlanSlot's body, its close
+/// action was a new closure each time, which SwiftUI counts as a change: the whole Plan redrew, hidden or not, each time
+/// the controller published anything (2–3 times per step).
+private struct V2PlanPanel: View, Equatable {
+    let model: AppModel
+    let win: WindowState
+    let controller: MainWindowController
+    var body: some View { PlanPanelView(model: model, win: win) { [weak controller] in controller?.togglePlanPanel() } }
+    static func == (a: Self, b: Self) -> Bool { a.model === b.model && a.win === b.win && a.controller === b.controller }
 }
 
 /// The Plan slid over the terminal (C7.1).
