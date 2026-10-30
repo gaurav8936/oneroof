@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# oneroof-test — One Roof's release test harness (LAB-1594…1599): functional journeys across three windows,
+# performance against the previous release's baseline, a side-by-side with Warp, the simulator, and one report.
+#
+#   app/scripts/oneroof-test [--quick] [--suite functional,perf,compare,sim] [--app <One Roof.app>]
+#                            [--baseline <version|file|dir>] [--out <dir>] [--gate <version>] [--profile <dir>]
+#                            [--limits <json>] [--secs <n>]
+#
+#   --quick     shorter perf windows (idle + places, 20 s each), compare over 10 s; not allowed with --gate
+#   --suite     which suites (default all four); functional + perf are required for a PASS, compare + sim are informational
+#   --app       test this bundle (copied and re-identified); default: build this checkout (scripts/bundle.sh release)
+#   --baseline  compare perf with this baseline (a version in scratchpad/perf/, a file or a folder); default: the newest
+#               scratchpad/perf/baseline-<v>.json older than the app's version
+#   --out       report folder; default scratchpad/test-runs/<version>-<timestamp>/ in the main checkout
+#   --gate <v>  release gate: requires version <v>, a full run of functional + perf; on PASS writes
+#               scratchpad/perf/release-<v>/result.json ({"version","fails":[]}) that ship-picks.sh checks
+#   --profile   a profile copy (sessions.sqlite + defaults.plist); default: a fresh copy of the owner's (read only)
+#
+# Everything runs on a TEST COPY (bundle id io.github.gaurav8936.oneroof.perf) with its own roofd and a copy of the
+# profile, in a minimal environment (env -i): the installed app, its roofd and the owner's store are never touched.
+# Output: report.md, report.html, summary.json and one folder per suite. Exit 0 PASS · 1 FAIL · 2 usage / environment.
+set -uo pipefail
+
+# A minimal environment: the calling shell may point at the live roofd (ONEROOF_ROOFD, ONEROOF_ROOFD_BIN, …).
+if [ -z "${ONEROOF_TEST_CLEAN:-}" ]; then
+  exec env -i HOME="$HOME" USER="${USER:-$(id -un)}" LOGNAME="${LOGNAME:-$(id -un)}" SHELL="${SHELL:-/bin/zsh}" \
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin" LANG=en_US.UTF-8 TMPDIR="${TMPDIR:-/tmp/}" \
+    ${ONEROOF_AE_DECK_REPO:+ONEROOF_AE_DECK_REPO="$ONEROOF_AE_DECK_REPO"} ONEROOF_TEST_CLEAN=1 "$0" "$@"
+fi
+
+HERE="$(cd "$(dirname "$0")" && pwd)"; APPDIR="$(cd "$HERE/.." && pwd)"; REPO="$(cd "$APPDIR/.." && pwd)"; T="$HERE/test"
+MAIN="$(cd "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"   # main checkout, also from a worktree
+QUICK=0; SUITES="functional,perf,compare,sim"; SRC=""; BASE=""; OUT=""; GATE=""; PROFILE=""; LIMITS="$T/limits.json"; SECS=""
+while [ $# -gt 0 ]; do case "$1" in
+  --quick) QUICK=1; shift ;; --suite|--suites) SUITES=$2; shift 2 ;; --app) SRC=$2; shift 2 ;; --baseline) BASE=$2; shift 2 ;;
+  --out) OUT=$2; shift 2 ;; --gate) GATE=$2; shift 2 ;; --profile) PROFILE=$2; shift 2 ;; --limits) LIMITS=$2; shift 2 ;;
+  --secs) SECS=$2; shift 2 ;;
+  -h|--help) sed -n 2,24p "$0"; exit 0 ;; *) echo "oneroof-test: unknown option $1" >&2; exit 2 ;; esac; done
+has() { case ",$SUITES," in *",$1,"*) return 0 ;; esac; return 1; }
+if [ -n "$GATE" ]; then
+  [ "$QUICK" = 1 ] && { echo "oneroof-test: --gate needs a full run (no --quick)" >&2; exit 2; }
+  has functional && has perf || { echo "oneroof-test: --gate needs the functional and perf suites" >&2; exit 2; }
+fi
+pgrep -f oneroof-install >/dev/null && { echo "oneroof-test: an install is running (it quits test builds); try later" >&2; exit 2; }
+OTHERS=$(pgrep -f "Contents/MacOS/OneRoof" | while read -r p; do ps -o comm= -p "$p"; done | grep -vc "^/Applications/")
+
+if [ -n "$SRC" ]; then VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$SRC/Contents/Info.plist" 2>/dev/null)
+else VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APPDIR/Resources/Info.plist"); fi
+[ -n "$VERSION" ] || { echo "oneroof-test: no version (is $SRC an app?)" >&2; exit 2; }
+[ -n "$GATE" ] && [ "$GATE" != "$VERSION" ] && { echo "oneroof-test: --gate $GATE but the app is $VERSION" >&2; exit 2; }
+OUT="${OUT:-$MAIN/scratchpad/test-runs/$VERSION-$(date +%Y%m%d-%H%M%S)}"
+mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"; LOG="$OUT/oneroof-test.log"
+say() { echo "$*" | tee -a "$LOG"; }
+T0=$(date +%s); STARTED=$(date '+%Y-%m-%d %H:%M')
+LOCKED=0; ioreg -n Root -d1 -a 2>/dev/null | grep -A1 CGSSessionScreenIsLocked | grep -q true && LOCKED=1
+say "oneroof-test $VERSION → $OUT (suites $SUITES$([ "$QUICK" = 1 ] && echo ', quick')$([ "$LOCKED" = 1 ] && echo ', SCREEN LOCKED'))"
+[ "${OTHERS:-0}" -gt 0 ] && say "⚠ $OTHERS other One Roof test build(s) running: CPU numbers will be noisier"
+
+# ── the test copy ──
+APP="$OUT/app/One Roof.app"; mkdir -p "$OUT/app"
+if [ -z "$SRC" ]; then
+  say "· building this checkout (release)…"
+  (cd "$APPDIR" && ONEROOF_BUNDLE_OUT="$OUT/build" bash scripts/bundle.sh release) >> "$LOG" 2>&1 || { say "build failed (see $LOG)"; exit 2; }
+  SRC="$OUT/build/One Roof.app"
+fi
+ditto "$SRC" "$APP" || exit 2
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier io.github.gaurav8936.oneroof.perf" "$APP/Contents/Info.plist"
+codesign --force --deep -s - "$APP" >> "$LOG" 2>&1
+trap '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" 2>/dev/null; bash "$APPDIR/scripts/stop-test-roofd.sh" "$OUT/app" >/dev/null 2>&1' EXIT
+if [ -z "$PROFILE" ]; then PROFILE="$OUT/profile"; bash "$T/make-profile.sh" "$PROFILE" || { say "no profile to copy"; exit 2; }; fi
+
+INST="/Applications/One Roof.app/Contents/MacOS/roofd"
+installed() { [ -x "$INST" ] && ROOFD_DIR="$HOME/Library/Application Support/One Roof/roofd" "$INST" hello 2>/dev/null |
+  python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["pid"],d["build"])' 2>/dev/null || echo none; }
+BEFORE=$(installed)
+SUITE_SECS=""; REQ="functional,perf"
+timed() { local n=$1; shift; local t=$(date +%s); "$@"; local rc=$?; SUITE_SECS="$SUITE_SECS\"$n\": $(( $(date +%s) - t )), "; return $rc; }
+
+suite_functional() {
+  say "· functional: journeys across three windows"
+  bash "$T/run-app.sh" "$APP" "$T/journeys/functional.txt" "$OUT/functional" "$PROFILE" 600
+  python3 "$T/functional.py" "$OUT/functional" | tee -a "$LOG"
+}
+suite_perf() {
+  local scen="idle,places,spinners6,memory" secs=60 tp=20
+  [ "$QUICK" = 1 ] && { scen="idle,places"; secs=20; tp=10; }
+  [ -n "$SECS" ] && secs=$SECS
+  say "· perf: perf-check ($scen, ${secs}s windows)"
+  ONEROOF_PERF_PROFILE="$PROFILE" bash "$APPDIR/scripts/perf/perf-check.sh" --app "$APP" --scenarios "$scen" --secs "$secs" --tp "$tp" \
+    --out "$OUT/perf/scenarios" >> "$LOG" 2>&1
+  say "· perf: gestures (resize, drag, Focus steps)"
+  bash "$T/run-app.sh" "$APP" "$T/journeys/gestures.txt" "$OUT/perf/gestures" "$PROFILE" 300
+  python3 "$T/perf.py" "$OUT" "$VERSION" "$LIMITS" "$BASE" "$MAIN/scratchpad/perf" "$QUICK" "$LOCKED" | tee -a "$LOG"
+}
+suite_compare() {
+  local secs=30; [ "$QUICK" = 1 ] && secs=10
+  say "· compare: Warp vs One Roof, outside-in"
+  python3 "$T/compare.py" "$OUT" "$APP" "$PROFILE" "$T/run-app.sh" "$secs" "$LOCKED" | tee -a "$LOG"
+}
+suite_sim() {
+  local sim="$APPDIR/scripts/sim/simulate.sh"
+  if [ ! -f "$sim" ]; then
+    say "· sim: skipped (app/scripts/sim/simulate.sh is not in this checkout yet)"
+    echo '{"suite":"sim","skipped":true,"note":"skipped: app/scripts/sim/simulate.sh is not in this checkout yet"}' > "$OUT/sim.json"; return 0
+  fi
+  say "· sim: $sim"
+  mkdir -p "$OUT/sim"
+  bash "$sim" --app "$APP" --out "$OUT/sim" > "$OUT/sim/simulate.log" 2>&1; local rc=$?
+  python3 -c 'import json,sys;rc=int(sys.argv[2]);json.dump(dict(suite="sim",informational=True,ok=rc==0,exit=rc,
+note=f"simulate.sh exited {rc}; output in sim/ (simulate.log)"),open(sys.argv[1],"w"))' "$OUT/sim.json" "$rc"
+}
+
+for s in functional perf compare sim; do has "$s" && timed "$s" "suite_$s"; done
+
+AFTER=$(installed)
+[ "$BEFORE" = "$AFTER" ] || say "⚠ INSTALLED ROOFD CHANGED during the run: $BEFORE → $AFTER"
+COMMIT=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)
+python3 - "$OUT/env.json" <<PY
+import json, sys
+json.dump(dict(version="$VERSION", commit="$COMMIT", started="$STARTED", quick=$QUICK == 1, screen_locked=$LOCKED == 1,
+               suites="$SUITES".split(','), suite_seconds={${SUITE_SECS%, }}, total_seconds=$(( $(date +%s) - T0 )),
+               regression_pct=json.load(open("$LIMITS"))["regression_pct"], installed_roofd_before="$BEFORE", installed_roofd_after="$AFTER",
+               gate="$GATE", other_test_builds=${OTHERS:-0}), open(sys.argv[1], "w"), indent=1)
+PY
+REQ_RUN=$(echo "$REQ" | tr , '\n' | while read -r r; do has "$r" && echo "$r"; done | paste -sd, -)
+python3 "$T/report.py" "$OUT" "$REQ_RUN" | tee -a "$LOG"; RC=${PIPESTATUS[0]}
+[ "$BEFORE" = "$AFTER" ] || RC=1
+
+if [ -n "$GATE" ]; then
+  G="$MAIN/scratchpad/perf/release-$GATE"
+  if [ "$RC" = 0 ]; then
+    mkdir -p "$G"
+    python3 - "$OUT" "$G/result.json" "$GATE" <<'PY'
+import json, pathlib, sys
+out, dst, v = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+perf = json.loads((out / 'perf.json').read_text()); fn = json.loads((out / 'functional.json').read_text())
+json.dump(dict(version=v, fails=[], source='oneroof-test', run=str(out), baseline=perf['baseline'].get('version'),
+               scenarios=perf['scenarios'], gestures=perf['gestures'], functional=dict(checks=fn['checks'], passed=fn['passed']),
+               screen_locked=perf['screen_locked']), open(dst, 'w'), indent=1)
+PY
+    cp "$OUT/report.md" "$G/report.md"; cp "$OUT/report.md" "$G/result.md"
+    say "gate $GATE: PASS → $G/result.json"
+  else
+    say "gate $GATE: FAIL — $G/result.json not written"
+  fi
+fi
+say "report: $OUT/report.md · $OUT/report.html  ($(( $(date +%s) - T0 )) s)"
+exit "$RC"

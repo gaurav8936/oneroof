@@ -21,24 +21,52 @@ import OneRoofCore
 ///   strayfiles · togglefiles · panels   (LAB-1306: show the classic Files panel, send its × action, log panels)
 ///   dragdivider <i> <x>            (LAB-1556: drag split divider i to window x with real mouse events)
 ///   focusstep <0-3>                (LAB-1302: the window's Focus step, as ⌥⌘F steps it)
+///   resumeall [max]                (LAB-1583: Resume every catalog row that offers it, one by one → <out>-resume.tsv)
+///   catalogsearch <q> [!]          (LAB-1585: rank sessions for <q>; " !" widens with the model → log)
 ///   railsessions                   (LAB-1576: a click on Sessions in the rail)
 ///   tableprobe                     (log: Table view on?, what it shows, who has the keyboard)
 ///   esc                            (an Esc key event through the app, so key monitors see it)
 ///   width <pt>                     (the main window this wide; the panes follow)
 ///   alltext <name>                 (the focused terminal's whole text as libghostty gives it → <name>.alltext.txt)
+///   expect · newwindow · switchwindow · place · search · textcount · hitch · resizegesture · windowsize   (SelfTestHarness)
+///   window <name> · activate <name>   (LAB-1591: a new workspace window, active; or make an open one active)
+///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
+///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
+    nonisolated(unsafe) static var noNap: NSObjectProtocol?
     static func run(_ path: String, app: AppDelegate) {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
         let steps = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("#") }
         let out = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_OUT"] ?? "/tmp/oneroof-script"
         log(out, "start \(steps.count) steps")
+        // LAB-1596: a scripted run must not nap. With the screen locked or the window covered, App Nap holds timers back
+        // for a second or more, which the gesture probes then read as main-thread stalls the app never had.
+        noNap = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "self-test run")
         // Perf probe: how often the model announces a change (each one re-renders every panel), per 5 s.
         var changes = 0
         perfBag = app.model.objectWillChange.sink { changes += 1 }
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in log(out, "perf: \(changes) model changes in 5 s"); changes = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { step(steps, 0, app: app, out: out) }
+    }
+
+    /// LAB-1592: Needs you as the place shows it (open decisions, oldest first), plus every session's status and the
+    /// badge count, so a run can say which asks reached it.
+    static func writeNeeds(_ m: AppModel, to path: String) {
+        let open = m.openDecisions.map { d -> [String: Any] in
+            ["session": m.item(d.sessionId)?.session.name ?? d.sessionId, "agent": d.agent.rawValue, "kind": d.kind.rawValue,
+             "headline": d.command.map { "Run " + $0 } ?? d.headline, "askedAt": d.askedAt.timeIntervalSince1970]
+        }
+        let rows = m.items.map { i -> [String: Any] in
+            ["name": i.session.name, "status": i.status.rawValue, "agent": i.session.agent.rawValue, "live": i.liveAgent ?? "",
+             "window": m.window(m.workspaceId(of: i))?.name ?? ""]
+        }
+        let meta: [String: Any] = ["at": Date().timeIntervalSince1970, "open": open, "badge": max(m.openDecisionCount, m.items.filter { $0.status == .needsYou }.count),   // V2Counts.needsYou
+                                   "decisionsAll": m.decisions.count, "rows": rows]
+        if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
+            try? d.write(to: URL(fileURLWithPath: path))
+        }
     }
 
     static func log(_ out: String, _ line: String) {
@@ -154,6 +182,28 @@ enum SelfTestScript {
             if parts.count == 2, let w = app.main.window { SelfTest.dragDivider(app.main.splitView, in: w, index: Int(parts[0]), toX: CGFloat(parts[1])) }
             delay = 1.5
         case "focusstep": if let n = Int(arg), let st = FocusStep(rawValue: n) { app.model.active.focusStep = st }; delay = 1.5
+        case "resumeall":   // LAB-1583: the next step starts when every row is done
+            SelfTestResume.run(app, out: out, max: Int(arg) ?? 1000) { step(steps, i + 1, app: app, out: out) }
+            return
+        case "catalogresume":   // LAB-1584: press Resume on the catalog's History row number <n> (1 = first), as a click does
+            let rows = m.catalogEntries().filter { $0.state == .history && $0.resume.buttonTitle != nil }
+            if let n = Int(arg), rows.indices.contains(n - 1) { log(out, "  resume \(rows[n - 1].name)"); m.catalogResume(rows[n - 1].id) }
+            delay = 1
+        case "catalogsearch":   // LAB-1585: <query> (append " !" to widen with the model) → top hits in the log
+            let deep = arg.hasSuffix(" !"), q = deep ? String(arg.dropLast(2)) : arg
+            let rows = m.catalogSearchRows()
+            DispatchQueue.global().async {
+                let docs = SessionSearch.docs(rows)
+                let extra = deep ? LocalModel.shared.expandSearch(q) : []
+                let hits = SessionSearch.rank(q, extra: extra, docs: docs)
+                let names = Dictionary(uniqueKeysWithValues: docs.map { ($0.id, $0.title) })
+                DispatchQueue.main.async {
+                    log(out, "  search '\(q)' docs=\(docs.count) withText=\(docs.filter { !$0.lines.isEmpty }.count) related=\(extra) hits=\(hits.count)")
+                    for h in hits.prefix(5) { log(out, "    \(String(format: "%.1f", h.score)) \(names[h.id] ?? h.id) | \(h.snippet.prefix(120))") }
+                    step(steps, i + 1, app: app, out: out)
+                }
+            }
+            return
         case "railsessions": app.main.v2Open(.sessions); delay = 1.0   // LAB-1576: the rail's Sessions button
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
         case "esc":
@@ -169,6 +219,16 @@ enum SelfTestScript {
             delay = 2
         case "alltext":
             try? (app.main.terminalArea.focusedAllText() ?? "(none)").write(toFile: out + "-" + arg + ".alltext.txt", atomically: true, encoding: .utf8)
+        case "window":   // LAB-1591: a new workspace window, as New Workspace Window… creates it; it becomes the active one
+            NotificationCenter.default.post(name: .newWorkspace, object: [arg, ""])
+            delay = 1.5
+        case "activate":   // LAB-1591: make an open window (by name) the active one, so the next plan lands in it
+            if let w = m.windows.first(where: { $0.name == arg }) { m.activeWindowId = w.id } else { log(out, "  no window \(arg)") }
+        case "place":   // LAB-1592: open a place in the active window (home, needsYou, sessions, work, machine, loops, learn)
+            if let p = Place(rawValue: arg) { app.main.v2Open(p) } else { log(out, "  bad place") }
+            delay = 1
+        case "needs":   // LAB-1592: what Needs you holds now → <name>.needs.json (the simulator compares it with what was asked)
+            SelfTestScript.writeNeeds(m, to: out + "-" + arg + ".needs.json")
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":
@@ -196,7 +256,12 @@ enum SelfTestScript {
             if let w = app.main.window, let sheet = w.attachedSheet { w.endSheet(sheet) }
             NSApp.terminate(nil)
             return
-        default: log(out, "  unknown step")
+        default:
+            // LAB-1595: the release harness's steps (checks, windows, gesture probes) live in SelfTestHarness.
+            if SelfTestHarness.step(cmd, arg, app: app, out: out, done: { d in
+                DispatchQueue.main.asyncAfter(deadline: .now() + d) { step(steps, i + 1, app: app, out: out) }
+            }) { return }
+            log(out, "  unknown step")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { step(steps, i + 1, app: app, out: out) }
     }

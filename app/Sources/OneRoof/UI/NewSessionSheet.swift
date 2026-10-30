@@ -44,6 +44,8 @@ struct NewSessionSheet: View {
     @State private var openingSetByHand = false
     @State private var advanced = false
     @State private var args = ""
+    /// LAB-1600: the permission mode picked here; nil = the agent's mode from Settings › Permissions.
+    @State private var permMode: PermissionMode?
     @State private var resumeId = ""
     @State private var roleId = ""
     @State private var roles: [Role] = []
@@ -651,6 +653,7 @@ struct NewSessionSheet: View {
         let d = model.settings.defaults(for: a)
         modelName = d.model
         args = d.args
+        permMode = nil
         refreshOpening()
     }
 
@@ -707,6 +710,18 @@ struct NewSessionSheet: View {
                     TextField("e.g. --permission-mode plan", text: $args).textFieldStyle(.plain).ui(12.5, mono: true)
                         .padding(.horizontal, 8).frame(height: 28)
                         .background(RoundedRectangle(cornerRadius: Radius.field).fill(t.card.color))
+                }
+                labelled("Permissions") {
+                    let a = agent(mark)
+                    let current = permMode ?? model.settings.permissionMode(for: a)
+                    FieldMenu(title: PermissionMode.hasExplicit(Session.parseArgs(args), agent: a) ? "From arguments" : current.label(for: a)) {
+                        ForEach(PermissionMode.allCases) { m in
+                            Button(m.label(for: a) + (m == model.settings.permissionMode(for: a) ? " (default)" : "")) { permMode = m }
+                        }
+                    }
+                    .help(current.meaning(for: a) + " The default is set in Settings › Permissions; arguments that set a mode win.")
+                    .accessibilityLabel("Permission mode: \(current.label(for: a))")
+                    .disabled(!a.isAgent)
                 }
                 labelled("Role") {
                     FieldMenu(title: roles.first { $0.id == roleId }?.title ?? "None") {
@@ -935,6 +950,7 @@ struct NewSessionSheet: View {
                             model: modelName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : modelName,
                             ticket: ticket?.identifier, ticketId: ticket?.id,
                             ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
+            if a.isAgent { s.permissionMode = permMode ?? model.settings.permissionMode(for: a) }   // LAB-1600
             if several { s.moreTickets = moreTickets.map { SessionIssue(key: $0.identifier, id: $0.id, team: s.ticketTeam) } }
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
             model.createPlanned(s, launchNow: launch && !forcePlanned, in: targetWindowId.flatMap { model.window($0) } ?? win)   // LAB-1514

@@ -223,12 +223,15 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     /// LAB-1537: removed from its window's list but kept (All sessions shows it; Resume brings it back). Remove never
     /// deletes a record; Delete forever in All sessions does.
     public var archived: Bool = false
+    /// LAB-1600: the permission mode the session was given when it was made (Settings › Permissions, or the New
+    /// session sheet). Its flags are added at launch unless `agentArgs` already set a mode. Nil on rows made before.
+    public var permissionMode: PermissionMode?
 
-    /// Everything after the agent command: the model flag, then any extra arguments.
+    /// Everything after the agent command: the model flag, then any extra arguments, then the permission mode's flags.
     public var launchArgs: [String] {
         guard agent.isAgent else { return [] }
         let m = model?.trimmingCharacters(in: .whitespaces) ?? ""
-        return (m.isEmpty ? [] : ["--model", m]) + agentArgs
+        return (m.isEmpty ? [] : ["--model", m]) + PermissionMode.launchArgs(agentArgs, mode: permissionMode, agent: agent)
     }
 
     /// A plain terminal's runtime id; herdr-era rows hold "term:<terminal_id>".
@@ -292,7 +295,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
              moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles, parentSessionId,
-             conversationId, conversationPath, archived
+             conversationId, conversationPath, archived, permissionMode
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -334,6 +337,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         conversationId = try c.decodeIfPresent(String.self, forKey: .conversationId)
         conversationPath = try c.decodeIfPresent(String.self, forKey: .conversationPath)
         archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        permissionMode = try? c.decodeIfPresent(PermissionMode.self, forKey: .permissionMode)
     }
 
     /// LAB-1516: the launch fields roofd owns when it starts a session (Scheduler, Loops). Saving a row keeps the newer
