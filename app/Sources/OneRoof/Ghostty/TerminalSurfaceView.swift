@@ -120,7 +120,24 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     private func sizeDidChange(_ size: CGSize) {
         contentSize = size
+        guard surface != nil else { return }
+        // LAB-1601: while a layout step animates (Full · Wide · Focus), the terminal keeps its grid and takes the final
+        // size once, when the panels stop moving. Each grid change re-fits the whole history and makes the program in
+        // the terminal redraw: one per animation frame was ~90 of them, ~80 ms each, on every step into Focus.
+        let now = CACurrentMediaTime()
+        if now < Self.holdUntil {
+            Self.holdUntil = max(Self.holdUntil, now + Self.settleGap)
+            Self.held.add(self)
+            Self.scheduleRelease()
+            return
+        }
+        applySize()
+    }
+
+    /// Size the terminal surface to the view, now.
+    private func applySize() {
         guard let surface else { return }
+        let size = contentSize
         let scaled = convertToBacking(size)
         ghostty_surface_set_size(surface, UInt32(max(scaled.width, 1)), UInt32(max(scaled.height, 1)))
         // LAB-1596: count the grid size changes (each one resizes the session's terminal), for the release harness.
@@ -132,6 +149,33 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         }
     }
     private var lastGrid: (UInt16, UInt16) = (0, 0)
+
+    // MARK: LAB-1601 · one resize per layout step
+
+    /// Until when terminal sizes wait; a size change while waiting pushes it on by `settleGap` (the panels still move).
+    nonisolated(unsafe) static var holdUntil: CFTimeInterval = 0
+    static let settleGap: CFTimeInterval = 0.12
+    nonisolated(unsafe) static var held = NSHashTable<TerminalSurfaceView>.weakObjects()
+    nonisolated(unsafe) static var releaseScheduled = false
+
+    /// A layout step is about to move the panels: terminals keep their size until it has settled.
+    static func holdSizes(for seconds: CFTimeInterval = 0.3) {
+        holdUntil = max(holdUntil, CACurrentMediaTime() + seconds)
+    }
+
+    private static func scheduleRelease() {
+        guard !releaseScheduled else { return }
+        releaseScheduled = true
+        func check() {
+            let wait = holdUntil - CACurrentMediaTime()
+            if wait > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + wait) { check() }; return }
+            releaseScheduled = false
+            let views = held.allObjects
+            held.removeAllObjects()
+            views.forEach { $0.applySize() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, holdUntil - CACurrentMediaTime())) { check() }
+    }
     /// Grid size changes across every terminal surface since launch, and when the last one happened (LAB-1596).
     nonisolated(unsafe) static var gridChanges = 0
     nonisolated(unsafe) static var lastGridChange: CFTimeInterval = 0
