@@ -33,7 +33,7 @@ struct SettingsView: View {
         case 3: Form { notifications }.formStyle(.grouped)
         case 4: v2Model
         case 5: v2Foundations
-        case 6: Form { aeRow; learnFoldersRow }.formStyle(.grouped)
+        case 6: Form { autoAdvanceRow; aeRow; learnFoldersRow }.formStyle(.grouped)
         case 7: ShortcutsSettings(model: model)
         case 9: permissions
         default: v2Updates
@@ -474,6 +474,15 @@ struct SettingsView: View {
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         panel.message = message
         return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+
+    /// LAB-1621 · a card played to its end rolls over to the next one after a three-second countdown.
+    private var autoAdvanceRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Auto-advance to the next card", isOn: $model.settings.learnAutoAdvance)
+            Text("When a card finishes, count down three seconds, then open the next card on the band and keep playing. Stay, Esc or pause cancels the countdown.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     /// Extra Learn folders: posts in them (`<folder>/<post>/index.md`) join Learn › Writing; in the classic window their

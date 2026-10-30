@@ -53,17 +53,23 @@ else:
 
 # gesture probes + text checks
 gest, checks = {}, []
-gl = out / 'perf' / 'gestures' / 'st-log.txt'
-if gl.exists():
+# The gesture journey runs up to three times (gestures, gestures-2, gestures-3); each measure is the median of the runs.
+runs = {}
+gls = [out / 'perf' / d / 'st-log.txt' for d in ('gestures', 'gestures-2', 'gestures-3')]
+gls = [g for g in gls if g.exists()]
+for gl in gls:
     for line in gl.read_text().splitlines():
         m = re.match(r'^[\d.]+\s+PROBE (\S+) (.*)$', line)
         if m:
-            gest[m.group(1)] = {k: float(v) for k, v in re.findall(r'(\w+)=([\d.]+)', m.group(2))}
+            for k, v in re.findall(r'(\w+)=([\d.]+)', m.group(2)):
+                runs.setdefault(m.group(1), {}).setdefault(k, []).append(float(v))
         m = re.match(r'^[\d.]+\s+CHECK (PASS|FAIL) (.*)$', line)
         if m: checks.append(dict(ok=m.group(1) == 'PASS', what=m.group(2)))
-    if not re.search(r'^[\d.]+ quit$', gl.read_text(), re.M): fails.append('gesture run did not finish')
-else:
+    if not re.search(r'^[\d.]+ quit$', gl.read_text(), re.M): fails.append(f'gesture run {gl.parent.name} did not finish')
+if not gls:
     fails.append('gesture run produced no log')
+gest = {g: {k: sorted(v)[len(v) // 2] for k, v in ks.items()} for g, ks in runs.items()}
+if len(gls) > 1: notes.append(f'Gestures: median of {len(gls)} runs.')
 if not gest: fails.append('no gesture measurements')
 for c in checks:
     if not c['ok']: fails.append(f"gesture text check: {c['what']}")
