@@ -11,6 +11,10 @@
   turns it off.
 - **Previous card, next card, back to the band** (LAB-1629). The card's player bar ⏮ ⏭ and Band buttons work in One
   Roof, and One Roof's own player bar has them too.
+- **People, in six themes** (LAB-1668). Learn › Context › People worth hearing lists the 41 people by theme (labs,
+  coding-agent builders, frameworks, evals, practitioners, strategy), each with a photo or initials and their
+  contribution. A person's card shows their profile beside it: role, a short bio, where to start, their main work
+  with links, and where they publish. Previous card, next card and the roll-over follow the theme order.
 - **Code looks like code** (LAB-1628). Code blocks, a card's Skill file and All cards › By folder previews show code in
   one dark panel, in light and dark mode: monospace, coloured, with Copy, and long lines wrap instead of being cut. A
   SKILL.md shows its front-matter as YAML with the rest rendered below.
