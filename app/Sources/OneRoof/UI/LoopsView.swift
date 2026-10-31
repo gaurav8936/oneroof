@@ -169,7 +169,7 @@ struct LoopsView: View {
             Button("Delete", role: .destructive) { board.delete(l.id); if selected == l.id { selected = nil } }
             Button("Cancel", role: .cancel) {}
         } message: { l in
-            Text("Its loop.json and round log are removed. Its worktree \(l.worktreePath) and branch \(l.branch) stay, with any work in them.")
+            Text("Its loop.json, state.json and round log are removed. Its worktree \(l.worktreePath) and branch \(l.branch) stay, with any work in them.")
         }
     }
 
