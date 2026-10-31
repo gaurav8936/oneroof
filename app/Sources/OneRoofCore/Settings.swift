@@ -5,11 +5,13 @@ public struct AgentDefaults: Codable, Equatable, Sendable {
     public var account: String?
     public var model: String
     public var args: String
+    public var hostedConnectionID: String?
 
-    public init(account: String? = nil, model: String = "", args: String = "") {
+    public init(account: String? = nil, model: String = "", args: String = "", hostedConnectionID: String? = nil) {
         self.account = account
         self.model = model
         self.args = args
+        self.hostedConnectionID = hostedConnectionID
     }
 }
 
@@ -17,6 +19,8 @@ public struct AgentDefaults: Codable, Equatable, Sendable {
 public struct AppSettings: Codable, Equatable, Sendable {
     /// Per agent (AgentKind raw value).
     public var agents: [String: AgentDefaults]
+    public var hostedConnections: [HostedConnection]
+    public var hostedRuntime: HostedRuntimeConfiguration?
     /// Count of sessions that need you on the Dock icon.
     public var dockBadge: Bool
     /// Desktop notifications (LAB-197): an agent needs you · an agent finished its turn · a long command finished
@@ -123,6 +127,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         finishedPolicyVersion = 2
         closeIdleSessionsAfterHours = 24 // owner, 10-28: a day untouched
         agents = ["claude": AgentDefaults(account: "Claude1")]
+        hostedConnections = []
+        hostedRuntime = nil
         dockBadge = true
         notifyNeedsYou = true
         notifyDone = true
@@ -141,7 +147,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     /// The permission mode new sessions of `agent` start in (LAB-1600; Auto unless the owner chose another).
     public func permissionMode(for agent: AgentKind) -> PermissionMode {
-        permissionModes[agent.rawValue] ?? PermissionMode.defaultMode
+        agent.isHosted ? .manual : (permissionModes[agent.rawValue] ?? PermissionMode.defaultMode)
     }
 
     public func defaults(for agent: AgentKind) -> AgentDefaults {
@@ -152,6 +158,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let fresh = AppSettings()
         let c = try d.container(keyedBy: CodingKeys.self)
         agents = try c.decodeIfPresent([String: AgentDefaults].self, forKey: .agents) ?? fresh.agents
+        hostedConnections = try c.decodeIfPresent([HostedConnection].self, forKey: .hostedConnections) ?? []
+        hostedRuntime = try c.decodeIfPresent(HostedRuntimeConfiguration.self, forKey: .hostedRuntime)
         dockBadge = try c.decodeIfPresent(Bool.self, forKey: .dockBadge) ?? fresh.dockBadge
         notifyNeedsYou = try c.decodeIfPresent(Bool.self, forKey: .notifyNeedsYou) ?? fresh.notifyNeedsYou
         notifyDone = try c.decodeIfPresent(Bool.self, forKey: .notifyDone) ?? fresh.notifyDone

@@ -65,6 +65,14 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertEqual(V2Layout.columnWidth(step: .full, saved: 220, windowWidth: 1500, placesRow: true), V2Layout.sessionsColumnMin())
     }
 
+    /// LAB-1829: the rail stretches right from 66 up to 132 pt (a right drag always responds) and keeps that width.
+    func test_LAB1829_railStretches() {
+        XCTAssertEqual(V2Layout.railWidth(saved: nil), 66)
+        XCTAssertEqual(V2Layout.railWidth(saved: 100), 100)
+        XCTAssertEqual(V2Layout.railWidth(saved: 400), V2Layout.railMax)
+        XCTAssertEqual(V2Layout.railWidth(saved: 20), 66, "narrower than its icons: a fold, not a width")
+    }
+
     /// LAB-1828: Focus and Single · Grid · Wall only where they arrange something: the Sessions place.
     func test_LAB1828_sessionControlsOnlyInSessions() {
         XCTAssertTrue(V2Layout.showsStepButton(inSessions: true, page: nil))

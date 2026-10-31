@@ -104,6 +104,12 @@ enum SelfTestScript {
                 var s = Session(name: f[0], agent: agent, repoPath: (f[2] as NSString).expandingTildeInPath,
                                 openingMessage: f[3], lifecycle: .planned)
                 s.startInRepo = s.repoPath != Workspace.projectsRoot
+                if agent.isHosted {
+                    let id = f.count > 5 ? f[5] : m.settings.defaults(for: agent).hostedConnectionID
+                    s.hostedConnectionID = id
+                    s.model = m.settings.hostedConnections.first(where: { $0.id == id })?.model
+                    s.permissionMode = .manual
+                }
                 m.createPlanned(s, launchNow: f[4] == "1")
             } else { log(out, "  bad plan line") }
             delay = 1
@@ -154,6 +160,7 @@ enum SelfTestScript {
         case "popout": if let it = m.selected { PopOutWindowController.popOut(it, model: m) }; delay = 2
         case "roof": RoofWindowController.show(.repo((arg as NSString).expandingTildeInPath), model: m); delay = 3
         case "centre": if let v = CentreView(rawValue: arg) { m.show(v) }
+        case "settingspane": if let pane = Int(arg) { app.main.v2ShowSettings(pane: pane) }; delay = 1
         case "menu": SelfTest.invokeMenu(arg)
         case "answer":
             if let d = m.openDecisions.first, let a = Answer(rawValue: arg) { m.answer(d, a) } else { log(out, "  no open decision") }
@@ -237,7 +244,9 @@ enum SelfTestScript {
                     (arranged.contains(v) ? "" : String(describing: type(of: v)) + ":") + (v.isHidden ? "h" : v.frame.width < 0.5 ? "0w" : "")
                         + "\(Int(v.frame.minX.rounded()))…\(Int(v.frame.maxX.rounded()))"
                 }
-                let hit = app.main.window?.contentView?.superview?.hitTest(NSPoint(x: 10, y: 400)).map { String(describing: type(of: $0)) } ?? "-"
+                let at = { (x: CGFloat) in app.main.window?.contentView?.superview?.hitTest(NSPoint(x: x, y: 400)).map { String(describing: type(of: $0)) } ?? "-" }
+                log(out, "  hit at the rail's edge: x=64 \(at(64)) · x=66 \(at(66)) · x=67 \(at(67)) · x=69 \(at(69))")
+                let hit = at(10)
                 log(out, "  hit at x=10: \(hit) · grip \(app.main.v2RailGrip.map { $0.isHidden ? "hidden" : "shown \(Int($0.frame.minX))…\(Int($0.frame.maxX)) h\(Int($0.frame.height))" } ?? "none") · folded \(app.main.win.railFolded)")
                 log(out, "  bar \(arg) window \(Int(w.frame.width))×\(Int(w.frame.height)) lights \(lights) items \(items) columns \(cols)")
             }

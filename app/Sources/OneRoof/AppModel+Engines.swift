@@ -116,6 +116,7 @@ extension AppModel {
     }
 
     private func setSchedule(_ item: BoardItem, _ s: Schedule) {
+        if let reason = ScheduleClock.hostedRefusal(for: item.session.agent) { lastError = reason; return }
         let r = ScheduleRecord(sessionId: item.id, schedule: s)
         scheduleRecords[item.id] = r
         schedules[item.id] = ScheduleClock.rowLabel(r)
@@ -258,7 +259,14 @@ extension AppModel {
         }
         for (id, r) in scheduleRecords {
             guard let item = item(id) else { continue }
-            switch ScheduleClock.action(r, now: now) {
+            let action = ScheduleClock.action(r, now: now)
+            if let reason = ScheduleClock.hostedRefusal(for: item.session.agent), case .run = action {
+                var rec = r; rec.lastRun = now; rec.lastResult = "refused: " + reason
+                scheduleRecords[id] = rec
+                store?.recordScheduledRun(session: id, at: now, result: rec.lastResult!)
+                continue
+            }
+            switch action {
             case .run where r.schedule.interval != nil && item.liveAgent != nil:
                 loopRound(item, r, now: now)
             case .run:

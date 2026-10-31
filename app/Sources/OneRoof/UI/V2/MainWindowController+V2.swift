@@ -14,7 +14,8 @@ extension MainWindowController {
         let rail = NSHostingController(rootView: V2RailHost(model: model, win: win, controller: self))
         rail.sizingOptions = []
         let item = NSSplitViewItem(viewController: rail)
-        item.minimumThickness = 66; item.maximumThickness = 66
+        // LAB-1829: 66 pt (icons and labels) out to 132 pt; a drag past the left edge folds it.
+        item.minimumThickness = CGFloat(V2Layout.railWidth); item.maximumThickness = CGFloat(V2Layout.railMax)
         item.canCollapse = true
         item.holdingPriority = .init(270)
         item.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
@@ -200,7 +201,7 @@ extension MainWindowController {
         // nothing here but still forced a full layout of every panel, the largest cost of switching places.
         let dockShownNow = v2DockOverride ?? (step == .full)
         // The split's actual state is part of the key: a panel opened or closed by hand since is put back.
-        let key = "\(showRail)|\(placesRow)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
+        let key = "\(showRail)|\(win.railWidth ?? 0)|\(placesRow)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
             + "|\(rail.isCollapsed)|\(sideItemRef.isCollapsed)|\(planItemRef.isCollapsed)|\(filesItemRef.isCollapsed)"
         if key == v2LastLayout, window?.inLiveResize != true { return }
         let apply = {
@@ -221,14 +222,17 @@ extension MainWindowController {
             self.filesItemRef.isCollapsed = true   // LAB-1306: was a no-op (x = x); the v2 file tree is the Files tab
         }
         apply()
-        v2LastLayout = "\(showRail)|\(placesRow)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
+        v2LastLayout = "\(showRail)|\(win.railWidth ?? 0)|\(placesRow)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
             + "|\(rail.isCollapsed)|\(sideItemRef.isCollapsed)|\(planItemRef.isCollapsed)|\(filesItemRef.isCollapsed)"
         splitView.layoutSubtreeIfNeeded()
         // Widths after the collapse changes have settled.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             let sv = self.splitView
-            let railW: CGFloat = showRail ? 66 : 0
+            let railW: CGFloat = showRail ? CGFloat(V2Layout.railWidth(saved: self.win.railWidth)) : 0
+            // LAB-1829: the width you gave it, only when it differs: an unconditional setPosition laid every panel out
+            // again after each step (1.9.32 gate: step hitches doubled).
+            if showRail, let rv = self.v2RailItem?.viewController.view, abs(rv.frame.width - railW) > 0.5 { sv.setPosition(railW, ofDividerAt: 0) }
             if sessions && !side.isCollapsed { sv.setPosition(railW + columnWidth, ofDividerAt: 1) }
             // LAB-1601: the lane has its width now; it follows its live width again (the drag to widen it).
             if self.win.focusLaneSettling { self.win.focusLaneSettling = false }
@@ -249,7 +253,8 @@ extension MainWindowController {
     /// Whether the Plan inspector fits in its column at this step (LAB-831; only Full shows it there).
     func v2PlanFits(step: FocusStep, column: Double) -> Bool {
         guard let w = window?.frame.width else { return true }
-        return V2Layout.planFits(windowWidth: Double(w), rail: step == .full || step == .wide, column: column)
+        return V2Layout.planFits(windowWidth: Double(w), rail: step == .full || step == .wide, column: column,
+                                 railSize: V2Layout.railWidth(saved: win.railWidth))
     }
 
     /// A window resize that crosses the Plan's fit at Full folds it to the edge tab or brings it back (LAB-831).
@@ -264,6 +269,11 @@ extension MainWindowController {
     /// After a drag: the session column (divider 1, or 2 beside the folded Files item) at steps 0-2, the Plan
     /// inspector (divider 3) at Full.
     func v2RememberWidth(divider i: Int) {
+        // LAB-1829: the rail's edge, in any place (a fold is v2RailDragged's).
+        if i == 0, let rail = v2RailItem, !rail.isCollapsed {
+            let w = Double(rail.viewController.view.frame.width)
+            if w >= V2Layout.railWidth - 0.5 { win.railWidth = V2Layout.railWidth(saved: w) }
+        }
         guard win.place == .sessions, v2Page == nil else { return }
         if i == 1 || i == 2, win.focusStep != .focus, !sideItemRef.isCollapsed { win.columnWidth = Double(sideItemRef.viewController.view.frame.width) }
         // LAB-1366: the Focus lane snaps when the drag ends: back to the avatars, or wide enough for the full list.
@@ -288,7 +298,7 @@ extension MainWindowController {
         guard abs(sideItemRef.viewController.view.frame.width - want) > 1 else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.win.focusStep == .focus, !self.sideItemRef.isCollapsed else { return }
-            let railW: CGFloat = self.v2RailItem?.isCollapsed == false ? 66 : 0
+            let railW: CGFloat = self.v2RailItem?.isCollapsed == false ? CGFloat(V2Layout.railWidth(saved: self.win.railWidth)) : 0
             self.splitView.setPosition(railW + want, ofDividerAt: 1)
         }
     }

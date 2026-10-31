@@ -99,6 +99,10 @@ public struct ScheduleRecord: Codable, Equatable, Sendable {
 }
 
 public enum ScheduleClock {
+    public static func hostedRefusal(for agent: AgentKind) -> String? {
+        agent.isHosted ? "Hosted agents require manual sessions; timed and repeating starts are disabled." : nil
+    }
+
     /// How late a scheduler tick may start a run; later than this it is "missed" (the Mac was asleep).
     public static let grace: TimeInterval = 10 * 60
 

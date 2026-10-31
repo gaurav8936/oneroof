@@ -135,9 +135,26 @@ enum LoopEngine {
         var s = Session(name: "\(fresh.name) · round \(n)", agent: fresh.agent, account: fresh.account, repoPath: wt,
                         objective: fresh.goal, openingMessage: LoopPrompt.render(fresh, round: n, rounds: rounds),
                         tags: ["loop:\(fresh.id)"], lifecycle: .idle, startInRepo: true, model: fresh.model)
+        if fresh.agent.isHosted {
+            guard !fresh.trigger.isNightly, fresh.limits.maxRounds == 1,
+                  let connection = fresh.hostedConnection, let runtime = fresh.hostedRuntime,
+                  connection.model == fresh.model else {
+                end(fresh.id, store: store, outcome: .stop("Hosted loops require an explicitly selected connection and a single manual round; recurring paid runs are disabled."), runId: fresh.run?.id)
+                return
+            }
+            do {
+                let plan = try HostedPreparation.plan(connection: connection, runtime: runtime, agent: fresh.agent,
+                    repo: wt, sharedDocs: Workspace.sharedRoot + "/docs")
+                s.hostedLaunch = try HostedPreparation.apply(plan, baseMCP: runtime.baseConfigPath)
+                s.hostedConnectionID = connection.id; s.permissionMode = .manual
+            } catch {
+                end(fresh.id, store: store, outcome: .stop("Hosted setup refused: \(error)"), runId: fresh.run?.id)
+                return
+            }
+        }
         let stored = sessions?.all() ?? []
         guard case .success(let spec) = LaunchPlan.spec(s, stored: stored, deliverOpening: true) else {
-            end(fresh.id, store: store, outcome: .stop("Refused: the loop's worktree \(wt) is outside the projects folder"), runId: fresh.run?.id)
+            end(fresh.id, store: store, outcome: .stop("Refused: loop workspace or hosted launch configuration is not ready"), runId: fresh.run?.id)
             return
         }
         // Saved before it starts, so the app finds the row when the session appears (not a stray to adopt).

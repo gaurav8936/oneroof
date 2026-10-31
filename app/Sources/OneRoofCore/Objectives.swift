@@ -88,6 +88,7 @@ public struct Objective: Codable, Identifiable, Equatable, Sendable {
 public struct StepResult: Codable, Equatable, Sendable {
     public var ok: Bool
     public var text: String
+    public init(ok: Bool, text: String) { self.ok = ok; self.text = text }
 }
 
 public struct Plan: Codable, Equatable, Sendable {
@@ -105,6 +106,7 @@ public struct PlanStep: Codable, Equatable, Identifiable, Sendable {
     public var agent: String
     public var account: String?
     public var model: String?
+    public var hosted_connection_id: String? = nil
     public var depends: [String]?
     public var done_when: String?
     public var cost: String?
@@ -112,7 +114,9 @@ public struct PlanStep: Codable, Equatable, Identifiable, Sendable {
     public var repo: String?
     public var prompt: String
 
-    public var agentKind: AgentKind { AgentKind(rawValue: agent.lowercased()) ?? AgentKind(detectedName: agent) ?? .claude }
+    public var resolvedAgentKind: AgentKind? { AgentKind(rawValue: agent.lowercased()) ?? (agent.lowercased() == "antigravity" ? .agy : nil) }
+    /// Unknown identities are rejected by PlanParser/launch; never substitute a paid agent.
+    public var agentKind: AgentKind { resolvedAgentKind ?? .shell }
     public var deps: [String] { depends ?? [] }
 }
 
@@ -123,7 +127,9 @@ public enum PlanParser {
         let rest = markdown[start.upperBound...]
         guard let end = rest.range(of: "```") else { return nil }
         let json = rest[..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
-        return try? JSONDecoder().decode(Plan.self, from: Data(json.utf8))
+        guard let plan = try? JSONDecoder().decode(Plan.self, from: Data(json.utf8)),
+              plan.steps.allSatisfy({ $0.resolvedAgentKind?.isAgent == true }) else { return nil }
+        return plan
     }
 
     /// The opening message for the visible planner session.
