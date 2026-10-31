@@ -144,6 +144,9 @@ public enum LoopKinds {
         public var title: String
         public var purpose: String
         public var produces: String
+        public init(id: String, title: String, purpose: String, produces: String) {
+            self.id = id; self.title = title; self.purpose = purpose; self.produces = produces
+        }
     }
 
     public static let all: [Kind] = [

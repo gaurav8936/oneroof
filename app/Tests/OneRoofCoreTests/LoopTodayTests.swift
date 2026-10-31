@@ -304,7 +304,9 @@ final class LoopTodayTests: XCTestCase {
         XCTAssertTrue(d.notes.contains { $0.contains("Set the check") })
         d = LoopDrafter.rules("every Monday tell me which dependencies are outdated")
         XCTAssertTrue(d.trigger.isNightly); XCTAssertTrue(d.notes.contains { $0.contains("Mondays") })
-        XCTAssertEqual(d.name, "every-monday-tell-me-which")
+        XCTAssertEqual(d.name, "tell-me-which-dependencies-are")
+        XCTAssertEqual(d.goal, "Tell me which dependencies are outdated")
+        XCTAssertEqual(LoopDrafter.rules("when quiet between 1 and 6, tidy the docs until `true` passes").name, "tidy-the-docs-until-true")
         XCTAssertEqual(LoopDrafter.rules("at 11 pm run it").trigger, .at(hour: 23, minute: 0))
     }
 

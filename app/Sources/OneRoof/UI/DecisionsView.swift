@@ -11,6 +11,8 @@ struct DecisionsView: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
+    /// LAB-1866 · LAB-1919: loop items (a loop that stopped, a round that asks, Today), after the session asks.
+    @ObservedObject private var loopInbox = LoopInboxState.shared
     @State private var selected: String?
     @State private var reply = ""
     @State private var undoRule: Decision?
@@ -23,23 +25,27 @@ struct DecisionsView: View {
     enum Entry: Identifiable, Equatable {
         case prompt(Decision)
         case plan(Objective)
+        case loop(LoopInbox.Item)
         var id: String {
             switch self {
             case .prompt(let d): return d.id.uuidString
             case .plan(let o): return "plan-" + o.id
+            case .loop(let i): return "loop-" + i.id
             }
         }
         var askedAt: Date {
             switch self {
             case .prompt(let d): return d.askedAt
             case .plan(let o): return o.createdAt
+            case .loop(let i): return i.when
             }
         }
+        var isLoop: Bool { if case .loop = self { return true }; return false }
     }
 
     private var entries: [Entry] {
         let plans = model.objectives.filter { $0.status == .review && $0.plan != nil }.map(Entry.plan)
-        return (model.openDecisions.map(Entry.prompt) + plans).sorted { $0.askedAt < $1.askedAt }
+        return (model.openDecisions.map(Entry.prompt) + plans).sorted { $0.askedAt < $1.askedAt } + loopInbox.items.map(Entry.loop)
     }
 
     /// LAB-1831 · what you decided, kept while its session is alive (newest first), under the open asks.
@@ -105,6 +111,7 @@ struct DecisionsView: View {
                 case .prompt(let d) where !d.isOpen: decidedDetail(d)   // LAB-1831
                 case .prompt(let d): detail(d)
                 case .plan(let o): planDetail(o)
+                case .loop(let i): LoopNeedDetail(model: model, item: i, win: win)
                 case nil: empty
                 }
             }
@@ -131,7 +138,13 @@ struct DecisionsView: View {
             .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(list) { e in listItem(e) }
+                    ForEach(list.filter { !$0.isLoop }) { e in listItem(e) }
+                    // LAB-1866 · LAB-1919: loops, never as sessions; Today is what they staged for you.
+                    let loops = list.filter(\.isLoop)
+                    if !loops.isEmpty {
+                        MicroLabel("Loops · Today · \(loops.count)").padding(.horizontal, 6).padding(.top, loops.count == list.count ? 0 : 10)
+                        ForEach(loops) { e in listItem(e) }
+                    }
                     // LAB-1831: answered asks stay, newest first, while their session is alive: scroll back through them.
                     let done = decided
                     if !done.isEmpty {
@@ -206,7 +219,17 @@ struct DecisionsView: View {
         .padding(28)
     }
 
-    private func listItem(_ e: Entry) -> some View {
+    @ViewBuilder private func listItem(_ e: Entry) -> some View {
+        if case .loop(let i) = e {
+            let on = e.id == current?.id
+            Button { withAnimation(Motion.fast) { selected = e.id } } label: { LoopNeedRow(item: i, selected: on) }
+                .buttonStyle(.plain)
+        } else {
+            sessionItem(e)
+        }
+    }
+
+    private func sessionItem(_ e: Entry) -> some View {
         let on = e.id == current?.id
         return Button { withAnimation(Motion.fast) { selected = e.id } } label: {
             VStack(alignment: .leading, spacing: 5) {
@@ -241,6 +264,7 @@ struct DecisionsView: View {
                     }
                     Text("Approve a \(o.plan?.steps.count ?? 0)-step plan").ui(12.5).foregroundStyle(t.text2.color)
                     HStack(spacing: 6) { RiskPill(risk: .plan); Text(Workspace.repoLabel(for: o.repoPath)).ui(11.5).foregroundStyle(t.text3.color) }
+                case .loop: EmptyView()
                 }
             }
             .padding(12)
