@@ -2,7 +2,7 @@
 
 **Status:** IN REVIEW · **Date:** 2026-10-30 · **Project:** LAB-AE-OPEN-AGENTS
 
-> **One line:** select a saved hosted connection and specific repository, verify local readiness, then use the native terminal for the continuing conversation.
+> **One line:** select a saved hosted connection and a start folder (~/Projects or any repository), verify local readiness, then use the native terminal for the continuing conversation.
 
 ## Before starting
 
@@ -13,7 +13,7 @@
 
 ## Operate
 
-Choose OpenCode or Goose, its connection and a specific repo in New session. Launch prepares a private native home and verifies version, guard and reservation headroom off the main thread. Authentication is checked by the first paid request. Wait for native readiness before sending an opening; the holder sends a configured opening only once.
+Choose OpenCode or Goose and its connection in New session; start at ~/Projects or in any repo (LAB-1931). Launch prepares a private native home and verifies version, guard and reservation headroom off the main thread. Authentication is checked by the first paid request. Wait for native readiness before sending an opening; the holder sends a configured opening only once.
 
 Use the composer/native terminal for follow-ups. Goose's exact radio menu is supported in Needs you. OpenCode approvals stay in its native terminal; Escape rejection is supported. Unknown dialogs remain manual. Timed/repeating hosted schedules are refused in the app and daemon; explicitly selected single-round manual loops are separate.
 
