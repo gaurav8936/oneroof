@@ -31,6 +31,7 @@ import OneRoofCore
 ///   expect · newwindow · switchwindow · place · search · textcount · hitch · resizegesture · windowsize   (SelfTestHarness)
 ///   window <name> · activate <name>   (LAB-1591: a new workspace window, active; or make an open one active)
 ///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
+///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
@@ -56,7 +57,8 @@ enum SelfTestScript {
     static func writeNeeds(_ m: AppModel, to path: String) {
         let open = m.openDecisions.map { d -> [String: Any] in
             ["session": m.item(d.sessionId)?.session.name ?? d.sessionId, "agent": d.agent.rawValue, "kind": d.kind.rawValue,
-             "headline": d.command.map { "Run " + $0 } ?? d.headline, "askedAt": d.askedAt.timeIntervalSince1970]
+             "headline": d.command.map { "Run " + $0 } ?? d.headline, "askedAt": d.askedAt.timeIntervalSince1970,
+             "finished": d.isFinished, "menu": d.isMenu, "choices": (d.choices ?? []).map(\.label)]   // LAB-1827 / LAB-1839
         }
         let rows = m.items.map { i -> [String: Any] in
             ["name": i.session.name, "status": i.status.rawValue, "agent": i.session.agent.rawValue, "live": i.liveAgent ?? "",
@@ -273,6 +275,15 @@ enum SelfTestScript {
             delay = 1
         case "needs":   // LAB-1592: what Needs you holds now → <name>.needs.json (the simulator compares it with what was asked)
             SelfTestScript.writeNeeds(m, to: out + "-" + arg + ".needs.json")
+        case "needspick":   // LAB-1907: show Needs you's i-th open entry (0 = oldest), as a click in its list does
+            let open = m.openDecisions
+            if let i = Int(arg), i < open.count { m.needsPick = open[i].id.uuidString; log(out, "  needs \(i): \(open[i].headline)") }
+            else { log(out, "  no needs entry \(arg)") }
+            delay = 1
+        case "selectblocked":   // LAB-1907: select a session waiting at a prompt (its terminal must show no card over it)
+            if let it = m.items.first(where: { i in i.status == .needsYou && m.openDecisions.contains { d in d.sessionId == i.id && !d.isFinished } }) {
+                m.selectedId = it.id; log(out, "  selected \(it.session.name)")
+            } else { log(out, "  nothing blocked") }
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":
