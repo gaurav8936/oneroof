@@ -44,9 +44,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var learnFolders: [String]
     /// LAB-1621 · Learn: a card played to its end counts down three seconds and opens the next card, playing. On by default.
     public var learnAutoAdvance: Bool
-    /// LAB-1837 · Learn: the classic native screens instead of the shared Agentic Engineering page (the one copy every site
-    /// shows, saved in the app at build). Off by default (1.9.32); kept for one release as the way back.
-    public var learnClassic: Bool
     /// The on-device router model (.gguf); "" = `LocalModel.defaultModelPath`.
     public var localModelPath: String
     /// The first-run setup window has been completed (or skipped by a settings migration).
@@ -155,7 +152,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         projectsPath = ""
         learnFolders = []
         learnAutoAdvance = true
-        learnClassic = false
         localModelPath = ""
         setupDone = false
     }
@@ -233,7 +229,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         learnAutoAdvance = try c.decodeIfPresent(Bool.self, forKey: .learnAutoAdvance) ?? fresh.learnAutoAdvance
-        learnClassic = try c.decodeIfPresent(Bool.self, forKey: .learnClassic) ?? fresh.learnClassic
+        // LAB-1894 · `learnClassic` (Settings › Learn › classic screens, 1.9.32–1.9.34) is gone with the classic screens: a saved
+        // value is ignored and no longer written.
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath
         setupDone = try c.decodeIfPresent(Bool.self, forKey: .setupDone) ?? fresh.setupDone
     }
