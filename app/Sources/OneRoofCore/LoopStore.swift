@@ -66,10 +66,10 @@ public struct LoopStore: Sendable {
         return builtIn
     }
 
-    /// Write the whole loop (a new loop, or the editor's Save). Use `update` for state changes.
+    /// Write the whole loop (a new loop, or the editor's Save), its goal, check and prompt cleaned. Use `update` for state changes.
     public func save(_ loop: Loop) throws {
         guard Loop.validId(loop.id) else { throw LoopStoreError("bad loop id \(loop.id)") }
-        try withLock(loop.id) { try write(loop) }
+        try withLock(loop.id) { try write(LoopSpecLint.cleaned(loop)) }
     }
 
     /// Change a loop under its lock: re-read, mutate, write. Returns the loop as written (nil = no such loop).
@@ -96,6 +96,7 @@ public struct LoopStore: Sendable {
             l.agent = edited.agent; l.model = edited.model; l.account = edited.account; l.roundPrompt = edited.roundPrompt
             l.trigger = edited.trigger; l.limits = edited.limits; l.pinned = edited.pinned; l.checkTimeout = edited.checkTimeout
             if existing == nil { l.state = edited.state; l.runRequested = edited.runRequested }
+            l = LoopSpecLint.cleaned(l)      // what a terminal copy adds to goal, check and prompt (LAB-1846)
             try write(l)
             return l
         }

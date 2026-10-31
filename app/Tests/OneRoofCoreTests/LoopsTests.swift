@@ -486,3 +486,37 @@ extension LoopsTests {
         }
     }
 }
+
+extension LoopsTests {
+    /// LAB-1846: oneroof-nightly-bugs failed every night on a check copied out of a terminal box.
+    func testPastedCheckIsCleanedOnSaveAndRefusedWhenItCannotRun() throws {
+        let pasted = "│ bash scratchpad/loop-checks/oneroof-bugs-check.sh. The script passes only when the build and tests pass."
+        XCTAssertEqual(LoopSpecLint.clean("│ \"No Bug in Backlog\""), "No Bug in Backlog")
+        XCTAssertEqual(LoopSpecLint.clean("$ npm test"), "npm test")
+        XCTAssertEqual(LoopSpecLint.clean("⎿  make test"), "make test")
+        XCTAssertEqual(LoopSpecLint.clean("echo \"a\" && echo \"b\""), "echo \"a\" && echo \"b\"", "inner quotes stay")
+        XCTAssertNotNil(LoopSpecLint.checkProblem(pasted, folder: nil), "the box edge")
+        XCTAssertEqual(LoopSpecLint.checkProblem(LoopSpecLint.clean(pasted), folder: nil),
+                       "The check has a sentence after the command. Keep only the command; put the explanation in the goal.")
+        XCTAssertNotNil(LoopSpecLint.checkProblem("bash tools/check.sh.", folder: nil), "full stop glued to the script")
+        for ok in ["make test", "swift test", "npm test && npm run lint", "pytest -q", "bash tools/check.sh --perf",
+                   "test -z \"$(git status --porcelain)\""] {
+            XCTAssertNil(LoopSpecLint.checkProblem(ok, folder: nil), ok)
+        }
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("lint-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: dir + "/tools", withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        XCTAssertNotNil(LoopSpecLint.checkProblem("bash tools/check.sh", folder: dir), "script not there")
+        FileManager.default.createFile(atPath: dir + "/tools/check.sh", contents: Data("exit 0\n".utf8))
+        XCTAssertNil(LoopSpecLint.checkProblem("bash tools/check.sh", folder: dir))
+
+        let store = LoopStore(root: dir + "/loops", builtIns: [])
+        var l = loop(); l.check = "│ make test"; l.goal = "│ \"main is green\""; l.roundPrompt = "\"One bug per round.\""
+        try store.save(l)
+        let saved = try XCTUnwrap(store.load(l.id))
+        XCTAssertEqual([saved.check, saved.goal, saved.roundPrompt], ["make test", "main is green", "One bug per round."])
+        var edit = saved; edit.check = "❯ swift test"
+        XCTAssertEqual(try store.saveEdit(edit).check, "swift test")
+    }
+}
