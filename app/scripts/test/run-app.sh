@@ -16,10 +16,12 @@ mkdir -p "$RUN/work"; RUN="$(cd "$RUN" && pwd)"
 cp "$PROFILE/sessions.sqlite" "$RUN/store.sqlite"
 sed "s|@DIR@|$RUN/work|g" "$SCRIPT" > "$RUN/script.txt"
 BASE=/tmp/claude-$(id -u); mkdir -p "$BASE"; RD=$(mktemp -d "$BASE/ort.XXXX"); chmod 700 "$RD"
+# LAB-2001: the test copy reads a scratch shared folder (live loops copied, the rest linked), never the live loops.
+SHARED="${ONEROOF_TEST_SHARED:-$RUN/shared}"; bash "$HERE/scratch-shared.sh" "$SHARED" >/dev/null
 env -i HOME="$HOME" USER="${USER:-$(id -un)}" LOGNAME="${LOGNAME:-$(id -un)}" SHELL="${SHELL:-/bin/zsh}" \
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" LANG=en_US.UTF-8 TMPDIR="${TMPDIR:-/tmp/}" \
     ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED="$PROFILE/defaults.plist" ONEROOF_STORE="$RUN/store.sqlite" \
-    ONEROOF_SELFTEST_DEMO=0 ONEROOF_SELFTEST_UI2=1 ONEROOF_SELFTEST_SCRIPT="$RUN/script.txt" ONEROOF_SELFTEST_OUT="$RUN/st" \
+    ONEROOF_SHARED="$SHARED" ONEROOF_SELFTEST_DEMO=0 ONEROOF_SELFTEST_UI2=1 ONEROOF_SELFTEST_SCRIPT="$RUN/script.txt" ONEROOF_SELFTEST_OUT="$RUN/st" \
     ROOFD_DIR="$RD" "$BIN" > "$RUN/app.log" 2>&1 &
 PID=$!
 T0=$(date +%s)

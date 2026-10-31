@@ -104,6 +104,9 @@ INST="/Applications/One Roof.app/Contents/MacOS/roofd"
 installed() { [ -x "$INST" ] && ROOFD_DIR="$HOME/Library/Application Support/One Roof/roofd" "$INST" hello 2>/dev/null |
   python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["pid"],d["build"])' 2>/dev/null || echo none; }
 BEFORE=$(installed)
+# LAB-2001: every test copy in this run shares one scratch shared folder; the live loops are hashed before and after.
+export ONEROOF_TEST_SHARED="$OUT/shared"; bash "$T/scratch-shared.sh" "$ONEROOF_TEST_SHARED" >/dev/null
+bash "$T/loops-guard.sh" snapshot "$OUT/loops-before.txt"
 SUITE_SECS=""; REQ="functional,perf"
 timed() { local n=$1; shift; local t=$(date +%s); "$@"; local rc=$?; SUITE_SECS="$SUITE_SECS\"$n\": $(( $(date +%s) - t )), "; return $rc; }
 
@@ -187,6 +190,9 @@ PY
 REQ_RUN=$(echo "$REQ" | tr , '\n' | while read -r r; do has "$r" && echo "$r"; done | paste -sd, -)
 python3 "$T/report.py" "$OUT" "$REQ_RUN" | tee -a "$LOG"; RC=${PIPESTATUS[0]}
 [ "$BEFORE" = "$AFTER" ] || RC=1
+if ! bash "$T/loops-guard.sh" verify "$OUT/loops-before.txt" | tee -a "$LOG"; then
+  say "⚠ the run touched the live loops (LAB-2001): FAIL"; RC=1
+fi
 
 if [ -n "$GATE" ]; then
   G="$MAIN/scratchpad/perf/release-$GATE"

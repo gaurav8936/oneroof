@@ -70,7 +70,8 @@ struct V2Rail: View {
             }
             Button { controller.v2ShowLooks() } label: {
                 VStack(spacing: 3) {
-                    Image(systemName: "circle.lefthalf.filled").font(.system(size: 14, weight: .medium))
+                    Image(systemName: "circle.lefthalf.filled").font(.system(size: 19, weight: .medium))
+                        .foregroundStyle(t.accentText.color).frame(height: 22)   // LAB-2002: as the places above
                     Text("Look").ui(10.5)
                 }
                 .foregroundStyle(t.text2.color).frame(minWidth: 54, maxWidth: .infinity, minHeight: 44, maxHeight: 44).padding(.horizontal, 5).contentShape(Rectangle())
@@ -113,13 +114,17 @@ struct V2PlaceButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                Image(systemName: place.symbol).font(.system(size: labelled ? 14 : 12.5, weight: selected ? .semibold : .regular))
+                // LAB-2002: bigger icons in the accent text colour so they read at a glance; the label keeps its size and
+                // grey, and the frames below are unchanged, so the rail and the toolbar row keep their widths.
+                Image(systemName: place.symbol).font(.system(size: labelled ? 19 : 15, weight: selected ? .semibold : .medium))
+                    .foregroundStyle(t.accentText.color)
+                    .frame(height: labelled ? 22 : 18)
                     .overlay(alignment: .topTrailing) {
                         if badge > 0 {
                             Text("\(badge)").ui(9, .bold).foregroundStyle(t.onAccent.color)
                                 .padding(.horizontal, 4).frame(minWidth: 14, minHeight: 14)
                                 .background(Capsule().fill(t.statusColor(.needsYou).color))
-                                .offset(x: 9, y: -7)
+                                .offset(x: labelled ? 11 : 9, y: labelled ? -6 : -7)
                         }
                     }
                 if labelled { Text(place.title).ui(10.5, selected ? .semibold : .regular).lineLimit(1).minimumScaleFactor(0.8) }
@@ -159,21 +164,23 @@ struct V2SeatChip: View {
     var body: some View {
         HStack(spacing: 5) {
             AgentBadge(mark, size: compact ? 16 : 20)
-            Text(Self.label(usage)).ui(compact ? 10.5 : 11).foregroundStyle(usage == nil ? t.text3.color : t.text2.color).lineLimit(1).fixedSize()
+            Text(Self.label(usage, mark: mark)).ui(compact ? 10.5 : 11).foregroundStyle(usage == nil ? t.text3.color : t.text2.color).lineLimit(1).fixedSize()
         }
         .opacity(usage == nil ? 0.55 : 1)
         .help(Self.help(mark, usage))
     }
 
-    static func label(_ u: SeatUsage?) -> String {
-        guard let u else { return "off" }
+    static func label(_ u: SeatUsage?, mark: AgentMark? = nil) -> String {
+        guard let u else { return mark.map { DockSeats.usageName($0) == nil } == true ? "ready" : "off" }
         if let f = u.fiveHour { return "\(Int(f))% · 5h" }
         if let w = u.sevenDay { return "\(Int(w))% · week" }
         return "–"
     }
 
     static func help(_ m: AgentMark, _ u: SeatUsage?) -> String {
-        guard let u else { return "\(m.mono): not signed in or no usage feed" }
+        guard let u else {
+            return DockSeats.usageName(m) == nil ? "\(m.mono): set up; this agent has no usage feed" : "\(m.mono): not signed in or no usage feed"
+        }
         var parts: [String] = []
         if let f = u.fiveHour { parts.append("5 h \(Int(f))%") }
         if let w = u.sevenDay { parts.append("7 d \(Int(w))%") }
@@ -182,16 +189,14 @@ struct V2SeatChip: View {
     }
 }
 
+/// LAB-1998: one list of seats for the dock, its compact line and the rail: the agents set up on this Mac, minus the
+/// ones hidden in Settings › Seats & accounts (was a fixed C1 · C2 · CX · KM · GM).
 enum V2Seats {
-    static let marks: [AgentMark] = [.claude1, .claude2, .codex, .kimi, .gemini]
-    static func name(_ m: AgentMark) -> String {
-        switch m { case .claude1: return "Claude1"; case .claude2: return "Claude2"; case .codex: return "Codex"; case .kimi: return "Kimi"
-        case .gemini: return "Gemini"; default: return m.rawValue }
-    }
+    @MainActor static func marks(_ model: AppModel) -> [AgentMark] { model.dockMarks }
     @MainActor static func usage(_ model: AppModel) -> [AgentMark: SeatUsage] {
         let byName = Dictionary(model.seats.map { ($0.seat, $0) }, uniquingKeysWith: { a, _ in a })
         var out: [AgentMark: SeatUsage] = [:]
-        for m in AgentMark.available(marks) { if let u = byName[name(m)] { out[m] = u } }
+        for m in marks(model) { if let n = DockSeats.usageName(m), let u = byName[n] { out[m] = u } }
         return out
     }
 }
@@ -224,7 +229,7 @@ extension V2Dock {
     private func row(usage: [AgentMark: SeatUsage], level: Int) -> some View {
         HStack(spacing: level == 0 ? 14 : 10) {
             if level < 3 {
-                ForEach(AgentMark.available(V2Seats.marks), id: \.self) { m in
+                ForEach(V2Seats.marks(model), id: \.self) { m in
                     Button { controller.v2OpenSettings(tab: 2) } label: { V2SeatChip(mark: m, usage: usage[m], compact: level >= 1) }.buttonStyle(.plain)
                 }
             }
@@ -318,7 +323,7 @@ struct V2DockLine: View {
                 }
             }
             .buttonStyle(.plain).help(model.runtimeState)
-            let seats = AgentMark.available(V2Seats.marks).filter { usage[$0] != nil }
+            let seats = V2Seats.marks(model).filter { usage[$0] != nil }
             if !seats.isEmpty { Text("·").ui(11).foregroundStyle(t.text3.color) }   // no dangling dot without seats
             ForEach(seats, id: \.self) { m in
                 Text("\(m.mono) \(usage[m]?.worst.map { "\(Int($0))%" } ?? "–")").ui(11).foregroundStyle(t.text2.color)
@@ -372,7 +377,7 @@ struct V2RailSeats: View {
 
     var body: some View {
         let usage = V2Seats.usage(model)
-        let marks = AgentMark.available(V2Seats.marks)
+        let marks = V2Seats.marks(model)
         Button(action: open) {
             VStack(spacing: 3) {
                 ForEach(marks, id: \.self) { m in

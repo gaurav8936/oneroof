@@ -107,6 +107,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var permissionFlags: [String: String]
     /// LAB-1935: one-time moves of the permission defaults already applied (1 = Antigravity to Full, 10-31).
     public var permissionDefaultsVersion: Int
+    /// LAB-1998: agents (AgentMark raw values) the owner took out of the bottom bar in Settings › Seats & accounts.
+    /// Every agent that is set up on this Mac shows there unless it is listed here.
+    public var dockHidden: [String]
     /// The look, or nil when the panels were customised one by one.
     public var look: Look? {
         get { Look(rawValue: lookName) }
@@ -123,6 +126,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         permissionModes = [:]
         permissionFlags = [:]
         permissionDefaultsVersion = 1
+        dockHidden = []
         stepReview = false
         alwaysShowComposer = false
         terminalApprovalCard = false
@@ -219,6 +223,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         reviewOtherFamily = try c.decodeIfPresent(Bool.self, forKey: .reviewOtherFamily) ?? true
         permissionModes = (try? c.decodeIfPresent([String: PermissionMode].self, forKey: .permissionModes)) ?? [:]
         permissionFlags = (try? c.decodeIfPresent([String: String].self, forKey: .permissionFlags)) ?? [:]
+        dockHidden = (try? c.decodeIfPresent([String].self, forKey: .dockHidden)) ?? []
         permissionDefaultsVersion = (try? c.decodeIfPresent(Int.self, forKey: .permissionDefaultsVersion)) ?? 0
         // LAB-1935 (owner 10-31): Antigravity moves to Full once, even where Auto was saved; a later choice stays.
         if permissionDefaultsVersion < 1 {

@@ -70,6 +70,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func post(_ e: NoteEvent) {
         guard center != nil, let model else { return }
+        // LAB-1940: loop rounds notify only when they need you or fail.
+        if let item = model.item(e.sessionId), SessionScope.isLoop(item.session), !NoteSignals.allowedForLoopRound(e) { return }
         guard let note = gate.decide(e, prefs: NotePrefs(model.settings), appActive: NSApp.isActive,
                                      focusedSession: focusedSession()) else { return }
         waiting.append(note)
