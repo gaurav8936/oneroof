@@ -46,6 +46,38 @@ final class LoopEngineTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: projects)
     }
 
+    /// LAB-1865 · LAB-1369: a fired event starts a loop that listens for it, once; a quiet loop waits while busy.
+    func testAnEventStartsItsLoopOnceAndQuietWaitsForQuiet() throws {
+        let store = LoopStore()
+        let ev = Loop(id: "on-push", name: "on-push", goal: "g", check: "true", repoPath: projects + "/acme/web", agent: .shell,
+                      trigger: .onEvent("git.push"), state: .waiting, createdAt: Date().addingTimeInterval(-60))
+        let quiet = Loop(id: "quiet", name: "quiet", goal: "g", check: "true", repoPath: projects + "/acme/web", agent: .shell,
+                         trigger: .whenQuiet(quietMinutes: 15, fromHour: nil, toHour: nil), state: .waiting, createdAt: Date().addingTimeInterval(-60))
+        try store.save(ev); try store.save(quiet)
+        var ctx = LoopEngine.context(store: store, ids: ["on-push", "quiet"], sessions: nil, now: Date())
+        XCTAssertTrue(ctx.events.isEmpty)
+        XCTAssertNotNil(ctx.quietFor)                       // no session at all: quiet since roofd started
+        ctx.quietFor = 60                                   // one minute: not yet
+        LoopEngine.step("on-push", store: store, sessions: nil, again: true, context: ctx)
+        LoopEngine.step("quiet", store: store, sessions: nil, again: true, context: ctx)
+        XCTAssertEqual(store.rounds("on-push").count, 0)
+        XCTAssertEqual(store.rounds("quiet").count, 0)
+        try LoopEvents.fire("git.push", root: store.root)
+        ctx = LoopEngine.context(store: store, ids: ["on-push", "quiet"], sessions: nil, now: Date())
+        XCTAssertEqual(ctx.events.map(\.event), ["git.push"])
+        ctx.quietFor = 16 * 60
+        LoopEngine.step("on-push", store: store, sessions: nil, again: true, context: ctx)
+        LoopEngine.step("quiet", store: store, sessions: nil, again: true, context: ctx)
+        XCTAssertEqual(store.load("on-push")?.state, .done)
+        XCTAssertEqual(store.load("quiet")?.state, .done)
+        XCTAssertEqual(store.rounds("on-push").map(\.kind), [.check, .stop])
+        // The same event does not start it again; nor does quiet the same day.
+        LoopEngine.step("on-push", store: store, sessions: nil, again: true, context: ctx)
+        LoopEngine.step("quiet", store: store, sessions: nil, again: true, context: ctx)
+        XCTAssertEqual(store.rounds("on-push").count, 2)
+        XCTAssertEqual(store.rounds("quiet").count, 2)
+    }
+
     func testAPassingCheckEndsTheRunWithoutARound() throws {
         let store = LoopStore()
         var l = Loop(id: "green", name: "green", goal: "g", check: "true", repoPath: projects + "/acme/web", agent: .shell)

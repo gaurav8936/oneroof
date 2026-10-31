@@ -7,10 +7,14 @@ import Foundation
 public struct LoopStore: Sendable {
     public let root: String
     public let builtIns: [Loop]
+    /// LAB-1843: your `ae` loops in the same folder (`<root>/*.loop.yaml`), shown as Mine.
+    public let fileLoops: [Loop]
 
-    public init(root: String = LoopStore.defaultRoot, builtIns: [Loop]? = nil) {
+    public init(root: String = LoopStore.defaultRoot, builtIns: [Loop]? = nil, fileLoops: [Loop]? = nil) {
         self.root = root
         self.builtIns = builtIns ?? (root == LoopStore.defaultRoot ? LoopBuiltIns.load() : [])
+        let ids = Set(self.builtIns.map(\.id))
+        self.fileLoops = (fileLoops ?? LoopFiles.load(folder: root)).filter { !ids.contains($0.id) }
     }
 
     /// `<shared>/loops`, the shared folder the app uses (Settings › Foundations, default `<projects>/_common`).
@@ -44,7 +48,7 @@ public struct LoopStore: Sendable {
     /// Every loop: pinned first, then Mine before Built-in, then by name. Unreadable folders are skipped.
     public func all() -> [Loop] {
         let diskIds = ((try? FileManager.default.contentsOfDirectory(atPath: root)) ?? []).filter(Loop.validId)
-        let allIds = Array(Set(diskIds).union(builtIns.map(\.id)))
+        let allIds = Array(Set(diskIds).union(builtIns.map(\.id)).union(fileLoops.map(\.id)))
         return allIds.compactMap(load).sorted { a, b in
             if a.pinned != b.pinned { return a.pinned }
             if a.origin != b.origin { return a.origin == .mine }
@@ -55,16 +59,26 @@ public struct LoopStore: Sendable {
     public func load(_ id: String) -> Loop? {
         guard Loop.validId(id) else { return nil }
         let builtIn = builtIns.first { $0.id == id }
+        let file = builtIn == nil ? fileLoops.first { $0.id == id } : nil
         if let d = FileManager.default.contents(atPath: specPath(id)),
            var disk = try? Self.decoder.decode(Loop.self, from: d) {
             if let builtIn {
                 disk.origin = .builtIn
                 if disk.title == nil { disk.title = builtIn.title }
+                disk.kind = disk.kind ?? builtIn.kind; disk.act = disk.act ?? builtIn.act
+            } else if let file {
+                // The file is the spec (ae owns it); the folder only holds One Roof's run state for it.
+                disk.origin = .mine; disk.name = file.name; disk.title = file.title; disk.goal = file.goal
+                disk.check = file.check; disk.trigger = file.trigger; disk.limits = file.limits
+                disk.specFile = file.specFile; disk.externalSchedule = file.externalSchedule; disk.kind = file.kind; disk.act = file.act
             }
             return disk
         }
-        return builtIn
+        return builtIn ?? file
     }
+
+    /// True when `id` is a `.loop.yaml` loop (its folder, if any, holds run state only).
+    public func isFileLoop(_ id: String) -> Bool { fileLoops.contains { $0.id == id } }
 
     /// Write the whole loop (a new loop, or the editor's Save), its goal, check and prompt cleaned. Use `update` for state changes.
     public func save(_ loop: Loop) throws {
@@ -113,7 +127,8 @@ public struct LoopStore: Sendable {
     public func newId(for name: String) -> String {
         let base = Loop.slug(name)
         var id = base, n = 2
-        while FileManager.default.fileExists(atPath: folder(id)) || builtIns.contains(where: { $0.id == id }) {
+        while FileManager.default.fileExists(atPath: folder(id)) || builtIns.contains(where: { $0.id == id })
+                || fileLoops.contains(where: { $0.id == id }) {
             id = "\(base)-\(n)"; n += 1
         }
         return id
@@ -351,5 +366,54 @@ public enum LoopWorktree {
             throw LoopStoreError("git worktree add reported success but \(wt) is not there. git said: " + (said.isEmpty ? "nothing" : said))
         }
         return wt
+    }
+}
+
+/// LAB-1865 · fired events for One Roof's loops: `<loops>/.events/<epoch>-<event>.json` ({"event", "at", "detail"}),
+/// written by the kit's `ae loops fire <event>` (the adapter a webhook receiver or a git hook calls) or by `fire`
+/// below. roofd reads them on every pass and starts each loop listening for one, once per event after its last run.
+public enum LoopEvents {
+    public static func folder(_ root: String) -> String { (root as NSString).appendingPathComponent(".events") }
+
+    /// Every readable event, oldest first.
+    public static func read(root: String) -> [LoopEventFire] {
+        let dir = folder(root)
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { $0.hasSuffix(".json") }
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .custom { dec in
+            let c = try dec.singleValueContainer()
+            if let n = try? c.decode(Double.self) { return Date(timeIntervalSince1970: n) }
+            let s = try c.decode(String.self)
+            if let date = LoopInbox.iso(s) { return date }
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "bad date \(s)")
+        }
+        return names.compactMap { n in
+            FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent(n)).flatMap { try? d.decode(LoopEventFire.self, from: $0) }
+        }
+        .sorted { $0.at < $1.at }
+    }
+
+    /// Record an event (the same file the kit writes).
+    @discardableResult
+    public static func fire(_ event: String, root: String, at: Date = Date(), detail: String? = nil) throws -> String {
+        let dir = folder(root)
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let safe = event.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" }
+        let path = (dir as NSString).appendingPathComponent("\(Int(at.timeIntervalSince1970 * 1000))-\(safe).json")
+        var o: [String: Any] = ["event": event, "at": LoopLedger.iso(at)]
+        if let detail { o["detail"] = detail }
+        let data = try JSONSerialization.data(withJSONObject: o, options: [.sortedKeys])
+        guard FileManager.default.createFile(atPath: path, contents: data) else { throw LoopStoreError("could not write \(path)") }
+        return path
+    }
+
+    /// Remove events older than `age` (roofd keeps a day: a loop that missed one has had its chance).
+    public static func prune(root: String, olderThan age: TimeInterval = 86_400, now: Date = Date()) {
+        let dir = folder(root)
+        for n in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where n.hasSuffix(".json") {
+            let p = (dir as NSString).appendingPathComponent(n)
+            let ms = Double(n.prefix(while: { $0.isNumber })) ?? 0
+            if ms > 0, now.timeIntervalSince1970 - ms / 1000 > age { try? FileManager.default.removeItem(atPath: p) }
+        }
     }
 }

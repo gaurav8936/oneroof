@@ -148,6 +148,133 @@ public final class LoopLedger {
     public func staged(limit: Int = 100) -> [[String: String]] {
         rows("SELECT id, loop, kind, title, link, created FROM outcomes WHERE status='staged' ORDER BY created DESC LIMIT \(max(1, limit))")
     }
+
+    // MARK: LAB-1919 · LAB-1941: outcomes one by one, and your decisions
+
+    /// The statuses a decision may set (the kit's `ae loops ledger --decide`; `staged` is where every outcome starts).
+    public static let decisions = ["approved", "rejected", "applied", "merged", "expired"]
+
+    /// One row of `outcomes`, typed.
+    public struct Outcome: Identifiable, Equatable, Sendable {
+        public var id: Int
+        public var runId: String
+        public var loop: String
+        public var kind: String
+        public var link: String
+        public var title: String
+        public var status: String
+        public var decidedBy: String?
+        public var decidedAt: String?
+        public var created: String
+        /// The JSON detail, as text ("{}" when empty).
+        public var detail: String
+
+        /// A field of the JSON detail (`reason`, `branch`, `gate`, `pr` …), as text.
+        public func detailValue(_ key: String) -> String? {
+            guard let d = detail.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let v = o[key] else { return nil }
+            if let s = v as? String { return s }
+            if let n = v as? NSNumber { return n.stringValue }
+            return (try? JSONSerialization.data(withJSONObject: v)).flatMap { String(data: $0, encoding: .utf8) }
+        }
+
+        /// What `link` points at: `commit:<sha>@<branch>`, `branch:<branch>`, a URL, a file, or an issue key.
+        public var target: LinkTarget { LinkTarget(link) }
+    }
+
+    public enum LinkTarget: Equatable, Sendable {
+        case commit(sha: String, branch: String)
+        case branch(String)
+        case url(String)
+        case file(String)
+        case key(String)
+        case none
+
+        public init(_ link: String) {
+            let l = link.trimmingCharacters(in: .whitespaces)
+            if l.isEmpty { self = .none; return }
+            if l.hasPrefix("commit:") {
+                let rest = String(l.dropFirst(7))
+                let parts = rest.split(separator: "@", maxSplits: 1).map(String.init)
+                self = .commit(sha: parts.first ?? "", branch: parts.count > 1 ? parts[1] : ""); return
+            }
+            if l.hasPrefix("branch:") { self = .branch(String(l.dropFirst(7))); return }
+            if l.hasPrefix("http://") || l.hasPrefix("https://") { self = .url(l); return }
+            if l.hasPrefix("/") || l.hasPrefix("~") || l.hasPrefix("file:") { self = .file(l.hasPrefix("file:") ? String(l.dropFirst(5)) : l); return }
+            self = .key(l)
+        }
+    }
+
+    static func outcome(_ r: [String: String]) -> Outcome {
+        Outcome(id: Int(r["id"] ?? "0") ?? 0, runId: r["run_id"] ?? "", loop: r["loop"] ?? "", kind: r["kind"] ?? "",
+                link: r["link"] ?? "", title: r["title"] ?? "", status: r["status"] ?? "staged", decidedBy: r["decided_by"],
+                decidedAt: r["decided_at"], created: r["created"] ?? "", detail: r["detail"] ?? "{}")
+    }
+
+    /// Outcomes, newest first, optionally of one loop and/or one status (the kit's `Ledger.outcomes`).
+    public func outcomes(loop: String? = nil, status: String? = nil, limit: Int = 200) -> [Outcome] {
+        var w: [String] = [], a: [String] = []
+        if let loop { w.append("loop=?"); a.append(loop) }
+        if let status { w.append("status=?"); a.append(status) }
+        let q = "SELECT * FROM outcomes" + (w.isEmpty ? "" : " WHERE " + w.joined(separator: " AND ")) + " ORDER BY created DESC, id DESC LIMIT \(max(1, limit))"
+        return rows(q, a).map(Self.outcome)
+    }
+
+    public func outcome(_ id: Int) -> Outcome? {
+        rows("SELECT * FROM outcomes WHERE id=?", [String(id)]).first.map(Self.outcome)
+    }
+
+    /// Record a decision on an outcome (approved · rejected · applied · merged · expired), by whom and when, with an
+    /// optional reason in its detail. The same row `ae loops ledger --decide <id> <status>` writes.
+    @discardableResult
+    public func decide(_ id: Int, status: String, by: String = NSUserName(), reason: String? = nil) throws -> Outcome {
+        guard Self.decisions.contains(status) else {
+            throw LoopStoreError("status must be one of \(Self.decisions.joined(separator: ", "))")
+        }
+        guard outcome(id) != nil else { throw LoopStoreError("no outcome \(id)") }
+        try run("UPDATE outcomes SET status=?, decided_by=?, decided_at=? WHERE id=?", [status, by, Self.iso(Date()), id])
+        if let reason, !reason.trimmingCharacters(in: .whitespaces).isEmpty { try setDetail(id, "reason", reason) }
+        return outcome(id)!
+    }
+
+    /// The status alone (no decider): harvest puts a failed gate back to `staged`.
+    func setStatus(_ id: Int, _ status: String) throws {
+        try run("UPDATE outcomes SET status=?, decided_by=NULL, decided_at=NULL WHERE id=?", [status, id])
+    }
+
+    /// Set one key of an outcome's JSON detail (kept as JSON text, merged with what is there).
+    public func setDetail(_ id: Int, _ key: String, _ value: String) throws {
+        guard let o = outcome(id) else { throw LoopStoreError("no outcome \(id)") }
+        var obj = (o.detail.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
+        obj[key] = value
+        let data = try JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])
+        try run("UPDATE outcomes SET detail=? WHERE id=?", [String(data: data, encoding: .utf8) ?? "{}", id])
+    }
+
+    /// Add an outcome with a JSON detail; returns its id.
+    @discardableResult
+    public func add(loop: String, runId: String, kind: String, title: String, link: String, status: String = "staged",
+                    detail: [String: String] = [:]) throws -> Int {
+        let d = (try? JSONSerialization.data(withJSONObject: detail, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        try run("INSERT INTO outcomes(run_id, loop, kind, link, title, status, created, detail) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                [runId, loop, kind, link, String(title.prefix(300)), status, Self.iso(Date()), d])
+        return Int(rows("SELECT last_insert_rowid() AS n").first?["n"] ?? "0") ?? 0
+    }
+
+    /// A run row (any engine), for the drill-down.
+    public struct Run: Equatable, Sendable {
+        public var id: String, loop: String, engine: String, mode: String, started: String, ended: String, result: String
+        public var cost: Double?
+        public var summary: String
+    }
+
+    public func runs(loop: String, limit: Int = 50) -> [Run] {
+        rows("SELECT * FROM runs WHERE loop=? ORDER BY started DESC LIMIT \(max(1, limit))", [loop]).map {
+            Run(id: $0["id"] ?? "", loop: $0["loop"] ?? "", engine: $0["engine"] ?? "", mode: $0["mode"] ?? "",
+                started: $0["started"] ?? "", ended: $0["ended"] ?? "", result: $0["result"] ?? "",
+                cost: $0["cost_usd"].flatMap(Double.init), summary: $0["summary"] ?? "")
+        }
+    }
 }
 
 /// LAB-1848: one message when a One Roof loop run stops on a limit or fails, through the kit's notifier (the

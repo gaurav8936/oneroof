@@ -30,8 +30,10 @@ public extension SessionScope {
     }
 
     /// The Needs you badge (rail, toolbar row, menu bar, Dock): open asks plus plans waiting, or the sessions that need
-    /// you when the engine has not filed their ask yet, whichever is more.
-    static func needsYouCount(openAsks: Int, plansWaiting: Int, items: [BoardItem]) -> Int {
-        max(openAsks + plansWaiting, sessions(items).filter { $0.status == .needsYou }.count)
+    /// you when the engine has not filed their ask yet, whichever is more; plus the loop items (LAB-1866 · LAB-1919: a
+    /// loop that stopped at a limit or asks something, and what loops staged for you in Today). Loop items are never
+    /// counted as sessions: a loop round's own session is still left out.
+    static func needsYouCount(openAsks: Int, plansWaiting: Int, items: [BoardItem], loopItems: Int = 0) -> Int {
+        max(openAsks + plansWaiting, sessions(items).filter { $0.status == .needsYou }.count) + max(loopItems, 0)
     }
 }
