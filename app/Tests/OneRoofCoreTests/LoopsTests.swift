@@ -409,7 +409,7 @@ final class LoopsTests: XCTestCase {
 
     func testBuiltInAndMineLoopsUnifyInStoreAndPreserveOrigin() throws {
         let dir = try tempDir()
-        let builtIns = LoopBuiltIns.load(catalogPath: nil, repoPath: "/p/labs/labs-agentic-engineering")
+        let builtIns = LoopBuiltIns.load(catalogPath: nil, repoPath: "/p/agentic-engineering")
         XCTAssertEqual(builtIns.count, 8)
         XCTAssertTrue(builtIns.allSatisfy { $0.origin == .builtIn && $0.state == .stopped })
 

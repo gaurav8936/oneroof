@@ -78,8 +78,8 @@ public enum AEFolder {
         return FileManager.default.fileExists(atPath: d) ? d : nil
     }
 
-    /// LAB-1663 · the built-in loops catalog (`kit/loops/catalog.json`) in the bundled deck or the workspace's
-    /// `labs/labs-agentic-engineering` checkout.
+    /// LAB-1663 · the built-in loops catalog (`kit/loops/catalog.json`) in the bundled deck, or in the Agentic
+    /// Engineering checkout ONEROOF_AE_PATH points at (a developer's own copy).
     public static func loopsCatalog(_ ae: String = AEFolder.resolve(setting: "").path) -> String? {
         let fm = FileManager.default
         var candidates: [String] = []
@@ -89,7 +89,6 @@ public enum AEFolder {
         if !ae.isEmpty {
             candidates.append(ae + "/kit/loops/catalog.json")
         }
-        candidates.append(Workspace.projectsRoot + "/labs/labs-agentic-engineering/kit/loops/catalog.json")
         return candidates.first { fm.fileExists(atPath: $0) }
     }
 
