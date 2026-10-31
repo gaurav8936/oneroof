@@ -173,6 +173,16 @@ public enum V2Layout {
         max(centreX + Bar.contentLead, lightsEnd + Bar.lightsGap) - (itemX + Bar.titleLead)
     }
 
+    /// LAB-1828 · the Focus step button arranges the Sessions place (column, Plan, dock): only there, not on a page
+    /// over it (Settings, All windows). Elsewhere every step showed the same layout and only folded the dock.
+    public static func showsStepButton(inSessions: Bool, page: String?) -> Bool { inSessions && page == nil }
+
+    /// LAB-1828 · Single · Grid · Wall arrange the Sessions place's terminals; they also stay while the Wall (the All
+    /// windows page) is open, so it can be left the way it was opened.
+    public static func showsLayoutControl(inSessions: Bool, page: String?) -> Bool {
+        inSessions && (page == nil || page == "All windows")
+    }
+
     /// `room`: the width from the centre section's start to the window's right edge; `extras`: the Learn player /
     /// Run · Debug width (0 when they are not shown).
     public static func toolbarFit(room: Double, extras: Double = 0) -> ToolbarFit {
