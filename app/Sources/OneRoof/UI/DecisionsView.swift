@@ -122,7 +122,11 @@ struct DecisionsView: View {
                     }
                     Text(d.command.map { "Run " + $0 } ?? d.headline).ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
                     HStack(spacing: 6) {
-                        RiskPill(risk: d.risk)
+                        if d.isQuestion {   // LAB-1606: not a permission ask
+                            Text("Asked a question").ui(11, .semibold).foregroundStyle(t.accentText.color)
+                        } else {
+                            RiskPill(risk: d.risk)
+                        }
                         Text(item.map { model.window(model.workspaceId(of: $0))?.name ?? "" } ?? "").ui(11.5).foregroundStyle(t.text3.color)
                     }
                 case .plan(let o):
@@ -148,7 +152,48 @@ struct DecisionsView: View {
 
     // MARK: Detail
 
-    private func detail(_ d: Decision) -> some View {
+    @ViewBuilder private func detail(_ d: Decision) -> some View {
+        if d.isQuestion { questionDetail(d) } else { promptDetail(d) }
+    }
+
+    /// LAB-1606 · the agent ended its turn with a question: what it asked, and a reply box. Nothing to allow or deny;
+    /// the reply goes to its input box (or answer it in the terminal: the card leaves either way).
+    private func questionDetail(_ d: Decision) -> some View {
+        let item = model.item(d.sessionId)
+        let agentName = item.map { $0.account ?? $0.session.agent.displayName } ?? d.agent.displayName
+        return VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 8) {
+                if let item { AgentBadge(item: item, size: 22, status: false) }
+                Text(context(d, item)).ui(13).foregroundStyle(t.text2.color).lineLimit(1)
+                Spacer()
+                Button { if let item { model.reveal(item) } } label: { Text("Open session ⌘↩").ui(12.5).foregroundStyle(t.text2.color) }
+                    .buttonStyle(.plain)
+            }
+            MicroLabel("\(agentName) asked a question")
+            Text(d.why).ui(26, .semibold).tracking(-0.3).foregroundStyle(t.text.color)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            Spacer(minLength: 0)
+            TextField("", text: $reply, prompt: Text("Your answer"))
+                .textFieldStyle(.plain).ui(13.5).focused($replyFocused)
+                .padding(.horizontal, 14).frame(height: 42)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.card.color))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(replyFocused ? t.accent.color : t.separator.color))
+                .onSubmit { if !reply.trimmingCharacters(in: .whitespaces).isEmpty { send(d, .reply) } }
+            HStack(spacing: 10) {
+                RoofButton("Reply ↩", .primary) { send(d, .reply) }
+                    .disabled(reply.trimmingCharacters(in: .whitespaces).isEmpty)
+                Spacer()
+                Button { step(1) } label: { Text("Next decision ⌘]").ui(12.5).foregroundStyle(t.text2.color) }
+                    .buttonStyle(.plain).keyboardShortcut("]", modifiers: .command)
+                Button { step(-1) } label: { EmptyView() }.buttonStyle(.plain).keyboardShortcut("[", modifiers: .command).frame(width: 0)
+            }
+            Text("Your answer goes to \(agentName) as its next message. You can also answer in the terminal.").ui(11.5).foregroundStyle(t.text3.color)
+        }
+        .padding(.horizontal, 34).padding(.vertical, 26)
+        .onAppear { replyFocused = true }
+    }
+
+    private func promptDetail(_ d: Decision) -> some View {
         let item = model.item(d.sessionId)
         let agentName = item.map { $0.account ?? $0.session.agent.displayName } ?? d.agent.displayName
         return VStack(alignment: .leading, spacing: 20) {

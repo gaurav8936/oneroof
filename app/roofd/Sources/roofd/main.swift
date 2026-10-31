@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import OneRoofCore
 import RoofVT
 
 // roofd: One Roof's session manager (LAB-ROOFD, T14). One binary, several modes:
@@ -60,9 +61,14 @@ case "report":
     guard let id = env["ONEROOF_SESSION"], let control = env["ONEROOF_ROOFD"], Paths.validId(id) else { exit(0) }
     let payload = (try? JSONSerialization.jsonObject(with: FileHandle.standardInput.readDataToEndOfFile())) as? [String: Any] ?? [:]
     let holder = (control as NSString).deletingLastPathComponent + "/\(id).sock"
-    _ = try? Sock.holderRequest(holder, ["op": "report", "agent": args.count > 1 ? args[1] : "claude",
-                                         "event": payload["hook_event_name"] as? String ?? "",
+    let event = payload["hook_event_name"] as? String ?? ""
+    let agent = args.count > 1 ? args[1] : "claude"
+    // LAB-1606: a Claude turn that ends with a question (the conversation file's tail is read, at most 256 KB).
+    let question = event == "Stop" && agent == "claude" ? EndOfTurn.question(stopPayload: payload) ?? "" : ""
+    _ = try? Sock.holderRequest(holder, ["op": "report", "agent": agent,
+                                         "event": event,
                                          "message": payload["message"] as? String ?? "",
+                                         "question": question,
                                          "path": WorkPath.from(hook: payload) ?? ""], timeout: 1)
     exit(0)
 case "issue":

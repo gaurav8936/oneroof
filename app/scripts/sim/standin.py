@@ -54,6 +54,21 @@ say Pushed. That's everything from the plan.
 """
 
 
+# LAB-1606: Claude's conversation file, as the real CLI keeps one: its Stop hook names it (transcript_path), and roofd
+# reads the turn's last message there to see whether it ended with a question.
+TRANSCRIPT = os.path.join(os.path.dirname(LOG) if LOG else os.getcwd(), f".sim-transcript-{os.getpid()}.jsonl")
+LAST_SAID = [""]
+ASKED = [""]   # the question the last turn ended with, while it waits for the owner
+
+
+def transcript(role, text):
+    if AGENT != "claude":
+        return
+    entry = {"type": role, "message": {"role": role, "content": text if role == "user" else [{"type": "text", "text": text}]}}
+    with open(TRANSCRIPT, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
 def log(event, detail=""):
     if LOG:
         with open(LOG, "a") as f:
@@ -79,6 +94,8 @@ def hook(event, **extra):
     if not (roofd and os.environ.get("ONEROOF_SESSION") and os.access(roofd, os.X_OK)):
         return
     payload = {"hook_event_name": event, "session_id": "sim", "cwd": os.getcwd(), **extra}
+    if event == "Stop":
+        payload.setdefault("transcript_path", TRANSCRIPT)
     try:
         subprocess.run([roofd, "report", "claude"], input=json.dumps(payload).encode(), timeout=2,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -267,6 +284,8 @@ def play(turn, keys, prompt):
                 return
         elif verb == "say":
             out(f"{BULLET} {rest}\r\n\r\n")
+            transcript("assistant", rest)
+            LAST_SAID[0] = rest
         elif verb == "tool":
             name, _, arg = rest.partition(" ")
             hook("PreToolUse", tool_name=name, tool_input={"file_path": arg})
@@ -341,6 +360,10 @@ def play(turn, keys, prompt):
             log("answered", f"question {q} -> {answer}")
             out(f"{BULLET} User answered Claude's questions:\r\n  ⎿  · {q} → {answer}\r\n\r\n")
             hook("PostToolUse", tool_name="AskUserQuestion")
+    # LAB-1606: a Claude turn that ends with a plain-text question waits in Needs you until the next prompt.
+    if AGENT == "claude" and LAST_SAID[0].rstrip().endswith("?"):
+        ASKED[0] = LAST_SAID[0]
+        log("ask", f"end-question {LAST_SAID[0]}")
     hook("Stop")
 
 
@@ -385,6 +408,11 @@ def main():
                     prompt, line = line.strip(), ""
                     clear_box()
                     log("prompt", prompt)
+                    if ASKED[0]:
+                        log("answered", f"end-question {ASKED[0]}")
+                        ASKED[0] = ""
+                    transcript("user", prompt)
+                    LAST_SAID[0] = ""
                     if prompt in ("/exit", "/quit", "exit"):
                         hook("SessionEnd")
                         return

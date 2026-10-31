@@ -19,7 +19,8 @@ extension AppModel {
                                   pane: i.paneId, revision: revision(of: i), title: i.title, objective: i.session.objective,
                                   repoPath: i.session.repoPath, launchDirectory: i.session.launchDirectory, ticket: i.session.ticket,
                                   launchedAt: i.session.launchedAt, lastActive: lastActiveDate(i), added: st?.added, removed: st?.removed, plan: plan,
-                                  visible: inView.contains(i.id))
+                                  visible: inView.contains(i.id),
+                                  question: lastSnapshotSessions[i.liveAgent ?? ""]?.question)
         }
         engines.modelAllowed = settings.captionsModel
         engines.tick(live)

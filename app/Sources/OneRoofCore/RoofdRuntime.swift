@@ -203,11 +203,13 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         let requests = (s["issues"] as? [[String: Any]] ?? []).compactMap(IssueRequest.init(json:))
         // roofd's status engine (LAB-14) names the foreground agent and its status; no agent = a plain shell.
         if let agent = s["agent"] as? String {
-            return RuntimeSessionState(
+            var st = RuntimeSessionState(
                 id: id, isAgent: true, agentName: agent, status: RuntimeStatus(s["status"] as? String),
                 ready: s["ready"] as? Bool ?? false, title: title, cwd: cwd, pane: id, seq: s["seq"] as? Int,
                 workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }, activeAt: active, pid: pid, memoryWarning: warning,
                 issueRequests: requests)
+            st.question = (s["question"] as? String).flatMap { $0.isEmpty ? nil : $0 }   // LAB-1606
+            return st
         } else {
             return RuntimeSessionState(
                 id: id, isAgent: false, status: .unknown, ready: true, title: title, cwd: cwd, pane: id,
