@@ -147,6 +147,8 @@ public enum V2Layout {
         public static let gap: Double = 10, trailing: Double = 14, titleLead: Double = 8, slack: Double = 16
         /// The centre's content (tabs, page headings) starts this far in from its left edge.
         public static let contentLead: Double = 20
+        /// The title's text starts at least this far after the zoom button.
+        public static let lightsGap: Double = 18
         /// After the column's tracking separator the toolbar starts its next item this far in.
         public static let sectionLead: Double = 32
         /// Where macOS starts the first toolbar item, after the traffic lights' reserved room (measured, 1.9.28:
@@ -163,10 +165,12 @@ public enum V2Layout {
     }
 
     /// LAB-1783 · the title item's text sits `Bar.titleLead` in from the item, and should start `Bar.contentLead` in
-    /// from the centre's left edge, as the centre's tabs and page headings do. A leftward shift only: where macOS
-    /// puts the item further right (after the window buttons' room) the text is drawn back to that edge.
-    public static func titleShift(itemX: Double, centreX: Double) -> Double {
-        min(0, (centreX + Bar.contentLead) - (itemX + Bar.titleLead))
+    /// from the centre's left edge, as the centre's tabs and page headings do: the title is drawn there, left over the
+    /// room macOS keeps after the window buttons, or right past the session column. Never over the window's buttons:
+    /// with nothing left of the centre (it starts at the window's edge) the text stops `Bar.lightsGap` after the zoom
+    /// button (`lightsEnd`).
+    public static func titleShift(itemX: Double, centreX: Double, lightsEnd: Double = 0) -> Double {
+        max(centreX + Bar.contentLead, lightsEnd + Bar.lightsGap) - (itemX + Bar.titleLead)
     }
 
     /// `room`: the width from the centre section's start to the window's right edge; `extras`: the Learn player /

@@ -51,12 +51,15 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(narrow, V2Layout.columnMin)
     }
 
-    /// LAB-1783: the title text lines up with the centre's content; it moves left only (1.9.28 measures).
+    /// LAB-1783: the title text lines up with the centre's content (1.9.28 measures), never over the window buttons.
     func test_LAB1783_titleLinesUpWithTheCentre() {
         XCTAssertEqual(V2Layout.titleShift(itemX: 281, centreX: 269), 0, "Full: already there")
         XCTAssertEqual(V2Layout.titleShift(itemX: 315, centreX: 303), 0, "Sessions")
         XCTAssertEqual(V2Layout.titleShift(itemX: 100, centreX: 68), -20, "Focus lane / rail: drawn back to the centre")
-        XCTAssertEqual(V2Layout.titleShift(itemX: 100, centreX: 200), 0, "never to the right")
+        XCTAssertEqual(V2Layout.titleShift(itemX: 100, centreX: 269), 181, "no separator item: drawn right, past the column")
+        // Nothing left of the centre (it starts at the window's edge): the text stops 18 pt after the zoom button.
+        XCTAssertEqual(V2Layout.titleShift(itemX: 100, centreX: 0, lightsEnd: 60), -30)
+        XCTAssertEqual(V2Layout.titleShift(itemX: 100, centreX: 68, lightsEnd: 60), -20, "the lane's edge is further right")
     }
 
     /// LAB-1366: at Focus the avatar lane can be dragged wide to show the full list; its own width, kept apart from

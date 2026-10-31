@@ -3,37 +3,32 @@ import SwiftUI
 import OneRoofCore
 
 /// The v2 toolbar band (handover A1.1-A1.4): the places icon row over the session column (step 1), then — lined up with
-/// the centre by a tracking separator — the title, Single · Grid · Wall, the Focus step button and + New.
+/// the centre by the title's own shift (LAB-1783) — the title, Single · Grid · Wall, the Focus step button and + New.
 final class V2ToolbarDelegate: NSObject, NSToolbarDelegate {
     private let model: AppModel
     private let win: WindowState
     private weak var controller: MainWindowController?
-    private weak var splitView: NSSplitView?
-    /// The divider between the session column (or rail) and the centre.
-    private let centreDivider: Int
 
     static let places = NSToolbarItem.Identifier("oneroof.v2.places")
-    static let centreEdge = NSToolbarItem.Identifier("oneroof.v2.centreEdge")
     static let title = NSToolbarItem.Identifier("oneroof.v2.title")
     static let extras = NSToolbarItem.Identifier("oneroof.v2.extras")
     static let layout = NSToolbarItem.Identifier("oneroof.v2.layout")
     static let step = NSToolbarItem.Identifier("oneroof.v2.step")
     static let new = NSToolbarItem.Identifier("oneroof.v2.new")
 
-    init(model: AppModel, win: WindowState, controller: MainWindowController, splitView: NSSplitView, centreDivider: Int) {
-        self.model = model; self.win = win; self.controller = controller; self.splitView = splitView; self.centreDivider = centreDivider
+    init(model: AppModel, win: WindowState, controller: MainWindowController) {
+        self.model = model; self.win = win; self.controller = controller
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.places, Self.centreEdge, Self.title, .flexibleSpace, Self.extras, Self.layout, Self.step, Self.new]
+        // LAB-1783: no tracking separator (it drew a short line in the band over the column's edge, in some layouts
+        // and not others): every column line ends at the band's bottom edge. The title places itself (titleShift).
+        [Self.places, Self.title, .flexibleSpace, Self.extras, Self.layout, Self.step, Self.new]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         guard let controller else { return nil }
-        if id == Self.centreEdge, let splitView {
-            return NSTrackingSeparatorToolbarItem(identifier: id, splitView: splitView, dividerIndex: centreDivider)
-        }
         let m = model, w = win
         let view: AnyView
         let label: String
@@ -114,7 +109,7 @@ struct V2TitleView: View {
             }
             .frame(minWidth: 40, maxWidth: CGFloat(room) - 8, alignment: .leading)
             .padding(.leading, 8)
-            .offset(x: controller.v2TitleShift)   // LAB-1783: drawn over the room macOS keeps after the window buttons
+            .offset(x: controller.v2TitleShift)   // LAB-1783: its text starts where the centre's content does
             .barHelp(sub.map { title + "  " + $0 } ?? title)
             .accessibilityElement(children: .combine)
             .onChange(of: title) { kick() }

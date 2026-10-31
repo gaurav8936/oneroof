@@ -25,7 +25,7 @@ extension MainWindowController {
         // Dividers: 0 rail|column · 1 column|files · 2 files|centre · 3 centre|plan.
         (splitController as? RoofSplitViewController)?.fixedDividers = [0, 2]   // LAB-1612: only the column's edge drags
         let tb = NSToolbar(identifier: "OneRoofToolbarV2." + win.id)
-        let d = V2ToolbarDelegate(model: model, win: win, controller: self, splitView: splitView, centreDivider: 2)
+        let d = V2ToolbarDelegate(model: model, win: win, controller: self)
         v2V2Toolbar = d
         tb.delegate = d
         tb.displayMode = .iconOnly
@@ -195,9 +195,6 @@ extension MainWindowController {
             self.filesItemRef.isCollapsed = true   // LAB-1306: was a no-op (x = x); the v2 file tree is the Files tab
         }
         apply()
-        // LAB-1783: the toolbar's column line only where a column edge is under it (it floated at the toolbar's first
-        // free spot, past the rail or the Focus lane, when there was none).
-        v2ShowCentreEdge(sessions && (step != .focus || win.focusColumnWidth != nil))
         v2LastLayout = "\(showRail)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
             + "|\(rail.isCollapsed)|\(sideItemRef.isCollapsed)|\(planItemRef.isCollapsed)|\(filesItemRef.isCollapsed)"
         splitView.layoutSubtreeIfNeeded()
@@ -307,17 +304,6 @@ extension MainWindowController {
         }
     }
 
-    /// LAB-1783 · adds or removes the toolbar's tracking separator (the line over the column's edge).
-    func v2ShowCentreEdge(_ show: Bool) {
-        guard let tb = window?.toolbar else { return }
-        let at = tb.items.firstIndex { $0.itemIdentifier == V2ToolbarDelegate.centreEdge }
-        if show, at == nil, let places = tb.items.firstIndex(where: { $0.itemIdentifier == V2ToolbarDelegate.places }) {
-            tb.insertItem(withItemIdentifier: V2ToolbarDelegate.centreEdge, at: places + 1)
-        } else if !show, let at {
-            tb.removeItem(at: at)
-        }
-    }
-
     /// The toolbar's room right of the column (LAB-1237): published only when the fit changes.
     func v2FitToolbar() {
         guard let window else { return }
@@ -328,7 +314,8 @@ extension MainWindowController {
         if fit != v2Bar { v2Bar = fit; DispatchQueue.main.async { [weak self] in self?.v2KickToolbar() } }
         // LAB-1783: the title's text starts where the centre's content does (its tabs, a page's heading).
         if let title = window.toolbar?.items.first(where: { $0.itemIdentifier == V2ToolbarDelegate.title })?.view, title.window != nil {
-            let shift = V2Layout.titleShift(itemX: Double(title.convert(CGPoint.zero, to: nil).x), centreX: Double(centreX))
+            let lightsEnd = window.standardWindowButton(.zoomButton).map { Double($0.convert($0.bounds, to: nil).maxX) } ?? 0
+            let shift = V2Layout.titleShift(itemX: Double(title.convert(CGPoint.zero, to: nil).x), centreX: Double(centreX), lightsEnd: lightsEnd)
             if abs(CGFloat(shift) - v2TitleShift) > 0.5 { v2TitleShift = CGFloat(shift) }
         }
     }
