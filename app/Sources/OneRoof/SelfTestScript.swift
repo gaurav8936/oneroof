@@ -160,7 +160,9 @@ enum SelfTestScript {
             delay = 1
         case "group": if let g = Grouping(rawValue: arg) { m.grouping = g } else { log(out, "  bad grouping") }
         case "chip": if let c = StatusChip(rawValue: arg) { app.main.win.statusFilter = c == .all ? nil : c }
-        case "newsession": app.main.newSession(); delay = 2
+        case "newsession":   // `newsession [agent]`: the sheet opens with that agent picked (LAB-1826: `newsession gemini`)
+            NewSessionSheet.selfTestMark = AgentMark(rawValue: arg)
+            app.main.newSession(); delay = 2
         case "keys":
             // Type into whatever has focus in the key window or its sheet (e.g. the New work sheet's text field).
             let w = app.main.window?.attachedSheet ?? NSApp.keyWindow ?? app.main.window
