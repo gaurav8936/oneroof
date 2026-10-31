@@ -404,6 +404,45 @@ final class LoopsTests: XCTestCase {
         XCTAssertEqual(l.trigger, .at(hour: 3, minute: 30))
         XCTAssertEqual(l.limits, LoopLimits())
         XCTAssertEqual(l.state, .stopped)
+        XCTAssertEqual(l.origin, .mine)
+    }
+
+    func testBuiltInAndMineLoopsUnifyInStoreAndPreserveOrigin() throws {
+        let dir = try tempDir()
+        let builtIns = LoopBuiltIns.load(catalogPath: nil, repoPath: "/p/labs/labs-agentic-engineering")
+        XCTAssertEqual(builtIns.count, 8)
+        XCTAssertTrue(builtIns.allSatisfy { $0.origin == .builtIn && $0.state == .stopped })
+
+        let store = LoopStore(root: dir, builtIns: builtIns)
+        var mine = loop(.at(hour: 3, minute: 0))
+        mine.id = "oneroof-nightly-bugs"
+        mine.name = "oneroof-nightly-bugs"
+        try store.save(mine)
+
+        let all = store.all()
+        XCTAssertEqual(all.count, 9)
+        XCTAssertEqual(all.first?.id, "oneroof-nightly-bugs", "Mine loops sort ahead of unpinned Built-in loops")
+        XCTAssertEqual(all.first?.origin, .mine)
+
+        // Running or pinning a Built-in loop materializes its state on disk while keeping origin == .builtIn.
+        XCTAssertFalse(store.hasDiskOverride("docs-drift"))
+        try store.update("docs-drift") { $0 = LoopController.runNow($0) }
+        XCTAssertTrue(store.hasDiskOverride("docs-drift"))
+        let updated = try XCTUnwrap(store.load("docs-drift"))
+        XCTAssertEqual(updated.origin, .builtIn)
+        XCTAssertEqual(updated.displayTitle, "Docs drift")
+        XCTAssertTrue(updated.runRequested)
+
+        // Resetting (deleting override) returns a Built-in loop to its default .stopped state without removing it.
+        store.delete("docs-drift")
+        XCTAssertFalse(store.hasDiskOverride("docs-drift"))
+        let reset = try XCTUnwrap(store.load("docs-drift"))
+        XCTAssertEqual(reset.origin, .builtIn)
+        XCTAssertEqual(reset.state, .stopped)
+        XCTAssertFalse(reset.runRequested)
+
+        // A new user loop cannot collide with a Built-in loop id.
+        XCTAssertEqual(store.newId(for: "docs-drift"), "docs-drift-2")
     }
 
     // MARK: Helpers

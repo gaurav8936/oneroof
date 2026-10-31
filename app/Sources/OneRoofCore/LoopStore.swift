@@ -6,8 +6,12 @@ import Foundation
 /// (the engine) change loop.json, so every change is a read-modify-write under a file lock; rounds are appended.
 public struct LoopStore: Sendable {
     public let root: String
+    public let builtIns: [Loop]
 
-    public init(root: String = LoopStore.defaultRoot) { self.root = root }
+    public init(root: String = LoopStore.defaultRoot, builtIns: [Loop]? = nil) {
+        self.root = root
+        self.builtIns = builtIns ?? (root == LoopStore.defaultRoot ? LoopBuiltIns.load() : [])
+    }
 
     /// `<shared>/loops`, the shared folder the app uses (Settings › Foundations, default `<projects>/_common`).
     public static var defaultRoot: String { (Workspace.sharedRoot as NSString).appendingPathComponent("loops") }
@@ -15,6 +19,7 @@ public struct LoopStore: Sendable {
     public func folder(_ id: String) -> String { (root as NSString).appendingPathComponent(id) }
     func specPath(_ id: String) -> String { folder(id) + "/loop.json" }
     func roundsPath(_ id: String) -> String { folder(id) + "/rounds.jsonl" }
+    public func hasDiskOverride(_ id: String) -> Bool { FileManager.default.fileExists(atPath: specPath(id)) }
 
     static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -36,17 +41,29 @@ public struct LoopStore: Sendable {
 
     // MARK: Loops
 
-    /// Every loop, pinned first, then by name. Unreadable folders are skipped.
+    /// Every loop: pinned first, then Mine before Built-in, then by name. Unreadable folders are skipped.
     public func all() -> [Loop] {
-        let ids = (try? FileManager.default.contentsOfDirectory(atPath: root)) ?? []
-        return ids.filter(Loop.validId).compactMap(load).sorted { a, b in
-            a.pinned != b.pinned ? a.pinned : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        let diskIds = ((try? FileManager.default.contentsOfDirectory(atPath: root)) ?? []).filter(Loop.validId)
+        let allIds = Array(Set(diskIds).union(builtIns.map(\.id)))
+        return allIds.compactMap(load).sorted { a, b in
+            if a.pinned != b.pinned { return a.pinned }
+            if a.origin != b.origin { return a.origin == .mine }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
         }
     }
 
     public func load(_ id: String) -> Loop? {
-        guard Loop.validId(id), let d = FileManager.default.contents(atPath: specPath(id)) else { return nil }
-        return try? Self.decoder.decode(Loop.self, from: d)
+        guard Loop.validId(id) else { return nil }
+        let builtIn = builtIns.first { $0.id == id }
+        if let d = FileManager.default.contents(atPath: specPath(id)),
+           var disk = try? Self.decoder.decode(Loop.self, from: d) {
+            if let builtIn {
+                disk.origin = .builtIn
+                if disk.title == nil { disk.title = builtIn.title }
+            }
+            return disk
+        }
+        return builtIn
     }
 
     /// Write the whole loop (a new loop, or the editor's Save). Use `update` for state changes.
@@ -72,17 +89,20 @@ public struct LoopStore: Sendable {
     public func saveEdit(_ edited: Loop) throws -> Loop {
         guard Loop.validId(edited.id) else { throw LoopStoreError("bad loop id \(edited.id)") }
         return try withLock(edited.id) {
-            var l = load(edited.id) ?? edited
-            l.name = edited.name; l.goal = edited.goal; l.check = edited.check; l.repoPath = edited.repoPath
+            let existing = load(edited.id)
+            var l = existing ?? edited
+            l.name = edited.name; l.title = edited.title ?? l.title; l.origin = existing?.origin ?? edited.origin
+            l.goal = edited.goal; l.check = edited.check; l.repoPath = edited.repoPath
             l.agent = edited.agent; l.model = edited.model; l.account = edited.account; l.roundPrompt = edited.roundPrompt
             l.trigger = edited.trigger; l.limits = edited.limits; l.pinned = edited.pinned; l.checkTimeout = edited.checkTimeout
-            if load(edited.id) == nil { l.state = edited.state; l.runRequested = edited.runRequested }
+            if existing == nil { l.state = edited.state; l.runRequested = edited.runRequested }
             try write(l)
             return l
         }
     }
 
-    /// Remove a loop's files (its worktree and branch stay: they may hold work).
+    /// Remove a loop's files (its worktree and branch stay: they may hold work). For a Built-in loop, removing its
+    /// override folder resets it to the default Built-in state (`.stopped`).
     public func delete(_ id: String) {
         guard Loop.validId(id) else { return }
         try? FileManager.default.removeItem(atPath: folder(id))
@@ -92,7 +112,9 @@ public struct LoopStore: Sendable {
     public func newId(for name: String) -> String {
         let base = Loop.slug(name)
         var id = base, n = 2
-        while FileManager.default.fileExists(atPath: folder(id)) { id = "\(base)-\(n)"; n += 1 }
+        while FileManager.default.fileExists(atPath: folder(id)) || builtIns.contains(where: { $0.id == id }) {
+            id = "\(base)-\(n)"; n += 1
+        }
         return id
     }
 
