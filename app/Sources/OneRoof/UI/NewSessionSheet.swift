@@ -709,12 +709,23 @@ struct NewSessionSheet: View {
     // MARK: Model · repo · start in
 
     /// Any model name works (the CLI gets --model <name>); the menu offers the known ones.
+    /// LAB-1930: each saved connection lists its provider's verified open-weight coding models (its own model first).
     private var hostedMenu: some View {
-        FieldMenu(title: model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }).map { "\($0.name) · \($0.model)" } ?? "Set up in Settings › Seats & accounts") {
+        FieldMenu(title: model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }).map { "\($0.name) · \(hostedModelLabel($0, modelName))" } ?? "Set up in Settings › Seats & accounts") {
             ForEach(model.settings.hostedConnections) { c in
-                Button("\(c.name) · \(c.provider.displayName) · \(c.model)") { hostedConnectionID = c.id; modelName = c.model }
+                Section("\(c.name) · \(c.provider.displayName)") {
+                    ForEach(c.sessionModels, id: \.self) { m in
+                        Button { hostedConnectionID = c.id; modelName = m } label: {
+                            Text(hostedModelLabel(c, m) + (c.provider.verifiedModel(m).map { "  ·  \($0.priceLabel)" } ?? ""))
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private func hostedModelLabel(_ c: HostedConnection, _ id: String) -> String {
+        c.provider.verifiedModel(id)?.displayName ?? id
     }
 
     private var modelMenu: some View {

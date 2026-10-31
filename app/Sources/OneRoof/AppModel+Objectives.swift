@@ -189,7 +189,7 @@ extension AppModel {
                         model: step.model ?? (settings.defaults(for: agent).model.isEmpty ? nil : settings.defaults(for: agent).model))
         if agent.isHosted {
             guard let id = step.hosted_connection_id,
-                  let connection = settings.hostedConnections.first(where: { $0.id == id }),
+                  let connection = settings.hostedConnections.resolved(id: id, model: step.model),
                   connection.model == step.model, connection.configurationErrors().isEmpty else {
                 o.stepResults[step.id] = StepResult(ok: false, text: "Hosted step requires a saved connection ID and its exact verified model.")
                 return

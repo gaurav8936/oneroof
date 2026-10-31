@@ -931,7 +931,7 @@ final class AppModel: ObservableObject {
             return
         }
         if s.agent.isHosted {
-            guard let connection = settings.hostedConnections.first(where: { $0.id == s.hostedConnectionID }),
+            guard let connection = settings.hostedConnections.resolved(id: s.hostedConnectionID, model: s.model),
                   connection.model == s.model, connection.configurationErrors().isEmpty else {
                 lastError = "Choose a saved hosted connection with today's verified prices and its exact model."
                 return
@@ -939,7 +939,7 @@ final class AppModel: ObservableObject {
         }
         if s.agent.isHosted {
             guard let runtime = settings.hostedRuntime,
-                  let connection = settings.hostedConnections.first(where: { $0.id == s.hostedConnectionID }) else {
+                  let connection = settings.hostedConnections.resolved(id: s.hostedConnectionID, model: s.model) else {
                 lastError = "Configure the hosted runtime and connection in Settings › Seats & accounts."
                 return
             }
