@@ -206,6 +206,9 @@ enum SelfTestScript {
                 }
             }
             return
+        case "rail":   // LAB-1829: `rail open` / `rail fold`, as View › Rail does (a folded rail is remembered per window)
+            if app.main.win.railFolded != (arg == "fold") { app.main.v2ToggleRail() }
+            delay = 1
         case "railsessions": app.main.v2Open(.sessions); delay = 1.0   // LAB-1576: the rail's Sessions button
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
         case "clickshrink":   // LAB-1758: a click in the centre, then the window made <w> wide while that click is handled
@@ -229,7 +232,13 @@ enum SelfTestScript {
                     guard let v = i.view, v.window != nil, !v.isHiddenOrHasHiddenAncestor else { return name + " -" }
                     return name + " " + f(v.convert(v.bounds, to: nil))
                 }
-                let cols = app.main.splitView.subviews.map { $0.isHidden || $0.frame.width < 0.5 ? "-" : "\(Int($0.frame.minX.rounded()))…\(Int($0.frame.maxX.rounded()))" }
+                let arranged = app.main.splitView.arrangedSubviews
+                let cols = app.main.splitView.subviews.map { v -> String in
+                    (arranged.contains(v) ? "" : String(describing: type(of: v)) + ":") + (v.isHidden ? "h" : v.frame.width < 0.5 ? "0w" : "")
+                        + "\(Int(v.frame.minX.rounded()))…\(Int(v.frame.maxX.rounded()))"
+                }
+                let hit = app.main.window?.contentView?.superview?.hitTest(NSPoint(x: 10, y: 400)).map { String(describing: type(of: $0)) } ?? "-"
+                log(out, "  hit at x=10: \(hit) · grip \(app.main.v2RailGrip.map { $0.isHidden ? "hidden" : "shown \(Int($0.frame.minX))…\(Int($0.frame.maxX)) h\(Int($0.frame.height))" } ?? "none") · folded \(app.main.win.railFolded)")
                 log(out, "  bar \(arg) window \(Int(w.frame.width))×\(Int(w.frame.height)) lights \(lights) items \(items) columns \(cols)")
             }
         case "esc":

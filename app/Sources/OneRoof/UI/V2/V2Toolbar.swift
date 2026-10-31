@@ -83,7 +83,7 @@ private struct V2PlacesSlot: View {
         self.model = model; self.win = win; self.controller = controller; _step = ObservedObject(wrappedValue: win.step)
     }
     var body: some View {
-        if win.focusStep == .sessions && win.place == .sessions {
+        if (win.focusStep == .sessions && win.place == .sessions) || win.railFolded {   // LAB-1829: or the rail is folded
             V2PlacesIconRow(model: model, win: win, controller: controller).padding(.leading, 4)
         } else {
             Color.clear.frame(width: 1, height: 1)
