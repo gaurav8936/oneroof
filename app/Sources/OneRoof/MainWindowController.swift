@@ -54,9 +54,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     @Published var v2PlanEdge = false
     /// What the toolbar right of the column has room for (LAB-1237), from the window and column widths.
     @Published var v2Bar = V2Layout.toolbarFit(room: 1400)
-    /// LAB-1783 · how far left the title draws so its text lines up with the centre's content (0 when the toolbar
-    /// already puts it there; macOS starts toolbar items no earlier than 91 pt, right of the rail and the Focus lane).
-    @Published var v2TitleShift: CGFloat = 0
+    /// LAB-1783 · how far the title draws from its toolbar item so its text lines up with the centre's content. Its
+    /// own object, observed by the title alone: it changes on every frame of a column drag, and as a @Published of
+    /// the controller it redrew every view that observes the controller (LAB-1736 pattern).
+    let v2TitleShift = V2TitleShift()
     /// The last Plan-fits answer at Full, so a window resize re-lays the columns out only when it crosses it (LAB-831).
     var v2PlanFitsLast: Bool?
     /// LAB-1337: the layout v2ApplyLayout last put in place (target + the split's state after it).

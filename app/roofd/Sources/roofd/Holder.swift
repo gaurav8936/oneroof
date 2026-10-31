@@ -620,6 +620,7 @@ final class Holder {
         var out: [String: Any] = [
             "status": exitedAt == nil ? engine.status.rawValue : "unknown", "ready": engine.ready && exitedAt == nil,
             "agent": agent?.rawValue as Any, "opening": openingState,
+            "question": (exitedAt == nil && engine.status == .blocked ? engine.question : nil) ?? "",   // LAB-1606
             "x": Int(x), "y": Int(y), "modes": modes,
             "id": spec.id, "label": spec.label, "cwd": spec.cwd, "pid": Int(pid), "seq": seq, "title": title, "pwd": pwd, "work": workPath,
             "alt": alt, "attached": clients.values.contains { $0.attached }, "created": created.timeIntervalSince1970,
@@ -665,7 +666,8 @@ final class Holder {
             return [:]
         case "report":
             // `roofd report <agent>` from an agent hook (Claude): the strongest status signal.
-            engine.hook(j["event"] as? String ?? "", message: j["message"] as? String, at: Date())
+            engine.hook(j["event"] as? String ?? "", message: j["message"] as? String,
+                        question: (j["question"] as? String).flatMap { $0.isEmpty ? nil : $0 }, at: Date())
             if let p = j["path"] as? String, p.hasPrefix("/") { workPath = p }
             evaluateStatus()
             return [:]
