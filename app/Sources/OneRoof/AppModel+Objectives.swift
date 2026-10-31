@@ -172,7 +172,10 @@ extension AppModel {
     }
 
     private func startStep(_ step: PlanStep, of o: inout Objective) {
-        let agent = step.agentKind
+        guard let agent = step.resolvedAgentKind, agent.isAgent else {
+            o.stepResults[step.id] = StepResult(ok: false, text: "Unknown plan agent: \(step.agent)")
+            return
+        }
         let repo = step.repo.flatMap { Workspace.isInsideProjects($0) ? $0 : nil } ?? o.repoPath
         let runDir = o.runDir(common: settings.sharedFolder)
         let marker = "\n\nWhen this step is finished and its done-when check passes, write a short summary to \(runDir)/\(step.id).done. If it cannot be done, write the reason to \(runDir)/\(step.id).failed. Do not start other steps."
@@ -184,6 +187,15 @@ extension AppModel {
                         startInRepo: repo != Workspace.projectsRoot,
                         agentArgs: o.autoApprove ? agent.autoApproveArgs : [],
                         model: step.model ?? (settings.defaults(for: agent).model.isEmpty ? nil : settings.defaults(for: agent).model))
+        if agent.isHosted {
+            guard let id = step.hosted_connection_id,
+                  let connection = settings.hostedConnections.first(where: { $0.id == id }),
+                  connection.model == step.model, connection.configurationErrors().isEmpty else {
+                o.stepResults[step.id] = StepResult(ok: false, text: "Hosted step requires a saved connection ID and its exact verified model.")
+                return
+            }
+            s.hostedConnectionID = id; s.permissionMode = .manual; s.agentArgs = []; s.startInRepo = true
+        }
         // Objective steps keep their own Auto-approve switch (LAB-1600): off means the CLI asks, whatever Settings say.
         if !o.autoApprove { s.permissionMode = .manual }
         o.stepSessions[step.id] = s.id

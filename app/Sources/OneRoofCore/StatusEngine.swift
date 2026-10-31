@@ -110,7 +110,7 @@ public struct StatusEngine: Sendable {
         // Ready: the CLI has drawn its screen and gone quiet (its input box is waiting), or a hook said so. Output
         // before that is the CLI starting up, not a turn.
         if !ready, let since = agentSince, o.now.timeIntervalSince(since) >= 1, o.lastOutput != nil, quietFor >= 1,
-           !prompt, !spinner {
+           !prompt, !spinner, !kind.isHosted || Self.hostedInputVisible(o.screen, agent: kind) {
             ready = true
             readyAt = o.now
             status = .idle
@@ -148,6 +148,20 @@ public struct StatusEngine: Sendable {
         return status
     }
 
+    /// Pinned native input markers, not an arbitrary quiet startup screen.
+    public static func hostedInputVisible(_ screen: String, agent: AgentKind) -> Bool {
+        let tail = bottomLines(screen, agent == .opencode ? 40 : 18).lowercased()
+        if agent == .goose {
+            let line = tail.split(separator: "\n").last?.trimmingCharacters(in: .whitespaces) ?? ""
+            return (line == ">" || line.hasPrefix("> enter to send")) && !tail.contains("share anonymous usage")
+        }
+        if agent == .opencode {
+            return tail.contains("ask anything") && tail.contains("ctrl+p commands")
+                || tail.contains("tab agents") && tail.contains("ctrl+p commands") && tail.contains("build")
+        }
+        return false
+    }
+
     // MARK: Screen rules
 
     static func bottomLines(_ s: String, _ n: Int) -> String {
@@ -158,6 +172,9 @@ public struct StatusEngine: Sendable {
     /// A prompt is waiting only while it is the last thing on screen: after its question come its options and at most
     /// one hint line. An answered prompt that is still visible higher up (the agent moved on) does not block.
     static func isLive(_ m: PromptMatch, in screen: String) -> Bool {
+        // Hosted matchers validate the complete live native option row/radio menu,
+        // including tall edit diffs between its heading and buttons.
+        if m.agent.isHosted { return true }
         let lines = TerminalText.lines(screen).map(TerminalText.unboxed)
         guard let q = lines.lastIndex(of: m.question) else { return true }
         let after = lines[(q + 1)...].filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !TerminalText.isChrome($0) }

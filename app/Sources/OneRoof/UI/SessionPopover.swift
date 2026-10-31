@@ -34,6 +34,7 @@ struct SessionPopover: View {
                 }
             }
 
+            if let launch = it.session.hostedLaunch { HostedSessionInfo(launch: launch) }
             FlowLayout(spacing: 6) {
                 ForEach(SessionQuickAction.available(for: it), id: \.self) { a in
                     actionButton(a, it, tagIds: tagIds)

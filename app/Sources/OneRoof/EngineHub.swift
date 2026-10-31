@@ -260,6 +260,8 @@ final class EngineHub {
             guard let self, let pane else { return }
             let keys = d.isQuestion ? AnswerKeys.reply(reply)
                 : AnswerKeys.keys(for: a, prompt: self.prompts[d.sessionId], agent: d.agent, reply: reply)
+            // Unsupported native prompts remain unanswered and visible for manual terminal handling.
+            guard !keys.sends.isEmpty else { return }
             for k in keys.sends {
                 switch k {
                 case AnswerKeys.escape, "esc": try? self.runtime.keys(pane: pane, [.escape])

@@ -29,9 +29,9 @@ final class PermissionModeTests: XCTestCase {
         for m in PermissionMode.allCases { XCTAssertEqual(m.args(for: .shell), []) }
     }
 
-    func test_LAB1600_defaultIsAutoForEveryAgent() {
+    func test_LAB1600_subscriptionDefaultsStayAutoAndHostedDefaultsAreSupervised() {
         let s = AppSettings()
-        for a in AgentKind.allCases where a.isAgent { XCTAssertEqual(s.permissionMode(for: a), .auto, a.rawValue) }
+        for a in AgentKind.allCases where a.isAgent { XCTAssertEqual(s.permissionMode(for: a), a.isHosted ? .manual : .auto, a.rawValue) }
         // Settings saved before LAB-1600 (no key) decode to Auto too.
         let old = try! JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
         XCTAssertEqual(old.permissionMode(for: .claude), .auto)

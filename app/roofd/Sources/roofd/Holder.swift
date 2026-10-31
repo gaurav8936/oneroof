@@ -537,6 +537,8 @@ final class Holder {
             }
             if fg == nil { agentLeader = 0 }
         }
+        // The supervisor owns the outer PTY; the native hosted agent owns an inner PTY.
+        if let kind = spec.kind, kind.isHosted, exitedAt == nil, pid > 0, kill(pid, 0) == 0 { fg = kind }
         if fg != agent {
             // A new agent in the foreground: it may have drawn everything before it was seen, so read the screen now
             // and count that as its last change (otherwise a CLI that then goes quiet never becomes ready).
@@ -576,7 +578,8 @@ final class Holder {
         if openingState == "none" { openingState = "pending" }
         switch openingState {
         case "pending":
-            if engine.ready, engine.status == .idle, agent != nil {
+            if engine.ready, engine.status == .idle, agent != nil,
+               !kind.isHosted || StatusEngine.hostedInputVisible(screen, agent: kind) {
                 if idleSince == nil { idleSince = now }
             } else {
                 idleSince = nil
@@ -593,7 +596,7 @@ final class Holder {
         case "sent":
             if engine.status.started { openingState = "done"; return }
             guard let at = openingSentAt, now.timeIntervalSince(at) >= 45 else { return }
-            if openingTries < 2 { openingState = "pending"; idleSince = now } else { openingState = "failed" }
+            if !kind.isHosted && openingTries < 2 { openingState = "pending"; idleSince = now } else { openingState = "failed" }
         default:
             return
         }

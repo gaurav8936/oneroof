@@ -924,6 +924,24 @@ final class AppModel: ObservableObject {
             recheckFoundationsThenLaunch(item)
             return
         }
+        if s.agent.isHosted {
+            guard let connection = settings.hostedConnections.first(where: { $0.id == s.hostedConnectionID }),
+                  connection.model == s.model, connection.configurationErrors().isEmpty else {
+                lastError = "Choose a saved hosted connection with today's verified prices and its exact model."
+                return
+            }
+        }
+        if s.agent.isHosted {
+            guard let runtime = settings.hostedRuntime,
+                  let connection = settings.hostedConnections.first(where: { $0.id == s.hostedConnectionID }) else {
+                lastError = "Configure the hosted runtime and connection in Settings › Seats & accounts."
+                return
+            }
+            if s.hostedLaunch?.isCurrent(connection: connection, runtime: runtime) != true {
+                prepareHostedLaunch(s, foundationsChecked: foundationsChecked)
+                return
+            }
+        }
         let spec: LaunchSpec
         switch LaunchPlan.spec(s, stored: stored, command: pendingCommands[s.id], deliverOpening: true) {
         case .failure(let refusal): lastError = refusal.description; return

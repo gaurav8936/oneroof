@@ -133,6 +133,8 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
     public var repoPath: String
     public var agent: AgentKind
     public var model: String?
+    public var hostedConnection: HostedConnection?
+    public var hostedRuntime: HostedRuntimeConfiguration?
     public var account: String?
     /// Extra instructions added to every round's prompt (the goal, check and last output are always included).
     public var roundPrompt: String
@@ -163,12 +165,13 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
                 state: LoopState = .stopped, createdAt: Date = Date(), checkTimeout: TimeInterval = 600) {
         self.id = id; self.name = name; self.title = title; self.origin = origin; self.goal = goal; self.check = check
         self.repoPath = repoPath; self.agent = agent; self.model = model; self.account = account; self.roundPrompt = roundPrompt
+        self.hostedConnection = nil; self.hostedRuntime = nil
         self.trigger = trigger; self.limits = limits; self.pinned = pinned; self.state = state; self.createdAt = createdAt
         self.checkTimeout = checkTimeout; self.run = nil; self.runRequested = false; self.lastRunAt = nil; self.stopReason = nil
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, title, origin, goal, check, repoPath, agent, model, account, roundPrompt, trigger, limits, pinned, state,
+        case id, name, title, origin, goal, check, repoPath, agent, model, hostedConnection, hostedRuntime, account, roundPrompt, trigger, limits, pinned, state,
              createdAt, checkTimeout, run, runRequested, lastRunAt, stopReason
     }
 
@@ -183,6 +186,8 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
         repoPath = try c.decodeIfPresent(String.self, forKey: .repoPath) ?? ""
         agent = try c.decodeIfPresent(AgentKind.self, forKey: .agent) ?? .claude
         model = try c.decodeIfPresent(String.self, forKey: .model)
+        hostedConnection = try c.decodeIfPresent(HostedConnection.self, forKey: .hostedConnection)
+        hostedRuntime = try c.decodeIfPresent(HostedRuntimeConfiguration.self, forKey: .hostedRuntime)
         account = try c.decodeIfPresent(String.self, forKey: .account)
         roundPrompt = try c.decodeIfPresent(String.self, forKey: .roundPrompt) ?? ""
         trigger = try c.decodeIfPresent(LoopTrigger.self, forKey: .trigger) ?? .untilDone(everyMinutes: 0)
@@ -638,6 +643,7 @@ public enum LoopBuiltIns {
             let p = (e as NSString).expandingTildeInPath
             if fm.fileExists(atPath: p + "/.git") { return p }
         }
+        if let repo = Workspace.listRepos().first(where: { fm.fileExists(atPath: $0 + "/kit/loops/catalog.json") && fm.fileExists(atPath: $0 + "/.git") }) { return repo }
         if fm.fileExists(atPath: Workspace.sharedRoot + "/.git") { return Workspace.sharedRoot }
         return Workspace.projectsRoot
     }

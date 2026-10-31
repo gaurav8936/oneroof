@@ -59,6 +59,7 @@ final class AutoApproveTests: XCTestCase {
         XCTAssertFalse(old.autoApprove)
         XCTAssertEqual(AgentKind.claude.autoApproveArgs, ["--permission-mode", "auto"])
         XCTAssertEqual(AgentKind.shell.autoApproveArgs, [])
-        XCTAssertTrue(AgentKind.allCases.filter(\.isAgent).allSatisfy { !$0.autoApproveArgs.isEmpty })
+        XCTAssertTrue(AgentKind.allCases.filter { $0.isAgent && !$0.isHosted }.allSatisfy { !$0.autoApproveArgs.isEmpty })
+        XCTAssertTrue(AgentKind.allCases.filter(\.isHosted).allSatisfy { $0.autoApproveArgs.isEmpty })
     }
 }
