@@ -77,10 +77,33 @@ function smoothAnchors() {
   });
 }
 
+// ---- Visit counter: our own cookie-less counter on Zibajoon (no third party, nothing stored in the browser). ----
+// One "view" when the page loads and one "download" per click on a download link, sent with navigator.sendBeacon so it
+// never blocks or delays the download. Any failure is silent. Set localStorage 'zj-self' = '1' to mark your own visits.
+const COUNTER = 'https://console.zibajoon.com/api/t/hit';
+function ping(event, link) {
+  try {
+    if (!navigator.sendBeacon) return;
+    let self = 0;
+    try { self = localStorage.getItem('zj-self') === '1' ? 1 : 0; } catch (e) { /* private mode */ }
+    const body = { s: 'oneroof', p: location.pathname, e: event, self: self };
+    if (link) body.l = link;
+    navigator.sendBeacon(COUNTER, JSON.stringify(body));
+  } catch (e) { /* counting must never break the page */ }
+}
+function countVisits() {
+  ping('view');
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (a && /\/releases\/(latest\/)?download\//.test(a.href)) ping('download', a.href);
+  }, true);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   applyLaunch();
   applyTheme(currentTheme(), false);
   document.querySelectorAll('[data-theme-btn]').forEach(b =>
     b.addEventListener('click', () => applyTheme(b.getAttribute('data-theme-btn'), true)));
   smoothAnchors();
+  countVisits();
 });
