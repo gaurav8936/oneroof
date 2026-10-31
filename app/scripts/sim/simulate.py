@@ -168,6 +168,10 @@ class Sim:
             lines += [f"needs t{k:04d}"]
             if k % max(1, int(30 / self.a.every)) == 0:
                 lines += [f"snap needs-{k:04d}"]
+                if self.a.each:   # LAB-1907: every open entry, and a blocked session's terminal (no card over it)
+                    for i in range(6):
+                        lines += [f"needspick {i}", f"snap needs-{k:04d}-e{i}"]
+                    lines += ["place sessions", "selectblocked", "wait 1", f"snap term-{k:04d}", "place needsYou", "wait 1"]
             lines += [f"wait {self.a.every}"]
             k += 1
         lines += ["place sessions", "snap end-sessions", "quit"]
@@ -409,10 +413,16 @@ class Sim:
         stale = []
         for d in dumps:
             for o in d["open"]:
+                if o.get("finished"):   # LAB-1827: a finished turn waits in Needs you on purpose
+                    continue
                 sid = next((i for i, x in by_id.items() if x["name"] == o["session"]), None)
                 last = [e for e in events.get(sid, []) if e[0] <= d["at"]]
                 if last and last[-1][1] == "answered" and d["at"] - last[-1][0] > 5:
                     stale.append((o["session"], d["at"] - last[-1][0]))
+        # LAB-1827: finished turns in Needs you; LAB-1839: asks shown with the prompt's own options.
+        finished = sorted({o["session"] for d in dumps for o in d["open"] if o.get("finished")})
+        with_options = [o for d in dumps for o in d["open"] if not o.get("finished") and o.get("choices")]
+        max_opts = max([len(o["choices"]) for o in with_options] or [0])
         # The run's own store: every decision the app made, and the ones that closed within 2 s (status flapping).
         flaps = total = 0
         try:
@@ -429,6 +439,8 @@ class Sim:
                   " · Claude's plain-text questions at the end of a turn are asks above (`end-question`, LAB-1606)",
                   f"Stale Needs you entries (ask already answered > 5 s before the read): {len(stale)}"
                   + (" · " + ", ".join(sorted({n for n, _ in stale})) if stale else ""),
+                  f"Finished turns shown in Needs you (LAB-1827): {len(finished)} session(s)" + (" · " + ", ".join(finished) if finished else ""),
+                  f"Asks shown with the prompt's own options (LAB-1839): {len(with_options)} reads · most options on one ask: {max_opts}",
                   f"Decisions the app recorded: {total} · closed within 2 s as 'answered in the terminal' (flapping): {flaps}", "",
                   "Files: `turns.tsv` (every turn, status and answer), `agents.tsv` (what each stand-in asked and heard), "
                   "`shots/sim-t*.needs.json` (Needs you at each read), `shots/sim-needs-*.png` (screenshots), `app.log`."]
@@ -453,6 +465,7 @@ def main():
     p.add_argument("--real", action="store_true", help="one real Claude session instead of stand-ins")
     p.add_argument("--model", default="haiku", help="--real: the Claude model (ANTHROPIC_MODEL)")
     p.add_argument("--out", help="run folder (default $TMPDIR/oneroof-sim-<time>)")
+    p.add_argument("--each", action="store_true", help="LAB-1907: snap every open Needs you entry and a blocked terminal")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args()
     Sim(a).go()

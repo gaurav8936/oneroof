@@ -369,3 +369,163 @@ final class FallbackQuestionTests: XCTestCase {
         XCTAssertEqual(DecisionBuilder.fallbackQuestion("working\npress enter to continue\n"), "press enter to continue")
     }
 }
+
+/// LAB-1607: a question menu (Claude's AskUserQuestion) offers its own answer choices, not Allow once / Deny.
+final class QuestionMenuTests: XCTestCase {
+    // The shape Claude Code draws for AskUserQuestion: tab header, question, numbered choices with a description line
+    // under each, the "Type something." and "Chat about this" extras, and the footer.
+    let screen = """
+    ⏺ I need one decision before I start.
+
+    ────────────────────────────────────────────────
+     ☐ Approach
+
+    Which approach should we take for the cache?
+
+    ❯ 1. Keep it in memory
+         Fastest; lost on restart
+      2. Write it to SQLite
+         Survives restarts; a little slower
+      3. Type something.
+    ────────────────────────────────────────────────
+      4. Chat about this
+
+    Enter to select · ↑/↓ to navigate · Esc to cancel
+    """
+
+    func test_LAB1607_readsTheQuestionAndItsOwnChoices() throws {
+        let m = try XCTUnwrap(DecisionMatcher.questionMenu(screen))
+        XCTAssertEqual(m.question, "Which approach should we take for the cache?")
+        XCTAssertEqual(m.choices.map(\.label), ["Keep it in memory", "Write it to SQLite", "Type something.", "Chat about this"])
+        XCTAssertEqual(m.choices.map(\.key), ["1", "2", "3", "4"])
+        XCTAssertEqual(m.choices.map(\.freeText), [false, false, true, false])
+    }
+
+    func test_LAB1607_isNotReadAsAPermissionPrompt() {
+        // No matcher recognises it, so it falls back; the fallback now carries the choices (EngineHub).
+        XCTAssertNil(DecisionMatcher.match(screen, agent: .claude))
+    }
+
+    func test_LAB1607_pickingAChoiceSendsItsNumber() throws {
+        let m = try XCTUnwrap(DecisionMatcher.questionMenu(screen))
+        XCTAssertEqual(AnswerKeys.choose(m.choices[1], from: m.choices)?.sends, ["2"])
+    }
+
+    func test_LAB1607_freeTextReplyGoesThroughTypeSomething() throws {
+        let m = try XCTUnwrap(DecisionMatcher.questionMenu(screen))
+        XCTAssertEqual(AnswerKeys.choose(nil, from: m.choices, reply: "Use Redis")?.sends, ["3", "Use Redis", "\r"])
+        XCTAssertNil(AnswerKeys.choose(nil, from: m.choices, reply: "  "))
+    }
+
+    func test_LAB1607_staleMenuWithOutputAfterItIsIgnored() {
+        let stale = screen + "\n⏺ Going with SQLite.\nline\nline\nline\nline\n"
+        XCTAssertNil(DecisionMatcher.questionMenu(stale))
+    }
+
+    func test_LAB1607_numbersMustRunFromOne() {
+        XCTAssertNil(DecisionMatcher.questionMenu("Pick one?\n  2. A\n  3. B\n"))
+    }
+}
+
+/// LAB-1839: Needs you offers every option the prompt shows, in its order and words, each pressing its own key.
+final class AllOptionsTests: XCTestCase {
+    // Owner screenshot 2026-10-31: Antigravity's prompt has four options; the card showed three fixed ones.
+    let agy = """
+    Antigravity wants to run a command:
+      L=~/Projects/_common/scripts/linear/lt.py
+      echo "=== LT STATUS LAB ==="
+      … (6 lines hidden)
+
+    Run this command?
+    > 1. Yes, run command
+      2. Yes, and always allow in this conversation for commands that start with 'python3 $L status --team LAB'
+      3. Yes, and always allow for commands that start with 'python3 $L status --team LAB' (Persist to settings.json)
+      4. No, cancel
+
+      ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command
+    """
+
+    func test_LAB1839_antigravityShowsAllFourOptions() throws {
+        let d = try XCTUnwrap(DecisionBuilder.build(DecisionContext(sessionId: "s", agent: .agy, terminalText: agy, repoPath: "/tmp/r")))
+        let c = try XCTUnwrap(d.choices)
+        XCTAssertEqual(c.count, 4)
+        XCTAssertEqual(c.map(\.key), ["1", "2", "3", "4"])
+        XCTAssertEqual(c.map(\.meaning), [.allowOnce, .always, .always, .deny])
+        XCTAssertEqual(AnswerKeys.choose(c[2], from: c)?.sends, ["3"])
+        XCTAssertTrue(d.screen?.contains("Run this command?") == true)
+        XCTAssertFalse(d.isMenu)
+    }
+
+    func test_LAB1839_claudeOptionsKeepTheirHotkeysAndFreeText() throws {
+        let t = """
+        Bash command
+          rm -rf build
+          Remove the build folder
+        Do you want to proceed?
+        ❯ 1. Yes
+          2. Yes, and don't ask again for rm commands in /tmp/r
+          3. No, and tell Claude what to do differently (esc)
+        """
+        let d = try XCTUnwrap(DecisionBuilder.build(DecisionContext(sessionId: "s", agent: .claude, terminalText: t, repoPath: "/tmp/r")))
+        let c = try XCTUnwrap(d.choices)
+        XCTAssertEqual(c.map(\.key), ["1", "2", "\u{1B}"])
+        XCTAssertEqual(c.map(\.freeText), [false, false, true])
+        XCTAssertEqual(c.map(\.meaning), [.allowOnce, .always, .deny])
+        // A reply goes through the free-text option: Esc, the words, Return.
+        XCTAssertEqual(AnswerKeys.choose(nil, from: c, reply: "skip it")?.sends, ["\u{1B}", "skip it", "\r"])
+    }
+
+    func test_LAB1839_openCodeAllowOptionsAreNotPressable() throws {
+        let c = DecisionChoice.from([.init(label: "Allow once · use terminal", key: ""), .init(label: "Reject", key: "\u{1b}")])
+        XCTAssertFalse(c[0].pressable)
+        XCTAssertNil(AnswerKeys.choose(c[0], from: c))
+        XCTAssertEqual(AnswerKeys.choose(c[1], from: c)?.sends, ["\u{1b}"])
+    }
+}
+
+/// LAB-1825: Gemini's sign-in menu is a menu (its own three choices, no risk), with a note that Google refuses it.
+final class GeminiSignInTests: XCTestCase {
+    let screen = """
+    ✕ Failed to sign in. This client is no longer supported for Gemini Code Assist for individuals. Please migrate to Antigravity.
+    ╭──────────────────────────────────────────────────────────╮
+    │ Get started                                              │
+    │                                                          │
+    │ How would you like to authenticate for this project?     │
+    │                                                          │
+    │ ● 1. Sign in with Google                                 │
+    │   2. Use Gemini API Key                                  │
+    │   3. Vertex AI                                           │
+    │                                                          │
+    │ (Use Enter to select)                                    │
+    ╰──────────────────────────────────────────────────────────╯
+    """
+
+    func test_LAB1825_signInMenuOffersItsOwnChoicesAndTheNote() throws {
+        XCTAssertNil(DecisionMatcher.match(screen, agent: .gemini))   // not a permission prompt
+        let m = try XCTUnwrap(DecisionMatcher.questionMenu(screen))
+        XCTAssertEqual(m.question, "How would you like to authenticate for this project?")
+        XCTAssertEqual(m.choices.map(\.label), ["Sign in with Google", "Use Gemini API Key", "Vertex AI"])
+        XCTAssertEqual(m.choices.map(\.key), ["1", "2", "3"])
+        XCTAssertEqual(m.note, DecisionMatcher.geminiSignInRefused)
+        XCTAssertTrue(m.screen.first?.contains("authenticate") == true)
+    }
+
+    func test_LAB1825_noNoteWithoutTheRefusal() throws {
+        let ok = screen.components(separatedBy: "\n").dropFirst().joined(separator: "\n")
+        XCTAssertNil(try XCTUnwrap(DecisionMatcher.questionMenu(ok)).note)
+    }
+}
+
+/// LAB-1827: a finished turn shows what the agent said last.
+final class FinishedTurnTests: XCTestCase {
+    func test_LAB1827_lastWordsAreTheFinalMessage() {
+        let t = "❯ fix the test\n⏺ I fixed the failing test. All 42 tests pass now.\n\n❯ \n"
+        XCTAssertEqual(DecisionBuilder.lastWords(t), "I fixed the failing test. All 42 tests pass now.")
+    }
+
+    func test_LAB1827_finishedMarker() {
+        let d = Decision(sessionId: "s", agent: .claude, kind: .other, why: "done", touches: "", risk: .low, ifNo: "",
+                         pattern: Decision.finishedPrefix + "done", repo: "r")
+        XCTAssertTrue(d.isFinished); XCTAssertFalse(d.isQuestion); XCTAssertFalse(d.isMenu)
+    }
+}

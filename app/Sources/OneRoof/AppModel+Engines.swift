@@ -74,15 +74,19 @@ extension AppModel {
     // MARK: Decisions
 
     var openDecisions: [Decision] {
-        decisions.filter { d in d.isOpen && item(d.sessionId).map { $0.status == .needsYou } ?? false }
+        // LAB-1827: a finished turn waits while its session is Ready or Idle (looking at it does not dismiss it).
+        decisions.filter { d in d.isOpen && item(d.sessionId).map { d.isFinished ? [.done, .idle].contains($0.status) : $0.status == .needsYou } ?? false }
             .sorted { $0.askedAt < $1.askedAt }
     }
     /// Open prompts plus plans waiting for approval (S03 list, toolbar count, Dock badge).
     var openDecisionCount: Int { openDecisions.count + objectives.filter { $0.status == .review && $0.plan != nil }.count }
 
-    func answer(_ d: Decision, _ a: Answer, reply: String? = nil) {
-        engines.answer(d, a, reply: reply, pane: item(d.sessionId)?.paneId)
+    func answer(_ d: Decision, _ a: Answer, reply: String? = nil, choice: DecisionChoice? = nil) {
+        engines.answer(d, a, reply: reply, choice: choice, pane: item(d.sessionId)?.paneId)
     }
+
+    /// LAB-1827: a finished turn leaves Needs you without closing the session.
+    func setAside(_ d: Decision) { engines.setAside(d) }
 
     /// Dock badge = open decisions across all windows, else sessions that need you.
     /// LAB-1328: set only when the label changes (it ran after every poll; each set redraws the Dock tile).

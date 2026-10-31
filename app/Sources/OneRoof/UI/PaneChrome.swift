@@ -395,29 +395,34 @@ struct ApprovalCard: View {
             if !decision.touches.isEmpty {
                 Text(decision.touches).ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 6) {
-                key("Allow once", primary: true, help: "Yes, this time only: One Roof presses the agent's own \u{201C}yes\u{201D} key for you.") {
-                    model.answer(decision, .allowOnce)
-                }
-                if !unread {
-                    key("Always allow", help: "Yes, and the agent stops asking for this (its \u{201C}always\u{201D} / \u{201C}don't ask again\u{201D} option). One Roof also remembers it for \(decision.pattern) in \(decision.repo).") {
-                        model.answer(decision, .always)
-                        if model.settings.ui2 {   // v2: Undo on the terminal card for 5 s, as in Needs you (CAP-26)
-                            let d = decision
-                            let w = model.active.id   // the window whose card was clicked
-                            model.v2UndoRule = (d, w)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if model.v2UndoRule?.decision == d { model.v2UndoRule = nil } }
+            if let choices = decision.choices, !choices.isEmpty {
+                // LAB-1607: a question offers its own answers (each presses its number), not Allow once / Deny.
+                HStack(spacing: 6) {
+                    ForEach(Array(choices.filter { !$0.freeText }.enumerated()), id: \.offset) { i, c in
+                        key(c.label, primary: i == 0, help: "Answers \u{201C}\(c.label)\u{201D}: One Roof presses \(c.key) for you.") {
+                            model.answer(decision, .reply, choice: c)
                         }
                     }
+                    replyField
                 }
-                key("Deny", help: "No: the agent does not do it and waits for what you say next.") { model.answer(decision, .deny) }
-                if replying {
-                    TextField("Instructions for the agent", text: $reply, onCommit: { model.answer(decision, .reply, reply: reply) })
-                        .textFieldStyle(.plain).ui(12.5).padding(.horizontal, 8).frame(height: 26)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(t.surface.color))
-                } else {
-                    Button { replying = true } label: { Text("Reply…").ui(12.5).foregroundStyle(t.text2.color) }.buttonStyle(.plain)
-                        .help("No, and tell the agent what to do instead: type it and press Return.")
+            } else {
+                HStack(spacing: 6) {
+                    key("Allow once", primary: true, help: "Yes, this time only: One Roof presses the agent's own \u{201C}yes\u{201D} key for you.") {
+                        model.answer(decision, .allowOnce)
+                    }
+                    if !unread {
+                        key("Always allow", help: "Yes, and the agent stops asking for this (its \u{201C}always\u{201D} / \u{201C}don't ask again\u{201D} option). One Roof also remembers it for \(decision.pattern) in \(decision.repo).") {
+                            model.answer(decision, .always)
+                            if model.settings.ui2 {   // v2: Undo on the terminal card for 5 s, as in Needs you (CAP-26)
+                                let d = decision
+                                let w = model.active.id   // the window whose card was clicked
+                                model.v2UndoRule = (d, w)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if model.v2UndoRule?.decision == d { model.v2UndoRule = nil } }
+                            }
+                        }
+                    }
+                    key("Deny", help: "No: the agent does not do it and waits for what you say next.") { model.answer(decision, .deny) }
+                    replyField
                 }
             }
         }
@@ -427,6 +432,18 @@ struct ApprovalCard: View {
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(t.statusColor(.needsYou).color, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Decision: \(decision.headline)")
+    }
+
+    @ViewBuilder private var replyField: some View {
+        let question = decision.choices?.isEmpty == false
+        if replying {
+            TextField(question ? "Your own answer" : "Instructions for the agent", text: $reply, onCommit: { model.answer(decision, .reply, reply: reply) })
+                .textFieldStyle(.plain).ui(12.5).padding(.horizontal, 8).frame(height: 26)
+                .background(RoundedRectangle(cornerRadius: 6).fill(t.surface.color))
+        } else {
+            Button { replying = true } label: { Text("Reply…").ui(12.5).foregroundStyle(t.text2.color) }.buttonStyle(.plain)
+                .help(question ? "Answer in your own words: type it and press Return." : "No, and tell the agent what to do instead: type it and press Return.")
+        }
     }
 
     private func key(_ label: String, primary: Bool = false, help: String, _ action: @escaping () -> Void) -> some View {
