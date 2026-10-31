@@ -145,6 +145,16 @@ snap j11-resumed
 centre workspace
 expect centre = workspace
 
+## J11b · the window keeps its size (LAB-1758): a click never shrinks it; your resizes still do
+windowsize 1500 940
+mark width
+clickshrink 900
+expect width = @width
+wait 1.5
+width 1200
+expect width = 1200
+windowsize 1500 940
+
 ## J12 · close a session
 switchwindow Test C
 selectindex 1

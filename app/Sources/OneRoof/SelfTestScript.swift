@@ -206,6 +206,17 @@ enum SelfTestScript {
             return
         case "railsessions": app.main.v2Open(.sessions); delay = 1.0   // LAB-1576: the rail's Sessions button
         case "tableprobe": log(out, "  " + app.main.terminalArea.tableProbe())
+        case "clickshrink":   // LAB-1758: a click in the centre, then the window made <w> wide while that click is handled
+            if let w = app.main.window, let pt = Double(arg) {
+                let v = app.main.centreItemRef.viewController.view
+                let p = v.convert(NSPoint(x: v.bounds.midX, y: v.bounds.midY), to: nil)
+                if let e = NSEvent.mouseEvent(with: .leftMouseUp, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0) {
+                    NSApp.postEvent(e, atStart: true)
+                    DispatchQueue.main.async { var f = w.frame; f.size.width = CGFloat(pt); w.setFrame(f, display: true) }
+                }
+            }
+            delay = 1.5
         case "barprobe":   // LAB-1783: where the window buttons, toolbar items and columns sit (window points, from the left)
             if let w = app.main.window {
                 let f = { (r: NSRect) in "\(Int(r.minX.rounded()))…\(Int(r.maxX.rounded()))@\(Int(r.midY.rounded()))" }
