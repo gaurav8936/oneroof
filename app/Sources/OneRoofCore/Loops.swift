@@ -630,12 +630,16 @@ public enum LoopBuiltIns {
         return fallbackEntries
     }
 
-    public static func defaultRepoPath() -> String {
+    /// Where a built-in loop runs until you pick a repo: the Agentic Engineering checkout ONEROOF_AE_PATH names (a
+    /// developer's own copy), else the shared folder (Settings › Foundations), else the projects folder.
+    public static func defaultRepoPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
         let fm = FileManager.default
-        let aeRepo = Workspace.projectsRoot + "/labs/labs-agentic-engineering"
-        if fm.fileExists(atPath: aeRepo + "/.git") { return aeRepo }
+        if let e = environment["ONEROOF_AE_PATH"], !e.isEmpty {
+            let p = (e as NSString).expandingTildeInPath
+            if fm.fileExists(atPath: p + "/.git") { return p }
+        }
         if fm.fileExists(atPath: Workspace.sharedRoot + "/.git") { return Workspace.sharedRoot }
-        return aeRepo
+        return Workspace.projectsRoot
     }
 
     public static func load(catalogPath: String? = AEFolder.loopsCatalog(), repoPath: String? = nil) -> [Loop] {
