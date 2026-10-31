@@ -529,3 +529,59 @@ final class FinishedTurnTests: XCTestCase {
         XCTAssertTrue(d.isFinished); XCTAssertFalse(d.isQuestion); XCTAssertFalse(d.isMenu)
     }
 }
+
+/// LAB-1827: Goose and OpenCode have no Claude/Codex markers: their reply is read off the bottom of the screen.
+final class HostedLastWordsTests: XCTestCase {
+    let goose = #"""
+        __( O)>  ● new session · openai zai-org/GLM-5.3-Flash
+       \____)    20261031_1 · ~/project
+         L L     goose is ready
+      ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ 0% 0/128k
+    > Remember orchard. Reply APP_GOOSE_READY only. Do not call tools.
+    
+    APP_GOOSE_READY
+      ⏱ 4.37s
+      ━╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ 6% 8k/128k
+    > What word did I ask you to remember? Reply APP_GOOSE_FOLLOWUP and that word. Do not call tools.
+    
+    APP_GOOSE_FOLLOWUP: orchard
+      ⏱ 3.60s
+      ━╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ 6% 8k/128k
+    > Enter to send · Ctrl+J newline
+    """#
+    let opencode = #"""
+    
+         + Thought: 0ms
+    
+         APP_OPENCODE_FOLLOWUP orchard
+    
+         ▣  Build · zai-org/GLM-5.3-Flash · 1.4s
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+      ┃
+      ┃
+      ┃
+      ┃  Build · zai-org/GLM-5.3-Flash AE guarded hosted session
+      ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+       ~/project               13.5K (41%)  ctrl+p commands
+    """#
+
+    func test_LAB1827_gooseReplyAtTheBottom() {
+        XCTAssertEqual(DecisionBuilder.lastWords(goose), "APP_GOOSE_FOLLOWUP: orchard")
+    }
+
+    func test_LAB1827_openCodeReplyAtTheBottom() {
+        XCTAssertEqual(DecisionBuilder.lastWords(opencode), "APP_OPENCODE_FOLLOWUP orchard")
+    }
+}

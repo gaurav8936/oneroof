@@ -76,7 +76,8 @@ private struct StatusPopover: View {
                             Text(d.command.map { "Run " + $0 } ?? d.headline).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                         }
                         Spacer()
-                        RoofButton("Allow", .primary) { model.answer(d, .allowOnce) }
+                        // LAB-1827 / LAB-1607: Allow only for a permission prompt; a finished turn or a menu opens.
+                        if !d.isFinished && !d.isMenu && !d.isQuestion { RoofButton("Allow", .primary) { model.answer(d, .allowOnce) } }
                         RoofButton("Open") { open(d.sessionId) }
                     }
                 }

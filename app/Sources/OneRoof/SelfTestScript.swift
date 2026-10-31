@@ -31,6 +31,7 @@ import OneRoofCore
 ///   expect · newwindow · switchwindow · place · search · textcount · hitch · resizegesture · windowsize   (SelfTestHarness)
 ///   window <name> · activate <name>   (LAB-1591: a new workspace window, active; or make an open one active)
 ///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
+///   pick <i>                       (LAB-1839: press the oldest open decision's i-th own option)
 ///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
@@ -165,7 +166,13 @@ enum SelfTestScript {
         case "settingspane": if let pane = Int(arg) { app.main.v2ShowSettings(pane: pane) }; delay = 1
         case "menu": SelfTest.invokeMenu(arg)
         case "answer":
-            if let d = m.openDecisions.first, let a = Answer(rawValue: arg) { m.answer(d, a) } else { log(out, "  no open decision") }
+            // LAB-1827: finished turns wait in Needs you too; answer the oldest ask, not a finished turn.
+            if let d = m.openDecisions.first(where: { !$0.isFinished }), let a = Answer(rawValue: arg) { m.answer(d, a) } else { log(out, "  no open decision") }
+            delay = 1
+        case "pick":   // LAB-1839: press the oldest open decision's i-th own option (0 = first), as its Needs you button does
+            if let d = m.openDecisions.first(where: { !$0.isFinished }), let i = Int(arg), let c = d.choices, i < c.count {
+                log(out, "  pick \(i): \(c[i].label) (\(d.agent.rawValue))"); m.answer(d, .reply, choice: c[i])
+            } else { log(out, "  no option \(arg)") }
             delay = 1
         case "group": if let g = Grouping(rawValue: arg) { m.grouping = g } else { log(out, "  bad grouping") }
         case "chip": if let c = StatusChip(rawValue: arg) { app.main.win.statusFilter = c == .all ? nil : c }
