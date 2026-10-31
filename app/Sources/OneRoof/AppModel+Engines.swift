@@ -82,7 +82,8 @@ extension AppModel {
     var openDecisionCount: Int { openDecisions.count + objectives.filter { $0.status == .review && $0.plan != nil }.count }
     /// LAB-1933 · the Needs you badge everywhere (rail, icon row, menu bar, Dock): manual sessions only.
     var needsYouBadge: Int {
-        SessionScope.needsYouCount(openAsks: openDecisions.count, plansWaiting: objectives.filter { $0.status == .review && $0.plan != nil }.count, items: items)
+        SessionScope.needsYouCount(openAsks: openDecisions.count, plansWaiting: objectives.filter { $0.status == .review && $0.plan != nil }.count, items: items,
+                                   loopItems: loopInbox.count)   // LAB-1866 · LAB-1919: loop items, never sessions
     }
 
     func answer(_ d: Decision, _ a: Answer, reply: String? = nil, choice: DecisionChoice? = nil) {

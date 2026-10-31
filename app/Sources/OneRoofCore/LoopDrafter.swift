@@ -67,9 +67,27 @@ public enum LoopDrafter {
         if let h = number(before: ["hours", "hour"], in: low) { limits.maxDuration = TimeInterval(max(1, min(h, 24)) * 3600) }
         else if let m = number(before: ["minutes", "min"], in: low), !(trigger.isQuiet) { limits.maxDuration = TimeInterval(max(15, min(m, 1440)) * 60) }
         if trigger.isArmed && limits.maxRounds == LoopLimits().maxRounds && check.isEmpty { limits.maxRounds = 3 }
-        let goal = sentence(t)
+        let goal = sentence(withoutTrigger(t))
         return Draft(name: Loop.slug(String(goal.split(separator: " ").prefix(5).joined(separator: " "))), goal: goal, check: check,
                      trigger: trigger, limits: limits, roundPrompt: "", notes: notes, source: "rules")
+    }
+
+    /// The words without the opening "when / how often" clause, so the goal and name say what the loop is for.
+    static func withoutTrigger(_ t: String) -> String {
+        let patterns = [
+            #"^(every|each) (night|day|morning|monday|tuesday|wednesday|thursday|friday|saturday|sunday)( at [0-9:]+( ?[ap]m)?)?[,;]?\s+"#,
+            #"^(nightly|daily)( at [0-9:]+( ?[ap]m)?)?[,;]?\s+"#,
+            #"^when (it'?s )?(quiet|idle|i'?m away)( for [0-9]+ \w+)?( between [0-9]+ and [0-9]+)?[,;]?\s+"#,
+            #"^(when|after|on) (a |every )?(new (bug|issue)( comes in| is created)?|ci fails|the pipeline fails|a push|push|a release|release)[,;]?\s+"#,
+        ]
+        var out = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        for p in patterns {
+            if let r = out.range(of: p, options: [.regularExpression, .caseInsensitive]), r.lowerBound == out.startIndex {
+                let rest = String(out[r.upperBound...])
+                if rest.count >= 8 { out = rest }
+            }
+        }
+        return out
     }
 
     static func event(in low: String) -> String? {

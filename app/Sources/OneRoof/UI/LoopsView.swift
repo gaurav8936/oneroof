@@ -15,6 +15,9 @@ final class LoopBoard: ObservableObject {
     @Published var error: String?
     /// LAB-1918: per loop, from the outcome ledger (`<shared>/loops/ledger.sqlite`, shared with `ae loops ledger`).
     @Published private(set) var outcomes: [LoopLedger.LoopSummary] = []
+    /// LAB-1941 · LAB-1922: each loop's outcomes (newest first) and runs from the ledger, for the drill-down and gallery.
+    @Published private(set) var outcomesByLoop: [String: [LoopLedger.Outcome]] = [:]
+    @Published private(set) var runsByLoop: [String: [LoopLedger.Run]] = [:]
     private var timer: Timer?
     private let io = DispatchQueue(label: "oneroof.loops.io")
 
@@ -35,12 +38,17 @@ final class LoopBoard: ObservableObject {
             let ls = s.all()
             let rs = Dictionary(uniqueKeysWithValues: ls.map { ($0.id, s.rounds($0.id)) })
             let path = LoopLedger.defaultPath(loopsRoot: s.root)
-            let os = FileManager.default.fileExists(atPath: path) ? ((try? LoopLedger(path: path))?.summary() ?? []) : []
+            let led = FileManager.default.fileExists(atPath: path) ? try? LoopLedger(path: path) : nil
+            let os = led?.summary() ?? []
+            let byLoop = Dictionary(grouping: led?.outcomes(limit: 1000) ?? [], by: \.loop)
+            let runs = Dictionary(uniqueKeysWithValues: ls.map { ($0.id, led?.runs(loop: $0.id, limit: 10) ?? []) })
             DispatchQueue.main.async {
                 guard let self else { return }
                 if self.loops != ls { self.loops = ls }
                 if self.rounds != rs { self.rounds = rs }
                 if self.outcomes != os { self.outcomes = os }
+                if self.outcomesByLoop != byLoop { self.outcomesByLoop = byLoop }
+                if self.runsByLoop != runs { self.runsByLoop = runs }
             }
         }
     }
@@ -110,6 +118,8 @@ struct LoopsView: View {
     @State private var selected: String?
     @State private var editing: LoopDraft?
     @State private var confirmDelete: Loop?
+    @State private var gallery = false
+    @ObservedObject private var inbox = LoopInboxState.shared
     @Environment(\.v2Window) private var v2
 
     var body: some View {
@@ -120,13 +130,18 @@ struct LoopsView: View {
                 } else {
                     RoofButton("⏸ Pause all") { board.pauseAll() }.disabled(board.loops.isEmpty)
                 }
+                RoofButton(gallery ? "‹ Loops" : "Gallery") { gallery.toggle(); selected = nil }
+                    .help("The kinds of loops, what each produces, and a real sample of each (LAB-1922)")
                 RoofButton("+ New loop", .primary) { editing = LoopDraft.new() }
             }
         } content: {
             if let e = board.error {
                 Text(e).ui(12.5).foregroundStyle(t.needsText.color).textSelection(.enabled)
             }
-            if v2 {
+            if gallery {
+                LoopGalleryView(board: board, openLoop: { id in gallery = false; selected = id },
+                                startFrom: { l in editing = LoopDraft.duplicate(from: l) })
+            } else if v2 {
                 // v2 (A9, C5.1): the loops beside Tonight; a loop opens as its own page with ‹ Loops back.
                 if let s = selected, board.loops.contains(where: { $0.id == s }) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -137,7 +152,7 @@ struct LoopsView: View {
                 } else {
                     HStack(alignment: .top, spacing: 18) {
                         VStack(alignment: .leading, spacing: 14) {
-                            if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes) }   // LAB-1918 · LAB-1866
+                            if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes) { selected = $0 } }   // LAB-1918 · LAB-1941
                             LoopRunsView(model: model, board: board)   // LAB-1933: loop rounds live here, not in the session rail
                             if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
                         }
@@ -153,8 +168,15 @@ struct LoopsView: View {
                 }
             }
         }
-        .onAppear { board.start() }
+        .onAppear {
+            board.start()
+            if let f = inbox.focus { selected = f; gallery = false; inbox.focus = nil }
+            if let d = inbox.draftRequest { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil }
+            if ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LOOPGALLERY"] == "1" { gallery = true }
+        }
         .onDisappear { board.stop() }
+        .onChange(of: inbox.focus) { _, f in if let f { selected = f; gallery = false; inbox.focus = nil } }
+        .onChange(of: inbox.draftRequest) { _, d in if let d { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil } }
         .onReceive(NotificationCenter.default.publisher(for: .newLoop)) { _ in editing = LoopDraft.new() }
         .sheet(item: $editing) { d in
             LoopEditor(draft: d, settings: model.settings, onSave: { loop, run in
@@ -270,7 +292,7 @@ struct LoopsView: View {
                     Text(l.displayTitle).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                     Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text3.color)
                 }
-                Text([l.trigger.label, l.limits.label, Workspace.repoLabel(for: l.repoPath)].joined(separator: " · "))
+                Text([l.externalSchedule.map { "ae · " + $0 } ?? l.trigger.label, l.limits.label, Workspace.repoLabel(for: l.repoPath)].joined(separator: " · "))
                     .ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
             }
             Spacer(minLength: 8)
@@ -306,7 +328,7 @@ struct LoopsView: View {
 
     @ViewBuilder private var detail: some View {
         if let l = board.loops.first(where: { $0.id == (selected ?? board.loops.first?.id) }) {
-            LoopDetail(loop: l, rounds: board.rounds[l.id] ?? [], model: model, board: board,
+            LoopDetail(loop: l, rounds: board.rounds[l.id] ?? [], model: model, board: board, win: win,
                        edit: { editing = LoopDraft(loop: l, isNew: false) },
                        duplicate: { editing = LoopDraft.duplicate(from: l) },
                        delete: { confirmDelete = l })
@@ -345,6 +367,7 @@ struct LoopDetail: View {
     let rounds: [LoopRound]
     @ObservedObject var model: AppModel
     @ObservedObject var board: LoopBoard
+    var win: WindowState?
     var edit: () -> Void
     var duplicate: () -> Void = {}
     var delete: () -> Void
@@ -374,6 +397,8 @@ struct LoopDetail: View {
                     actions(l)
                     if v2 { V2LoopFences(loop: l) }   // NEW-24: what this loop can and cannot do
                     Hairline()
+                    outcomesTable(l)                  // LAB-1941
+                    Hairline()
                     roundsTable(l)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -383,7 +408,10 @@ struct LoopDetail: View {
 
     private func facts(_ l: Loop) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 7) {
-            fact("Origin", l.origin == .builtIn ? "Built-in (Agentic Engineering kit · ships off)" : "Mine (saved in _common/loops)")
+            fact("Origin", l.origin == .builtIn ? "Built-in (Agentic Engineering kit · ships off)"
+                 : l.isKitFile ? "Mine (an ae loop: \(((l.specFile ?? "") as NSString).lastPathComponent))" : "Mine (saved in _common/loops)")
+            if let sched = l.externalSchedule { fact("Schedule", sched + " · run by ae (ae loops on/off); One Roof runs it only on Run now") }
+            if let k = LoopKinds.kind(l.kind) { fact("Kind", k.title + " · " + k.produces) }
             fact("Goal", l.goal.isEmpty ? "—" : l.goal)
             fact("Check", l.check, mono: true)
             fact("Agent", l.agent.displayName + (l.model.map { " · " + $0 } ?? ""))
@@ -413,16 +441,58 @@ struct LoopDetail: View {
                 RoofButton("Pause") { board.pause(l.id) }.disabled(!(l.state.isActive || (l.trigger.isArmed && l.state != .stopped)))
             }
             RoofButton("Stop", .danger) { board.stopLoop(l.id) }.disabled(l.run == nil && !l.runRequested && l.state == .stopped)
-            RoofButton("Edit") { edit() }
+            if let file = l.specFile {
+                RoofButton("Edit the file") { model.openInViewer(file) }
+                    .help("ae owns this loop's file; One Roof shows it and runs it on Run now")
+            } else {
+                RoofButton("Edit") { edit() }
+            }
             if l.origin == .builtIn {
                 RoofButton("Duplicate as mine") { duplicate() }
             }
             RoofButton(l.pinned ? "Unpin" : "Pin") { board.togglePin(l.id) }
             Spacer()
-            if l.origin == .mine {
+            if l.origin == .mine && !l.isKitFile {
                 RoofButton("Delete", .danger) { delete() }
             } else if board.store.hasDiskOverride(l.id) {
                 RoofButton("Reset") { board.delete(l.id) }
+            }
+        }
+    }
+
+    /// LAB-1941 · what this loop produced (the outcome ledger), each opening where it points; a staged one is approved
+    /// or rejected right here (the same decision Today records).
+    @ViewBuilder private func outcomesTable(_ l: Loop) -> some View {
+        let os = board.outcomesByLoop[l.id] ?? []
+        let runs = board.runsByLoop[l.id] ?? []
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                MicroLabel("Outcomes")
+                Spacer()
+                Text("\(runs.count) run\(runs.count == 1 ? "" : "s") in the ledger · \(os.filter { $0.status == "staged" }.count) staged")
+                    .ui(11.5, mono: true).foregroundStyle(t.text2.color)
+            }
+            if os.isEmpty {
+                Text("Nothing produced yet. Each commit a run leaves on \(l.branch), and each issue, PR or report, shows here.")
+                    .ui(12.5).foregroundStyle(t.text2.color)
+            }
+            ForEach(os.prefix(30)) { o in
+                HStack(spacing: 8) {
+                    LoopOutcomeLine(outcome: o, model: model, win: win)
+                    if o.status == "staged" {
+                        let it = LoopInbox.today([o], titles: [l.id: l.displayTitle]).first
+                        if let it, ["commit", "pr"].contains(o.kind) {
+                            RoofButton("Approve → PR", .primary) {
+                                // One run's commits go together: approve them as Today groups them.
+                                let group = LoopInbox.today(os.filter { $0.status == "staged" }, titles: [:]).first { $0.outcomeIds.contains(o.id) } ?? it
+                                LoopInboxState.shared.approveAndOpenPR(group) { board.reload(); model.refreshLoopInbox() }
+                            }
+                        } else if let it {
+                            RoofButton("Approve") { LoopInboxState.shared.decide(it, "approved") { board.reload(); model.refreshLoopInbox() } }
+                        }
+                        if let it { RoofButton("Reject", .danger) { LoopInboxState.shared.decide(it, "rejected") { board.reload(); model.refreshLoopInbox() } } }
+                    }
+                }
             }
         }
     }
@@ -541,6 +611,14 @@ struct LoopEditor: View {
     struct TestOutcome { var result: LoopCheckResult; var folder: String }
     @State private var repos: [String] = []
     @State private var template = ""
+    /// LAB-1921: the plain-words description, the draft's notes and the dry-run preview.
+    @State private var describe = ""
+    @State private var drafting = false
+    @State private var draftNotes: [String] = []
+    @State private var showPreview = false
+    /// LAB-1920: the sheet's size, remembered.
+    @AppStorage("loops.editor.width", store: Prefs.defaults) private var sheetW: Double = 760
+    @AppStorage("loops.editor.height", store: Prefs.defaults) private var sheetH: Double = 820
 
     private var l: Binding<Loop> { $draft.loop }
     private var nightly: Bool { draft.loop.trigger.isArmed }
@@ -551,20 +629,25 @@ struct LoopEditor: View {
                 Text(draft.isNew ? "New loop" : "Edit loop").ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
                 Spacer()
                 if draft.isNew {
-                    FieldMenu(title: template.isEmpty ? "Start from a template" : template, expand: false) {
-                        ForEach(LoopTemplates.all + LoopTemplates.builtInTemplates()) { tpl in
-                            Button(tpl.title + " — " + tpl.summary) {
-                                template = tpl.title
-                                draft.loop = tpl.apply(to: draft.loop)
-                            }
+                    // LAB-1921: examples by kind (the kit's library), then the two starters.
+                    FieldMenu(title: template.isEmpty ? "Start from an example" : template, expand: false) {
+                        ForEach(LoopTemplates.all) { tpl in templateButton(tpl) }
+                        let byKind = Dictionary(grouping: LoopTemplates.builtInTemplates(), by: { $0.kind ?? "other" })
+                        ForEach(LoopKinds.all.filter { byKind[$0.id] != nil }) { k in
+                            Section(k.title + " · " + k.produces) { ForEach(byKind[k.id] ?? []) { tpl in templateButton(tpl) } }
                         }
                     }
                 }
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    field("Name") { TextField("fix-ci", text: l.name).textFieldStyle(.roundedBorder) }
-                    field("Goal") { TextField("main is green on acme/web", text: l.goal, axis: .vertical).lineLimit(1...3).textFieldStyle(.roundedBorder) }
+                    if draft.isNew { describeBox }
+                    field("Name", help: "A short name; it names the loop's folder, worktree and branch (loop/<name>).") {
+                        TextField("fix-ci", text: l.name).textFieldStyle(.roundedBorder)
+                    }
+                    field("Goal", help: "The end state the loop keeps true, not the task. Example: “main is green on acme/web”. Every round is told it.") {
+                        GrowingTextArea(text: l.goal, placeholder: "main is green on acme/web", storageKey: "goal", minHeight: 56, label: "Goal")
+                    }
                     field("Repo") {
                         FieldMenu(title: Workspace.repoLabel(for: draft.loop.repoPath)) {
                             ForEach(repos, id: \.self) { r in Button(Workspace.repoLabel(for: r)) { draft.loop.repoPath = r } }
@@ -599,10 +682,10 @@ struct LoopEditor: View {
                         Text("Hosted runs use one bounded round with native manual approvals. Select a saved connection; nightly and repeating paid runs remain disabled.")
                             .ui(12).foregroundStyle(t.text2.color)
                     }
-                    field("Check") {
+                    field("Check", help: "One shell command run in the loop's worktree with nobody watching: exit 0 = the goal holds. Example: “swift test” or “bash tools/loop-checks/docs-check.sh”. Checked on save: no sentence after it, no pasted box edges, the script must exist.") {
                         VStack(alignment: .leading, spacing: 6) {
-                            TextField("e.g. npm test · swift test · pytest -q (exit 0 = done)", text: l.check, axis: .vertical)
-                                .lineLimit(1...3).font(.system(size: 12.5, design: .monospaced)).textFieldStyle(.roundedBorder)
+                            GrowingTextArea(text: l.check, placeholder: "e.g. npm test · swift test · pytest -q (exit 0 = done)", mono: true,
+                                            storageKey: "check", minHeight: 44, label: "Check")
                             HStack(spacing: 8) {
                                 RoofButton(testing ? "Testing…" : "Test the check") { test() }
                                     .disabled(testing || draft.loop.check.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -659,15 +742,16 @@ struct LoopEditor: View {
                         }
                         .ui(13).foregroundStyle(t.text.color)
                     }
-                    field("Round prompt") {
+                    field("Round prompt", help: "Optional extra instructions for every round. Example: “Fix one bug per round; add a test for it.”") {
                         VStack(alignment: .leading, spacing: 4) {
-                            TextField("Extra instructions for every round (optional)", text: l.roundPrompt, axis: .vertical)
-                                .lineLimit(2...6).textFieldStyle(.roundedBorder)
+                            GrowingTextArea(text: l.roundPrompt, placeholder: "Extra instructions for every round (optional)", storageKey: "roundPrompt",
+                                            minHeight: 110, label: "Round prompt")
                             Text("Every round already gets the goal, the check, its worktree and branch, the last check's output and what was tried; it is told never to push, merge or deploy.")
                                 .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     Toggle("Pinned (top of the list)", isOn: l.pinned).ui(13).foregroundStyle(t.text.color)
+                    previewBox
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -684,9 +768,80 @@ struct LoopEditor: View {
             }
         }
         .padding(22)
-        .frame(width: 640, height: 720)
+        // LAB-1920: a larger sheet you can resize; its size is remembered.
+        .frame(minWidth: 640, idealWidth: CGFloat(sheetW), maxWidth: 1600, minHeight: 600, idealHeight: CGFloat(sheetH), maxHeight: 1600)
+        .background(GeometryReader { g in
+            Color.clear.onChange(of: g.size) { _, sz in
+                if sz.width >= 640 { sheetW = Double(sz.width) }
+                if sz.height >= 600 { sheetH = Double(sz.height) }
+            }
+        })
         .background(t.window.color)
-        .onAppear { repos = WorkspaceSearch.repos() }
+        .onAppear {
+            repos = WorkspaceSearch.repos()
+            if ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LOOPPREVIEW"] == "1" { showPreview = true }
+        }
+    }
+
+    private func templateButton(_ tpl: LoopTemplate) -> some View {
+        Button(tpl.title + " — " + tpl.summary) {
+            template = tpl.title
+            draft.loop = tpl.apply(to: draft.loop)
+        }
+    }
+
+    /// LAB-1921: say what you want; an agent (or the rules, without one) fills the form. Nothing is saved or run.
+    private var describeBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            MicroLabel("Describe the loop")
+            GrowingTextArea(text: $describe, placeholder: "e.g. every night at 3 fix one LAB-ONEROOF-BUGS bug per round until `bash tools/loop-checks/oneroof-bugs-check.sh` passes, at most 5 rounds",
+                            storageKey: "describe", minHeight: 56, label: "Describe the loop")
+            HStack(spacing: 8) {
+                RoofButton(drafting ? "Drafting…" : "Draft it", .primary) { draftIt() }
+                    .disabled(drafting || describe.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Text("An agent drafts the goal, check, trigger and limits; you check them below and preview the first run before saving.")
+                    .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(draftNotes, id: \.self) { n in Text("· " + n).ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true) }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(t.card.color))
+    }
+
+    private func draftIt() {
+        let text = describe, repo = draft.loop.repoPath
+        drafting = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let d = LoopDrafter.draft(text, repo: repo)
+            DispatchQueue.main.async {
+                draft.loop = d.apply(to: draft.loop)
+                draftNotes = ["Drafted by " + (d.source == "agent" ? "an agent" : "rules") + ": check every field."] + d.notes
+                drafting = false
+                showPreview = true
+            }
+        }
+    }
+
+    /// LAB-1921: the dry run: what the first run would do, in order (Test the check runs the check for real).
+    private var previewBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { showPreview.toggle() } label: {
+                HStack(spacing: 6) {
+                    Text(showPreview ? "▾" : "▸").ui(12.5).foregroundStyle(t.text2.color)
+                    MicroLabel("Preview the first run (dry run)")
+                }
+            }
+            .buttonStyle(.plain).accessibilityLabel(showPreview ? "Hide the preview of the first run" : "Preview the first run")
+            if showPreview {
+                let lines = LoopDrafter.preview(draft.loop)
+                ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
+                    Text(line).ui(i == 4 ? TypeScale.monoSmall : 12.5, mono: i == 4).foregroundStyle(t.text.color).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(i == 4 ? 8 : 0)
+                        .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(i == 4 ? t.card.color : .clear))
+                }
+            }
+        }
     }
 
     @ViewBuilder private var triggerDetail: some View {
@@ -740,10 +895,11 @@ struct LoopEditor: View {
         }
     }
 
-    private func field<C: View>(_ label: String, @ViewBuilder _ c: () -> C) -> some View {
+    private func field<C: View>(_ label: String, help: String? = nil, @ViewBuilder _ c: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             MicroLabel(label)
             c()
+            if let help { Text(help).ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true) }   // LAB-1920
         }
     }
 
@@ -801,6 +957,8 @@ struct LoopEditor: View {
 struct LoopOutcomesCard: View {
     @Environment(\.theme) private var t
     let rows: [LoopLedger.LoopSummary]
+    /// LAB-1941: a row opens its loop (its outcomes, with approve and reject).
+    var open: (String) -> Void = { _ in }
 
     var body: some View {
         Card(padding: 12) {
@@ -812,7 +970,7 @@ struct LoopOutcomesCard: View {
                     if staged > 0 { Text("\(staged) waiting for you").ui(11.5, .semibold).foregroundStyle(t.needsText.color) }
                 }
                 ForEach(rows, id: \.loop) { r in
-                    HStack(spacing: 10) {
+                    Button { open(r.loop) } label: { HStack(spacing: 10) {
                         Text(r.loop).ui(12.5, .semibold).foregroundStyle(t.text.color).frame(width: 170, alignment: .leading).lineLimit(1)
                         Text(Self.result(r)).ui(12).foregroundStyle((Self.bad(r.lastResult) ? t.needsText : t.text2).color)
                             .frame(width: 130, alignment: .leading)
@@ -821,8 +979,11 @@ struct LoopOutcomesCard: View {
                         Text(Self.produced(r)).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                         Spacer(minLength: 0)
                         if r.staged > 0 { Text("\(r.staged) staged").ui(11).foregroundStyle(t.accentText.color) }
-                    }
+                        Text("›").ui(12).foregroundStyle(t.text3.color)
+                    }.contentShape(Rectangle()) }
+                    .buttonStyle(PressStyle(radius: Radius.row))
                     .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
                     .accessibilityLabel("\(r.loop): \(Self.result(r)), \(r.runs) runs, \(Self.produced(r))")
                 }
             }

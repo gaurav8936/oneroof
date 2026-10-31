@@ -159,6 +159,26 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { NotificationCenter.default.post(name: StepHintAnchor.HintAnchorView.show, object: nil) }
         }
         if env["ONEROOF_SELFTEST_V2EDGE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.main.v2ShowEdgeReveal() } }
+        // LAB-1919 · LAB-1941 · LAB-1920 · LAB-1921 · LAB-1922 (loops, 1.9.34; point ONEROOF_SHARED at a scratch folder):
+        //   LOOPPICK=<n>   Needs you shows its n-th loop item (failures and asks, then Today)
+        //   LOOP=<id>      the Loops page opens that loop (its outcomes and rounds)
+        //   LOOPDRAFT=<words>   the New loop editor opens with the rule-based draft of those words (LOOPPREVIEW=1 opens the dry run)
+        //   LOOPGALLERY=1  the Loops page shows the gallery
+        if env.keys.contains(where: { $0.hasPrefix("ONEROOF_SELFTEST_LOOP") }) { app.model.refreshLoopInbox() }
+        if let n = Int(env["ONEROOF_SELFTEST_LOOPPICK"] ?? "") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                let items = LoopInboxState.shared.items
+                if n < items.count { app.model.needsPick = "loop-" + items[n].id }
+            }
+        }
+        if let id = env["ONEROOF_SELFTEST_LOOP"] { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.model.openLoop(id) } }
+        if let words = env["ONEROOF_SELFTEST_LOOPDRAFT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                let repo = WorkspaceSearch.repos().first ?? Workspace.projectsRoot
+                LoopInboxState.shared.draftRequest = LoopDrafter.rules(words).apply(to: Loop(id: "", name: "", repoPath: repo))
+                app.model.show(.loops)
+            }
+        }
         if env["ONEROOF_SELFTEST_DEMO"] == "1" { seedDemo(app.model) }
         if env["ONEROOF_SELFTEST_FOUNDATIONS"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.showFoundations(nil) } }
         if let w = env["ONEROOF_SELFTEST_WORK"] {

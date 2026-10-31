@@ -613,6 +613,8 @@ public struct LoopTemplate: Identifiable, Equatable, Sendable {
     public var roundPrompt: String
     public var trigger: LoopTrigger
     public var limits: LoopLimits
+    /// LAB-1921: the library kind (examples by kind in the editor).
+    public var kind: String? = nil
 
     public func apply(to loop: Loop) -> Loop {
         var l = loop
@@ -650,7 +652,8 @@ public enum LoopTemplates {
                 name: "my-\(e.id)", goal: e.goal,
                 check: e.check, roundPrompt: e.roundPrompt,
                 trigger: .at(hour: e.hour, minute: e.minute),
-                limits: LoopLimits(maxRounds: max(1, e.maxRounds), maxDuration: TimeInterval(max(1, e.maxMinutes) * 60), sameFailureStop: 2))
+                limits: LoopLimits(maxRounds: max(1, e.maxRounds), maxDuration: TimeInterval(max(1, e.maxMinutes) * 60), sameFailureStop: 2),
+                kind: e.kind)
         }
     }
 }

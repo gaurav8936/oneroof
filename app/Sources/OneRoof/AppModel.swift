@@ -263,6 +263,7 @@ final class AppModel: ObservableObject {
             if ticks % 60 == 40 { self?.closeIdleFinishedShells(); self?.closeIdleSessions() }   // LAB-1524 · LAB-1535: once a minute
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
             if ticks % 60 == 40 { self?.tickCommitWatch() }
+            if ticks % 15 == 3 { self?.refreshLoopInbox() }   // LAB-1866 · LAB-1919: loop items for Needs you
         }
         timer?.tolerance = 0.1   // LAB-1323: let the system batch wake-ups
     }
