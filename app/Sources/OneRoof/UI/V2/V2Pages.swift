@@ -70,7 +70,7 @@ struct V2SettingsPage: View {
                             "Optional local captions; nothing leaves this Mac.", "The folders One Roof reads: projects, shared rules, the kit, memory.",
                             "The bundled deck and your own Learn folders.", "Every menu shortcut, and the global hotkey.",
                             "Which build you run, and how new ones arrive.",
-                            "How much each agent may do without asking: Manual, Plan or Auto (the default)."]
+                            "How much each agent may do without asking: Manual, Plan, Auto or Full (never asks)."]
 
     var body: some View {
         let pane = min(max(controller.v2SettingsPane, 0), SettingsView.v2Panes.count - 1)

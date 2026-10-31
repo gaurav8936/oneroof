@@ -102,6 +102,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var reviewOtherFamily: Bool
     /// LAB-1600: Settings › Permissions, one mode per agent (AgentKind raw value). Missing = Auto.
     public var permissionModes: [String: PermissionMode]
+    /// LAB-1935: the owner's own flags for one agent's mode, keyed "<agent>.<mode>" (e.g. "agy.full"); missing = the
+    /// mode's standard flags. Edited in Settings › Permissions, with Reset.
+    public var permissionFlags: [String: String]
+    /// LAB-1935: one-time moves of the permission defaults already applied (1 = Antigravity to Full, 10-31).
+    public var permissionDefaultsVersion: Int
     /// The look, or nil when the panels were customised one by one.
     public var look: Look? {
         get { Look(rawValue: lookName) }
@@ -116,6 +121,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         handOffAt = 0
         reviewOtherFamily = true
         permissionModes = [:]
+        permissionFlags = [:]
+        permissionDefaultsVersion = 1
         stepReview = false
         alwaysShowComposer = false
         terminalApprovalCard = false
@@ -151,7 +158,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     /// The permission mode new sessions of `agent` start in (LAB-1600; Auto unless the owner chose another).
     public func permissionMode(for agent: AgentKind) -> PermissionMode {
-        agent.isHosted ? .manual : (permissionModes[agent.rawValue] ?? PermissionMode.defaultMode)
+        agent.isHosted ? .manual : (permissionModes[agent.rawValue] ?? PermissionMode.defaultMode(for: agent))
+    }
+
+    /// The owner's own flags for `agent` in `mode`, or nil for the mode's standard flags (LAB-1935).
+    public func permissionFlags(for agent: AgentKind, mode: PermissionMode) -> [String]? {
+        let t = (permissionFlags["\(agent.rawValue).\(mode.rawValue)"] ?? "").trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? nil : Session.parseArgs(t)
+    }
+
+    /// The flags a new `agent` session in `mode` launches with: the owner's own, else the standard ones.
+    public func effectiveFlags(for agent: AgentKind, mode: PermissionMode) -> [String] {
+        permissionFlags(for: agent, mode: mode) ?? mode.args(for: agent)
     }
 
     public func defaults(for agent: AgentKind) -> AgentDefaults {
@@ -200,6 +218,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         handOffAt = try c.decodeIfPresent(Int.self, forKey: .handOffAt) ?? 0
         reviewOtherFamily = try c.decodeIfPresent(Bool.self, forKey: .reviewOtherFamily) ?? true
         permissionModes = (try? c.decodeIfPresent([String: PermissionMode].self, forKey: .permissionModes)) ?? [:]
+        permissionFlags = (try? c.decodeIfPresent([String: String].self, forKey: .permissionFlags)) ?? [:]
+        permissionDefaultsVersion = (try? c.decodeIfPresent(Int.self, forKey: .permissionDefaultsVersion)) ?? 0
+        // LAB-1935 (owner 10-31): Antigravity moves to Full once, even where Auto was saved; a later choice stays.
+        if permissionDefaultsVersion < 1 {
+            if (permissionModes[AgentKind.agy.rawValue] ?? .auto) == .auto { permissionModes[AgentKind.agy.rawValue] = .full }
+            permissionDefaultsVersion = 1
+        }
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         learnAutoAdvance = try c.decodeIfPresent(Bool.self, forKey: .learnAutoAdvance) ?? fresh.learnAutoAdvance

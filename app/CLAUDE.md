@@ -55,7 +55,7 @@ Ship the v2 interface on top of the existing v0.1 app. **Nothing that works toda
 ## 9. Don'ts
 - Don't send keystrokes with System Events; use the in-process self-test or `scripts/ax-drive.swift`.
 - Don't remove a v0.1 menu item or shortcut (shared/SHORTCUTS.md is the contract).
-- Don't auto-merge or auto-commit anything; schedules only start runs. Sessions start in the owner's chosen permission mode per agent (Settings › Permissions: Manual · Plan · Auto), **Auto by default since 2026-10-29 (LAB-1600)**; One Roof itself never answers an agent's permission prompt. Decision: `docs/decisions/20261029_01_permission-mode-per-agent.md`.
+- Don't auto-merge or auto-commit anything; schedules only start runs. Sessions start in the owner's chosen permission mode per agent (Settings › Permissions: Manual · Plan · Auto · Full), **Auto by default since 2026-10-29 (LAB-1600); Antigravity Full by default since 2026-10-31 (LAB-1935)**, and each mode's flags are editable; One Roof itself never answers an agent's permission prompt. Decisions: `docs/decisions/20261029_01_permission-mode-per-agent.md`, `docs/decisions/20261031_01_full-permission-mode-antigravity-default.md`.
 - Don't invent agent output. Captions say "no caption yet" until there is one.
 - Don't use emoji in UI. Glyphs allowed: → ↗ ▸ ▾ ✓ ✕ ● ⏱ ⌘ ⌥ ⇧ ⌃ ↩.
 
