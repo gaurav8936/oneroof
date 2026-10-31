@@ -7,8 +7,13 @@ extension AppModel {
         guard !busy.contains(session.id) else { return }
         guard let runtime = settings.hostedRuntime,
               let id = session.hostedConnectionID,
-              let connection = settings.hostedConnections.first(where: { $0.id == id }) else {
+              let base = settings.hostedConnections.first(where: { $0.id == id }) else {
             lastError = "Choose a hosted connection in Settings › Seats & accounts, then select it for this session."
+            return
+        }
+        // LAB-1930: the session may pick any verified model of the connection's provider.
+        guard let connection = base.choosing(model: session.model) else {
+            lastError = "Choose one of the connection's verified models for this hosted session."
             return
         }
         guard session.agentArgs.isEmpty, (session.permissionMode ?? .manual) == .manual,
@@ -31,7 +36,7 @@ extension AppModel {
                       current.agent == session.agent, current.repoPath == session.repoPath,
                       current.hostedConnectionID == connection.id, current.model == connection.model,
                       self.settings.hostedRuntime == runtime,
-                      self.settings.hostedConnections.first(where: { $0.id == connection.id }) == connection else { return }
+                      self.settings.hostedConnections.resolved(id: connection.id, model: current.model) == connection else { return }
                 switch result {
                 case .failure(let error): self.lastError = String(describing: error)
                 case .success(let prepared):

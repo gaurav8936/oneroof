@@ -15,13 +15,65 @@ public enum HostedProvider: String, Codable, CaseIterable, Identifiable, Sendabl
         case .openrouter: return "https://openrouter.ai/api/v1"
         }
     }
-    public var testedModel: String {
-        switch self {
-        case .together: return "zai-org/GLM-5.3-Flash"
-        case .fireworks: return "accounts/fireworks/models/glm-5p3-flash"
-        case .openrouter: return "z-ai/glm-5.3-flash"
-        }
+    /// The default model for a new connection: the first verified one.
+    public var testedModel: String { verifiedModels.first?.id ?? "" }
+
+    /// LAB-1930 · open-weight coding models this provider serves, each checked with BOTH OpenCode and Goose through the
+    /// supervised hosted session (a reply, one real tool call, then a follow-up the agent must answer from memory).
+    /// Commercial (closed-weight) models are deliberately absent. Prices are USD per million tokens as listed on the
+    /// verified date: Together and OpenRouter from their live catalogues, Fireworks from its model pages.
+    public var verifiedModels: [HostedModel] { HostedModel.verified.filter { $0.provider == self } }
+
+    public func verifiedModel(_ id: String) -> HostedModel? { verifiedModels.first { $0.id == id } }
+}
+
+/// One verified model × provider row (LAB-1930). The kit carries the same rows (ae/hostedmodels.py); a test keeps them equal.
+public struct HostedModel: Equatable, Identifiable, Sendable {
+    public let provider: HostedProvider
+    public let id: String
+    public let displayName: String
+    public let inputPerMillion: Double
+    public let outputPerMillion: Double
+    public let verified: String
+    public let priceSource: String
+
+    public var priceLabel: String {
+        func usd(_ v: Double) -> String { v < 0.1 ? String(format: "$%.3f", v) : String(format: "$%.2f", v) }
+        return "\(usd(inputPerMillion)) / \(usd(outputPerMillion)) per M"
     }
+
+    // MODEL-LIST-BEGIN (the table in docs/help/hosted-agents.md; keep in step with the kit's ae/hostedmodels.py)
+    public static let verified: [HostedModel] = [
+        HostedModel(provider: .together, id: "zai-org/GLM-5.3-Flash", displayName: "GLM-5.3-Flash", inputPerMillion: 0.15, outputPerMillion: 0.5, verified: "2026-10-31",
+                    priceSource: "https://api.together.ai/v1/models"),
+        HostedModel(provider: .together, id: "deepseek-ai/DeepSeek-V4.1-Flash", displayName: "DeepSeek V4.1 Flash", inputPerMillion: 0.3, outputPerMillion: 1.2, verified: "2026-10-31",
+                    priceSource: "https://api.together.ai/v1/models"),
+        HostedModel(provider: .together, id: "openai/gpt-oss-120b", displayName: "gpt-oss-120b", inputPerMillion: 0.15, outputPerMillion: 0.6, verified: "2026-10-31",
+                    priceSource: "https://api.together.ai/v1/models"),
+        HostedModel(provider: .together, id: "MiniMaxAI/MiniMax-M3", displayName: "MiniMax M3", inputPerMillion: 0.3, outputPerMillion: 1.2, verified: "2026-10-31",
+                    priceSource: "https://api.together.ai/v1/models"),
+        HostedModel(provider: .fireworks, id: "accounts/fireworks/models/glm-5p3-flash", displayName: "GLM-5.3-Flash", inputPerMillion: 0.15, outputPerMillion: 0.5, verified: "2026-10-31",
+                    priceSource: "https://fireworks.ai/models/fireworks/glm-5p3-flash"),
+        HostedModel(provider: .fireworks, id: "accounts/fireworks/models/gpt-oss-120b", displayName: "gpt-oss-120b", inputPerMillion: 0.15, outputPerMillion: 0.6, verified: "2026-10-31",
+                    priceSource: "https://fireworks.ai/models/fireworks/gpt-oss-120b"),
+        HostedModel(provider: .fireworks, id: "accounts/fireworks/models/minimax-m3", displayName: "MiniMax M3", inputPerMillion: 0.3, outputPerMillion: 1.2, verified: "2026-10-31",
+                    priceSource: "https://fireworks.ai/models/fireworks/minimax-m3"),
+        HostedModel(provider: .openrouter, id: "z-ai/glm-5.3-flash", displayName: "GLM-5.3-Flash", inputPerMillion: 0.0163, outputPerMillion: 0.1479, verified: "2026-10-31",
+                    priceSource: "https://openrouter.ai/api/v1/models"),
+        HostedModel(provider: .openrouter, id: "qwen/qwen3-coder-next", displayName: "Qwen3-Coder-Next", inputPerMillion: 0.12, outputPerMillion: 0.8, verified: "2026-10-31",
+                    priceSource: "https://openrouter.ai/api/v1/models"),
+        HostedModel(provider: .openrouter, id: "moonshotai/kimi-k2.7-code", displayName: "Kimi K2.7 Code", inputPerMillion: 0.6, outputPerMillion: 3.5, verified: "2026-10-31",
+                    priceSource: "https://openrouter.ai/api/v1/models"),
+        HostedModel(provider: .openrouter, id: "deepseek/deepseek-v4.1-flash", displayName: "DeepSeek V4.1 Flash", inputPerMillion: 0.045, outputPerMillion: 0.5, verified: "2026-10-31",
+                    priceSource: "https://openrouter.ai/api/v1/models"),
+        HostedModel(provider: .openrouter, id: "openai/gpt-oss-120b", displayName: "gpt-oss-120b", inputPerMillion: 0.15, outputPerMillion: 0.6, verified: "2026-10-31",
+                    priceSource: "https://openrouter.ai/api/v1/models"),
+        HostedModel(provider: .openrouter, id: "mistralai/devstral-2512", displayName: "Devstral 2 (2512)", inputPerMillion: 0.4, outputPerMillion: 2, verified: "2026-10-31",
+                    priceSource: "https://openrouter.ai/api/v1/models"),
+        HostedModel(provider: .openrouter, id: "minimax/minimax-m3", displayName: "MiniMax M3", inputPerMillion: 0.3, outputPerMillion: 1.2, verified: "2026-10-31",
+                    priceSource: "https://openrouter.ai/api/v1/models"),
+    ]
+    // MODEL-LIST-END
 }
 
 /// References and explicit limits only. There is deliberately no API-key value property.
@@ -50,6 +102,23 @@ public struct HostedConnection: Codable, Equatable, Identifiable, Sendable {
         maxRequests = 80; maxOutputTokens = 8192; maxRequestBytes = 180000; maxTurns = 12
     }
 
+    /// Models a session on this connection may use: its own model first, then its provider's verified list (LAB-1930).
+    public var sessionModels: [String] {
+        [model] + provider.verifiedModels.map(\.id).filter { $0 != model }
+    }
+
+    /// This connection with `id` chosen for one session: same key reference, ceilings and shared ledger, that verified
+    /// model's prices. The connection's own price check (today) still gates paid work. Nil for a model the provider's
+    /// verified list does not hold.
+    public func choosing(model id: String?) -> HostedConnection? {
+        guard let id, !id.isEmpty else { return nil }
+        if id == model { return self }
+        guard let m = provider.verifiedModel(id) else { return nil }
+        var c = self
+        c.model = m.id; c.inputPerMillion = m.inputPerMillion; c.outputPerMillion = m.outputPerMillion; c.priceSource = m.priceSource
+        return c
+    }
+
     public static func today(_ now: Date = Date()) -> String {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian)
         f.timeZone = .current; f.dateFormat = "yyyy-MM-dd"
@@ -71,6 +140,13 @@ public struct HostedConnection: Codable, Equatable, Identifiable, Sendable {
         }
         if min(maxRequests, maxOutputTokens, maxRequestBytes, maxTurns) <= 0 { errors.append("Request, output, context and turn limits must be positive.") }
         return errors
+    }
+}
+
+public extension Array where Element == HostedConnection {
+    /// The saved connection `id` with the session's model chosen (LAB-1930); nil when either is unknown.
+    func resolved(id: String?, model: String?) -> HostedConnection? {
+        first(where: { $0.id == id })?.choosing(model: model)
     }
 }
 
