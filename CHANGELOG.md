@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.30 — a question at the end of a turn waits for you in Needs you (30 Oct 2026)
+
+- **Needs you shows an agent that ended its turn with a question** (LAB-1606). When Claude finishes with a plain
+  question ("Should I commit this?"), the session now waits in Needs you, marked **Asked a question**, instead of
+  showing as done. The card shows the question and a box for your answer; what you type goes to Claude as its next
+  message. Answering in the terminal works too, and either way it leaves Needs you. Sessions started before this
+  version pick it up once their agent is started again.
+
 ## 1.9.29 — the window keeps its size; the top-left lines up (30 Oct 2026)
 
 - **The window keeps the size you gave it** (LAB-1758). After every install or relaunch, a window you had set to half
