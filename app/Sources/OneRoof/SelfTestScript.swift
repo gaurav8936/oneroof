@@ -21,6 +21,7 @@ import OneRoofCore
 ///   strayfiles · togglefiles · panels   (LAB-1306: show the classic Files panel, send its × action, log panels)
 ///   dragdivider <i> <x>            (LAB-1556: drag split divider i to window x with real mouse events)
 ///   focusstep <0-3>                (LAB-1302: the window's Focus step, as ⌥⌘F steps it)
+///   theme <name>                   (LAB-1999: every panel and the centre in one theme, e.g. graphite)
 ///   resumeall [max]                (LAB-1583: Resume every catalog row that offers it, one by one → <out>-resume.tsv)
 ///   catalogsearch <q> [!]          (LAB-1585: rank sessions for <q>; " !" widens with the model → log)
 ///   railsessions                   (LAB-1576: a click on Sessions in the rail)
@@ -167,6 +168,9 @@ enum SelfTestScript {
         case "roof": RoofWindowController.show(.repo((arg as NSString).expandingTildeInPath), model: m); delay = 3
         case "centre": if let v = CentreView(rawValue: arg) { m.show(v) }
         case "settingspane": if let pane = Int(arg) { app.main.v2ShowSettings(pane: pane) }; delay = 1
+        case "theme":   // LAB-1999: one theme on every panel and the centre (daylight · graphite · midnight), for captures
+            if let th = ThemeName(stored: arg) { m.chosenThemes = PanelThemes(sidebar: th, files: th, terminal: th, plan: th, centre: th) }
+            delay = 1
         case "menu": SelfTest.invokeMenu(arg)
         case "answer":
             // LAB-1827: finished turns wait in Needs you too; answer the oldest ask, not a finished turn.
@@ -180,7 +184,7 @@ enum SelfTestScript {
         case "group": if let g = Grouping(rawValue: arg) { m.grouping = g } else { log(out, "  bad grouping") }
         case "chip": if let c = StatusChip(rawValue: arg) { app.main.win.statusFilter = c == .all ? nil : c }
         case "newsession":   // `newsession [agent]`: the sheet opens with that agent picked (LAB-1826: `newsession gemini`)
-            NewSessionSheet.selfTestMark = AgentMark(rawValue: arg)
+            NewSessionSheet.selfTestMark = SeatMark(rawValue: arg)
             app.main.newSession(); delay = 2
         case "keys":
             // Type into whatever has focus in the key window or its sheet (e.g. the New work sheet's text field).

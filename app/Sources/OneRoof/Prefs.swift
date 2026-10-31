@@ -62,6 +62,14 @@ enum Prefs {
         // Self-tests keep testing the classic window unless they ask for the new one (ONEROOF_SELFTEST_UI2=1).
         if SelfTest.isActive { st.ui2 = env["ONEROOF_SELFTEST_UI2"] == "1" }
         if let v = env["ONEROOF_SELFTEST_LOOK"], let l = Look(rawValue: v) { st.look = l }
+        // LAB-1999: ONEROOF_SELFTEST_ACCOUNTS=codex2,gemini2 lists added accounts in this run only (no folder is made).
+        if SelfTest.isActive, let v = env["ONEROOF_SELFTEST_ACCOUNTS"] {
+            for raw in v.split(separator: ",") {
+                guard let m = SeatMark(rawValue: String(raw)), m.number > 1 else { continue }
+                st.accounts.removeAll { $0.agent == m.agent && $0.number == m.number }
+                st.accounts.append(AgentAccount(agent: m.agent, number: m.number))
+            }
+        }
         return st
     }
 }

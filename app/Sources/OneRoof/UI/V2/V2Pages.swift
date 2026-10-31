@@ -65,7 +65,7 @@ struct V2SettingsPage: View {
     @ObservedObject var controller: MainWindowController
 
     static let subtitles = ["Where sessions start, what runs at startup and in the background, and how new sessions start.",
-                            "One look sets every panel at once.", "Each agent's default account, model and arguments.",
+                            "One look sets every panel at once.", "Each agent's accounts, and its default account, model and arguments.",
                             "What is worth a banner, and whether macOS lets One Roof show them.",
                             "Optional local captions; nothing leaves this Mac.", "The folders One Roof reads: projects, shared rules, the kit, memory.",
                             "The bundled deck and your own Learn folders.", "Every menu shortcut, and the global hotkey.",

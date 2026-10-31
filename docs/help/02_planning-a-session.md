@@ -61,7 +61,7 @@ The last item of each menu creates something, then starts the session on it.
 | Field | What to put there |
 |---|---|
 | What should happen | What you want done, in your words. It becomes the session's name. Empty with an issue picked: the issue's title. A project code in it (like `ENG-KNOW-03`) fills Project for you. |
-| Agent and account | One card per agent: Claude1, Claude2 (only when you have a second Claude config), Codex, Kimi, Gemini, Antigravity, and Terminal (a plain shell, no agent). Each card shows its seat use when known. **Suggested:** names the router's pick and why; **Use it** selects it. |
+| Agent and account | One card per agent account: Claude1, Claude2 (only when you have a second Claude config), Codex, Kimi, Gemini, Antigravity, OpenCode, Goose, every account you added in Settings › Seats & accounts (Codex2, Gemini3 …, after their agent), and Terminal (a plain shell, no agent). Each card shows its seat use when known. **Suggested:** names the router's pick and why; **Use it** selects it. |
 | Model | Passed to the CLI as `--model <name>`. Claude: opus, sonnet, haiku; any name works. Empty means the CLI's default. |
 | Repo | The repo the session works on, or your projects folder itself. It decides the repo label, the file browser and the branch chip. |
 | Start in | **Projects folder · one memory** (the default) or **Repo folder**. In the repo folder, Claude may ask once to trust it, and its memory is kept separately from your projects folder. |
@@ -102,5 +102,5 @@ When you are creating an issue or a project, the button says **Create issue, lau
 ## Safety built in
 
 - **Only inside your projects folder:** agents start in the projects folder or one of its repos, never anywhere else. The kit (`roof install`) can enforce the launch folder for agents you start outside One Roof too.
-- **Accounts are read from the running process,** so Claude1 and Claude2 are labelled right however the agent was started. Claude1 uses your default Claude config (`~/.claude`) and never sets `CLAUDE_CONFIG_DIR`.
+- **Accounts are read from the running process,** so Claude1, Claude2 and added accounts (Codex2, Gemini2 …) are labelled right however the agent was started. The first account of every agent uses its default folder and sets no variable (Claude1 never sets `CLAUDE_CONFIG_DIR`). See [Adding an account](07_seats-router-and-on-device-model.md#adding-an-account).
 - **Accounts never leak between sessions:** each session starts with only the account variables its own launch sets.

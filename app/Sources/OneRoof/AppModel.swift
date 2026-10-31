@@ -118,7 +118,11 @@ final class AppModel: ObservableObject {
                 || settings.localModelPath != oldValue.localModelPath { Self.applyFolders(settings) }
             if settings.learnFolders != oldValue.learnFolders { learnItems = [] }
             if !settings.dockBadge { NSApp.dockTile.badgeLabel = nil }
-            if settings.hostedRuntime != oldValue.hostedRuntime || settings.hostedConnections != oldValue.hostedConnections {
+            if settings.accounts != oldValue.accounts || settings.removedAccounts != oldValue.removedAccounts {
+                AgentAccounts.use(stored: settings.accounts, removed: settings.removedAccounts)   // LAB-1999
+            }
+            if settings.hostedRuntime != oldValue.hostedRuntime || settings.hostedConnections != oldValue.hostedConnections
+                || settings.accounts != oldValue.accounts || settings.removedAccounts != oldValue.removedAccounts {
                 refreshSeats(facts: true)
             }
             if settings.followSystemAppearance != oldValue.followSystemAppearance { applyAppearance() }
@@ -201,6 +205,7 @@ final class AppModel: ObservableObject {
         chosenThemes = chosen
         themes = chosen
         let loaded = Prefs.loadSettings()
+        AgentAccounts.use(stored: loaded.accounts, removed: loaded.removedAccounts)   // LAB-1999, before anything reads it
         settings = loaded
         Self.applyFolders(loaded)
         var openError: Error?
@@ -787,10 +792,10 @@ final class AppModel: ObservableObject {
     }
 
     /// LAB-1998: the agents the bottom bar shows, in order: set up on this Mac, minus the ones hidden in Settings.
-    var dockMarks: [AgentMark] {
+    var dockMarks: [SeatMark] {
         let usage = Set(seats.map(\.seat))
         guard let f = dockFacts else {
-            return DockSeats.order.filter { m in DockSeats.usageName(m).map(usage.contains) ?? false || m == .claude1 }
+            return DockSeats.order.map { SeatMark($0) }.filter { m in DockSeats.usageName(m).map(usage.contains) ?? false || m == .claude1 }
                 .filter { !settings.dockHidden.contains($0.rawValue) }
         }
         return DockSeats.shown(f, hidden: settings.dockHidden, usageSeats: usage)

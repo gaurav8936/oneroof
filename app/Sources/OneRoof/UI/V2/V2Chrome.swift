@@ -157,7 +157,7 @@ private struct PlaceHelp: ViewModifier {
 /// One seat in the dock: badge, then usage ("9% · 5h"), dimmed when the seat is off.
 struct V2SeatChip: View {
     @Environment(\.theme) private var t
-    let mark: AgentMark
+    let mark: SeatMark
     let usage: SeatUsage?
     var compact = false
 
@@ -170,16 +170,17 @@ struct V2SeatChip: View {
         .help(Self.help(mark, usage))
     }
 
-    static func label(_ u: SeatUsage?, mark: AgentMark? = nil) -> String {
+    static func label(_ u: SeatUsage?, mark: SeatMark? = nil) -> String {
         guard let u else { return mark.map { DockSeats.usageName($0) == nil } == true ? "ready" : "off" }
         if let f = u.fiveHour { return "\(Int(f))% · 5h" }
         if let w = u.sevenDay { return "\(Int(w))% · week" }
         return "–"
     }
 
-    static func help(_ m: AgentMark, _ u: SeatUsage?) -> String {
+    static func help(_ m: SeatMark, _ u: SeatUsage?) -> String {
+        let who = m.accountID.map { "\(m.mono) · " + AgentAccounts.label(of: $0, agent: m.agent) } ?? m.mono
         guard let u else {
-            return DockSeats.usageName(m) == nil ? "\(m.mono): set up; this agent has no usage feed" : "\(m.mono): not signed in or no usage feed"
+            return DockSeats.usageName(m) == nil ? "\(who): set up; this agent has no usage feed" : "\(who): not signed in or no usage feed"
         }
         var parts: [String] = []
         if let f = u.fiveHour { parts.append("5 h \(Int(f))%") }
@@ -192,10 +193,10 @@ struct V2SeatChip: View {
 /// LAB-1998: one list of seats for the dock, its compact line and the rail: the agents set up on this Mac, minus the
 /// ones hidden in Settings › Seats & accounts (was a fixed C1 · C2 · CX · KM · GM).
 enum V2Seats {
-    @MainActor static func marks(_ model: AppModel) -> [AgentMark] { model.dockMarks }
-    @MainActor static func usage(_ model: AppModel) -> [AgentMark: SeatUsage] {
+    @MainActor static func marks(_ model: AppModel) -> [SeatMark] { model.dockMarks }
+    @MainActor static func usage(_ model: AppModel) -> [SeatMark: SeatUsage] {
         let byName = Dictionary(model.seats.map { ($0.seat, $0) }, uniquingKeysWith: { a, _ in a })
-        var out: [AgentMark: SeatUsage] = [:]
+        var out: [SeatMark: SeatUsage] = [:]
         for m in marks(model) { if let n = DockSeats.usageName(m), let u = byName[n] { out[m] = u } }
         return out
     }
@@ -226,7 +227,7 @@ struct V2Dock: View {
 
 extension V2Dock {
     /// The dock at a narrowness level: 0 everything, 1 compact seats, 2 no Mac line, 3 status and pills only.
-    private func row(usage: [AgentMark: SeatUsage], level: Int) -> some View {
+    private func row(usage: [SeatMark: SeatUsage], level: Int) -> some View {
         HStack(spacing: level == 0 ? 14 : 10) {
             if level < 3 {
                 ForEach(V2Seats.marks(model), id: \.self) { m in
@@ -371,7 +372,7 @@ struct V2RailSeats: View {
     static let help = "Seats: usage this window — open Seats & accounts"
 
     /// "C1 12%, C2 off, …" for VoiceOver (the bars carry no text of their own).
-    static func spoken(_ marks: [AgentMark], _ usage: [AgentMark: SeatUsage]) -> String {
+    static func spoken(_ marks: [SeatMark], _ usage: [SeatMark: SeatUsage]) -> String {
         marks.map { m in usage[m].map { "\(m.mono) \(Int($0.worst ?? 0))%" } ?? "\(m.mono) off" }.joined(separator: ", ")
     }
 
