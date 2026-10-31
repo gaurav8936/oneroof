@@ -352,7 +352,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         let event = NSApp.currentEvent
         let click = Self.isControlClick(event, in: w)
         let undo = WindowZoom.undoUnasked(owner: owner, now: now, visible: w.screen?.visibleFrame, duringControlClick: click)
-        if now.size != owner.size { WindowFrameLog.write(window: win.name, from: owner, to: now, event: event, undone: undo) }
+        // LAB-1897: log only what LAB-1758 hunts (a size change during a click on our controls, or one undone). Logging
+        // every programmatic resize symbolicated a 16-frame stack and wrote a file on each step of a tile, a Zoom or
+        // the perf gesture.
+        if now.size != owner.size, click || undo { WindowFrameLog.write(window: win.name, from: owner, to: now, event: event, undone: undo) }
         guard undo else { ownerFrame = now; return }
         DispatchQueue.main.async { [weak w] in
             guard let w, w.frame != owner, !w.inLiveResize else { return }

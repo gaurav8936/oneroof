@@ -34,6 +34,10 @@ SCENARIOS = ["builder", "asker", "mixed"]
 # Who the simulated owner is per session: how soon they answer an ask (None = never: it stays in Needs you).
 PERSONAS = {"prompt": (4, 15), "slow": (40, 90), "away": None}
 
+# LAB-1924: --pretty names for public screenshots (made-up projects; no real repo or person).
+PRETTY = ["Checkout flow fixes", "Search index rebuild", "Billing webhook retries", "Docs site navigation",
+          "Flaky login test", "Release notes 2.4", "Image upload limits", "Nightly usage export", "Onboarding emails"]
+
 FOLLOW_UPS = [
     "Thanks. Now add a test for that.",
     "Looks good. What's left before we can ship?",
@@ -122,12 +126,12 @@ class Sim:
         n = 1 if self.a.real else self.a.sessions
         if self.a.real:
             self.a.turns = min(self.a.turns, 3)    # a proof run on the owner's subscription: a few turns
-        windows = ["Main", "Sim B", "Sim C"]
+        windows = ["Main", "Web", "API"] if self.a.pretty else ["Main", "Sim B", "Sim C"]
         personas = list(PERSONAS)
         for i in range(n):
             agent = "claude" if self.a.real else AGENTS[i % len(AGENTS)]
             scen = SCENARIOS[(i // len(AGENTS) + i) % len(SCENARIOS)]
-            name = f"sim-{i + 1:02d}-{agent}-{scen}"
+            name = PRETTY[i % len(PRETTY)] if self.a.pretty else f"sim-{i + 1:02d}-{agent}-{scen}"
             repo = os.path.join(root, name)
             os.makedirs(repo, exist_ok=True)
             subprocess.run(["git", "init", "-q", repo], check=False)
@@ -153,7 +157,7 @@ class Sim:
 
     def write_script(self):
         lines = ["# One Roof simulator (LAB-1591): sessions over 3 windows, then Needs you watched", "wait 4"]
-        for w in ["Main", "Sim B", "Sim C"]:
+        for w in (["Main", "Web", "API"] if self.a.pretty else ["Main", "Sim B", "Sim C"]):
             mine = [s for s in self.sessions if s["window"] == w]
             if not mine:
                 continue
@@ -174,6 +178,15 @@ class Sim:
                     lines += ["place sessions", "selectblocked", "wait 1", f"snap term-{k:04d}", "place needsYou", "wait 1"]
             lines += [f"wait {self.a.every}"]
             k += 1
+        if self.a.tour:   # LAB-1924: one capture of every place at the end, for the README and the site
+            first = self.sessions[0]["name"]
+            lines += ["activate Main", "place home", "wait 2", "snap tour-home",
+                      "place sessions", f"select {first}", "wait 2", "snap tour-sessions",
+                      "place needsYou", "wait 1", "snap tour-needs"]
+            lines += [x for i in range(4) for x in (f"needspick {i}", f"snap tour-needs-e{i}")]
+            lines += ["place work", "wait 2", "snap tour-work", "place machine", "wait 2", "snap tour-machine",
+                      "place loops", "wait 2", "snap tour-loops", "place learn", "wait 3", "snap tour-learn",
+                      "place sessions", "newsession", "wait 2", "snap tour-newsession"]
         lines += ["place sessions", "snap end-sessions", "quit"]
         self.script = os.path.join(self.run, "script.txt")
         with open(self.script, "w") as f:
@@ -333,7 +346,7 @@ class Sim:
         self.prepare()
         print(f"run folder: {self.run}\nroofd dir:  {self.roofd_dir}", flush=True)
         self.launch()
-        end = time.time() + self.a.minutes * 60 + 25
+        end = time.time() + self.a.minutes * 60 + 25 + (180 if self.a.tour else 0)   # the tour runs after the reads
         try:
             while time.time() < end and self.app.poll() is None:
                 self.poll()
@@ -465,6 +478,8 @@ def main():
     p.add_argument("--real", action="store_true", help="one real Claude session instead of stand-ins")
     p.add_argument("--model", default="haiku", help="--real: the Claude model (ANTHROPIC_MODEL)")
     p.add_argument("--out", help="run folder (default $TMPDIR/oneroof-sim-<time>)")
+    p.add_argument("--pretty", action="store_true", help="LAB-1924: realistic session and window names (screenshots)")
+    p.add_argument("--tour", action="store_true", help="LAB-1924: snap every place at the end of the run")
     p.add_argument("--each", action="store_true", help="LAB-1907: snap every open Needs you entry and a blocked terminal")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args()
