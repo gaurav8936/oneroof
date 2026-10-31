@@ -26,12 +26,27 @@ public enum V2Layout {
     }
 
     /// Session column width at a step: the width you dragged it to (kept per window), else the handover's (280 pt at
-    /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is 52 pt avatars unless the lane was
-    /// dragged wide (`focusWide`, LAB-1366).
-    public static func columnWidth(step: FocusStep, saved: Double?, focusWide: Double? = nil) -> Double {
-        if step == .focus { return focusWide.map { min(440, max(focusLaneSnapPoint, $0)) } ?? 52 }
-        if let saved, saved > 0 { return min(440, max(200, saved)) }
-        return step == .sessions ? 280 : 250
+    /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is the avatar lane (`focusLane`) unless
+    /// the lane was dragged wide (`focusWide`, LAB-1366). LAB-1783: at Sessions the column also holds the places icon
+    /// row in the toolbar above it (`sessionsColumnMin`), so the icons never run over the column's edge.
+    public static func columnWidth(step: FocusStep, saved: Double?, focusWide: Double? = nil, windowWidth: Double? = nil) -> Double {
+        if step == .focus { return focusWide.map { min(440, max(focusLaneSnapPoint, $0)) } ?? focusLane }
+        let w: Double
+        if let saved, saved > 0 { w = min(440, max(columnMin, saved)) } else { w = step == .sessions ? 280 : 250 }
+        return step == .sessions ? max(w, sessionsColumnMin(windowWidth: windowWidth)) : w
+    }
+
+    /// LAB-1783 · the avatar lane at Focus is as wide as the rail, so the window's buttons sit inside the same left
+    /// strip at every step and in every place (at 52 pt the zoom button hung over the lane's edge).
+    public static let focusLane: Double = railWidth
+
+    /// LAB-1783 · the narrowest Sessions column at step 1: up to where the toolbar's places icon row ends, plus the
+    /// gap the toolbar keeps before its next section; never so wide that the centre loses its minimum (a narrow
+    /// window keeps `columnMin`, LAB-596: the window is never grown to fit).
+    public static func sessionsColumnMin(windowWidth: Double? = nil) -> Double {
+        let want = Bar.lights + Bar.placesRow + 12
+        guard let windowWidth else { return want }
+        return max(columnMin, min(want, windowWidth - planEdge - centreMin - 4))
     }
 
     /// LAB-1366 / LAB-1382: the Focus lane's width after a drag: back to the avatars (nil) below the snap point, else
@@ -54,10 +69,11 @@ public enum V2Layout {
     /// avatars need, so text appears progressively while you drag; narrower, the avatars.
     public static func focusLaneShowsList(width: Double) -> Bool { width >= focusLaneSnapPoint }
 
-    /// LAB-1620 · where the window's first button goes so all three sit inside the rail (zoom button 4 pt clear of its
-    /// edge), never closer than 8 pt to the window's corner.
+    /// LAB-1620 · where the window's first button goes so all three sit inside the rail (or the Focus lane, as wide)
+    /// instead of straddling its edge.
     public static func trafficLightsStart(rail: Double, gap: Double, button: Double) -> Double {
-        max(8, rail - 4 - button - 2 * gap)
+        // LAB-1783: centred in the strip (6 pt each side at macOS's spacing), the same spot at every step and place.
+        max(6, ((rail - button - 2 * gap) / 2).rounded())
     }
 
     /// LAB-1363: whether the terminal shows "Current ↓": scrolled up from the live bottom (libghostty has reported
@@ -107,7 +123,7 @@ public enum V2Layout {
         switch step {
         case .full, .wide: return railWidth + columnMin + planEdge + centreMin + 4
         case .sessions: return columnMin + planEdge + centreMin + 4
-        case .focus: return 52 + centreMin + 4
+        case .focus: return focusLane + centreMin + 4
         }
     }
 
@@ -129,18 +145,28 @@ public enum V2Layout {
     public enum Bar {
         public static let layout: Double = 140, stepFull: Double = 136, stepShort: Double = 102, new: Double = 86
         public static let gap: Double = 10, trailing: Double = 14, titleLead: Double = 8, slack: Double = 16
+        /// The centre's content (tabs, page headings) starts this far in from its left edge.
+        public static let contentLead: Double = 20
         /// After the column's tracking separator the toolbar starts its next item this far in.
         public static let sectionLead: Double = 32
-        /// The traffic lights; the icon row (step 1) starts after them.
-        public static let lights: Double = 84
-        /// The places icon row: 4 + 7 × 26 + 6 × 2 and the item's own gap.
-        public static let placesRow: Double = 208
+        /// Where macOS starts the first toolbar item, after the traffic lights' reserved room (measured, 1.9.28:
+        /// 91 pt whatever the buttons' own position); the icon row (step 1) starts here.
+        public static let lights: Double = 91
+        /// The places icon row: 4 + 7 × 26 + 6 × 2 (measured 198 pt, 1.9.28).
+        public static let placesRow: Double = 198
     }
 
     /// Where the toolbar's centre section starts: after the column's divider, or after the traffic lights and the
     /// icon row when they reach further.
     public static func toolbarStart(divider: Double, placesRow: Bool) -> Double {
         max(divider, Bar.lights + (placesRow ? Bar.placesRow : 0)) + Bar.sectionLead
+    }
+
+    /// LAB-1783 · the title item's text sits `Bar.titleLead` in from the item, and should start `Bar.contentLead` in
+    /// from the centre's left edge, as the centre's tabs and page headings do. A leftward shift only: where macOS
+    /// puts the item further right (after the window buttons' room) the text is drawn back to that edge.
+    public static func titleShift(itemX: Double, centreX: Double) -> Double {
+        min(0, (centreX + Bar.contentLead) - (itemX + Bar.titleLead))
     }
 
     /// `room`: the width from the centre section's start to the window's right edge; `extras`: the Learn player /

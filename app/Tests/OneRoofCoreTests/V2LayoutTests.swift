@@ -31,22 +31,41 @@ final class V2LayoutTests: XCTestCase {
     }
 
     func testColumnWidthUsesTheDraggedWidthWithinLimits() {
-        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: nil), 280)
+        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: nil), V2Layout.sessionsColumnMin())   // LAB-1783: 280 is under the icon row
         XCTAssertEqual(V2Layout.columnWidth(step: .full, saved: nil), 250)
         XCTAssertEqual(V2Layout.columnWidth(step: .wide, saved: nil), 250)
         XCTAssertEqual(V2Layout.columnWidth(step: .full, saved: 320), 320)
         XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 900), 440)
-        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 120), 200)
-        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320), 52)
+        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 120), V2Layout.sessionsColumnMin())   // LAB-1783
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320), V2Layout.focusLane)
+    }
+
+    /// LAB-1783: at Sessions the column reaches past the toolbar's icon row (it ends at 91 + 198 pt), unless the
+    /// window is too narrow to keep the centre's minimum; the window is never grown for it.
+    func test_LAB1783_sessionsColumnHoldsThePlacesRow() {
+        XCTAssertGreaterThanOrEqual(V2Layout.sessionsColumnMin(), V2Layout.Bar.lights + V2Layout.Bar.placesRow + 8)
+        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 200, windowWidth: 1500), V2Layout.sessionsColumnMin())
+        XCTAssertEqual(V2Layout.columnWidth(step: .full, saved: 200, windowWidth: 1500), 200, "only step 1 has the icon row")
+        let narrow = V2Layout.columnWidth(step: .sessions, saved: 200, windowWidth: V2Layout.minWindowWidth)
+        XCTAssertLessThanOrEqual(narrow + V2Layout.planEdge + V2Layout.centreMin + 4, max(V2Layout.minWindowWidth, V2Layout.columnMin + V2Layout.planEdge + V2Layout.centreMin + 4))
+        XCTAssertGreaterThanOrEqual(narrow, V2Layout.columnMin)
+    }
+
+    /// LAB-1783: the title text lines up with the centre's content; it moves left only (1.9.28 measures).
+    func test_LAB1783_titleLinesUpWithTheCentre() {
+        XCTAssertEqual(V2Layout.titleShift(itemX: 281, centreX: 269), 0, "Full: already there")
+        XCTAssertEqual(V2Layout.titleShift(itemX: 315, centreX: 303), 0, "Sessions")
+        XCTAssertEqual(V2Layout.titleShift(itemX: 100, centreX: 68), -20, "Focus lane / rail: drawn back to the centre")
+        XCTAssertEqual(V2Layout.titleShift(itemX: 100, centreX: 200), 0, "never to the right")
     }
 
     /// LAB-1366: at Focus the avatar lane can be dragged wide to show the full list; its own width, kept apart from
     /// the other steps' column width; narrow again snaps back to the 52 pt avatars.
     func test_LAB1366_focusLaneWidensAndSnapsBack() {
-        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: nil), 52)
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: nil), V2Layout.focusLane)
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: 260), 260)
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: nil, focusWide: 900), 440)
-        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 300, focusWide: 260), 300, "other steps keep theirs")
+        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 360, focusWide: 260), 360, "other steps keep theirs")
         XCTAssertNil(V2Layout.focusLaneSnap(dragged: 52))
         XCTAssertNil(V2Layout.focusLaneSnap(dragged: 109))
         XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 700), 440)

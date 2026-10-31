@@ -54,6 +54,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     @Published var v2PlanEdge = false
     /// What the toolbar right of the column has room for (LAB-1237), from the window and column widths.
     @Published var v2Bar = V2Layout.toolbarFit(room: 1400)
+    /// LAB-1783 · how far left the title draws so its text lines up with the centre's content (0 when the toolbar
+    /// already puts it there; macOS starts toolbar items no earlier than 91 pt, right of the rail and the Focus lane).
+    @Published var v2TitleShift: CGFloat = 0
     /// The last Plan-fits answer at Full, so a window resize re-lays the columns out only when it crosses it (LAB-831).
     var v2PlanFitsLast: Bool?
     /// LAB-1337: the layout v2ApplyLayout last put in place (target + the split's state after it).
@@ -112,8 +115,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         // ever saved: every launch opened each window at the first-launch default (1700 × 1000, cascaded), and a
         // window tiled to half the screen fell back to that size when macOS untiled it. Cascading stays ours (below).
         shouldCascadeWindows = false
-        // Tests and fresh profiles never read or write the owner's saved layout.
-        if !SelfTest.isActive && !Prefs.freshProfile { windowFrameAutosaveName = autosave }
         window.delegate = self
         Self.all.append(self)
 
@@ -225,6 +226,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             let shift = CGFloat(Self.all.count - 1) * 28
             window.setFrame(NSRect(x: v.midX - size.width / 2 + shift, y: v.midY - size.height / 2 - shift, width: size.width, height: size.height), display: false)
         }
+        // LAB-1758: the frame is saved only from here on. Named before the content was set (1.9.27 and before), the
+        // window's squeeze to its content's smallest size (600 × 584, then 870 wide) was saved over your frame at once,
+        // and the line above read that back: every launch and install opened a small box in the screen's corner.
+        // Tests and fresh profiles never read or write the owner's saved layout.
+        if !SelfTest.isActive && !Prefs.freshProfile { windowFrameAutosaveName = autosave }
+        ownerFrame = window.frame
         // Default widths (WINDOW_SHELL §3) when there is no saved layout: Sessions 300 · Plan 330.
         let saved = !SelfTest.isActive && !Prefs.freshProfile && UserDefaults.standard.object(forKey: "NSSplitView Subview Frames " + (split.splitView.autosaveName ?? "")) != nil
         if !saved && !isV2 {
@@ -296,6 +303,46 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     static func isTitleBarDoubleClick(_ e: NSEvent?, in window: NSWindow) -> Bool {
         guard let e, e.window === window, [.leftMouseDown, .leftMouseUp].contains(e.type), e.clickCount >= 2 else { return false }
         return true
+    }
+
+    // MARK: LAB-1758 · the window keeps the frame you gave it
+
+    /// The frame you last gave the window (a resize, a move, a tile, the green button, Window › Zoom) or it opened at.
+    private var ownerFrame: NSRect?
+
+    func windowDidResize(_ notification: Notification) { frameChanged() }
+    func windowDidMove(_ notification: Notification) { frameChanged() }
+    func windowDidEndLiveResize(_ notification: Notification) { ownerFrame = window?.frame }
+    func windowDidExitFullScreen(_ notification: Notification) { ownerFrame = window?.frame }
+
+    /// A frame change while a click on one of our controls is handled was not yours: logged with what caused it, and
+    /// undone when it made the window smaller (WindowZoom.undoUnasked). Anything else becomes the frame to keep.
+    private func frameChanged() {
+        guard let w = window, !w.inLiveResize, !w.styleMask.contains(.fullScreen) else { return }
+        let now = w.frame
+        guard let owner = ownerFrame, owner != now else { return }   // nil while the window is being built
+        let event = NSApp.currentEvent
+        let click = Self.isControlClick(event, in: w)
+        let undo = WindowZoom.undoUnasked(owner: owner, now: now, visible: w.screen?.visibleFrame, duringControlClick: click)
+        if now.size != owner.size { WindowFrameLog.write(window: win.name, from: owner, to: now, event: event, undone: undo) }
+        guard undo else { ownerFrame = now; return }
+        DispatchQueue.main.async { [weak w] in
+            guard let w, w.frame != owner, !w.inLiveResize else { return }
+            w.setFrame(owner, display: true)
+        }
+    }
+
+    /// A mouse click inside the window's content (the rail, a column, a page) or on a toolbar item, being handled now:
+    /// never a drag of the title bar (the toolbar's empty space), a menu or a key. `currentEvent` stays the last event
+    /// until the next one, so a click more than a second old is not the cause (a self-test's resizes after a drag).
+    static func isControlClick(_ e: NSEvent?, in window: NSWindow) -> Bool {
+        guard let e, e.window === window, ProcessInfo.processInfo.systemUptime - e.timestamp < 1,
+              [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp].contains(e.type) else { return false }
+        if e.locationInWindow.y < window.contentLayoutRect.maxY { return true }
+        return (window.toolbar?.items ?? []).contains { i in
+            guard let v = i.view, v.window === window, !v.isHiddenOrHasHiddenAncestor, v.frame.width > 2 else { return false }
+            return v.convert(v.bounds, to: nil).contains(e.locationInWindow)
+        }
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -738,3 +785,29 @@ final class RoofSplitViewController: NSSplitViewController {
     }
 }
 
+/// LAB-1758 · every change of a main window's size you did not make by dragging its edge, with the event being handled
+/// and the code that did it, in ~/Library/Logs/One Roof/window-frames.log (kept under 256 KB). A self-test writes
+/// next to its other output instead.
+enum WindowFrameLog {
+    static func write(window: String, from: NSRect, to: NSRect, event: NSEvent?, undone: Bool) {
+        let path: String
+        if let out = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_OUT"] { path = out + "-frames.log" }
+        else if SelfTest.isActive { return }
+        else {
+            let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/One Roof")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            path = dir.appendingPathComponent("window-frames.log").path
+        }
+        if let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int, size > 256_000 {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        let r = { (f: NSRect) in "\(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))×\(Int(f.height))" }
+        let ev = event.map { "\($0.type.rawValue) at \(Int($0.locationInWindow.x)),\(Int($0.locationInWindow.y)) in \($0.window?.title ?? "-")" } ?? "none"
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        var text = "\(stamp) \(version) [\(window)] \(r(from)) → \(r(to))\(undone ? " UNDONE" : "") · event \(ev)\n"
+        text += Thread.callStackSymbols.dropFirst(2).prefix(16).map { "    " + $0 }.joined(separator: "\n") + "\n"
+        if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(Data(text.utf8)); h.closeFile() }
+        else { try? text.write(toFile: path, atomically: true, encoding: .utf8) }
+    }
+}

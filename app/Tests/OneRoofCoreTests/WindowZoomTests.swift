@@ -51,4 +51,17 @@ final class ToolbarSlotTests: XCTestCase {
         XCTAssertLessThan(ToolbarSlot.workspace.keepRank, ToolbarSlot.switcher.keepRank)
         XCTAssertLessThan(ToolbarSlot.search.keepRank, ToolbarSlot.workspace.keepRank)
     }
+
+    /// LAB-1758: a click on a control that shrinks a half-screen window is undone; nothing else is.
+    func test_LAB1758_clickNeverShrinksTheWindow() {
+        let screen = CGRect(x: 0, y: 0, width: 3440, height: 1415)
+        let half = CGRect(x: 0, y: 0, width: 1720, height: 1415)
+        let box = CGRect(x: 0, y: 805, width: 870, height: 610)
+        XCTAssertTrue(WindowZoom.undoUnasked(owner: half, now: box, visible: screen, duringControlClick: true))
+        XCTAssertFalse(WindowZoom.undoUnasked(owner: half, now: box, visible: screen, duringControlClick: false), "drag, menu, keys, green button")
+        XCTAssertFalse(WindowZoom.undoUnasked(owner: half, now: half.insetBy(dx: -10, dy: 0), visible: screen, duringControlClick: true), "growing is not undone")
+        XCTAssertFalse(WindowZoom.undoUnasked(owner: half, now: half.offsetBy(dx: 30, dy: 0), visible: screen, duringControlClick: true), "a move is not a shrink")
+        XCTAssertFalse(WindowZoom.undoUnasked(owner: half, now: box, visible: CGRect(x: 0, y: 0, width: 1512, height: 944), duringControlClick: true),
+                       "the old frame no longer fits the screen (display changed)")
+    }
 }
