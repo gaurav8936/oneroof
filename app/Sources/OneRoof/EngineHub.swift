@@ -115,8 +115,19 @@ final class EngineHub {
                     }
                     if s.status == .exited || s.status == .done { claims.endSession(sessionId: s.id) }
                 }
-                if s.status == .needsYou { buildDecision(s, now: now); changed = true }
+                if s.status == .needsYou {
+                    // LAB-1827: a finished turn waiting for you gives way to the prompt.
+                    if let open = openDecision[s.id], decisions.first(where: { $0.id == open })?.isFinished == true { closeDecision(open, answeredInTerminal: true) }
+                    buildDecision(s, now: now); changed = true
+                }
                 else if old == .needsYou, let open = openDecision[s.id] { closeDecision(open, answeredInTerminal: true); changed = true }
+                if s.status == .done, old != nil, s.agent.isAgent { buildFinished(s, now: now); changed = true }
+            }
+            // LAB-1827: a finished turn stays in Needs you until you reply (here or in the terminal: it works again),
+            // close the session or set it aside. Looking at it (Ready → Idle) does not remove it.
+            if [.running, .exited, .doNotUse].contains(s.status), let open = openDecision[s.id],
+               decisions.first(where: { $0.id == open })?.isFinished == true {
+                closeDecision(open, answeredInTerminal: true); changed = true
             }
             if let r = s.revision, revisions[s.id] != r {
                 if revisions[s.id] != nil || old == nil { scheduler.noteOutput(s.id, at: now) }
@@ -243,6 +254,28 @@ final class EngineHub {
         }
     }
 
+    /// LAB-1827: the agent finished its turn: Needs you shows what it said last, with a reply box, Close and Set aside.
+    private func buildFinished(_ s: Live, now: Date) {
+        guard openDecision[s.id] == nil else { return }
+        let d = Decision.finished(sessionId: s.id, agent: s.agent, said: DecisionBuilder.lastWords(text(s, lines: 120)), repo: s.repoPath, now: now)
+        decisions.append(d)
+        openDecision[s.id] = d.id
+        store?.save(d)
+    }
+
+    /// LAB-1827: "Nothing more for now": the finished turn leaves Needs you; the session stays open.
+    func setAside(_ d: Decision) {
+        q.async { [weak self] in
+            guard let self, let i = self.decisions.firstIndex(where: { $0.id == d.id }), self.decisions[i].answer == nil else { return }
+            self.decisions[i].answer = .reply
+            self.decisions[i].answeredAt = Date()
+            self.decisions[i].replyText = "set aside"
+            self.store?.answer(decision: d.id, .reply, reply: "set aside")
+            if self.openDecision[d.sessionId] == d.id { self.openDecision[d.sessionId] = nil }
+            self.publishAll()
+        }
+    }
+
     private func closeDecision(_ id: UUID, answeredInTerminal: Bool) {
         guard let i = decisions.firstIndex(where: { $0.id == id }) else { return }
         if decisions[i].answer == nil {
@@ -255,13 +288,21 @@ final class EngineHub {
     }
 
     /// Answer a decision: the agent's own keys via the runtime (y / a / n or the CLI's numbers; Esc then text for Reply).
-    func answer(_ d: Decision, _ a: Answer, reply: String? = nil, pane: String?) {
+    /// LAB-1607: `choice` picks one of a question's own answers (its number); a reply then goes through "Type something.".
+    func answer(_ d: Decision, _ a: Answer, reply: String? = nil, choice: DecisionChoice? = nil, pane: String?) {
         q.async { [weak self] in
             guard let self, let pane else { return }
-            let keys = d.isQuestion ? AnswerKeys.reply(reply)
-                : AnswerKeys.keys(for: a, prompt: self.prompts[d.sessionId], agent: d.agent, reply: reply)
+            // LAB-1606: a question at the end of a turn is answered with a reply; LAB-1607: a question menu's own choice.
+            let keys = d.isMenu && a == .deny && choice == nil ? AnswerKeys.cancelMenu
+                : d.isQuestion || d.isFinished ? AnswerKeys.reply(reply)
+                : d.choices.flatMap { AnswerKeys.choose(choice, from: $0, reply: reply) }
+                    ?? AnswerKeys.keys(for: a, prompt: self.prompts[d.sessionId], agent: d.agent, reply: reply)
             // Unsupported native prompts remain unanswered and visible for manual terminal handling.
             guard !keys.sends.isEmpty else { return }
+            let reply = choice.map { c in c.freeText ? reply ?? c.label : c.label } ?? reply
+            // LAB-1839: a picked option is recorded as what it means (allow once, always, deny), so history and
+            // always-allow rules keep working with the prompt's own buttons.
+            let a = d.isMenu ? a : choice.map(\.meaning).flatMap { $0 == .reply ? nil : $0 } ?? a
             for k in keys.sends {
                 switch k {
                 case AnswerKeys.escape, "esc": try? self.runtime.keys(pane: pane, [.escape])
@@ -418,11 +459,21 @@ final class EngineHub {
 extension Decision {
     /// A blocked session whose prompt no matcher recognises: still a decision, with the question line and no guess.
     static func fallback(sessionId: String, agent: AgentKind, text: String, repo: String, now: Date) -> Decision {
-        let question = DecisionBuilder.fallbackQuestion(text)
+        let menu = DecisionMatcher.questionMenu(text)   // LAB-1607: a question's own choices, when it has them
+        let question = menu?.question ?? DecisionBuilder.fallbackQuestion(text)
+        // LAB-1825: a menu is not a permission: no risk; a note in plain words when its choice cannot work.
+        let touches = menu.map { $0.note ?? "A question: nothing runs until you pick an answer or type your own." } ?? DecisionBuilder.unreadPrompt
         return Decision(sessionId: sessionId, agent: agent, kind: .other, why: DecisionBuilder.noWhy, whyMissing: true,
-                        touches: DecisionBuilder.unreadPrompt,
-                        risk: .high, ifNo: "The agent keeps waiting; it does nothing until you answer.",
-                        pattern: "ask:" + question, repo: Workspace.repoLabel(for: repo), askedAt: now)
+                        touches: touches, risk: menu == nil ? .high : .low, ifNo: "The agent keeps waiting; it does nothing until you answer.",
+                        pattern: "ask:" + question, repo: Workspace.repoLabel(for: repo), askedAt: now, choices: menu?.choices,
+                        screen: menu?.screen)
+    }
+
+    /// LAB-1827 · the agent finished its turn: what it said last; reply to continue, close, or set it aside.
+    static func finished(sessionId: String, agent: AgentKind, said: String?, repo: String, now: Date) -> Decision {
+        Decision(sessionId: sessionId, agent: agent, kind: .other, why: said ?? "\(agent.displayName) finished its turn.", whyMissing: said == nil,
+                 touches: "Nothing: the turn is over.", risk: .low, ifNo: "The session stays open and waits.",
+                 pattern: Decision.finishedPrefix + (said.map { CaptionEngine.clip($0, 80) } ?? ""), repo: Workspace.repoLabel(for: repo), askedAt: now)
     }
 
     /// LAB-1606 · a turn that ended with a plain-text question: the card shows the question and a reply box.
@@ -435,6 +486,7 @@ extension Decision {
     /// What the card says: the engine's title, or the agent's own question when the prompt was not recognised.
     var headline: String {
         if isQuestion { return "\(agent.displayName) asked: " + pattern.dropFirst(Decision.questionPrefix.count) }
+        if isFinished { return "\(agent.displayName) finished · waiting for you" }
         if pattern.hasPrefix("ask:") { return "\(agent.displayName) is asking: " + pattern.dropFirst(4) }
         return title
     }

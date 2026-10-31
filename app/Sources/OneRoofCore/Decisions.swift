@@ -53,15 +53,23 @@ public struct Decision: Codable, Equatable, Identifiable, Sendable {
     public var answeredAt: Date?
     public var answer: Answer?
     public var replyText: String?
+    /// LAB-1607: a question's own answer choices (Claude's AskUserQuestion menu); the card offers these instead of
+    /// Allow once / Deny. Nil for a permission prompt. Not stored (open decisions live in memory).
+    public var choices: [DecisionChoice]?
+    /// LAB-1907: the prompt as the agent draws it (question and its options, bottom of its screen), for Needs you,
+    /// which has no terminal. Not stored.
+    public var screen: [String]?
 
     public init(id: UUID = UUID(), sessionId: String, agent: AgentKind, kind: DecisionKind, command: String? = nil, path: String? = nil,
                 planId: UUID? = nil, why: String, whySource: CaptionSource = .heuristic, whyMissing: Bool = false, touches: String,
                 risk: Risk, ifNo: String, where_: String = "", history: DecisionHistory = DecisionHistory(), pattern: String,
-                repo: String, askedAt: Date = Date(), answeredAt: Date? = nil, answer: Answer? = nil, replyText: String? = nil) {
+                repo: String, askedAt: Date = Date(), answeredAt: Date? = nil, answer: Answer? = nil, replyText: String? = nil,
+                choices: [DecisionChoice]? = nil, screen: [String]? = nil) {
         self.id = id; self.sessionId = sessionId; self.agent = agent; self.kind = kind; self.command = command; self.path = path
         self.planId = planId; self.why = why; self.whySource = whySource; self.whyMissing = whyMissing; self.touches = touches
         self.risk = risk; self.ifNo = ifNo; self.where_ = where_; self.history = history; self.pattern = pattern; self.repo = repo
         self.askedAt = askedAt; self.answeredAt = answeredAt; self.answer = answer; self.replyText = replyText
+        self.choices = choices; self.screen = screen
     }
 
     public var isOpen: Bool { answer == nil }
@@ -69,6 +77,14 @@ public struct Decision: Codable, Equatable, Identifiable, Sendable {
     /// LAB-1606: the agent ended its turn with a question ("asked a question"), not a permission prompt.
     public static let questionPrefix = "asked:"
     public var isQuestion: Bool { pattern.hasPrefix(Self.questionPrefix) }
+
+    /// LAB-1827: the agent finished its turn and waits for you (reply to continue, close, or set it aside).
+    public static let finishedPrefix = "finished:"
+    public var isFinished: Bool { pattern.hasPrefix(Self.finishedPrefix) }
+
+    /// LAB-1607 / LAB-1825: a menu (a question with its own numbered answers, a sign-in menu), not a permission ask:
+    /// no risk, no Allow / Deny.
+    public var isMenu: Bool { pattern.hasPrefix("ask:") && choices?.isEmpty == false }
 
     /// "Claude wants to run swift test".
     public var title: String {
@@ -94,6 +110,47 @@ public struct DecisionRule: Codable, Equatable, Identifiable, Sendable {
         self.id = id; self.pattern = pattern; self.repo = repo; self.createdAt = createdAt
     }
     public func matches(_ d: Decision) -> Bool { d.pattern == pattern && d.repo == repo }
+}
+
+/// LAB-1607: one of a question's own answers: its label and the key that picks it (the option number).
+public struct DecisionChoice: Codable, Equatable, Sendable {
+    public var label: String
+    public var key: String
+    /// The "Type something." choice: picking it lets you type your own answer.
+    public var freeText: Bool
+    public init(label: String, key: String, freeText: Bool = false) { self.label = label; self.key = key; self.freeText = freeText }
+
+    /// LAB-1839: one choice per option of a permission prompt, in its order and words. "No, and tell Claude what to
+    /// do differently" / "Reject with feedback" take your own words (free text).
+    public static func from(_ options: [PromptMatch.Option]) -> [DecisionChoice] {
+        options.map { o in
+            let l = o.label.lowercased()
+            let free = l.contains("what to do") || l.contains("with feedback") || l.contains("tell the agent") || l.hasPrefix("type something")
+            return DecisionChoice(label: o.label, key: o.key, freeText: free)
+        }
+    }
+
+    /// What picking it means for history and rules: allow once, always, deny (or a plain reply for a menu answer).
+    public var meaning: Answer {
+        let l = label.lowercased()
+        if ["don't ask again", "always", "allow all", "for this session", "auto-accept"].contains(where: { l.contains($0) }) { return .always }
+        if l.hasPrefix("no") || l.hasPrefix("deny") || l.hasPrefix("reject") || l.hasPrefix("cancel") || key == "\u{1B}" { return .deny }
+        if l.hasPrefix("yes") || l.hasPrefix("allow") || l.hasPrefix("approve") || l.hasPrefix("proceed") { return .allowOnce }
+        return .reply
+    }
+
+    /// True when One Roof can press it (OpenCode's allow options can only be picked in its own terminal).
+    public var pressable: Bool { !key.isEmpty }
+}
+
+/// LAB-1607: a question menu read off the terminal: the question and its numbered choices.
+public struct QuestionMenu: Equatable, Sendable {
+    public var question: String
+    public var choices: [DecisionChoice]
+    /// LAB-1907: the menu as drawn (question to last choice and its footer).
+    public var screen: [String] = []
+    /// LAB-1825: a plain-words note when the screen says the choice will not work (Gemini's refused sign-in).
+    public var note: String?
 }
 
 // MARK: - Reading the prompt
@@ -331,6 +388,62 @@ public enum DecisionMatcher {
         let first = body.first?.trimmingCharacters(in: CharacterSet(charactersIn: "` "))
         if m.ask == .command { m.command = first } else { m.path = first }
         return m
+    }
+
+    /// LAB-1607: a question menu (Claude's AskUserQuestion): the last run of numbered choices "1. … 2. … n." at the
+    /// bottom of the screen (each may have a description line under it), and the question above it. Nil when there is
+    /// no such run of at least two choices, or when the agent kept writing after it (a stale menu).
+    public static func questionMenu(_ text: String) -> QuestionMenu? {
+        let all = TerminalText.lines(text)
+        let lines = Array(all.suffix(80)).map(TerminalText.unboxed)
+        guard let last = lines.lastIndex(where: isOption) else { return nil }
+        let after = lines[(last + 1)...].filter { !$0.isEmpty && !TerminalText.isChrome($0) }
+        guard after.count <= 4 else { return nil }
+        func number(_ l: String) -> Int? {
+            Int(l.replacingOccurrences(of: #"^[❯›>●▸]?\s*"#, with: "", options: .regularExpression).prefix { $0.isNumber })
+        }
+        // Walk up from the last choice: n, n-1, …, 1; other lines between them are descriptions or separators.
+        var picked: [(Int, String)] = []
+        var want = number(lines[last]) ?? 0
+        var i = last
+        var first = last
+        while i >= 0, want >= 1 {
+            let l = lines[i]
+            if isOption(l) {
+                guard number(l) == want else { return nil }
+                picked.append((want, l)); first = i; want -= 1
+            }
+            i -= 1
+        }
+        guard want == 0, picked.count >= 2 else { return nil }
+        let above = lines[..<first].filter { !$0.isEmpty && !TerminalText.isChrome($0) && !isOption($0) }
+        let question = above.last { $0.contains("?") } ?? above.last ?? "The agent is asking you"
+        let choices = picked.reversed().map { n, l -> DecisionChoice in
+            let s = l.replacingOccurrences(of: #"^[❯›>●▸]?\s*\d+\.\s*"#, with: "", options: .regularExpression)
+            let label = s.trimmingCharacters(in: .whitespaces)
+            let low = label.lowercased()
+            return DecisionChoice(label: label, key: String(n), freeText: low.hasPrefix("type something") || low == "other")
+        }
+        let qIndex = lines[..<first].lastIndex { $0.contains("?") && !isOption($0) } ?? first
+        let drawn = lines[qIndex...].filter { !$0.isEmpty && !TerminalText.isChrome($0) }
+        return QuestionMenu(question: String(question.prefix(400)), choices: choices, screen: Array(drawn.prefix(24)),
+                            note: signInNote(lines))
+    }
+
+    /// LAB-1825: Gemini CLI refuses personal Google sign-in since 2026-06-18 ("This client is no longer supported for
+    /// Gemini Code Assist for individuals"): picking "Sign in with Google" brings the same menu back.
+    public static let geminiSignInRefused = "Google no longer lets personal accounts sign in to Gemini CLI, so \u{201C}Sign in with Google\u{201D} brings this menu back. Use a Gemini API key (or Vertex AI), or run Antigravity instead."
+
+    static func signInNote(_ lines: [String]) -> String? {
+        lines.contains { $0.localizedCaseInsensitiveContains("no longer supported") && ($0.localizedCaseInsensitiveContains("gemini") || $0.localizedCaseInsensitiveContains("client")) }
+            ? geminiSignInRefused : nil
+    }
+
+    /// LAB-1907: a permission prompt as drawn: from its first line to the bottom of the screen (at most 24 lines).
+    public static func screen(_ text: String, from m: PromptMatch) -> [String] {
+        let all = TerminalText.lines(text).map(TerminalText.unboxed)
+        guard m.startLine < all.count else { return [] }
+        return Array(all[m.startLine...].filter { !$0.isEmpty && !TerminalText.isChrome($0) }.prefix(24))
     }
 
     static func isOption(_ l: String) -> Bool {
@@ -746,7 +859,37 @@ public enum DecisionBuilder {
                         whySource: .heuristic, whyMissing: why == nil, touches: touchText, risk: risk(kind: kind, touches: touches),
                         ifNo: ifNo(kind: kind, isTest: touches?.isTest ?? false, step: c.step, agent: c.agent),
                         where_: whereText(c), history: history(c.past, pattern: pattern, repo: repo, now: c.now),
-                        pattern: pattern, repo: repo, askedAt: c.now)
+                        pattern: pattern, repo: repo, askedAt: c.now,
+                        choices: m.options.isEmpty ? nil : DecisionChoice.from(m.options),
+                        screen: DecisionMatcher.screen(c.terminalText, from: m))
+    }
+
+    /// LAB-1827: what the agent said last before it finished its turn (its final message, at most 4 sentences).
+    public static func lastWords(_ text: String) -> String? {
+        guard let msg = CaptionEngine.assistantMessages(in: TerminalText.lines(text)).last ?? replyAtBottom(text) else { return nil }
+        let s = CaptionEngine.sentences(msg).suffix(4).joined(separator: " ")
+        return s.isEmpty ? nil : String(s.prefix(600))
+    }
+
+    /// LAB-1827: the reply at the bottom of a screen without Claude/Codex markers (Goose, OpenCode, …): walking up from
+    /// the bottom, skip the input box, status and progress lines; the reply is the lines above them, up to the
+    /// previous prompt you typed ("> …" or OpenCode's "┃ …"). At most 6 lines.
+    static func replyAtBottom(_ text: String) -> String? {
+        let noise: (String) -> Bool = { l in
+            l.isEmpty || TerminalText.isChrome(l) || l.hasPrefix("⏱") || l.hasPrefix("▣") || l.hasPrefix("+ Thought") || l.hasPrefix("╹")
+                || l.localizedCaseInsensitiveContains("ctrl+") || l.contains("Enter to send")
+                || l.contains("╌") || l.contains("━") || l.contains("▀")
+        }
+        let typed: (String) -> Bool = { $0.hasPrefix(">") || $0.hasPrefix("┃") || $0.hasPrefix("❯") }
+        var reply: [String] = []
+        for raw in TerminalText.lines(text).suffix(80).reversed() {
+            let l = raw.trimmingCharacters(in: .whitespaces)
+            if typed(l) { if reply.isEmpty { continue } else { break } }
+            if noise(l) { if reply.isEmpty { continue } else { continue } }
+            reply.insert(l, at: 0)
+            if reply.count == 6 { break }
+        }
+        return reply.isEmpty ? nil : reply.joined(separator: " ")
     }
 
     /// A plan approval from the objectives runner.
@@ -883,6 +1026,17 @@ public struct AnswerKeys: Equatable, Sendable {
         case .opencode, .goose: return ("", nil, "")
         case .shell: return ("y", nil, "n")
         }
+    }
+
+    /// Cancel a menu: Esc, for every agent (a menu has no "deny" key of its own).
+    public static let cancelMenu = AnswerKeys(sends: [escape], exact: true)
+
+    /// LAB-1607: the keys for a question's own choice: its number; for "Type something." with text, the number, the
+    /// text and Return. Reply text without a picked choice goes through the free-text choice when the menu has one.
+    public static func choose(_ choice: DecisionChoice?, from choices: [DecisionChoice], reply: String? = nil) -> AnswerKeys? {
+        let text = (reply ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let c = choice ?? (text.isEmpty ? nil : choices.first(where: \.freeText)), c.pressable else { return nil }
+        return AnswerKeys(sends: c.freeText && !text.isEmpty ? [c.key, text, "\r"] : [c.key], exact: true)
     }
 
     /// The agent's interrupt: Esc for Claude, Ctrl-C otherwise.

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.9.33 — Needs you shows every option; nothing covers the terminal; finished turns wait for you; OpenCode and Goose ready to use (31 Oct 2026)
+
+- **Nothing covers the terminal any more** (LAB-1907). The approval card that sat over an agent's prompt hid the
+  agent's own options. Every agent shows its choices on screen and takes a click or a key there, so the card is gone
+  from the terminal (hidden, not deleted: it can come back if it is wanted). A quiet "Needs you" line stays in the
+  pane's header.
+- **Needs you shows every option the prompt shows** (LAB-1839). Not only Allow once / Always allow / Deny: one button
+  per option, in the prompt's order and words (Antigravity's four, Kimi's four, Codex's three, Goose's four), each
+  pressing that option's own key. An option that takes your words ("No, and tell Claude what to do differently")
+  sends what is in the reply box. "Always" options are still remembered as rules.
+- **A question offers its own answers** (LAB-1607). Claude's question menus show as the agent drew them, with their
+  own choices and "Your own answer", no risk badge and no Allow / Deny. Esc cancels, for every agent.
+- **Gemini's sign-in menu, in plain words** (LAB-1825). It is read as a menu (Sign in with Google · Use Gemini API
+  Key · Vertex AI), and when the screen says Google no longer supports the sign-in, Needs you says so and points to
+  an API key or Antigravity, instead of a High-risk Allow once that brought the same menu back.
+- **A finished turn waits in Needs you** (LAB-1827). When an agent finishes and it is your turn, Needs you shows what
+  it said last, a box for your next message, **Set aside** (leaves the list, keeps the session) and **Close
+  session**. It leaves when you reply here or in the terminal. Works for Goose and OpenCode too, read off their
+  screens.
+- **OpenCode and Goose, set up and checked end to end** (LAB-1803). Both replied and kept their context on a real
+  Together GLM-5.3-Flash session in this release; their prompts show in Needs you with all their options; Goose's
+  Deny and OpenCode's Reject work from there. The kit's OpenCode learn and Goose corpus checks pass (LAB-1790,
+  LAB-1792).
+- The menu bar's Needs you list shows **Allow** only for permission prompts; a finished turn or a menu opens instead.
+
 ## 1.9.32 — hosted coding with OpenCode and Goose; the rail stretches (30 Oct 2026)
 
 - **Hosted coding: OpenCode and Goose** (LAB-1799, LAB-1803). Two new agents that run here while the model runs at a

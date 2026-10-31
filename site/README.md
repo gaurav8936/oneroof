@@ -1,7 +1,7 @@
 # site/ · the One Roof launch page
 
 The public page at https://gaurav8936.github.io/oneroof/. Plain HTML, CSS and one small script, no build step.
-`.github/workflows/pages.yml` publishes this folder to GitHub Pages on every push to `main` that touches `site/`.
+Woodpecker (`.woodpecker/pages.yaml`) publishes this folder to GitHub Pages on every push to `main` that touches `site/`.
 
 | File | What it is |
 |---|---|
