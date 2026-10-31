@@ -84,6 +84,9 @@ final class AppModel: ObservableObject {
     @Published var workstreams: [LinearWorkstream] = []
     /// Usage windows per seat (Claude1, Claude2, Codex), refreshed every 30 s.
     @Published var seats: [SeatUsage] = []
+    /// LAB-1998: which agents are set up on this Mac (for the bottom bar); refreshed with the seats, at most every 10 min.
+    @Published var dockFacts: DockSeats.Facts?
+    private var dockFactsAt = Date.distantPast
     /// v2 (CAP-26): the rule just learned from Always allow on a terminal's approval card, offered for Undo for 5 s.
     @Published var v2UndoRule: (decision: Decision, window: String)? = nil
     /// Self-test: the Needs you entry to show (a decision id), as a click in its list would.
@@ -115,6 +118,9 @@ final class AppModel: ObservableObject {
                 || settings.localModelPath != oldValue.localModelPath { Self.applyFolders(settings) }
             if settings.learnFolders != oldValue.learnFolders { learnItems = [] }
             if !settings.dockBadge { NSApp.dockTile.badgeLabel = nil }
+            if settings.hostedRuntime != oldValue.hostedRuntime || settings.hostedConnections != oldValue.hostedConnections {
+                refreshSeats(facts: true)
+            }
             if settings.followSystemAppearance != oldValue.followSystemAppearance { applyAppearance() }
             if settings.scheduledRuns != oldValue.scheduledRuns || settings.projectsPath != oldValue.projectsPath { configureRoofdScheduler() }
             if settings.agenticEngineeringPath != oldValue.agenticEngineeringPath { learnItems = [] }   // re-read on next open
@@ -776,11 +782,28 @@ final class AppModel: ObservableObject {
         createPlanned(s, launchNow: true)
     }
 
-    func refreshSeats() {
+    func refreshSeats(facts: Bool = false) {
+        let settings = self.settings
+        let wantFacts = facts || Date().timeIntervalSince(dockFactsAt) > 600
+        if wantFacts { dockFactsAt = Date() }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let u = Usage.all()
-            DispatchQueue.main.async { if self?.seats != u { self?.seats = u } }   // LAB-1314: only on change
+            let f = wantFacts ? DockSeats.facts(settings: settings) : nil
+            DispatchQueue.main.async {
+                if self?.seats != u { self?.seats = u }   // LAB-1314: only on change
+                if let f, self?.dockFacts != f { self?.dockFacts = f }
+            }
         }
+    }
+
+    /// LAB-1998: the agents the bottom bar shows, in order: set up on this Mac, minus the ones hidden in Settings.
+    var dockMarks: [AgentMark] {
+        let usage = Set(seats.map(\.seat))
+        guard let f = dockFacts else {
+            return DockSeats.order.filter { m in DockSeats.usageName(m).map(usage.contains) ?? false || m == .claude1 }
+                .filter { !settings.dockHidden.contains($0.rawValue) }
+        }
+        return DockSeats.shown(f, hidden: settings.dockHidden, usageSeats: usage)
     }
 
     /// Router suggestion for a step, with the policy read in place from the agentic-engineering folder.
@@ -956,8 +979,12 @@ final class AppModel: ObservableObject {
         }
         lastError = nil
         busy.insert(s.id)
+        let briefRuntime = InterimBrief.needsOpeningBrief(s.agent) && !SelfTest.isActive ? settings.hostedRuntime : nil
         queue.async { [weak self] in
             guard let self else { return }
+            var spec = spec
+            // LAB-1971: OpenCode and Goose have no session-start hook; the interim brief rides in the opening message.
+            if let r = briefRuntime { spec.opening = InterimBrief.opening(brief: InterimBrief.fetch(runtime: r, cwd: (s.repoPath as NSString).expandingTildeInPath), opening: spec.opening) }
             do { self.finishLaunch(s, .success(try self.runtime.start(spec))) }
             catch { self.finishLaunch(s, .failure(error)) }
         }

@@ -374,6 +374,26 @@ struct SettingsView: View {
         Form {
             Text("Defaults used when you plan a session. You can change them for each session.")
                 .font(.caption).foregroundStyle(.secondary)
+            // LAB-1998: the bottom bar shows every agent set up on this Mac; switch one off to take it out.
+            Section("Bottom bar") {
+                let shown = model.dockFacts.map { DockSeats.setUp($0, usageSeats: Set(model.seats.map(\.seat))) } ?? model.dockMarks
+                ForEach(shown, id: \.self) { m in
+                    Toggle(isOn: Binding(
+                        get: { !model.settings.dockHidden.contains(m.rawValue) },
+                        set: { on in
+                            model.settings.dockHidden.removeAll { $0 == m.rawValue }
+                            if !on { model.settings.dockHidden.append(m.rawValue) }
+                        })) {
+                        HStack(spacing: 8) {
+                            AgentBadge(m, size: 18)
+                            Text(DockSeats.agent(m).displayName + (m == .claude2 ? " (second account)" : ""))
+                        }
+                    }
+                    .accessibilityLabel("Show \(m.mono) in the bottom bar")
+                }
+                Text("Agents appear here once they are set up: installed, signed in, or (OpenCode, Goose) with a hosted connection.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             HostedSettingsView(model: model)
             ForEach(AgentKind.allCases.filter { $0.isAgent && !$0.isHosted }) { agent in
                 Section(agent.displayName) {

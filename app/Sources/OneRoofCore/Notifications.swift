@@ -171,6 +171,17 @@ public struct NoteGate: Sendable {
 
 /// Which status changes are news (the app compares each row's status before and after a poll).
 public enum NoteSignals {
+    /// LAB-1940 (owner, 10-31): a loop round's session notifies only when it needs you or a command in it failed. A
+    /// finished turn, a successful long command or a program's own banner from a loop round stays quiet; the loop's
+    /// outcome reaches you through the Loops area and the loop alert. Manual sessions are unchanged.
+    public static func allowedForLoopRound(_ e: NoteEvent) -> Bool {
+        switch e.kind {
+        case .needsYou: return true
+        case .longCommand: return (e.exitCode ?? 0) != 0
+        case .done, .terminal: return false
+        }
+    }
+
     /// running/needs-you → ready is a finished turn. Needs you comes from the decision builder (it has the question).
     public static func statusChange(from old: SessionStatus?, to new: SessionStatus) -> NoteKind? {
         guard let old, old != new else { return nil }
