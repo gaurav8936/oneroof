@@ -97,7 +97,7 @@ extension AppModel {
 
     /// Sessions in one window, in the order the sidebar shows them. A closed window's sessions are in none.
     /// A window's sessions; archived ones (LAB-1537) are only in All sessions.
-    func items(in w: WindowState) -> [BoardItem] { items.filter { !$0.session.archived && workspaceId(of: $0) == w.id } }
+    func items(in w: WindowState) -> [BoardItem] { sessionItems.filter { !$0.session.archived && workspaceId(of: $0) == w.id } }
 
     /// Move a session to another workspace window (S00.W.1). The window it leaves lets go of its terminal, so the new
     /// window can show it at once; `select` also makes it the new window's selection.

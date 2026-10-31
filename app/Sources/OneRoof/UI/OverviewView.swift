@@ -47,7 +47,7 @@ struct OverviewView: View {
     }
 
     private var subtitle: String {
-        let all = model.items
+        let all = model.sessionItems   // LAB-1933
         let working = all.filter { $0.status == .running }.count
         let tonight = model.schedules.count
         let w = model.windows.count
@@ -239,7 +239,7 @@ struct OverviewView: View {
     }
 
     private var activeWorkstreams: [LinearWorkstream] {
-        let ids = Set(model.items.compactMap(\.session.workstream))
+        let ids = Set(model.sessionItems.compactMap(\.session.workstream))
         return model.workstreams.filter { $0.wsId.map(ids.contains) ?? false }
     }
 
@@ -282,9 +282,9 @@ struct OverviewView: View {
 
     /// Agents at work, seats and just finished (v0.1 Launchpad).
     private var agents: some View {
-        let live = model.items.filter { $0.status.isLive && $0.session.agent.isAgent }
+        let live = model.sessionItems.filter { $0.status.isLive && $0.session.agent.isAgent }
         let groups = AgentsAtWork.groups(live.map { ($0.id, $0.account ?? $0.session.agent.displayName) }, subagents: model.subagents)
-        let finished = model.items.filter { $0.status == .done }
+        let finished = model.sessionItems.filter { $0.status == .done }
         return ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 MicroLabel("Agents at work")

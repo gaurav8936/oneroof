@@ -16,9 +16,12 @@ final class V2ToolbarDelegate: NSObject, NSToolbarDelegate {
     static let step = NSToolbarItem.Identifier("oneroof.v2.step")
     static let new = NSToolbarItem.Identifier("oneroof.v2.new")
 
+    private var observers: [NSObjectProtocol] = []
+
     init(model: AppModel, win: WindowState, controller: MainWindowController) {
         self.model = model; self.win = win; self.controller = controller
     }
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         // LAB-1783: no tracking separator (it drew a short line in the band over the column's edge, in some layouts
@@ -51,6 +54,12 @@ final class V2ToolbarDelegate: NSObject, NSToolbarDelegate {
             // The toolbar may squeeze the title to its minimum (it truncates) instead of moving items into ».
             host.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
+        // LAB-1932: any item that moves or changes width (the icon row appearing, the player, a » change) re-fences
+        // the title at once, so it can never be left drawing over a neighbour.
+        host.postsFrameChangedNotifications = true
+        observers.append(NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: host, queue: .main) { [weak controller] _ in
+            MainActor.assumeIsolated { controller?.v2PlaceTitle() }
+        })
         item.view = host
         item.isBordered = false
         item.label = label
@@ -94,11 +103,26 @@ private struct V2PlacesSlot: View {
 /// LAB-1783 · where the title draws, apart from the controller so a column drag redraws only the title's offset.
 final class V2TitleShift: ObservableObject {
     @Published var x: CGFloat = 0
+    /// LAB-1932 · the widest the title may draw between its neighbours (nil = not measured yet; 0 = no room, hidden).
+    @Published var maxWidth: CGFloat?
+    /// The title's drawn width as last laid out (read by the overlap check; not published, so it never loops).
+    var drawnWidth: CGFloat = 0
 }
 
+/// LAB-1932 · the title draws only inside its slot: moved to the centre's edge, no wider than the room between the
+/// window buttons / icon row on its left and the first item on its right, and hidden when that room is too small.
 private struct V2TitleShiftModifier: ViewModifier {
     @ObservedObject var shift: V2TitleShift
-    func body(content: Content) -> some View { content.offset(x: shift.x) }
+    func body(content: Content) -> some View {
+        let w = shift.maxWidth
+        content
+            .frame(maxWidth: w.map { max(0, $0) }, alignment: .leading)
+            .clipped()
+            .background(GeometryReader { g in Color.clear.onAppear { shift.drawnWidth = g.size.width }
+                .onChange(of: g.size.width) { _, v in shift.drawnWidth = v } })
+            .opacity(w == 0 ? 0 : 1)
+            .offset(x: shift.x)
+    }
 }
 
 /// "Agentic engineering repo  Claude1 · LAB-AGENTIC", or the place's name ("Home", "Needs you  oldest first").
@@ -115,11 +139,12 @@ struct V2TitleView: View {
         if room > 0 {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title).ui(14, .bold).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail).frame(maxWidth: 360, alignment: .leading)
+                    .layoutPriority(1)   // LAB-1932: the title takes its room before the subtitle ("Needs…" next to "oldest first")
                 if let sub, controller.v2Bar.subtitle { Text(sub).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).frame(maxWidth: 260, alignment: .leading) }
             }
-            .frame(minWidth: 40, maxWidth: CGFloat(room) - 8, alignment: .leading)
-            .padding(.leading, 8)
-            .modifier(V2TitleShiftModifier(shift: controller.v2TitleShift))   // LAB-1783: text on the centre's content edge
+            .frame(minWidth: 0, maxWidth: CGFloat(room) - 8, alignment: .leading)
+            .modifier(V2TitleShiftModifier(shift: controller.v2TitleShift))   // LAB-1932: inside its slot only
+            .padding(.leading, 8)   // LAB-1783: text on the centre's content edge
             .barHelp(sub.map { title + "  " + $0 } ?? title)
             .accessibilityElement(children: .combine)
             .onChange(of: title) { kick() }
@@ -145,10 +170,19 @@ struct V2TitleView: View {
     }
 }
 
-/// Single · Grid · Wall (⌃⌥⌘1-3). Grid arrives in 1.7.0 and Wall in 1.8.0; until then they show and say so.
+/// Single · Grid · Wall · Scroll (⌃⌥⌘1-4).
 struct V2LayoutControl: View {
     @Environment(\.theme) private var t
     @ObservedObject var win: WindowState
+
+    static func help(_ l: SessionLayout) -> String {
+        switch l {
+        case .single: return "Single (⌃⌥⌘1)"
+        case .grid: return "Grid: every live session, two across (scrolls) (⌃⌥⌘2)"
+        case .wall: return "Wall: every window's live sessions (⌃⌥⌘3)"
+        case .scroll: return "Scroll: every session's important moments in one feed, newest at the bottom (⌃⌥⌘4)"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -162,7 +196,7 @@ struct V2LayoutControl: View {
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.surface.color : .clear))
                 }
                 .buttonStyle(.plain)
-                .barHelp(l == .single ? "Single (⌃⌥⌘1)" : (l == .grid ? "Grid: every live session, two across (scrolls) (⌃⌥⌘2)" : "Wall: every window's live sessions (⌃⌥⌘3)"))
+                .barHelp(Self.help(l))
                 .accessibilityLabel(l.title + (ready ? "" : ", not available yet"))
             }
         }

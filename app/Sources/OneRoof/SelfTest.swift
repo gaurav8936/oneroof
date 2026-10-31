@@ -159,6 +159,26 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { NotificationCenter.default.post(name: StepHintAnchor.HintAnchorView.show, object: nil) }
         }
         if env["ONEROOF_SELFTEST_V2EDGE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { app.main.v2ShowEdgeReveal() } }
+        // LAB-1919 · LAB-1941 · LAB-1920 · LAB-1921 · LAB-1922 (loops, 1.9.34; point ONEROOF_SHARED at a scratch folder):
+        //   LOOPPICK=<n>   Needs you shows its n-th loop item (failures and asks, then Today)
+        //   LOOP=<id>      the Loops page opens that loop (its outcomes and rounds)
+        //   LOOPDRAFT=<words>   the New loop editor opens with the rule-based draft of those words (LOOPPREVIEW=1 opens the dry run)
+        //   LOOPGALLERY=1  the Loops page shows the gallery
+        if env.keys.contains(where: { $0.hasPrefix("ONEROOF_SELFTEST_LOOP") }) { app.model.refreshLoopInbox() }
+        if let n = Int(env["ONEROOF_SELFTEST_LOOPPICK"] ?? "") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                let items = LoopInboxState.shared.items
+                if n < items.count { app.model.needsPick = "loop-" + items[n].id }
+            }
+        }
+        if let id = env["ONEROOF_SELFTEST_LOOP"] { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.model.openLoop(id) } }
+        if let words = env["ONEROOF_SELFTEST_LOOPDRAFT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                let repo = WorkspaceSearch.repos().first ?? Workspace.projectsRoot
+                LoopInboxState.shared.draftRequest = LoopDrafter.rules(words).apply(to: Loop(id: "", name: "", repoPath: repo))
+                app.model.show(.loops)
+            }
+        }
         if env["ONEROOF_SELFTEST_DEMO"] == "1" { seedDemo(app.model) }
         if env["ONEROOF_SELFTEST_FOUNDATIONS"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.showFoundations(nil) } }
         if let w = env["ONEROOF_SELFTEST_WORK"] {
@@ -360,6 +380,13 @@ enum SelfTest {
         // PAGE=help / notes opens the v2 Help or Release notes page (B4.1, B4.2).
         if let pg = env["ONEROOF_SELFTEST_PAGE"], app.model.settings.ui2 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.main.v2ShowPage(pg == "notes" ? "Release notes" : "Help") }
+        }
+        // EDITAGENTS=1 (LAB-1934): open Settings › Seats & accounts in the main window, click into every agent's Model and
+        // Extra arguments field the way a person would, type into it, and write <out>.editagents.txt: what the click hit,
+        // who has the keyboard, what the field shows and what was saved.
+        if env["ONEROOF_SELFTEST_EDITAGENTS"] == "1", let out = env["ONEROOF_SELFTEST_OUT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.main.v2ShowSettings(pane: 2) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { editAgentsProbe(app: app, out: out + ".editagents.txt") }
         }
         if env["ONEROOF_SELFTEST_SETTINGS"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -612,6 +639,57 @@ enum SelfTest {
             }
         }
         return out
+    }
+
+    /// LAB-1934: every editable text field whose placeholder is "optional" (Extra arguments) or "CLI default" (Model),
+    /// top to bottom. Each is found again at its turn (a saved edit redraws Settings, so earlier views go stale), scrolled
+    /// into view, given the keyboard, typed into through the window's own key path, then read back from the saved settings.
+    static func editAgentsProbe(app: AppDelegate, out: String) {
+        guard let w = app.main.window, let root = w.contentView else { return }
+        func fields(_ v: NSView) -> [NSTextField] {
+            var r: [NSTextField] = []
+            if let f = v as? NSTextField, f.isEditable {
+                let ph = f.placeholderString ?? f.placeholderAttributedString?.string ?? ""
+                if ph.hasPrefix("optional") || ph == "CLI default" { r.append(f) }
+            }
+            for s in v.subviews where !s.isHidden { r += fields(s) }
+            return r
+        }
+        var lines = ["fields found: \(fields(root).count)"]
+        func save() { try? lines.joined(separator: "\n").appending("\n").write(toFile: out, atomically: true, encoding: .utf8) }
+        save()
+        func step(_ i: Int) {
+            let all = fields(root)
+            guard i < all.count else {
+                for a in AgentKind.allCases where a.isAgent && !a.isHosted {
+                    let d = app.model.settings.defaults(for: a)
+                    lines.append("saved \(a.rawValue): model=\(d.model) args=\(d.args)")
+                }
+                lines.append("done")
+                save()
+                return
+            }
+            let f = all[i]
+            f.scrollToVisible(f.bounds)
+            let ph = f.placeholderString ?? f.placeholderAttributedString?.string ?? ""
+            let took = w.makeFirstResponder(f)
+            let editing = f.currentEditor() != nil && w.firstResponder === f.currentEditor()
+            for ch in "p\(i)" {
+                for t in [NSEvent.EventType.keyDown, .keyUp] {
+                    if let e = NSEvent.keyEvent(with: t, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: w.windowNumber, context: nil, characters: String(ch),
+                                                charactersIgnoringModifiers: String(ch), isARepeat: false, keyCode: 0) {
+                        w.sendEvent(e)
+                    }
+                }
+            }
+            let shown = f.stringValue
+            lines.append("#\(i) [\(ph)] key=\(w.isKeyWindow) tookFocus=\(took) editing=\(editing) shows=\"\(shown)\" bordered=\(f.isBordered) bezeled=\(f.isBezeled) align=\(f.alignment.rawValue)")
+            save()
+            w.makeFirstResponder(nil)   // end editing: the value is committed, as when a person tabs away
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { step(i + 1) }
+        }
+        step(0)
     }
 
     static func type(_ text: String, into window: NSWindow?) {

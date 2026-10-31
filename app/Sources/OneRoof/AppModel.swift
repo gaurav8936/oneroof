@@ -4,7 +4,10 @@ import OneRoofCore
 
 /// App state: stored sessions + the session runtime's live sessions → sidebar rows. Polls the runtime once a second.
 final class AppModel: ObservableObject {
-    @Published private(set) var items: [BoardItem] = []
+    /// Every stored session, manual and loop rounds (roofd, engines and the Loops area need them all).
+    @Published private(set) var items: [BoardItem] = [] { didSet { sessionItems = SessionScope.sessions(items) } }
+    /// LAB-1933 · the sessions a person started: what every session list, count, search and Needs you shows.
+    private(set) var sessionItems: [BoardItem] = []
     @Published var grouping: Grouping {
         didSet { if !SelfTest.isActive { Prefs.defaults.set(grouping.rawValue, forKey: "grouping") } }
     }
@@ -260,6 +263,7 @@ final class AppModel: ObservableObject {
             if ticks % 60 == 40 { self?.closeIdleFinishedShells(); self?.closeIdleSessions() }   // LAB-1524 · LAB-1535: once a minute
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
             if ticks % 60 == 40 { self?.tickCommitWatch() }
+            if ticks % 15 == 3 { self?.refreshLoopInbox() }   // LAB-1866 · LAB-1919: loop items for Needs you
         }
         timer?.tolerance = 0.1   // LAB-1323: let the system batch wake-ups
     }
@@ -910,6 +914,7 @@ final class AppModel: ObservableObject {
         var s = s
         if s.agent.isAgent, s.permissionMode == nil, !PermissionMode.hasExplicit(s.agentArgs, agent: s.agent) {
             s.permissionMode = settings.permissionMode(for: s.agent)
+            s.permissionFlags = settings.permissionFlags(for: s.agent, mode: settings.permissionMode(for: s.agent))   // LAB-1935
         }
         assign(s.id, to: window)
         save(s)
@@ -927,7 +932,7 @@ final class AppModel: ObservableObject {
             return
         }
         if s.agent.isHosted {
-            guard let connection = settings.hostedConnections.first(where: { $0.id == s.hostedConnectionID }),
+            guard let connection = settings.hostedConnections.resolved(id: s.hostedConnectionID, model: s.model),
                   connection.model == s.model, connection.configurationErrors().isEmpty else {
                 lastError = "Choose a saved hosted connection with today's verified prices and its exact model."
                 return
@@ -935,7 +940,7 @@ final class AppModel: ObservableObject {
         }
         if s.agent.isHosted {
             guard let runtime = settings.hostedRuntime,
-                  let connection = settings.hostedConnections.first(where: { $0.id == s.hostedConnectionID }) else {
+                  let connection = settings.hostedConnections.resolved(id: s.hostedConnectionID, model: s.model) else {
                 lastError = "Configure the hosted runtime and connection in Settings › Seats & accounts."
                 return
             }

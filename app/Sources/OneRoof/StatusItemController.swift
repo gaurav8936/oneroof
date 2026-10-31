@@ -31,8 +31,8 @@ final class StatusItemController {
             i.button?.action = #selector(toggle)
             item = i
         }
-        let needs = max(model.openDecisionCount, model.items.filter { $0.status == .needsYou }.count)
-        let working = model.items.filter { $0.status == .running }.count
+        let needs = model.needsYouBadge   // LAB-1933
+        let working = model.sessionItems.filter { $0.status == .running }.count
         let s = NSMutableAttributedString()
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         s.append(NSAttributedString(string: "● ", attributes: [.foregroundColor: needs > 0 ? StatusPalette.dot(.needsYou).nsColor : NSColor.secondaryLabelColor, .font: font]))
@@ -67,7 +67,7 @@ private struct StatusPopover: View {
             VStack(alignment: .leading, spacing: 10) {
                 section("Needs you")
                 let ds = model.openDecisions
-                if ds.isEmpty && model.items.filter({ $0.status == .needsYou }).isEmpty { Text("Nothing waiting.").ui(12.5).foregroundStyle(t.text3.color) }
+                if ds.isEmpty && model.sessionItems.filter({ $0.status == .needsYou }).isEmpty { Text("Nothing waiting.").ui(12.5).foregroundStyle(t.text3.color) }
                 ForEach(ds.prefix(5)) { d in
                     HStack(spacing: 8) {
                         if let i = model.item(d.sessionId) { AgentBadge(item: i, size: 18, status: false) }
@@ -82,7 +82,7 @@ private struct StatusPopover: View {
                     }
                 }
                 section("Working")
-                ForEach(model.items.filter { $0.status == .running }.prefix(6)) { i in
+                ForEach(model.sessionItems.filter { $0.status == .running }.prefix(6)) { i in
                     Button { open(i.id) } label: {
                         HStack(spacing: 8) {
                             AgentBadge(item: i, size: 18, status: false)

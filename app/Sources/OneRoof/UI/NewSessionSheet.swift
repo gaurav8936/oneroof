@@ -124,7 +124,7 @@ struct NewSessionSheet: View {
                     ForEach(marks, id: \.self) { agentCard($0) }
                 }
                 if agent(mark).isHosted {
-                    Text("Choose a specific repository and a saved connection. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
+                    Text("Choose a saved connection; start at ~/Projects or in any repository. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
                         .ui(12).foregroundStyle(t.text2.color)
                 }
                 if mark == .gemini { geminiKeyBanner }
@@ -469,17 +469,18 @@ struct NewSessionSheet: View {
         return c.isEmpty || Workspace.projectCode(name: c + " · x") != nil
     }
 
+    /// LAB-1931: the hosted conditions, in one place for the button and its reason; ~/Projects is a valid start.
+    private var hostedBlock: String? {
+        HostedSheetRules.blockedReason(hasRuntime: model.settings.hostedRuntime != nil,
+                                       connection: model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }),
+                                       startSupported: when == .now || when == .onDemand || when == .next, repo: repo)
+    }
+
     /// Why the primary button is greyed out, in words.
     private var blockedReason: String? {
         guard !valid else { return nil }
         if text.trimmingCharacters(in: .whitespaces).isEmpty && useTicket == nil { return nil }
-        if agent(mark).isHosted {
-            if model.settings.hostedRuntime == nil { return "Configure the hosted runtime in Settings › Seats & accounts" }
-            guard let c = model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }) else { return "Choose a saved hosted connection" }
-            if let error = c.configurationErrors().first { return error }
-            if repo == Workspace.projectsRoot { return "Choose a specific repository for the hosted session" }
-            if when != .now && when != .next && when != .onDemand { return "Hosted sessions support Now, Next or On demand" }
-        }
+        if agent(mark).isHosted, let why = hostedBlock { return why }
         if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Say when it's done (Settings › General › Done when required)" }
         if model.linearLoading { return "Loading teams and projects from Linear…" }
         if linked && needsTeam && teamKey.isEmpty { return kind == .workstream ? "Pick a team (top right) for the project" : "Pick a team (top right) to file the ticket in" }
@@ -708,12 +709,23 @@ struct NewSessionSheet: View {
     // MARK: Model · repo · start in
 
     /// Any model name works (the CLI gets --model <name>); the menu offers the known ones.
+    /// LAB-1930: each saved connection lists its provider's verified open-weight coding models (its own model first).
     private var hostedMenu: some View {
-        FieldMenu(title: model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }).map { "\($0.name) · \($0.model)" } ?? "Set up in Settings › Seats & accounts") {
+        FieldMenu(title: model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }).map { "\($0.name) · \(hostedModelLabel($0, modelName))" } ?? "Set up in Settings › Seats & accounts") {
             ForEach(model.settings.hostedConnections) { c in
-                Button("\(c.name) · \(c.provider.displayName) · \(c.model)") { hostedConnectionID = c.id; modelName = c.model }
+                Section("\(c.name) · \(c.provider.displayName)") {
+                    ForEach(c.sessionModels, id: \.self) { m in
+                        Button { hostedConnectionID = c.id; modelName = m } label: {
+                            Text(hostedModelLabel(c, m) + (c.provider.verifiedModel(m).map { "  ·  \($0.priceLabel)" } ?? ""))
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private func hostedModelLabel(_ c: HostedConnection, _ id: String) -> String {
+        c.provider.verifiedModel(id)?.displayName ?? id
     }
 
     private var modelMenu: some View {
@@ -858,11 +870,7 @@ struct NewSessionSheet: View {
     private var doneWhenNeeded: Bool { model.settings.ui2 && model.settings.doneWhenRequired }
 
     private var valid: Bool {
-        if agent(mark).isHosted {
-            guard model.settings.hostedRuntime != nil,
-                  let c = model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }),
-                  c.configurationErrors().isEmpty, repo != Workspace.projectsRoot, when == .now || when == .onDemand || when == .next else { return false }
-        }
+        if agent(mark).isHosted && hostedBlock != nil { return false }
         let has = !text.trimmingCharacters(in: .whitespaces).isEmpty || useTicket != nil
         if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }   // NEW-30
         if (kind == .ticket || kind == .defect) && useTicket == nil { return has && (linked ? !teamKey.isEmpty : currentWorkstream != nil) }
@@ -1016,7 +1024,11 @@ struct NewSessionSheet: View {
                             ticket: ticket?.identifier, ticketId: ticket?.id,
                             ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
             if a.isHosted { s.hostedConnectionID = hostedConnectionID; s.model = modelName; s.startInRepo = true; s.agentArgs = []; s.permissionMode = .manual }
-            else if a.isAgent { s.permissionMode = permMode ?? model.settings.permissionMode(for: a) }   // LAB-1600
+            else if a.isAgent {   // LAB-1600; LAB-1935: the owner's own flags for that mode come along
+                let m = permMode ?? model.settings.permissionMode(for: a)
+                s.permissionMode = m
+                s.permissionFlags = model.settings.permissionFlags(for: a, mode: m)
+            }
             if several { s.moreTickets = moreTickets.map { SessionIssue(key: $0.identifier, id: $0.id, team: s.ticketTeam) } }
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
             model.createPlanned(s, launchNow: launch && !forcePlanned, in: targetWindowId.flatMap { model.window($0) } ?? win)   // LAB-1514

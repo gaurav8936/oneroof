@@ -10,14 +10,23 @@ import Foundation
 /// - Kimi: no flag (asks) · `--plan` · `--yolo` (Ask When Needed: routine edits and commands run, risky ones still ask).
 /// - Gemini: `--approval-mode default | plan | yolo`.
 /// - Antigravity: no flag (asks) · `--mode plan` · `--mode auto`.
+/// LAB-1935 (owner 10-31, "auto was not sufficient"): Full = the CLI's own never-ask flag, checked against `--help`
+/// 10-31: Claude `--dangerously-skip-permissions` · Codex `--dangerously-bypass-approvals-and-sandbox` · Kimi `--auto`
+/// (Never Ask) · Gemini `--approval-mode yolo` (its Auto already never asks) · Antigravity `--dangerously-skip-permissions`.
+/// Antigravity starts in Full; every other agent in Auto. Each mode's flags can be replaced per agent in Settings.
 /// Loops and objective steps keep their own auto behaviour (`AgentKind.autoApproveArgs`).
 public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendable {
-    case manual, plan, auto
+    case manual, plan, auto, full
 
     public var id: String { rawValue }
 
     /// The mode every agent starts in until the owner picks another.
     public static let defaultMode: PermissionMode = .auto
+
+    /// The mode `agent` starts in until the owner picks another (LAB-1935: Antigravity in Full, owner 10-31).
+    public static func defaultMode(for agent: AgentKind) -> PermissionMode {
+        agent == .agy ? .full : defaultMode
+    }
 
     /// Short name shown on sessions and in pickers.
     public var label: String {
@@ -25,6 +34,7 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
         case .manual: return "Manual"
         case .plan: return "Plan"
         case .auto: return "Auto"
+        case .full: return "Full"
         }
     }
 
@@ -47,13 +57,17 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
         case (.auto, .agy): return "Works on its own in the CLI's auto mode."
         case (.auto, .opencode), (.auto, .goose): return "Requires a configured guarded launcher; unattended approval is unavailable here."
         case (.auto, .shell): return ""
+        case (.full, .codex): return "Never asks and runs without the sandbox. Every edit and command goes ahead."
+        case (.full, .opencode), (.full, .goose): return "Requires a configured guarded launcher; unattended approval is unavailable here."
+        case (.full, .shell): return ""
+        case (.full, _): return "Never asks. Every edit and command goes ahead without a prompt."
         }
     }
 
     /// The CLI flags that start `agent` in this mode. Empty = the CLI's own default (it asks).
     public func args(for agent: AgentKind) -> [String] {
         switch (agent, self) {
-        case (.claude, _): return ["--permission-mode", rawValue]
+        case (.claude, .manual), (.claude, .plan), (.claude, .auto): return ["--permission-mode", rawValue]
         case (.codex, .manual): return ["--ask-for-approval", "on-request"]
         case (.codex, .plan): return ["--sandbox", "read-only", "--ask-for-approval", "on-request"]
         case (.codex, .auto): return ["--approve-for-me"]
@@ -66,6 +80,10 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
         case (.agy, .manual): return []
         case (.agy, .plan): return ["--mode", "plan"]
         case (.agy, .auto): return ["--mode", "auto"]
+        case (.claude, .full), (.agy, .full): return ["--dangerously-skip-permissions"]
+        case (.codex, .full): return ["--dangerously-bypass-approvals-and-sandbox"]
+        case (.kimi, .full): return ["--auto"]
+        case (.gemini, .full): return ["--approval-mode", "yolo"]
         case (.opencode, _), (.goose, _): return [] // supervised launcher owns approval mode
         case (.shell, _): return []
         }
@@ -96,8 +114,8 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
     public static func detect(_ args: [String], agent: AgentKind) -> PermissionMode? {
         guard agent.isAgent else { return nil }
         let joined = args.map { $0.replacingOccurrences(of: "=", with: " ") }.joined(separator: " ")
-        // Most specific first: Codex's read-only line contains its manual line.
-        for m in [PermissionMode.plan, .auto, .manual] {
+        // Most specific first: Codex's read-only line contains its manual line. Auto before Full: Gemini's are the same.
+        for m in [PermissionMode.plan, .auto, .full, .manual] {
             let flags = m.args(for: agent)
             if flags.isEmpty { continue }
             let needle = flags.joined(separator: " ")
@@ -109,9 +127,10 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
 
     /// The arguments a session launches with: the chosen mode's flags after its own arguments, unless those already
     /// set a mode (or there is no mode: rows made before LAB-1600 launch exactly as before).
-    public static func launchArgs(_ args: [String], mode: PermissionMode?, agent: AgentKind) -> [String] {
+    /// LAB-1935: `flags`, when given, replace the mode's own flags (the owner's edit in Settings › Permissions).
+    public static func launchArgs(_ args: [String], mode: PermissionMode?, agent: AgentKind, flags: [String]? = nil) -> [String] {
         guard agent.isAgent, let mode, !hasExplicit(args, agent: agent) else { return args }
-        return args + mode.args(for: agent)
+        return args + (flags ?? mode.args(for: agent))
     }
 }
 

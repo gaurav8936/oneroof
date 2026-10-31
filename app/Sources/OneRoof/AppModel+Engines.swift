@@ -75,11 +75,16 @@ extension AppModel {
 
     var openDecisions: [Decision] {
         // LAB-1827: a finished turn waits while its session is Ready or Idle (looking at it does not dismiss it).
-        decisions.filter { d in d.isOpen && item(d.sessionId).map { d.isFinished ? [.done, .idle].contains($0.status) : $0.status == .needsYou } ?? false }
-            .sorted { $0.askedAt < $1.askedAt }
+        // LAB-1933: a loop round's asks reach you through its loop, not Needs you.
+        SessionScope.openDecisions(decisions) { item($0) }
     }
     /// Open prompts plus plans waiting for approval (S03 list, toolbar count, Dock badge).
     var openDecisionCount: Int { openDecisions.count + objectives.filter { $0.status == .review && $0.plan != nil }.count }
+    /// LAB-1933 · the Needs you badge everywhere (rail, icon row, menu bar, Dock): manual sessions only.
+    var needsYouBadge: Int {
+        SessionScope.needsYouCount(openAsks: openDecisions.count, plansWaiting: objectives.filter { $0.status == .review && $0.plan != nil }.count, items: items,
+                                   loopItems: loopInbox.count)   // LAB-1866 · LAB-1919: loop items, never sessions
+    }
 
     func answer(_ d: Decision, _ a: Answer, reply: String? = nil, choice: DecisionChoice? = nil) {
         engines.answer(d, a, reply: reply, choice: choice, pane: item(d.sessionId)?.paneId)
@@ -91,7 +96,7 @@ extension AppModel {
     /// Dock badge = open decisions across all windows, else sessions that need you.
     /// LAB-1328: set only when the label changes (it ran after every poll; each set redraws the Dock tile).
     func updateDockBadge() {
-        let n = max(openDecisionCount, items.filter { $0.status == .needsYou }.count)
+        let n = needsYouBadge   // LAB-1933
         let label = n > 0 && settings.dockBadge ? "\(n)" : nil
         if NSApp?.dockTile.badgeLabel != label { NSApp?.dockTile.badgeLabel = label }
     }

@@ -33,6 +33,9 @@ import OneRoofCore
 ///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
 ///   pick <i>                       (LAB-1839: press the oldest open decision's i-th own option)
 ///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
+///   demo                           (the demo sessions, into this run's store)
+///   layout <single|grid|wall|scroll> · scroll <name>   (LAB-1831: the layout; the Scroll feed → <name>.scroll.json)
+///   loopround <loop id> <name>     (LAB-1933: a loop round's stored session, tagged loop:<id>, as roofd makes it)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
@@ -291,6 +294,27 @@ enum SelfTestScript {
             if let it = m.items.first(where: { i in i.status == .needsYou && m.openDecisions.contains { d in d.sessionId == i.id && !d.isFinished } }) {
                 m.selectedId = it.id; log(out, "  selected \(it.session.name)")
             } else { log(out, "  nothing blocked") }
+        case "demo": SelfTest.seedDemo(m); delay = 1
+        case "scroll":   // LAB-1831: the Scroll feed as the page shows it → <name>.scroll.json
+            let feed = EngineState.shared.feed.map { e in
+                FeedEvent(id: UUID(uuidString: e.id) ?? UUID(), at: e.at, sessionId: e.sessionId, kind: e.feedKind, text: e.text)
+            }
+            let entries = ScrollFeed.entries(feed: feed, chapters: EngineState.shared.chapters, decisions: m.decisions) { m.item($0) }
+            let rows = entries.map { e -> [String: Any] in
+                ["session": m.item(e.sessionId)?.session.name ?? e.sessionId, "kind": e.kind.rawValue, "at": e.at.timeIntervalSince1970,
+                 "text": e.text, "open": e.open, "answer": e.answer ?? ""]
+            }
+            let decided = ScrollFeed.decided(m.decisions) { m.item($0) }.count
+            if let d = try? JSONSerialization.data(withJSONObject: ["entries": rows, "decided": decided], options: [.prettyPrinted, .sortedKeys]) {
+                try? d.write(to: URL(fileURLWithPath: out + "-" + arg + ".scroll.json"))
+            }
+        case "layout":   // LAB-1831: `layout single|grid|wall|scroll` in the active window, as the toolbar control does
+            if let l = SessionLayout(rawValue: arg) { app.main.win.layout = l } else { log(out, "  bad layout") }
+            delay = 1.5
+        case "loopround":   // LAB-1933: `loopround <loop id> <name>`: a stored round session as roofd's loop engine tags it
+            let p = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            if p.count == 2 { m.save(Session(name: p[1], agent: .claude, repoPath: Workspace.projectsRoot, tags: ["loop:" + p[0]], startInRepo: true)) }
+            delay = 1.5   // the demo sessions (as ONEROOF_SELFTEST_DEMO=1 adds them), into the run's store
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":

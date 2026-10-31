@@ -7,7 +7,7 @@ Woodpecker (`.woodpecker/pages.yaml`) publishes this folder to GitHub Pages on e
 |---|---|
 | `index.html` | the page (the released state is written into the HTML, so it works without JavaScript) |
 | `assets/style.css` | layout and the three themes (Porcelain, Graphite, Blueprint) as CSS variables |
-| `assets/site.js` | launch config, theme switcher, smooth anchors |
+| `assets/site.js` | launch config, theme switcher, smooth anchors, visit counter |
 | `shots/` | app screenshots, `<view>-<daylight\|graphite\|midnight>.png` for the themed ones |
 | `og.png` | social card, 1200×630 |
 | `assets/favicon.png`, `assets/apple-touch-icon.png` | from `app/Resources/AppIcon.icns` |
@@ -37,3 +37,11 @@ For a new release, change `version` and `downloadUrl` there and the matching tex
 
 Once the app is signed and notarized, delete the one element marked `data-gatekeeper-note` in `index.html`
 (install step 01). Nothing else refers to it.
+
+## Visit counter
+
+GitHub Pages has no visit counting, so `assets/site.js` sends two kinds of event to our own counter at
+`https://console.zibajoon.com/api/t/hit` with `navigator.sendBeacon`: a `view` when the page loads and a `download` when a
+release download link is clicked. No cookies, nothing third party, nothing stored in the browser; the beacon never blocks
+or delays the click, and any failure is silent. The counter stores counts only (no IP, no browser string). To keep your own
+visits apart, run `localStorage.setItem('zj-self', '1')` once in your browser's console on this page.

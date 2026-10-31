@@ -21,7 +21,7 @@ struct SubagentTraceView: View {
     private func running(_ id: String) -> Int { (model.subagents[id] ?? []).filter { $0.ended == nil }.count }
 
     private var sessions: [BoardItem] {
-        let withSubs: [BoardItem] = model.items.filter { !(model.subagents[$0.id] ?? []).isEmpty }
+        let withSubs: [BoardItem] = model.sessionItems.filter { !(model.subagents[$0.id] ?? []).isEmpty }
         return withSubs.sorted { running($0.id) > running($1.id) }
     }
 

@@ -92,7 +92,7 @@ struct HostedSettingsView: View {
             var d = model.settings.defaults(for: agent); d.hostedConnectionID = draft.id
             model.settings.agents[agent.rawValue] = d
         }
-        message = "Saved. Choose OpenCode or Goose, this connection and a specific repository in New session."
+        message = "Saved. Choose OpenCode or Goose and this connection in New session; start at ~/Projects or in any repository."
     }
 
     private func refresh() {

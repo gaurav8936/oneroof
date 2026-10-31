@@ -38,6 +38,10 @@ Requires the app's version to be `<version>`, a full run (no `--quick`) and both
 PASSes it writes `scratchpad/perf/release-<version>/result.json` in the shape `scratchpad/ship-picks.sh` checks
 (`{"version": "<v>", "fails": [], …}`) plus `report.md`; on FAIL nothing is written, so the release script refuses to ship.
 
+## A/B against the previous release (`--ab <app>`, LAB-1903)
+
+With `--ab <previous release's One Roof.app>`, a perf regression against the stored baseline is not the verdict yet: only the affected scenarios and gestures are re-measured with the previous app and the candidate interleaved on this Mac (B A B A, two rounds), and `ab.py` judges the candidate against that same-time measurement, with each measure's noise band (the spread of its repeat runs) added to `limits.json`'s `min_delta`. A busy Mac slows both sides, so it cannot fail the gate on its own; a real regression still fails. Failures A/B cannot settle (a run that did not finish, a text check, an absolute budget) fail as before. `python3 ab.py --self-test` proves both cases on synthetic runs. The gate also records the tested `commit` and `tree` (from `candidate.json` next to an app built by `tools/package-app.sh --build-only`) and writes `scratchpad/gate/<commit>/verdict.json`; the release signs only that tree. `--dry-run` prints the plan without launching anything.
+
 ## The screen must be unlocked for the full picture
 
 With the Mac's screen locked nothing draws: libghostty makes no terminal surfaces, the display link does not tick and

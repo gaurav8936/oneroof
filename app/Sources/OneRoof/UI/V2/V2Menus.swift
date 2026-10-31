@@ -37,9 +37,10 @@ extension AppDelegate {
         if let s = view.items.first(where: { $0.title == "Sessions" }) { s.action = #selector(v2OpenSessions(_:)); s.target = self }
         guard let anchor = view.items.firstIndex(where: { $0.title == "Focus: Step On" }) else { return }
         var at = anchor
-        let layouts: [(String, Int)] = [("Single", 1), ("Grid", 2), ("Wall", 3)]
-        for (title, n) in layouts {
-            let mi = NSMenuItem(title: title, action: n == 1 ? #selector(v2LayoutSingle(_:)) : (n == 2 ? #selector(v2LayoutGrid(_:)) : #selector(v2LayoutWall(_:))), keyEquivalent: String(n))
+        let layouts: [(String, Int, Selector)] = [("Single", 1, #selector(v2LayoutSingle(_:))), ("Grid", 2, #selector(v2LayoutGrid(_:))),
+                                                  ("Wall", 3, #selector(v2LayoutWall(_:))), ("Scroll", 4, #selector(v2LayoutScroll(_:)))]   // LAB-1831
+        for (title, n, action) in layouts {
+            let mi = NSMenuItem(title: title, action: action, keyEquivalent: String(n))
             mi.keyEquivalentModifierMask = [.command, .option, .control]
             mi.target = self
             view.insertItem(mi, at: at); at += 1
@@ -68,6 +69,7 @@ extension AppDelegate {
     }
     @objc func v2LayoutSingle(_ sender: Any?) { if isV2Window { main.win.layout = .single } }
     @objc func v2LayoutWall(_ sender: Any?) { if isV2Window { main.win.layout = .wall } }
+    @objc func v2LayoutScroll(_ sender: Any?) { if isV2Window { main.win.layout = .scroll } }   // LAB-1831
     @objc func v2LayoutGrid(_ sender: Any?) {
         guard isV2Window else { return }
         main.win.layout = .grid

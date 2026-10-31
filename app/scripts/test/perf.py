@@ -93,6 +93,11 @@ elif base.get('screen_locked') != locked:
 if base and base.get('quick') != quick:
     notes.append('Baseline and this run used different lengths (--quick vs full): differences are indicative only.')
 soft = bool(base) and (base.get('screen_locked') != locked)
+NOISE = base.get('noise', {})
+if base.get('ab'):
+    notes.append(f"A/B: the first comparison failed ({len(base['ab'].get('first_fails', []))} fails); the affected measures were "
+                 f"re-measured with {base.get('version')} interleaved on this Mac ({base['ab'].get('rounds')} rounds, gestures "
+                 f"{base['ab'].get('gesture_rounds')}), and judged against it with each measure's run-to-run noise band.")
 
 
 def judge(group, name, k, v, bv, budget=None):
@@ -100,9 +105,11 @@ def judge(group, name, k, v, bv, budget=None):
     if v is None:
         rows.append((group, name, k, 'n/a', bv if bv is not None else '–', '', 'not measured')); return
     delta = f'{(v - bv) / bv * 100:+.0f} %' if bv not in (None, 0) else ''
-    if bv is not None and k in LOWER and v > bv * (1 + PCT) and v - bv > MIN.get(k, 0):
+    # LAB-1903/1562: an A/B baseline (ab.py) carries each measure's run-to-run noise; a difference inside it never fails.
+    floor = max(MIN.get(k, 0), NOISE.get(group + 's', {}).get(name, {}).get(k, 0))
+    if bv is not None and k in LOWER and v > bv * (1 + PCT) and v - bv > floor:
         verdict = 'REGRESSION' + (' (not failing: see notes)' if soft else '')
-        if not soft: fails.append(f'{group} {name} {k} {v} vs {bv} (+{PCT * 100:.0f} % and +{MIN.get(k, 0)})')
+        if not soft: fails.append(f'{group} {name} {k} {v} vs {bv} (+{PCT * 100:.0f} % and +{floor})')
     elif bv is not None and k in LOWER and v < bv * (1 - PCT) and bv - v > MIN.get(k, 0):
         verdict = 'better'
     if budget is not None:

@@ -166,6 +166,37 @@ snap j10-needs-you
 place sessions
 expect place = sessions
 
+## J10b · the toolbar title never crosses an icon (LAB-1932): every place × rail open/folded × Focus step × width
+windowsize 1500 940
+barsweep 1500 1000 700 600
+rail open
+windowsize 1500 940
+place sessions
+focusstep 0
+barcheck restored
+
+## J10c · loop rounds are not sessions (LAB-1933): not in the rail, the counts, the catalog or Needs you
+place sessions
+mark sessions
+mark allsessions
+loopround oneroof-nightly-bugs oneroof-nightly-bugs · round 1
+expect looprounds >= 1
+expect sessions = @sessions
+expect allsessions = @allsessions
+snap j10c-rail-without-loop-rounds
+place loops
+snap j10c-loops-runs
+place sessions
+
+## J10d · Scroll layout (LAB-1831): one feed across sessions, then back to Single
+place sessions
+layout scroll
+barcheck scroll
+scroll j10d
+snap j10d-scroll
+layout single
+expect place = sessions
+
 ## J11 · session catalog: open, search, resume a row
 centre catalog
 expect centre = catalog
