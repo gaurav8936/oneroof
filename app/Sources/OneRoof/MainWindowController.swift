@@ -332,10 +332,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         }
     }
 
-    /// A mouse click inside the window's content (the rail, a column, a page) or on a toolbar item: never a drag of
-    /// the title bar (the toolbar's empty space), a menu or a key.
+    /// A mouse click inside the window's content (the rail, a column, a page) or on a toolbar item, being handled now:
+    /// never a drag of the title bar (the toolbar's empty space), a menu or a key. `currentEvent` stays the last event
+    /// until the next one, so a click more than a second old is not the cause (a self-test's resizes after a drag).
     static func isControlClick(_ e: NSEvent?, in window: NSWindow) -> Bool {
-        guard let e, e.window === window,
+        guard let e, e.window === window, ProcessInfo.processInfo.systemUptime - e.timestamp < 1,
               [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp].contains(e.type) else { return false }
         if e.locationInWindow.y < window.contentLayoutRect.maxY { return true }
         return (window.toolbar?.items ?? []).contains { i in
