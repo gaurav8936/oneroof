@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.31 — Gemini needs an API key; Focus only where it applies; the rail drags (30 Oct 2026)
+
+- **Picking Gemini says it needs an API key** (LAB-1826). Google no longer lets Gemini CLI sign in with a personal
+  Google account, so "Sign in with Google" fails and asks again. The New session panel now says so when you pick
+  Gemini (set GEMINI_API_KEY, or use Antigravity, one click away), and Gemini's card says "API key only".
+- **Focus and Single · Grid · Wall show only in Sessions** (LAB-1828). Elsewhere (Learn, Home, Needs you…) they changed
+  nothing but the dock, so the toolbar no longer shows them there.
+- **The rail drags closed and back open** (LAB-1829). Drag its edge left to fold Home · Needs you · Sessions… away
+  (the places then sit in the toolbar), and drag from the window's left edge to bring it back; View › Rail does the
+  same. The window remembers it. The Sessions column still drags closed and open on its own.
+
 ## 1.9.30 — a question at the end of a turn waits for you in Needs you; the top-left, finished (30 Oct 2026)
 
 - **The top-left, finished** (LAB-1783). No column line sticks up into the toolbar any more: every one ends at the
