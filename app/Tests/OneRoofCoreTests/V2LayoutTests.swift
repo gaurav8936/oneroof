@@ -218,9 +218,12 @@ final class V2NarrowWindowTests: XCTestCase {
     func testToolbarDegradesInOrder() {
         let wide = V2Layout.toolbarFit(room: 1400)
         XCTAssertEqual(wide, .init(titleWidth: 620, subtitle: true, shortcuts: true, layoutControl: true))
-        let mid = V2Layout.toolbarFit(room: 676)   // 1000 pt window at step 1
+        let mid = V2Layout.toolbarFit(room: 740)
         XCTAssertTrue(mid.shortcuts && mid.layoutControl)
         XCTAssertFalse(mid.subtitle, "the subtitle goes before the shortcuts")
+        // 1000 pt window at step 1: with Scroll the layout control is wider (LAB-1831), so the shortcut label goes first.
+        let step1 = V2Layout.toolbarFit(room: 676)
+        XCTAssertTrue(step1.layoutControl && !step1.shortcuts)
         let narrow = V2Layout.toolbarFit(room: 276)   // 600 pt window at step 1: step button and + New only
         XCTAssertEqual(narrow, .init(titleWidth: 0, subtitle: false, shortcuts: false, layoutControl: false))
     }

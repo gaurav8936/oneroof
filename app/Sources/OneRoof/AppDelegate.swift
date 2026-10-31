@@ -424,7 +424,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 m.chosenThemes = PanelThemes(sidebar: t, files: t, terminal: t, plan: t, centre: t)
             }
         }
-        for i in m.items {
+        for i in m.sessionItems {   // LAB-1933: the palette finds manual sessions
             add(i.session.name, [i.account ?? i.session.agent.displayName, m.caption(for: i).text, m.window(m.workspaceId(of: i))?.name].compactMap { $0 }.joined(separator: " · "),
                 "rectangle.stack", "Session") { m.reveal(i) }
         }
@@ -811,6 +811,8 @@ extension AppDelegate: NSMenuItemValidation {
             item.state = main?.win.layout == .single ? .on : .off; return isV2Window
         case #selector(v2LayoutWall(_:)):
             item.state = main?.win.layout == .wall ? .on : .off; return isV2Window
+        case #selector(v2LayoutScroll(_:)):
+            item.state = main?.win.layout == .scroll ? .on : .off; return isV2Window
         case #selector(v2LayoutGrid(_:)):
             item.state = main?.win.layout == .grid ? .on : .off; return isV2Window
         case #selector(copySessionOutput(_:)):

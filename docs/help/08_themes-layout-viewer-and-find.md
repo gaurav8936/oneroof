@@ -96,3 +96,9 @@ Session › Open in New Window (⌥⌘O) moves a running session's terminal into
 **Edges at Focus.** Rest the pointer at the window's left edge for a second to slide the session list in, or at the right edge for the Plan; passing over an edge does nothing (LAB-1367, LAB-1368).
 
 **The Focus lane.** At Focus the session column is a thin lane of avatars. Drag its right edge out and the session list appears as you drag, names cut off at first and more of them as it widens; let go and it stays that wide. Drag it back under about 110 pt and it returns to avatars. **+N** under the avatars widens it too. Click **Focus** (or ⌥⌘F) while the lane is wide to snap it back to the avatars; Focus always opens with the thin lane (LAB-1366, LAB-1382, LAB-1383).
+
+**Scroll (⌃⌥⌘4).** Beside Single · Grid · Wall, Scroll shows every session's important moments in one feed, newest at the bottom: finished steps, findings, errors, what each agent asked you and what you answered, finished turns. Never code, diffs or tool output. Each moment says which session it is from; **Reply** sends that session an instruction (or answers its open question), and a permission ask can be allowed or denied in place. ‹ Single or Esc goes back (1.9.34, LAB-1831).
+
+**Needs you keeps what you decided.** Answered asks stay in the Needs you list under **Decided**, newest first, for as long as their session is alive; click one to see what was asked, what you answered and when. Drag the list's right edge to make it wider or narrower; the width is kept (1.9.34, LAB-1831, LAB-1932).
+
+**The toolbar title never covers an icon.** The window title takes the room between the icon row and the buttons on the right; when it does not fit it is shortened, and when there is no room it hides rather than draw over anything (1.9.34, LAB-1932).

@@ -24,7 +24,7 @@ import OneRoofCore
     private func refresh(_ model: AppModel) {
         guard !busy else { return }   // the last read is still out (roofd slow): skip this tick
         let wanted = Set(ids)
-        let panes = model.items.compactMap { i -> (String, String)? in
+        let panes = model.sessionItems.compactMap { i -> (String, String)? in
             guard wanted.contains(i.id), i.liveAgent != nil, let p = i.paneId ?? i.liveAgent else { return nil }
             return (i.id, p)
         }
@@ -68,7 +68,7 @@ struct V2WallPage: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text("All windows").ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
-                    Text("\(model.windows.count) window\(model.windows.count == 1 ? "" : "s") · \(model.items.count) sessions · \(shown.count) on the wall"
+                    Text("\(model.windows.count) window\(model.windows.count == 1 ? "" : "s") · \(model.sessionItems.count) sessions · \(shown.count) on the wall"
                          + (all.count > shown.count ? " · \(all.count - shown.count) more (open their window)" : ""))
                         .ui(12.5).foregroundStyle(t.text2.color)
                     Spacer()

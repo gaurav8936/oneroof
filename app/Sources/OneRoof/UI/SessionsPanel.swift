@@ -315,6 +315,8 @@ struct SessionContextMenu: View {
                 }
             }
         }
+        // LAB-1921: a session that did a repeated task becomes a loop (its repo, objective and opening message).
+        if it.session.agent.isAgent { Button("Make This a Loop…") { model.makeLoop(from: it, in: win) } }
         if v2 {   // A10.4: the Session-menu items the row menu lacked
             Menu("Schedule") {
                 Button("Tonight 2:00 AM") { model.schedule(it, hour: 2, minute: 0, nightly: false) }

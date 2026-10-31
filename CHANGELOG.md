@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.9.34 — Loops & all: loops leave the session list and get a home; Full permission mode; verified open-source models; Scroll (31 Oct 2026)
+
+- **Loops get their own home** (LAB-LOOPS). Loop runs no longer show in the session list, its counts, search or Needs
+  you: "session" now means one you started (LAB-1933). The Loops page shows runs, every outcome a loop produced, and a
+  per-loop drill-down where you approve or reject each one (LAB-1918, LAB-1941). Needs you gains **Loops · Today**:
+  what the loops staged overnight, with Approve → open PR, Apply, Open or Dismiss right there (LAB-1919), and a loop
+  that stopped shows as a loop item, never a session (LAB-1866). A real **loop editor** with tall, resizable fields
+  and help per field (LAB-1920); **describe a loop in plain words** and an agent drafts it, with a preview of the first
+  run, examples by kind, and Session › Make This a Loop… (LAB-1921); a **Gallery** of loop kinds with real samples
+  (LAB-1922). Your own `*.loop.yaml` loops now show (LAB-1843). New triggers: **when quiet** and **on an event**
+  (LAB-1369, LAB-1865). Approving loop work gates it (its check + a judge) before a PR is opened (LAB-1867). Each
+  loop's definition and run state are now separate files, so definitions can live in git (LAB-1942). roofd writes
+  every run to the outcome ledger and sends one Slack alert when a loop stops (LAB-1848, LAB-1917).
+- **Full permission mode** (LAB-1935). Settings › Permissions adds **Full** (never asks) next to Manual, Plan and
+  Auto, using each CLI's own no-prompt flag. **Antigravity starts in Full.** Each mode's flags are editable, with
+  Reset. Help: what each agent's Auto still asks.
+- **Settings fields look editable** (LAB-1934). Model and Extra arguments under Seats & accounts were editable but
+  drawn as plain grey text; they are real fields now.
+- **Verified open-source coding models for OpenCode and Goose** (LAB-1929, LAB-1930). Fireworks and OpenRouter join
+  Together. The New session picker lists 14 open-weight coding models, each checked with both agents (reply, a real
+  tool call, memory), with its price.
+- **Hosted sessions can start at ~/Projects** (LAB-1931), like every other agent; private folders inside it stay
+  protected from reads and edits.
+- **The title never sits under the toolbar** (LAB-1932). The window title keeps its own space, shortens or hides
+  instead of overlapping, and a check covers every view, rail state and width. The Needs you list column can be
+  dragged wider or narrower.
+- **Scroll** (LAB-1831). Needs you keeps a Decided history, and a Scroll layout (beside Single · Grid · Wall) shows
+  every session's important moments in one feed, where you can answer and reply.
+- **Download page counts visits.** The download page sends a cookie-less count of visits and download
+  clicks to our own counter. No cookies, nothing personal stored, never slows a download.
+- **Faster releases** (LAB-1903): one build, tested and signed as-is, judged against the previous release side by side.
+
 ## 1.9.33 — Needs you shows every option; nothing covers the terminal; finished turns wait for you; OpenCode and Goose ready to use (31 Oct 2026)
 
 - **Nothing covers the terminal any more** (LAB-1907). The approval card that sat over an agent's prompt hid the

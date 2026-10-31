@@ -53,7 +53,7 @@ struct LearnView: View {
                                 // S11.U: send "/skill-name" to a live agent session.
                                 let skill = ((c.path as NSString).deletingLastPathComponent as NSString).lastPathComponent
                                 Menu("Use in a session") {
-                                    ForEach(model.items.filter { $0.liveAgent != nil && $0.session.agent.isAgent }) { i in
+                                    ForEach(model.sessionItems.filter { $0.liveAgent != nil && $0.session.agent.isAgent }) { i in
                                         Button(i.session.name) { model.sendSkill(skill, to: i) }
                                     }
                                 }

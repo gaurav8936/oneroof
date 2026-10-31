@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OneRoofCore
 
@@ -10,6 +11,8 @@ struct DecisionsView: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
+    /// LAB-1866 · LAB-1919: loop items (a loop that stopped, a round that asks, Today), after the session asks.
+    @ObservedObject private var loopInbox = LoopInboxState.shared
     @State private var selected: String?
     @State private var reply = ""
     @State private var undoRule: Decision?
@@ -22,27 +25,37 @@ struct DecisionsView: View {
     enum Entry: Identifiable, Equatable {
         case prompt(Decision)
         case plan(Objective)
+        case loop(LoopInbox.Item)
         var id: String {
             switch self {
             case .prompt(let d): return d.id.uuidString
             case .plan(let o): return "plan-" + o.id
+            case .loop(let i): return "loop-" + i.id
             }
         }
         var askedAt: Date {
             switch self {
             case .prompt(let d): return d.askedAt
             case .plan(let o): return o.createdAt
+            case .loop(let i): return i.when
             }
         }
+        var isLoop: Bool { if case .loop = self { return true }; return false }
     }
 
     private var entries: [Entry] {
         let plans = model.objectives.filter { $0.status == .review && $0.plan != nil }.map(Entry.plan)
-        return (model.openDecisions.map(Entry.prompt) + plans).sorted { $0.askedAt < $1.askedAt }
+        return (model.openDecisions.map(Entry.prompt) + plans).sorted { $0.askedAt < $1.askedAt } + loopInbox.items.map(Entry.loop)
     }
+
+    /// LAB-1831 · what you decided, kept while its session is alive (newest first), under the open asks.
+    private var decided: [Decision] { ScrollFeed.decided(model.decisions) { model.item($0) } }
 
     private var current: Entry? {
         let list = entries
+        if let s = selected, let d = decided.first(where: { $0.id.uuidString == s }), !list.contains(where: { $0.id == s }) {
+            return .prompt(d)
+        }
         return list.first { $0.id == selected } ?? list.first
     }
 
@@ -55,14 +68,50 @@ struct DecisionsView: View {
         .onChange(of: model.openDecisions.count) { old, new in if new > old { showRules = false } }   // a new decision shows
     }
 
+    /// LAB-1932 · the list column's width, dragged on its edge (240…560 pt), kept across launches.
+    @AppStorage("v2.needsYou.listWidth", store: Prefs.defaults) private var listWidth: Double = V2Layout.needsListDefault
+    @State private var dragFrom: Double?
+
     private var queue: some View {
+        GeometryReader { g in
+            let w = V2Layout.needsListWidth(saved: listWidth, available: Double(g.size.width))
+            queueRow(listWidth: w)
+        }
+    }
+
+    /// The list's right edge: a 1 pt line with a 9 pt grab area and the resize cursor.
+    private func listEdge(current: Double) -> some View {
+        Rectangle().fill(t.separator.color).frame(width: 1)
+            .overlay(
+                Color.clear.frame(width: 9).contentShape(Rectangle())
+                    .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                        .onChanged { v in
+                            let from = dragFrom ?? current
+                            if dragFrom == nil { dragFrom = current }
+                            listWidth = min(V2Layout.needsListMax, max(V2Layout.needsListMin, from + Double(v.translation.width)))
+                        }
+                        .onEnded { _ in dragFrom = nil })
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Needs you list width")
+            .accessibilityValue("\(Int(current)) points")
+            .accessibilityAdjustableAction { dir in
+                listWidth = min(V2Layout.needsListMax, max(V2Layout.needsListMin, current + (dir == .increment ? 20 : -20)))
+            }
+            .help("Drag to resize the list")
+    }
+
+    private func queueRow(listWidth w: Double) -> some View {
         HStack(spacing: 0) {
-            list.frame(width: 340)
-            Rectangle().fill(t.separator.color).frame(width: 1)
+            list.frame(width: CGFloat(w))
+            listEdge(current: w).zIndex(1)
             Group {
                 switch current {
+                case .prompt(let d) where !d.isOpen: decidedDetail(d)   // LAB-1831
                 case .prompt(let d): detail(d)
                 case .plan(let o): planDetail(o)
+                case .loop(let i): LoopNeedDetail(model: model, item: i, win: win)
                 case nil: empty
                 }
             }
@@ -88,8 +137,20 @@ struct DecisionsView: View {
             }
             .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
             ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(list) { e in listItem(e) }
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(list.filter { !$0.isLoop }) { e in listItem(e) }
+                    // LAB-1866 · LAB-1919: loops, never as sessions; Today is what they staged for you.
+                    let loops = list.filter(\.isLoop)
+                    if !loops.isEmpty {
+                        MicroLabel("Loops · Today · \(loops.count)").padding(.horizontal, 6).padding(.top, loops.count == list.count ? 0 : 10)
+                        ForEach(loops) { e in listItem(e) }
+                    }
+                    // LAB-1831: answered asks stay, newest first, while their session is alive: scroll back through them.
+                    let done = decided
+                    if !done.isEmpty {
+                        MicroLabel("Decided · \(done.count)").padding(.horizontal, 6).padding(.top, list.isEmpty ? 0 : 10)
+                        ForEach(done, id: \.id) { d in decidedItem(d) }
+                    }
                 }
                 .padding(.horizontal, 12)
             }
@@ -108,7 +169,67 @@ struct DecisionsView: View {
         .background(t.sidebar.color)
     }
 
-    private func listItem(_ e: Entry) -> some View {
+    /// A decided ask in the list: dimmer, with what you answered and when.
+    private func decidedItem(_ d: Decision) -> some View {
+        let on = current?.id == d.id.uuidString
+        let item = model.item(d.sessionId)
+        return Button { withAnimation(Motion.fast) { selected = d.id.uuidString } } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+                    if let item { AgentBadge(item: item, size: 18, status: false) }
+                    Text(item?.session.name ?? "Session").ui(12.5, .semibold).foregroundStyle(t.text2.color).lineLimit(1)
+                    Spacer()
+                    Text(ageText(d.answeredAt ?? d.askedAt)).ui(11).foregroundStyle(t.text3.color)
+                }
+                Text(ScrollFeed.askText(d)).ui(12).foregroundStyle(t.text2.color).lineLimit(1)
+                Text(ScrollFeed.answerText(d) ?? "").ui(11, .semibold).foregroundStyle(t.text3.color).lineLimit(1)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(on ? t.surface.color : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(on ? t.separatorStrong.color : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Decided: \(ScrollFeed.askText(d)), \(ScrollFeed.answerText(d) ?? "")")
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// LAB-1831 · a decided ask, read only: what was asked, what you answered, when.
+    private func decidedDetail(_ d: Decision) -> some View {
+        let item = model.item(d.sessionId)
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                if let item { AgentBadge(item: item, size: 22, status: false) }
+                Text(item?.session.name ?? "Session").ui(13).foregroundStyle(t.text2.color).lineLimit(1)
+                Spacer()
+                Button { if let item { model.reveal(item) } } label: { Text("Open session ⌘↩").ui(12.5).foregroundStyle(t.text2.color) }
+                    .buttonStyle(.plain)
+            }
+            MicroLabel("Asked · " + d.askedAt.formatted(date: .abbreviated, time: .shortened))
+            Text(ScrollFeed.askText(d)).ui(22, .semibold).foregroundStyle(t.text.color)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            if !d.isQuestion && !d.isFinished && !d.why.isEmpty {
+                Text(d.why).ui(13.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            }
+            MicroLabel("You answered" + (d.answeredAt.map { " · " + $0.formatted(date: .abbreviated, time: .shortened) } ?? ""))
+            Text(ScrollFeed.answerText(d) ?? "").ui(15, .semibold).foregroundStyle(t.text.color).textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+        .padding(28)
+    }
+
+    @ViewBuilder private func listItem(_ e: Entry) -> some View {
+        if case .loop(let i) = e {
+            let on = e.id == current?.id
+            Button { withAnimation(Motion.fast) { selected = e.id } } label: { LoopNeedRow(item: i, selected: on) }
+                .buttonStyle(.plain)
+        } else {
+            sessionItem(e)
+        }
+    }
+
+    private func sessionItem(_ e: Entry) -> some View {
         let on = e.id == current?.id
         return Button { withAnimation(Motion.fast) { selected = e.id } } label: {
             VStack(alignment: .leading, spacing: 5) {
@@ -143,6 +264,7 @@ struct DecisionsView: View {
                     }
                     Text("Approve a \(o.plan?.steps.count ?? 0)-step plan").ui(12.5).foregroundStyle(t.text2.color)
                     HStack(spacing: 6) { RiskPill(risk: .plan); Text(Workspace.repoLabel(for: o.repoPath)).ui(11.5).foregroundStyle(t.text3.color) }
+                case .loop: EmptyView()
                 }
             }
             .padding(12)

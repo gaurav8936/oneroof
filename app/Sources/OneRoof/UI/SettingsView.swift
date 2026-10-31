@@ -385,7 +385,13 @@ struct SettingsView: View {
                         LabeledContent("Account") { Text("One seat (~/.codex)").foregroundStyle(.secondary) }
                     }
                     ModelField(agent: agent, model: binding(agent, \.model))
-                    TextField("Extra arguments", text: binding(agent, \.args), prompt: Text("optional"))
+                    // LAB-1934: a bordered field you can see is editable (the grouped form drew it as a grey label).
+                    LabeledContent("Extra arguments") {
+                        TextField("", text: binding(agent, \.args), prompt: Text("optional, e.g. --verbose"))
+                            .labelsHidden().textFieldStyle(.roundedBorder).multilineTextAlignment(.leading)
+                            .font(.system(size: 12, design: .monospaced)).frame(minWidth: 240)
+                            .accessibilityLabel("\(agent.displayName) extra arguments")
+                    }
                 }
             }
         }
@@ -396,7 +402,7 @@ struct SettingsView: View {
     /// session sheet can pick another for one session; arguments that set a mode win. Loops keep their own setting.
     private var permissions: some View {
         Form {
-            Text("How much each agent may do without asking. Every new session starts in its agent's mode; the New session sheet can change it for one session, and arguments that set a mode win. Loops and objective steps keep their own setting.")
+            Text("How much each agent may do without asking. Auto lets routine work run; Full never asks. Antigravity starts in Full, the others in Auto. Every new session starts in its agent's mode; the New session sheet can change it for one session, and arguments that set a mode win. Type your own flags to replace a mode's flags; Reset puts the standard ones back. Loops and objective steps keep their own setting.")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(AgentKind.allCases.filter(\.isAgent)) { agent in
                 Section(agent.displayName) {
@@ -409,9 +415,21 @@ struct SettingsView: View {
                     .disabled(agent.isHosted)
                     .accessibilityLabel("\(agent.displayName) permission mode")
                     let m = model.settings.permissionMode(for: agent)
+                    // LAB-1935: the flags are the owner's to change; empty = the mode's standard flags (shown as the hint).
+                    let key = "\(agent.rawValue).\(m.rawValue)"
                     LabeledContent("Flags") {
-                        Text(m.args(for: agent).isEmpty ? "none (the CLI asks)" : m.args(for: agent).joined(separator: " "))
-                            .font(.system(size: 11.5, design: .monospaced)).textSelection(.enabled)
+                        HStack(spacing: 6) {
+                            TextField("", text: Binding(
+                                get: { model.settings.permissionFlags[key] ?? "" },
+                                set: { model.settings.permissionFlags[key] = $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }),
+                                      prompt: Text(m.args(for: agent).isEmpty ? "none (the CLI asks)" : m.args(for: agent).joined(separator: " ")))
+                                .labelsHidden().textFieldStyle(.roundedBorder).multilineTextAlignment(.leading)
+                                .font(.system(size: 11.5, design: .monospaced)).frame(minWidth: 260)
+                                .disabled(agent.isHosted)
+                                .accessibilityLabel("\(agent.displayName) \(m.label(for: agent)) flags")
+                            Button("Reset") { model.settings.permissionFlags[key] = nil }
+                                .disabled(model.settings.permissionFlags[key] == nil)
+                        }
                     }
                     Text(m.meaning(for: agent)).font(.caption).foregroundStyle(.secondary)
                 }
@@ -596,6 +614,8 @@ struct ModelField: View {
         LabeledContent("Model") {
             HStack(spacing: 6) {
                 TextField("", text: $model, prompt: Text("CLI default")).labelsHidden()
+                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.leading).frame(minWidth: 200)   // LAB-1934
+                    .accessibilityLabel("\(agent.displayName) model")
                 if !agent.suggestedModels.isEmpty {
                     Menu {
                         Button("CLI default") { model = "" }

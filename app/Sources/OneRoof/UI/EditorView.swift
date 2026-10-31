@@ -599,7 +599,7 @@ private struct RunDock: View {
                             .overlay(alignment: .top) { if id == current { Rectangle().fill(t.statusColor(.done).color).frame(height: 2) } }
                     }.buttonStyle(.plain)
                 }
-                ForEach(model.items.filter { $0.liveAgent != nil && $0.session.agent.isAgent && $0.session.repoPath == (win.viewerPath.flatMap { GitDiff.repoRoot(for: $0) } ?? "") }) { i in
+                ForEach(model.sessionItems.filter { $0.liveAgent != nil && $0.session.agent.isAgent && $0.session.repoPath == (win.viewerPath.flatMap { GitDiff.repoRoot(for: $0) } ?? "") }) { i in
                     Button { model.reveal(i) } label: {
                         HStack(spacing: 5) { StatusDot(status: i.status, size: 7); Text("\(i.account ?? "") · \(i.session.name)").ui(12.5).foregroundStyle(t.text2.color) }
                             .padding(.horizontal, 10)
@@ -791,7 +791,7 @@ private struct AskAgentSheet: View {
     @State private var question = ""
 
     var body: some View {
-        let agents = model.items.filter { $0.liveAgent != nil && $0.session.agent.isAgent }
+        let agents = model.sessionItems.filter { $0.liveAgent != nil && $0.session.agent.isAgent }
         let claimer = model.fileClaims.claim(for: request.path)?.sessionId
         VStack(alignment: .leading, spacing: 12) {
             Text("Ask an agent about \((request.path as NSString).lastPathComponent):\(request.from)–\(request.to)").ui(15, .semibold).foregroundStyle(t.text.color)

@@ -130,12 +130,15 @@ extension MainWindowController {
             if self?.v2Page != "All windows" { self?.v2Page = nil }
         }.store(in: &v2Bag)
         // Wall (A4.2) is the "All windows" page; leaving it (Esc, ⌘[, a place, a tile) goes back to Single.
+        // LAB-1831: Scroll is the "Scroll" page the same way.
         win.$layout.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] l in
             guard let self else { return }
-            if l == .wall { self.v2ShowPage("All windows") } else if self.v2Page == "All windows" { self.v2Page = nil }
+            if let page = V2Layout.page(for: l) { self.v2ShowPage(page) }
+            else if let p = self.v2Page, V2Layout.layout(forPage: p) != nil { self.v2Page = nil }
         }.store(in: &v2Bag)
         $v2Page.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] p in
-            if p != "All windows", self?.win.layout == .wall { self?.win.layout = .single }
+            guard let self, let page = V2Layout.page(for: self.win.layout), p != page else { return }
+            self.win.layout = .single
         }.store(in: &v2Bag)
         // Posted on the main thread: handled at once, so the mouse event that caused it is still the current one (a
         // queued handler ran after the drag and often missed it, so a dragged width was not kept, LAB-829).
@@ -321,7 +324,7 @@ extension MainWindowController {
             segs.append((v.frame.maxX, colours[i]))
         }
         backdropRef.setSegments(segs)
-        if fit { v2FitToolbar() }
+        if fit { v2FitToolbar() } else { v2PlaceTitle() }
         v2NudgeTrafficLights()
     }
 
@@ -348,12 +351,70 @@ extension MainWindowController {
         let extras = window.toolbar?.items.first { $0.itemIdentifier == V2ToolbarDelegate.extras }?.view?.fittingSize.width ?? 0
         let fit = V2Layout.toolbarFit(room: Double(window.frame.width) - start, extras: Double(extras))
         if fit != v2Bar { v2Bar = fit; DispatchQueue.main.async { [weak self] in self?.v2KickToolbar() } }
+        v2PlaceTitle()
+    }
+
+    /// LAB-1932 · the title's slot from the toolbar's frames as they are now. Cheap (frames only), so it runs on every
+    /// band paint, during a live resize too, and whenever a toolbar item's frame changes (V2ToolbarDelegate).
+    func v2PlaceTitle() {
+        guard let window else { return }
+        let centreX = centreItemRef.viewController.view.convert(CGPoint.zero, to: nil).x
         // LAB-1783: the title's text starts where the centre's content does (its tabs, a page's heading).
+        // LAB-1932: inside the slot between its neighbours as they are laid out now, never over them.
         if let title = window.toolbar?.items.first(where: { $0.itemIdentifier == V2ToolbarDelegate.title })?.view, title.window != nil {
-            let lightsEnd = window.standardWindowButton(.zoomButton).map { Double($0.convert($0.bounds, to: nil).maxX) } ?? 0
-            let shift = V2Layout.titleShift(itemX: Double(title.convert(CGPoint.zero, to: nil).x), centreX: Double(centreX), lightsEnd: lightsEnd)
-            if abs(CGFloat(shift) - v2TitleShift.x) > 0.5 { v2TitleShift.x = CGFloat(shift) }
+            let itemX = Double(title.convert(CGPoint.zero, to: nil).x)
+            let others = v2BarSpans(excludingTitle: true)
+            let slot = V2Layout.titleSlot(itemX: itemX, centreX: Double(centreX), lightsEnd: v2LightsEnd,
+                                          left: others.filter { $0.maxX <= itemX + 1 }, right: others.filter { $0.minX > itemX + 1 },
+                                          windowWidth: Double(window.frame.width))
+            if Self.titleUnfenced {   // self-test only: 1.9.33's placement, to prove `barcheck` catches it
+                let old = V2Layout.titleShift(itemX: itemX, centreX: Double(centreX), lightsEnd: v2LightsEnd)
+                if abs(CGFloat(old) - v2TitleShift.x) > 0.5 { v2TitleShift.x = CGFloat(old) }
+                if v2TitleShift.maxWidth != nil { v2TitleShift.maxWidth = nil }
+                return
+            }
+            if abs(CGFloat(slot.shift) - v2TitleShift.x) > 0.5 { v2TitleShift.x = CGFloat(slot.shift) }
+            if v2TitleShift.maxWidth.map({ abs($0 - CGFloat(slot.maxWidth)) > 0.5 }) ?? true { v2TitleShift.maxWidth = CGFloat(slot.maxWidth) }
         }
+    }
+
+    /// ONEROOF_SELFTEST_TITLE_UNFENCED=1 (self-test only): place the title as 1.9.33 did, for before/after captures.
+    static let titleUnfenced = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_TITLE_UNFENCED"] == "1"
+
+    /// Where the zoom button ends (window points), 0 in full screen.
+    var v2LightsEnd: Double {
+        window?.standardWindowButton(.zoomButton).flatMap { $0.isHidden ? nil : Double($0.convert($0.bounds, to: nil).maxX) } ?? 0
+    }
+
+    /// LAB-1932 · every toolbar item the window shows now (not in »), with its frame in window points; the 1 pt
+    /// placeholders of hidden slots are left out.
+    func v2BarSpans(excludingTitle: Bool) -> [V2Layout.BarSpan] {
+        guard let tb = window?.toolbar else { return [] }
+        let visible = Set((tb.visibleItems ?? []).map(\.itemIdentifier))
+        return tb.items.compactMap { i -> V2Layout.BarSpan? in
+            guard visible.contains(i.itemIdentifier), !(excludingTitle && i.itemIdentifier == V2ToolbarDelegate.title),
+                  let v = i.view, v.window != nil, !v.isHiddenOrHasHiddenAncestor else { return nil }
+            let r = v.convert(v.bounds, to: nil)
+            guard r.width > 2 else { return nil }
+            return V2Layout.BarSpan(i.itemIdentifier.rawValue.replacingOccurrences(of: "oneroof.v2.", with: ""), Double(r.minX), Double(r.maxX))
+        }
+    }
+
+    /// LAB-1932 · the title's text as drawn (window points), nil when it is hidden or not in the toolbar.
+    var v2TitleDrawnSpan: V2Layout.BarSpan? {
+        guard let tb = window?.toolbar, (tb.visibleItems ?? []).contains(where: { $0.itemIdentifier == V2ToolbarDelegate.title }),
+              let v = tb.items.first(where: { $0.itemIdentifier == V2ToolbarDelegate.title })?.view, v.window != nil,
+              v2TitleShift.maxWidth != 0, v2TitleShift.drawnWidth > 0.5 else { return nil }
+        let x = Double(v.convert(CGPoint.zero, to: nil).x) + V2Layout.Bar.titleLead + Double(v2TitleShift.x)
+        return V2Layout.BarSpan("title", x, x + Double(v2TitleShift.drawnWidth))
+    }
+
+    /// LAB-1932 · what the title crosses now: window buttons or toolbar items (empty = clear). `barcheck` fails on any.
+    func v2TitleOverlaps() -> [String] {
+        guard let w = window else { return [] }
+        let lights = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { w.standardWindowButton($0) }
+            .filter { !$0.isHidden }.map { b -> V2Layout.BarSpan in let r = b.convert(b.bounds, to: nil); return .init("lights", Double(r.minX), Double(r.maxX)) }
+        return V2Layout.barOverlaps(title: v2TitleDrawnSpan, others: lights + v2BarSpans(excludingTitle: true))
     }
 
     /// NSToolbar measures an item once it moved into » and never again, so after a window shrink with a long title
