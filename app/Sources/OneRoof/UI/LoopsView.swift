@@ -686,15 +686,21 @@ struct LoopEditor: View {
         if x.check.trimmingCharacters(in: .whitespaces).isEmpty { return "Set a check: the command that exits 0 when the goal is met." }
         if !Workspace.isInsideProjects(x.repoPath) || Workspace.isProjectsRoot(x.repoPath) { return "Pick a repo inside the projects folder." }
         if !FileManager.default.fileExists(atPath: x.repoPath + "/.git") { return "The repo must be a git repo (the loop works in its own worktree)." }
+        if let p = LoopSpecLint.checkProblem(x.check, folder: checkFolder(x)) { return p }   // LAB-1846
         return nil
+    }
+
+    /// Where the check runs: the loop's worktree when it exists, else the repo.
+    private func checkFolder(_ x: Loop) -> String {
+        let wt = x.id.isEmpty ? nil : x.worktreePath
+        return wt.flatMap { FileManager.default.fileExists(atPath: $0 + "/.git") ? $0 : nil } ?? x.repoPath
     }
 
     /// Test the check: in the loop's worktree when it exists, else in the repo (read-only use of your checkout:
     /// the check runs there as it is).
     private func test() {
         let x = draft.loop
-        let wt = x.id.isEmpty ? nil : x.worktreePath
-        let folder = wt.flatMap { FileManager.default.fileExists(atPath: $0 + "/.git") ? $0 : nil } ?? x.repoPath
+        let folder = checkFolder(x)
         testing = true
         testResult = nil
         DispatchQueue.global(qos: .userInitiated).async {
