@@ -34,6 +34,10 @@ SCENARIOS = ["builder", "asker", "mixed"]
 # Who the simulated owner is per session: how soon they answer an ask (None = never: it stays in Needs you).
 PERSONAS = {"prompt": (4, 15), "slow": (40, 90), "away": None}
 
+# LAB-1924: --pretty names for public screenshots (made-up projects; no real repo or person).
+PRETTY = ["Checkout flow fixes", "Search index rebuild", "Billing webhook retries", "Docs site navigation",
+          "Flaky login test", "Release notes 2.4", "Image upload limits", "Nightly usage export", "Onboarding emails"]
+
 FOLLOW_UPS = [
     "Thanks. Now add a test for that.",
     "Looks good. What's left before we can ship?",
@@ -122,12 +126,12 @@ class Sim:
         n = 1 if self.a.real else self.a.sessions
         if self.a.real:
             self.a.turns = min(self.a.turns, 3)    # a proof run on the owner's subscription: a few turns
-        windows = ["Main", "Sim B", "Sim C"]
+        windows = ["Main", "Web", "API"] if self.a.pretty else ["Main", "Sim B", "Sim C"]
         personas = list(PERSONAS)
         for i in range(n):
             agent = "claude" if self.a.real else AGENTS[i % len(AGENTS)]
             scen = SCENARIOS[(i // len(AGENTS) + i) % len(SCENARIOS)]
-            name = f"sim-{i + 1:02d}-{agent}-{scen}"
+            name = PRETTY[i % len(PRETTY)] if self.a.pretty else f"sim-{i + 1:02d}-{agent}-{scen}"
             repo = os.path.join(root, name)
             os.makedirs(repo, exist_ok=True)
             subprocess.run(["git", "init", "-q", repo], check=False)
@@ -153,7 +157,7 @@ class Sim:
 
     def write_script(self):
         lines = ["# One Roof simulator (LAB-1591): sessions over 3 windows, then Needs you watched", "wait 4"]
-        for w in ["Main", "Sim B", "Sim C"]:
+        for w in (["Main", "Web", "API"] if self.a.pretty else ["Main", "Sim B", "Sim C"]):
             mine = [s for s in self.sessions if s["window"] == w]
             if not mine:
                 continue
@@ -168,8 +172,21 @@ class Sim:
             lines += [f"needs t{k:04d}"]
             if k % max(1, int(30 / self.a.every)) == 0:
                 lines += [f"snap needs-{k:04d}"]
+                if self.a.each:   # LAB-1907: every open entry, and a blocked session's terminal (no card over it)
+                    for i in range(6):
+                        lines += [f"needspick {i}", f"snap needs-{k:04d}-e{i}"]
+                    lines += ["place sessions", "selectblocked", "wait 1", f"snap term-{k:04d}", "place needsYou", "wait 1"]
             lines += [f"wait {self.a.every}"]
             k += 1
+        if self.a.tour:   # LAB-1924: one capture of every place at the end, for the README and the site
+            first = self.sessions[0]["name"]
+            lines += ["activate Main", "place home", "wait 2", "snap tour-home",
+                      "place sessions", f"select {first}", "wait 2", "snap tour-sessions",
+                      "place needsYou", "wait 1", "snap tour-needs"]
+            lines += [x for i in range(4) for x in (f"needspick {i}", f"snap tour-needs-e{i}")]
+            lines += ["place work", "wait 2", "snap tour-work", "place machine", "wait 2", "snap tour-machine",
+                      "place loops", "wait 2", "snap tour-loops", "place learn", "wait 3", "snap tour-learn",
+                      "place sessions", "newsession", "wait 2", "snap tour-newsession"]
         lines += ["place sessions", "snap end-sessions", "quit"]
         self.script = os.path.join(self.run, "script.txt")
         with open(self.script, "w") as f:
@@ -329,7 +346,7 @@ class Sim:
         self.prepare()
         print(f"run folder: {self.run}\nroofd dir:  {self.roofd_dir}", flush=True)
         self.launch()
-        end = time.time() + self.a.minutes * 60 + 25
+        end = time.time() + self.a.minutes * 60 + 25 + (180 if self.a.tour else 0)   # the tour runs after the reads
         try:
             while time.time() < end and self.app.poll() is None:
                 self.poll()
@@ -409,10 +426,16 @@ class Sim:
         stale = []
         for d in dumps:
             for o in d["open"]:
+                if o.get("finished"):   # LAB-1827: a finished turn waits in Needs you on purpose
+                    continue
                 sid = next((i for i, x in by_id.items() if x["name"] == o["session"]), None)
                 last = [e for e in events.get(sid, []) if e[0] <= d["at"]]
                 if last and last[-1][1] == "answered" and d["at"] - last[-1][0] > 5:
                     stale.append((o["session"], d["at"] - last[-1][0]))
+        # LAB-1827: finished turns in Needs you; LAB-1839: asks shown with the prompt's own options.
+        finished = sorted({o["session"] for d in dumps for o in d["open"] if o.get("finished")})
+        with_options = [o for d in dumps for o in d["open"] if not o.get("finished") and o.get("choices")]
+        max_opts = max([len(o["choices"]) for o in with_options] or [0])
         # The run's own store: every decision the app made, and the ones that closed within 2 s (status flapping).
         flaps = total = 0
         try:
@@ -429,6 +452,8 @@ class Sim:
                   " · Claude's plain-text questions at the end of a turn are asks above (`end-question`, LAB-1606)",
                   f"Stale Needs you entries (ask already answered > 5 s before the read): {len(stale)}"
                   + (" · " + ", ".join(sorted({n for n, _ in stale})) if stale else ""),
+                  f"Finished turns shown in Needs you (LAB-1827): {len(finished)} session(s)" + (" · " + ", ".join(finished) if finished else ""),
+                  f"Asks shown with the prompt's own options (LAB-1839): {len(with_options)} reads · most options on one ask: {max_opts}",
                   f"Decisions the app recorded: {total} · closed within 2 s as 'answered in the terminal' (flapping): {flaps}", "",
                   "Files: `turns.tsv` (every turn, status and answer), `agents.tsv` (what each stand-in asked and heard), "
                   "`shots/sim-t*.needs.json` (Needs you at each read), `shots/sim-needs-*.png` (screenshots), `app.log`."]
@@ -453,6 +478,9 @@ def main():
     p.add_argument("--real", action="store_true", help="one real Claude session instead of stand-ins")
     p.add_argument("--model", default="haiku", help="--real: the Claude model (ANTHROPIC_MODEL)")
     p.add_argument("--out", help="run folder (default $TMPDIR/oneroof-sim-<time>)")
+    p.add_argument("--pretty", action="store_true", help="LAB-1924: realistic session and window names (screenshots)")
+    p.add_argument("--tour", action="store_true", help="LAB-1924: snap every place at the end of the run")
+    p.add_argument("--each", action="store_true", help="LAB-1907: snap every open Needs you entry and a blocked terminal")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args()
     Sim(a).go()

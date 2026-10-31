@@ -2,7 +2,7 @@
 
 <h3 align="center">1× is you.<br>10× is your agent.<br>100× is all of them at once.</h3>
 
-<p align="center">AI already took most engineers from 1× to 10×. The next 10× won't come from a smarter model, or from agents left on autopilot. It comes from running many agents at once with you still steering, deciding and checking. One Roof is the app built for that: every Claude Code, Codex, Kimi, Gemini and Antigravity session in one place, each saying in plain words what it's doing and what it needs from you.</p>
+<p align="center">AI already took most engineers from 1× to 10×. The next 10× won't come from a smarter model, or from agents left on autopilot. It comes from running many agents at once with you still steering, deciding and checking. One Roof is the app built for that: every Claude Code, Codex, Kimi, Gemini, Antigravity, OpenCode and Goose session in one place, each saying in plain words what it's doing and what it needs from you.</p>
 
 <p align="center">
   <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac (.zip)</b></a> ·
@@ -14,7 +14,6 @@
 
 <p align="center">
   <a href="https://github.com/gaurav8936/oneroof/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/gaurav8936/oneroof?label=release"></a>
-  <a href="https://github.com/gaurav8936/oneroof/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/gaurav8936/oneroof/actions/workflows/test.yml/badge.svg"></a>
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-black?logo=apple">
   <img alt="Apple silicon" src="https://img.shields.io/badge/Apple%20silicon-arm64-lightgrey">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
@@ -22,11 +21,12 @@
 
 <p align="center"><sub>Open source · MIT · native macOS app · macOS 14 or later · one download, plus your agents</sub></p>
 
-<p align="center"><img src="site/shots/overview-daylight.png" alt="One Roof Overview: every window and session at once, grouped, with a live feed of what each agent did" width="960"></p>
+<p align="center"><img src="site/shots/overview-daylight.png" alt="One Roof Home: three windows of sessions from five agents, what each needs, and a live feed" width="960"></p>
 
-<p align="center"><b>The players:</b> Claude Code · Codex · Kimi · Gemini · Antigravity<br>
+<p align="center"><b>The players:</b> Claude Code · Codex · Kimi · Gemini · Antigravity · OpenCode · Goose<br>
 <sub>Up to two Claude accounts and one of each other agent, found automatically. Claude and Codex show live usage,
-and new work goes to the seat with room.</sub></p>
+and new work goes to the seat with room. OpenCode and Goose are open source and run a hosted model on your own API key,
+with a spending cap per session.</sub></p>
 
 ## Each jump changes what your job is.
 
@@ -58,7 +58,7 @@ Each one is fine at three sessions. Each one is what caps you at twenty.
 |---|---|
 | **You can't tell sessions apart.** Every tab has the same grey icon, so you type WIP: or NEXT: in front of the name. | Every session labelled with its state, agent, account and a live one-line status. |
 | **Nobody reads the wall of text.** At 100×, reading every stream is the whole day. | A summary of what you asked, what it's doing now and how far along it is. |
-| **Approvals block everything.** Questions pile up in tabs you aren't looking at, and come with no reason. | One queue for every decision, with the reason, the risk and what happens if you say no. |
+| **Approvals block everything.** Questions pile up in tabs you aren't looking at, and come with no reason. | One queue for everything waiting on you: each prompt with its reason, its risk and every option the agent offers, plus the turns that finished and wait for your next message. |
 | **Subscriptions run out mid-task.** More agents means more limits, and you find out when one stops. | Remaining usage on each seat steers new work; a step hands off before a limit hits. |
 | **Agents drift apart.** More sessions, more ways to start one in the wrong folder with the wrong memory. | One launch folder, one memory and one rulebook, checked every time the app starts. |
 | **Work lives in three places.** The tracker, Linear and your tabs never agree. | Board, Work and tickets inside the app. Every session knows its ticket. |
@@ -69,7 +69,7 @@ In chat, few people are loyal to one model any more: one for writing, another fo
 
 That won't last. Agents differ in what they're good at, which model family they bring and how much room is left on each subscription. The next step is using the right one for each task: plan, build, review, research, chores, and the loops that run every night.
 
-Each vendor's own app is built to keep you inside that vendor's agent. One Roof isn't any vendor's. Claude Code, Codex, Kimi, Gemini and Antigravity run side by side, and your rules decide who takes what.
+Each vendor's own app is built to keep you inside that vendor's agent. One Roof isn't any vendor's. Claude Code, Codex, Kimi, Gemini and Antigravity run side by side, with the open-source OpenCode and Goose on whichever hosted model you choose, and your rules decide who takes what.
 
 **A neutral home for agentic engineering: agentic code today, agentic everything next.**
 
@@ -94,11 +94,19 @@ step stays a real terminal. Subagents sit beside it with their own captions.
 
 <img src="site/shots/session-daylight.png" alt="A session: what you asked, steps, chapters and subagents" width="960">
 
-### The calls that need you, with the reason in front of you. <sub>Decisions · ⌘I</sub>
+### Everything that needs you, with the reason in front of you. <sub>Needs you · ⌘I</sub>
 Every agent waiting on you, oldest first: why it wants to do it, what it touches, the risk, what happens if you say
-no. Allow once, always allow, deny, or reply with instructions. Nothing is approved for you.
+no, and every option its own prompt offers, in its words, one button each. A question shows as the agent drew it,
+with its own answers. A turn that finished waits here too, with what the agent said last and a reply box, so you can
+keep it going without opening the terminal. Nothing is approved for you, and nothing covers the terminal: you can
+always answer there instead.
 
-<img src="site/shots/decisions-daylight.png" alt="Decisions: an agent's request with its reason, what it touches and the risk" width="960">
+<img src="site/shots/decisions-daylight.png" alt="Needs you: Kimi asks to use the network, with its reason, risk and all four of its own options; finished turns wait in the list" width="960">
+
+### Open-source agents, on your own API key. <sub>OpenCode · Goose</sub>
+OpenCode and Goose run beside the others in the same terminals, Needs you and handoffs. Pick a hosted model (tested
+with Together's GLM-5.3-Flash; OpenRouter and Fireworks connect too), point One Roof at your key file, and set a cap
+per session and in total: a session stops before it spends past it. Your key never goes into a prompt, a log or the repo.
 
 ### Plan your day by dragging cards. <sub>Board · ⌘B</sub>
 Planned, Next, Working, Needs you, Ready, Tonight: every session across every window on one board. Drag a card to
@@ -152,7 +160,7 @@ optional hooks, all packaged from the deck's own repository at build time. Liste
 | **The kit (`roof`)** | `bin/ guard/ shell/ lib/ templates/ tools/` | One launch folder, one memory, one rulebook for every agent, plus `roof swarm` for parallel agents in git worktrees. Works with or without the app |
 | **Website** | [`site/`](site/) | The launch page, published at [gaurav8936.github.io/oneroof](https://gaurav8936.github.io/oneroof/) |
 
-> **Early release (1.9.32).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
+> **Early release (1.9.33).** Used daily on one Mac and tested on Apple-silicon Macs only. Expect rough edges,
 > especially in first-run setup and agent detection on machines unlike ours. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with what you find; see [CONTRIBUTING.md](CONTRIBUTING.md).
 > Known limits: Apple silicon only; the optional on-device model needs `brew install llama.cpp` (the model itself is one click: **Get the model**).
@@ -165,7 +173,8 @@ optional hooks, all packaged from the deck's own repository at build time. Liste
 |---|---|---|
 | Required | A Mac with Apple silicon, macOS 14 or later | |
 | Required | git | `xcode-select --install` (Xcode Command Line Tools) |
-| Required | At least one agent CLI, installed and signed in: `claude`, `codex`, `kimi`, `gemini` or `agy` | each agent's own installer |
+| Required | At least one agent CLI, installed and signed in: `claude`, `codex`, `kimi`, `gemini` or `agy` | each agent's own installer (Gemini CLI needs a Gemini API key: Google no longer signs personal accounts in to it; Antigravity does) |
+| Optional | OpenCode or Goose | the pinned `opencode` 1.19.5 / `goose` 1.57.0, Python 3.12 with PyYAML, and an API key file for Together, OpenRouter or Fireworks (see [hosted agents](docs/help/hosted-agents.md)) |
 | Optional | On-device task classifier and captions | `brew install llama.cpp`, then **Get the model** in Settings › Foundations (Qwen3 1.7B, Apache-2.0, 1.1 GB) |
 | Optional | Work view (projects and tickets) | a Linear API key, entered at setup or in Settings |
 | Optional | Seat gauges for Claude | a Claude Code status line that writes usage files (see the help page on seats) |
@@ -284,7 +293,7 @@ covers adding another agent, including Hermes, which keeps its own memory.
 bash tests/run.sh      # 59 checks in a throwaway HOME with fake agents: no real settings, shells or tokens touched
 ```
 
-CI runs them on Ubuntu and macOS.
+CI (Woodpecker) runs them on Linux and macOS.
 
 ## Licence
 

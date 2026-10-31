@@ -51,6 +51,7 @@ struct DecisionsView: View {
             if v2 && showRules { V2RulesPage(model: model) { showRules = false } } else { queue }
         }
         .onDisappear { showRules = false }                                     // back to the queue next time
+        .onChange(of: model.needsPick) { _, id in if let id { selected = id } }   // self-test: show this entry
         .onChange(of: model.openDecisions.count) { old, new in if new > old { showRules = false } }   // a new decision shows
     }
 
@@ -120,10 +121,14 @@ struct DecisionsView: View {
                         Spacer()
                         Text(ageText(d.askedAt)).ui(11.5).foregroundStyle(t.text3.color)
                     }
-                    Text(d.command.map { "Run " + $0 } ?? d.headline).ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
+                    Text(d.command.map { "Run " + $0 } ?? (d.isFinished ? d.why : d.headline)).ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
                     HStack(spacing: 6) {
                         if d.isQuestion {   // LAB-1606: not a permission ask
                             Text("Asked a question").ui(11, .semibold).foregroundStyle(t.accentText.color)
+                        } else if d.isFinished {   // LAB-1827
+                            Text("Finished · waiting for you").ui(11, .semibold).foregroundStyle(t.accentText.color)
+                        } else if d.isMenu {   // LAB-1607 / LAB-1825: a menu, no risk
+                            Text("Question").ui(11, .semibold).foregroundStyle(t.accentText.color)
                         } else {
                             RiskPill(risk: d.risk)
                         }
@@ -153,7 +158,10 @@ struct DecisionsView: View {
     // MARK: Detail
 
     @ViewBuilder private func detail(_ d: Decision) -> some View {
-        if d.isQuestion { questionDetail(d) } else { promptDetail(d) }
+        if d.isQuestion { questionDetail(d) }
+        else if d.isFinished { finishedDetail(d) }
+        else if d.isMenu { menuDetail(d) }
+        else { promptDetail(d) }
     }
 
     /// LAB-1606 · the agent ended its turn with a question: what it asked, and a reply box. Nothing to allow or deny;
@@ -242,27 +250,152 @@ struct DecisionsView: View {
                     .ui(12).foregroundStyle(t.text2.color)
                 if let item { RoofButton("Open native terminal") { model.reveal(item) } }
             }
+            if let choices = d.choices, !choices.isEmpty {
+                // LAB-1839: every option the prompt shows, in its order and words; each presses that option's key.
+                choiceButtons(d, choices)
+            }
             HStack(spacing: 10) {
-                RoofButton("Allow once ↩", .primary) { send(d, .allowOnce) }.keyboardShortcut(.defaultAction).disabled(d.agent == .opencode)
-                if !d.pattern.hasPrefix("ask:") && d.agent != .opencode {
-                    if v2 {   // A6.1: short label; what it allows is in the tooltip
-                        RoofButton("Always allow this") { send(d, .always) }.help("Always allow \(d.pattern) in \(d.repo)")
-                    } else {
-                        RoofButton("Always allow \(d.pattern) in \(d.repo)") { send(d, .always) }
+                if d.choices?.isEmpty != false {   // fixed answers only when the prompt's options could not be read
+                    RoofButton("Allow once ↩", .primary) { send(d, .allowOnce) }.keyboardShortcut(.defaultAction).disabled(d.agent == .opencode)
+                    if !d.pattern.hasPrefix("ask:") && d.agent != .opencode {
+                        if v2 {   // A6.1: short label; what it allows is in the tooltip
+                            RoofButton("Always allow this") { send(d, .always) }.help("Always allow \(d.pattern) in \(d.repo)")
+                        } else {
+                            RoofButton("Always allow \(d.pattern) in \(d.repo)") { send(d, .always) }
+                        }
                     }
+                    RoofButton("Deny esc") { send(d, .deny) }.keyboardShortcut(.cancelAction)
                 }
-                RoofButton("Deny esc") { send(d, .deny) }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button { step(1) } label: { Text("Next decision ⌘]").ui(12.5).foregroundStyle(t.text2.color) }
                     .buttonStyle(.plain).keyboardShortcut("]", modifiers: .command)
                 Button { step(-1) } label: { EmptyView() }.buttonStyle(.plain).keyboardShortcut("[", modifiers: .command).frame(width: 0)
             }
             if v2 {
-                Text("This waits until you choose. ↩ allow once · esc deny · ⌘] next decision · ⌘[ previous").ui(11.5).foregroundStyle(t.text3.color)
+                Text(d.choices?.isEmpty == false ? "This waits until you choose. ↩ the first option · ⌘] next decision · ⌘[ previous · or answer in the terminal"
+                                                 : "This waits until you choose. ↩ allow once · esc deny · ⌘] next decision · ⌘[ previous").ui(11.5).foregroundStyle(t.text3.color)
             }
         }
         .padding(.horizontal, 34).padding(.vertical, 26)
         .onAppear { if d.whyMissing { replyFocused = true } }
+    }
+
+    /// LAB-1839 / LAB-1607: one button per option, as the prompt lists them (numbered, the first is ↩). A free-text
+    /// option ("No, and tell Claude what to do", "Type something.") sends what is in the reply box, or opens it.
+    private func choiceButtons(_ d: Decision, _ choices: [DecisionChoice]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(choices.enumerated()), id: \.offset) { i, c in
+                let title = "\(i + 1). \(c.label)" + (i == 0 ? "  ↩" : "")
+                Group {
+                    if i == 0 { RoofButton(title, .primary) { choose(d, c) }.keyboardShortcut(.defaultAction) }
+                    else { RoofButton(title) { choose(d, c) } }
+                }
+                .disabled(!c.pressable)
+                .help(c.pressable ? c.label : "\(c.label): pick this one in the agent's own terminal")
+            }
+        }
+    }
+
+    /// The prompt as the agent draws it: its question and options, in a terminal-coloured box (always Midnight).
+    private func screenBox(_ lines: [String]) -> some View {
+        Text(lines.joined(separator: "\n")).ui(12.5, mono: true).foregroundStyle(ThemeName.midnight.tokens.terminal.foreground.color)
+            .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(ThemeName.midnight.tokens.terminal.background.color))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(t.separator.color))
+    }
+
+    private func header(_ d: Decision, _ item: BoardItem?) -> some View {
+        HStack(spacing: 8) {
+            if let item { AgentBadge(item: item, size: 22, status: false) }
+            Text(context(d, item)).ui(13).foregroundStyle(t.text2.color).lineLimit(1)
+            Spacer()
+            Button { if let item { model.reveal(item) } } label: { Text("Open session ⌘↩").ui(12.5).foregroundStyle(t.text2.color) }
+                .buttonStyle(.plain)
+        }
+    }
+
+    private func nav() -> some View {
+        Group {
+            Button { step(1) } label: { Text("Next decision ⌘]").ui(12.5).foregroundStyle(t.text2.color) }
+                .buttonStyle(.plain).keyboardShortcut("]", modifiers: .command)
+            Button { step(-1) } label: { EmptyView() }.buttonStyle(.plain).keyboardShortcut("[", modifiers: .command).frame(width: 0)
+        }
+    }
+
+    /// LAB-1607 / LAB-1825 · a menu (a question with its own answers, a sign-in menu): the prompt as drawn, its own
+    /// choices, no risk and no Allow / Deny; a note in plain words when a choice cannot work.
+    private func menuDetail(_ d: Decision) -> some View {
+        let item = model.item(d.sessionId)
+        let agentName = item.map { $0.account ?? $0.session.agent.displayName } ?? d.agent.displayName
+        let choices = d.choices ?? []
+        let note = d.touches == DecisionMatcher.geminiSignInRefused ? d.touches : nil
+        return VStack(alignment: .leading, spacing: 18) {
+            header(d, item)
+            MicroLabel("\(agentName) is asking")
+            Text(d.headline.replacingOccurrences(of: "\(d.agent.displayName) is asking: ", with: "")).ui(26, .semibold).tracking(-0.3)
+                .foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            if let note {
+                Text(note).ui(13.5).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
+            }
+            if let screen = d.screen, !screen.isEmpty { screenBox(screen) }
+            choiceButtons(d, choices)
+            if choices.contains(where: \.freeText) {
+                TextField("", text: $reply, prompt: Text("Your own answer"))
+                    .textFieldStyle(.plain).ui(13.5).focused($replyFocused)
+                    .padding(.horizontal, 14).frame(height: 42)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.card.color))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(replyFocused ? t.accent.color : t.separator.color))
+                    .onSubmit { send(d, .reply) }
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 10) {
+                RoofButton("Cancel esc") { send(d, .deny) }.keyboardShortcut(.cancelAction)
+                Spacer()
+                nav()
+            }
+            Text("Each button presses that option in \(agentName)'s terminal. You can also answer there.").ui(11.5).foregroundStyle(t.text3.color)
+        }
+        .padding(.horizontal, 34).padding(.vertical, 26)
+    }
+
+    /// LAB-1827 · the agent finished its turn and waits for you: what it said last, a reply box (its next message),
+    /// Close (end the session) and Set aside (leave Needs you, keep the session).
+    private func finishedDetail(_ d: Decision) -> some View {
+        let item = model.item(d.sessionId)
+        let agentName = item.map { $0.account ?? $0.session.agent.displayName } ?? d.agent.displayName
+        return VStack(alignment: .leading, spacing: 20) {
+            header(d, item)
+            MicroLabel("\(agentName) finished · waiting for you")
+            ScrollView {
+                Text(d.why).ui(18).foregroundStyle(d.whyMissing ? t.text2.color : t.text.color)
+                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 260)
+            Spacer(minLength: 0)
+            TextField("", text: $reply, prompt: Text("Next message for \(agentName): continue, or ask it something"))
+                .textFieldStyle(.plain).ui(13.5).focused($replyFocused)
+                .padding(.horizontal, 14).frame(height: 42)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.card.color))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(replyFocused ? t.accent.color : t.separator.color))
+                .onSubmit { if !reply.trimmingCharacters(in: .whitespaces).isEmpty { send(d, .reply) } }
+            HStack(spacing: 10) {
+                RoofButton("Reply ↩", .primary) { send(d, .reply) }
+                    .disabled(reply.trimmingCharacters(in: .whitespaces).isEmpty)
+                RoofButton("Set aside") { model.setAside(d); withAnimation(Motion.base) { step(1) } }
+                    .help("Nothing more for now: it leaves Needs you, the session stays open")
+                if let item {
+                    RoofButton("Close session", .danger) { model.closeAgent(item); model.setAside(d); withAnimation(Motion.base) { step(1) } }
+                        .help("End this session")
+                }
+                Spacer()
+                nav()
+            }
+            Text("Your reply goes to \(agentName) as its next message. Typing in the terminal works too.").ui(11.5).foregroundStyle(t.text3.color)
+        }
+        .padding(.horizontal, 34).padding(.vertical, 26)
     }
 
     private func context(_ d: Decision, _ item: BoardItem?) -> String {
@@ -385,6 +518,15 @@ struct DecisionsView: View {
             undoRule = d
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if undoRule == d { undoRule = nil } }
         }
+        withAnimation(Motion.base) { step(1) }
+    }
+
+    /// LAB-1607: pick one of a question's own answers.
+    private func choose(_ d: Decision, _ c: DecisionChoice) {
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        if c.freeText && text.isEmpty && !d.isMenu { replyFocused = true; return }   // type the instructions first
+        model.answer(d, .reply, reply: c.freeText && !text.isEmpty ? text : nil, choice: c)
+        reply = ""
         withAnimation(Motion.base) { step(1) }
     }
 

@@ -1,8 +1,15 @@
 # Hosted coding agents in One Roof
 
-Project: LAB-AE-OPEN-AGENTS · local implementation, pending release acceptance.
+**Status:** IN REVIEW · **Date:** 2026-10-30 · **Project:** LAB-AE-OPEN-AGENTS
+
+> **One line:** OpenCode and Goose use guarded hosted inference through One Roof; release acceptance remains with the deployment owner.
 
 OpenCode and Goose are native coding agents. Together AI, OpenRouter and Fireworks serve the model. The user selects a connection and an exact provider model ID separately from the agent. No model weights or GPU are installed locally.
+
+## Release hold — 2026-10-31
+
+Functional checks passed, but performance acceptance remains unresolved in LAB-1898. The release gate failed in the separate release session. Later matched-profile analysis did not consistently reproduce the reported Full/drag magnitude; Focus/Sessions remain suspicious. CPU samples do not establish Session copying as the cause. Root cause is unproven; no fix, waiver, or release-readiness approval is given. The owner requested analysis only and then closed the session. See the [investigation report](../reports/20261031_hosted-performance-investigation.md).
+
 
 ## Connection and launch boundary
 

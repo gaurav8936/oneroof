@@ -25,9 +25,17 @@ One page that answers "what needs me, and what is going on?" across every window
 
 A Kanban of every session in every window, left to right: **Planned · Next → Working → Needs you → Ready → Idle · Parked → Tonight → Exited → Do not use**. Drag a card onto Planned · Next, Tonight or Do not use to change it; the other columns follow the agents' live state. The Tonight column has **Schedule** with a time and an **Every night** switch. Exited and Do not use can be collapsed. Double-click a card to open that session. **By project** groups the cards by their Linear project. ⌘B again closes the Board.
 
-## Decisions (⌘I)
+## Needs you (⌘I)
 
-Every agent that is waiting on you, in one list: its question in its own words, what the command would touch, the risk and what happens if you say no. **Allow once** (Return), **Always allow** (for that command in that repo), **Deny** (Esc) and a typed reply send the agent's own keys, exactly as if you had typed them in its terminal. Plans waiting for your approval are listed here too. The toolbar shows how many decisions are open.
+Everything waiting on you, in one list, oldest first:
+
+- **A permission prompt**: the agent's reason in its own words, what the command would touch, the risk and what happens if you say no, then **one button per option the prompt shows**, in its order and words (Antigravity's four, Codex's three, …). Each presses that option's own key, exactly as if you had typed it in the terminal; the first is Return. An option that takes your words ("No, and tell Claude what to do differently") sends what is in the reply box. When the options cannot be read, **Allow once**, **Always allow** and **Deny** stand in. Picking an "always" option is remembered as a rule for that command in that repo.
+- **A question menu** (Claude's question tool, Gemini's sign-in menu): the question as the agent drew it and its own answers, with no risk badge; Esc cancels. If Gemini says Google refuses the sign-in, the card says so and points to an API key or Antigravity.
+- **A question at the end of a turn**: what it asked, and a reply box.
+- **A finished turn** (*Finished · waiting for you*): what the agent said last, a reply box (its next message), **Set aside** (leaves the list; the session stays open) and **Close session**. It leaves when you reply here or in the terminal.
+- **Plans** waiting for your approval.
+
+Nothing covers the terminal: you can always answer an agent in its own terminal instead, and the entry leaves Needs you. OpenCode's allow options can only be picked in its terminal; its Reject works here. The toolbar and the Dock show how many are waiting.
 
 ## Subagents (⇧⌘A)
 
@@ -133,5 +141,5 @@ Without a shortcut, in the menus: Run Startup Check (One Roof menu); Ask Agent A
 | Command palette | ↑ ↓, Return | Move, run |
 | Review comment box | ⌘↩ | Send the comment to the agent |
 | Review panel | ⌘↩ / ⌥⌘D | Commit / side-by-side diff on or off |
-| Decisions | Return / Esc / ⌘] ⌘[ | Allow once / Deny / next or previous decision |
+| Needs you | Return / Esc / ⌘] ⌘[ | The first option (or Allow once) / Deny or cancel / next or previous entry |
 | Terminal | ⌘-click a link | Files open in the viewer, web links in the browser |

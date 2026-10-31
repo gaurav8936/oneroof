@@ -29,6 +29,10 @@ Sanitized usage metadata is in `evidence.json`. Detailed private test logs, scre
 6. Reattach to a live holder; verify its PID and conversation stay the same and opening is not resent. Terminate only test processes; retain ledger counters and verify owned native PIDs are gone.
 7. Run the standard functional app harness on the rebased code before release. Release, signing/notarization, install and installed-Mac verification follow the central One Roof release runbook only when authorized.
 
+## Release hold — 2026-10-31
+
+LAB-1898 remains unresolved. No performance waiver or release-readiness approval is given. See [performance investigation](../20261031_hosted-performance-investigation.md).
+
 ## Limits and remaining release work
 
 No automatic paid routing or recurring hosted schedules are enabled. Hosted loops support one supervised round, not unattended auto-approve. Native transcript resume after a terminated process is not implemented; reopen of a still-live holder preserves its conversation, while relaunch starts a new one with retained budget.

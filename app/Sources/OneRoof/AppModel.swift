@@ -83,6 +83,8 @@ final class AppModel: ObservableObject {
     @Published var seats: [SeatUsage] = []
     /// v2 (CAP-26): the rule just learned from Always allow on a terminal's approval card, offered for Undo for 5 s.
     @Published var v2UndoRule: (decision: Decision, window: String)? = nil
+    /// Self-test: the Needs you entry to show (a decision id), as a click in its list would.
+    @Published var needsPick: String? = nil
     /// Objectives typed by the owner, with their plans.
     @Published var objectives: [Objective] = []
     @Published var issues: [String: [LinearIssue]] = [:]     // project id → tickets
