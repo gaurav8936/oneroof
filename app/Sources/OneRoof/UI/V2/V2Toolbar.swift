@@ -170,10 +170,19 @@ struct V2TitleView: View {
     }
 }
 
-/// Single · Grid · Wall (⌃⌥⌘1-3). Grid arrives in 1.7.0 and Wall in 1.8.0; until then they show and say so.
+/// Single · Grid · Wall · Scroll (⌃⌥⌘1-4).
 struct V2LayoutControl: View {
     @Environment(\.theme) private var t
     @ObservedObject var win: WindowState
+
+    static func help(_ l: SessionLayout) -> String {
+        switch l {
+        case .single: return "Single (⌃⌥⌘1)"
+        case .grid: return "Grid: every live session, two across (scrolls) (⌃⌥⌘2)"
+        case .wall: return "Wall: every window's live sessions (⌃⌥⌘3)"
+        case .scroll: return "Scroll: every session's important moments in one feed, newest at the bottom (⌃⌥⌘4)"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -187,7 +196,7 @@ struct V2LayoutControl: View {
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.surface.color : .clear))
                 }
                 .buttonStyle(.plain)
-                .barHelp(l == .single ? "Single (⌃⌥⌘1)" : (l == .grid ? "Grid: every live session, two across (scrolls) (⌃⌥⌘2)" : "Wall: every window's live sessions (⌃⌥⌘3)"))
+                .barHelp(Self.help(l))
                 .accessibilityLabel(l.title + (ready ? "" : ", not available yet"))
             }
         }

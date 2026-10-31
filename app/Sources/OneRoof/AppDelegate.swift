@@ -811,6 +811,8 @@ extension AppDelegate: NSMenuItemValidation {
             item.state = main?.win.layout == .single ? .on : .off; return isV2Window
         case #selector(v2LayoutWall(_:)):
             item.state = main?.win.layout == .wall ? .on : .off; return isV2Window
+        case #selector(v2LayoutScroll(_:)):
+            item.state = main?.win.layout == .scroll ? .on : .off; return isV2Window
         case #selector(v2LayoutGrid(_:)):
             item.state = main?.win.layout == .grid ? .on : .off; return isV2Window
         case #selector(copySessionOutput(_:)):

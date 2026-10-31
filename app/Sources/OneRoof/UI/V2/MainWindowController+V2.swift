@@ -130,12 +130,15 @@ extension MainWindowController {
             if self?.v2Page != "All windows" { self?.v2Page = nil }
         }.store(in: &v2Bag)
         // Wall (A4.2) is the "All windows" page; leaving it (Esc, ⌘[, a place, a tile) goes back to Single.
+        // LAB-1831: Scroll is the "Scroll" page the same way.
         win.$layout.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] l in
             guard let self else { return }
-            if l == .wall { self.v2ShowPage("All windows") } else if self.v2Page == "All windows" { self.v2Page = nil }
+            if let page = V2Layout.page(for: l) { self.v2ShowPage(page) }
+            else if let p = self.v2Page, V2Layout.layout(forPage: p) != nil { self.v2Page = nil }
         }.store(in: &v2Bag)
         $v2Page.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] p in
-            if p != "All windows", self?.win.layout == .wall { self?.win.layout = .single }
+            guard let self, let page = V2Layout.page(for: self.win.layout), p != page else { return }
+            self.win.layout = .single
         }.store(in: &v2Bag)
         // Posted on the main thread: handled at once, so the mouse event that caused it is still the current one (a
         // queued handler ran after the drag and often missed it, so a dragged width was not kept, LAB-829).
