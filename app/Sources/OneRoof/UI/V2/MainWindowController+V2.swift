@@ -316,7 +316,7 @@ extension MainWindowController {
         if let title = window.toolbar?.items.first(where: { $0.itemIdentifier == V2ToolbarDelegate.title })?.view, title.window != nil {
             let lightsEnd = window.standardWindowButton(.zoomButton).map { Double($0.convert($0.bounds, to: nil).maxX) } ?? 0
             let shift = V2Layout.titleShift(itemX: Double(title.convert(CGPoint.zero, to: nil).x), centreX: Double(centreX), lightsEnd: lightsEnd)
-            if abs(CGFloat(shift) - v2TitleShift) > 0.5 { v2TitleShift = CGFloat(shift) }
+            if abs(CGFloat(shift) - v2TitleShift.x) > 0.5 { v2TitleShift.x = CGFloat(shift) }
         }
     }
 
