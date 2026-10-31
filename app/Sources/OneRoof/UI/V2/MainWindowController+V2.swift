@@ -230,7 +230,9 @@ extension MainWindowController {
             guard let self else { return }
             let sv = self.splitView
             let railW: CGFloat = showRail ? CGFloat(V2Layout.railWidth(saved: self.win.railWidth)) : 0
-            if showRail { sv.setPosition(railW, ofDividerAt: 0) }   // LAB-1829: the width you gave it
+            // LAB-1829: the width you gave it, only when it differs: an unconditional setPosition laid every panel out
+            // again after each step (1.9.32 gate: step hitches doubled).
+            if showRail, let rv = self.v2RailItem?.viewController.view, abs(rv.frame.width - railW) > 0.5 { sv.setPosition(railW, ofDividerAt: 0) }
             if sessions && !side.isCollapsed { sv.setPosition(railW + columnWidth, ofDividerAt: 1) }
             // LAB-1601: the lane has its width now; it follows its live width again (the drag to widen it).
             if self.win.focusLaneSettling { self.win.focusLaneSettling = false }
