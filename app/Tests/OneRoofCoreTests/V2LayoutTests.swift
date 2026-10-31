@@ -51,6 +51,31 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(narrow, V2Layout.columnMin)
     }
 
+    /// LAB-1829: the rail drags closed anywhere it shows, except over a folded Sessions column (LAB-1612's grab).
+    func test_LAB1829_railFoldsAndItsEdgeLocksOnlyOverAFoldedColumn() {
+        XCTAssertTrue(V2Layout.showsRail(step: .full, inSessions: true, folded: false))
+        XCTAssertFalse(V2Layout.showsRail(step: .full, inSessions: true, folded: true), "folded by you")
+        XCTAssertFalse(V2Layout.showsRail(step: .sessions, inSessions: true, folded: false), "step 1 hides it")
+        XCTAssertTrue(V2Layout.showsRail(step: .sessions, inSessions: false, folded: false), "other places keep it")
+        XCTAssertFalse(V2Layout.showsRail(step: .full, inSessions: false, folded: true))
+        XCTAssertTrue(V2Layout.railEdgeLocked(inSessions: true, columnFolded: true, railShown: true))
+        XCTAssertFalse(V2Layout.railEdgeLocked(inSessions: true, columnFolded: false, railShown: true))
+        XCTAssertFalse(V2Layout.railEdgeLocked(inSessions: false, columnFolded: true, railShown: true), "Learn, Home…")
+        // A folded rail: the places row is over the column at any step, so the column holds it.
+        XCTAssertEqual(V2Layout.columnWidth(step: .full, saved: 220, windowWidth: 1500, placesRow: true), V2Layout.sessionsColumnMin())
+    }
+
+    /// LAB-1828: Focus and Single · Grid · Wall only where they arrange something: the Sessions place.
+    func test_LAB1828_sessionControlsOnlyInSessions() {
+        XCTAssertTrue(V2Layout.showsStepButton(inSessions: true, page: nil))
+        XCTAssertFalse(V2Layout.showsStepButton(inSessions: false, page: nil), "Learn, Home, Needs you…")
+        XCTAssertFalse(V2Layout.showsStepButton(inSessions: true, page: "Settings"))
+        XCTAssertTrue(V2Layout.showsLayoutControl(inSessions: true, page: nil))
+        XCTAssertTrue(V2Layout.showsLayoutControl(inSessions: true, page: "All windows"), "the Wall: Single goes back")
+        XCTAssertFalse(V2Layout.showsLayoutControl(inSessions: false, page: nil))
+        XCTAssertFalse(V2Layout.showsLayoutControl(inSessions: true, page: "Settings"))
+    }
+
     /// LAB-1783: the title text lines up with the centre's content (1.9.28 measures), never over the window buttons.
     func test_LAB1783_titleLinesUpWithTheCentre() {
         XCTAssertEqual(V2Layout.titleShift(itemX: 281, centreX: 269), 0, "Full: already there")

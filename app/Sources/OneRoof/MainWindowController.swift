@@ -31,6 +31,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
     var v2DockHeight: NSLayoutConstraint?
     var v2PlanOverlay: NSView?
     var v2EdgeTracker: V2EdgeTracker?
+    /// LAB-1829: the grip at the window's left edge that drags a folded rail back out.
+    var v2RailGrip: V2RailGrip?
     var v2RightTracker: V2EdgeTracker?
     /// The Plan was opened by the 0.5-style Editor rule (the file tree beside it), to fold back afterwards.
     var v2FilesOpenedByEditor = false
@@ -81,6 +83,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
             DispatchQueue.main.async { [weak self] in self?.v2LastLayout = nil; self?.v2ApplyLayout(animated: false) }
         }
     }
+    /// LAB-1829 · a drag that folded the rail (where it shows) or brought a folded one back: remembered for the window.
+    func v2RailDragged() {
+        guard isV2, let rail = v2RailItem,
+              let e = NSApp.currentEvent, [.leftMouseDragged, .leftMouseUp].contains(e.type), e.window === window else { return }
+        let sessions = win.place == .sessions && v2Page == nil
+        let shown = V2Layout.showsRail(step: win.focusStep, inSessions: sessions, folded: false)
+        var folded = win.railFolded
+        if shown, rail.isCollapsed, !win.railFolded { folded = true }
+        else if !rail.isCollapsed, win.railFolded { folded = false }
+        guard folded != win.railFolded else { return }
+        win.railFolded = folded
+        DispatchQueue.main.async { [weak self] in self?.v2LastLayout = nil; self?.v2ApplyLayout(animated: false) }
+    }
+
+    /// LAB-1829 · View › Rail: folds the rail away or brings it back.
+    func v2ToggleRail() {
+        win.railFolded.toggle()
+        v2LastLayout = nil
+        v2ApplyLayout(animated: true)
+    }
+
+    /// The toolbar's places icon row shows: at the Sessions step in Sessions, or wherever the rail is folded (LAB-1829).
+    var v2PlacesRowShown: Bool { (win.focusStep == .sessions && win.place == .sessions) || win.railFolded }
+
     var splitView: NSSplitView { split.splitView }
     var splitController: NSSplitViewController { split }
     var centreItemRef: NSSplitViewItem { centreItem }
@@ -182,6 +208,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
                     DispatchQueue.main.async { if !self.filesItem.isCollapsed { self.filesItem.isCollapsed = true } }
                 }
                 self.v2RailForFoldedColumn()
+                self.v2RailDragged()
             }
         }
         for i in [sideItem, filesItem, centreItem, planItem] {
@@ -772,9 +799,11 @@ final class RoofSplitViewController: NSSplitViewController {
     /// the Sessions column folded, all of them sit on the same spot as the column's own edge; a grab there took one of
     /// these and nothing moved, so the column could not be dragged back out.
     var fixedDividers: Set<Int> = []
+    /// LAB-1829: a divider locked only some of the time (the rail's: while the Sessions column is folded beside it).
+    var lockedNow: ((Int) -> Bool)?
     override func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect, forDrawnRect drawnRect: NSRect,
                             ofDividerAt dividerIndex: Int) -> NSRect {
-        if fixedDividers.contains(dividerIndex) { return .zero }
+        if fixedDividers.contains(dividerIndex) || lockedNow?(dividerIndex) == true { return .zero }
         return super.splitView(splitView, effectiveRect: proposedEffectiveRect, forDrawnRect: drawnRect, ofDividerAt: dividerIndex)
     }
 

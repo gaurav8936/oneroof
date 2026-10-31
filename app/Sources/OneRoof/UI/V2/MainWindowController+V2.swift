@@ -23,7 +23,14 @@ extension MainWindowController {
         filesItemRef.isCollapsed = true
 
         // Dividers: 0 rail|column · 1 column|files · 2 files|centre · 3 centre|plan.
-        (splitController as? RoofSplitViewController)?.fixedDividers = [0, 2]   // LAB-1612: only the column's edge drags
+        // LAB-1612 / LAB-1829: the folded Files item's edge never drags; the rail's only while the Sessions column is
+        // folded beside it (the grab there is the column's).
+        (splitController as? RoofSplitViewController)?.fixedDividers = [2]
+        (splitController as? RoofSplitViewController)?.lockedNow = { [weak self] i in
+            guard i == 0, let self, let rail = self.v2RailItem else { return false }
+            return V2Layout.railEdgeLocked(inSessions: self.win.place == .sessions && self.v2Page == nil,
+                                           columnFolded: self.sideItemRef.isCollapsed, railShown: !rail.isCollapsed)
+        }
         let tb = NSToolbar(identifier: "OneRoofToolbarV2." + win.id)
         let d = V2ToolbarDelegate(model: model, win: win, controller: self)
         v2V2Toolbar = d
@@ -79,6 +86,20 @@ extension MainWindowController {
         right.onEnter = { [weak self] in self?.v2ShowPlanOverlay(hover: true) }
         right.isHidden = true
         v2RightTracker = right
+        // LAB-1829: a folded rail comes back by a drag from the window's left edge. Its edge is hidden while folded
+        // (AppKit's own reveal strip only serves sidebar items), so this grip takes the drag.
+        let grip = V2RailGrip()
+        grip.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(grip)
+        NSLayoutConstraint.activate([
+            grip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            grip.widthAnchor.constraint(equalToConstant: 12),
+            grip.topAnchor.constraint(equalTo: top),
+            grip.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
+        grip.onPull = { [weak self] in self?.v2ToggleRail() }
+        grip.isHidden = true
+        v2RailGrip = grip
     }
 
     func v2Start() {
@@ -158,12 +179,17 @@ extension MainWindowController {
         // LAB-1366: a Focus lane dragged wide already shows the list: no left-edge reveal over it.
         v2EdgeTracker?.isHidden = !(step == .focus && sessions && win.focusColumnWidth == nil)
         v2RightTracker?.isHidden = !(step == .focus && sessions)
+        // LAB-1829: the grip only where the rail belongs and you folded it.
+        v2RailGrip?.isHidden = !(win.railFolded && V2Layout.showsRail(step: step, inSessions: sessions, folded: false))
 
-        // Outside Sessions the rail stays at every step, so Needs you is always visible (audit D2).
-        let showRail = step == .full || step == .wide || !sessions
+        // Outside Sessions the rail stays at every step, so Needs you is always visible (audit D2), unless you
+        // dragged it closed (LAB-1829: the places then show as the toolbar's icon row).
+        let showRail = V2Layout.showsRail(step: step, inSessions: sessions, folded: win.railFolded)
+        let placesRow = step == .sessions || win.railFolded
         let side = sideItemRef, plan = planItemRef
         let windowWidth = window.map { Double($0.frame.width) }
-        let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth, focusWide: win.focusColumnWidth, windowWidth: windowWidth))
+        let columnWidth = CGFloat(V2Layout.columnWidth(step: step, saved: win.columnWidth, focusWide: win.focusColumnWidth,
+                                                       windowWidth: windowWidth, placesRow: placesRow))
         // At Full the inspector takes its column only while it fits; a narrower window gets the edge tab (LAB-831).
         let fits = v2PlanFits(step: step, column: Double(columnWidth))
         v2PlanFitsLast = fits
@@ -174,7 +200,7 @@ extension MainWindowController {
         // nothing here but still forced a full layout of every panel, the largest cost of switching places.
         let dockShownNow = v2DockOverride ?? (step == .full)
         // The split's actual state is part of the key: a panel opened or closed by hand since is put back.
-        let key = "\(showRail)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
+        let key = "\(showRail)|\(placesRow)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
             + "|\(rail.isCollapsed)|\(sideItemRef.isCollapsed)|\(planItemRef.isCollapsed)|\(filesItemRef.isCollapsed)"
         if key == v2LastLayout, window?.inLiveResize != true { return }
         let apply = {
@@ -184,7 +210,7 @@ extension MainWindowController {
                 // LAB-1366: at Focus the lane can be dragged from the avatars out to the full list. LAB-1783: the lane is
                 // the rail's width, and at Sessions a drag stops where the toolbar's icon row ends.
                 side.minimumThickness = step == .focus ? CGFloat(V2Layout.focusLane)
-                    : step == .sessions ? CGFloat(V2Layout.sessionsColumnMin(windowWidth: windowWidth)) : CGFloat(V2Layout.columnMin)
+                    : placesRow ? CGFloat(V2Layout.sessionsColumnMin(windowWidth: windowWidth)) : CGFloat(V2Layout.columnMin)
                 side.maximumThickness = 440
             }
             plan.isCollapsed = planMode.collapsed
@@ -195,7 +221,7 @@ extension MainWindowController {
             self.filesItemRef.isCollapsed = true   // LAB-1306: was a no-op (x = x); the v2 file tree is the Files tab
         }
         apply()
-        v2LastLayout = "\(showRail)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
+        v2LastLayout = "\(showRail)|\(placesRow)|\(sessions)|\(step)|\(planMode.collapsed)|\(planMode.edge)|\(columnWidth)|\(dockShownNow)|\(win.planWidth ?? 0)"
             + "|\(rail.isCollapsed)|\(sideItemRef.isCollapsed)|\(planItemRef.isCollapsed)|\(filesItemRef.isCollapsed)"
         splitView.layoutSubtreeIfNeeded()
         // Widths after the collapse changes have settled.
@@ -308,7 +334,7 @@ extension MainWindowController {
     func v2FitToolbar() {
         guard let window else { return }
         let centreX = centreItemRef.viewController.view.convert(CGPoint.zero, to: nil).x
-        let start = V2Layout.toolbarStart(divider: Double(centreX), placesRow: win.focusStep == .sessions && win.place == .sessions)
+        let start = V2Layout.toolbarStart(divider: Double(centreX), placesRow: v2PlacesRowShown)
         let extras = window.toolbar?.items.first { $0.itemIdentifier == V2ToolbarDelegate.extras }?.view?.fittingSize.width ?? 0
         let fit = V2Layout.toolbarFit(room: Double(window.frame.width) - start, extras: Double(extras))
         if fit != v2Bar { v2Bar = fit; DispatchQueue.main.async { [weak self] in self?.v2KickToolbar() } }
@@ -618,6 +644,28 @@ enum PlanTabRequest {
 }
 
 /// A thin strip on a window edge that reports the pointer resting there.
+/// LAB-1829 · the window's left edge while the rail is folded: a drag of more than 24 pt to the right brings the
+/// rail back (the resize cursor says it can be pulled). The outer 3 pt stay the window's own resize edge.
+final class V2RailGrip: NSView {
+    var onPull: (() -> Void)?
+    private var startX: CGFloat?
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, let sv = superview else { return nil }
+        let p = convert(point, from: sv)
+        return bounds.contains(p) && p.x >= 3 ? self : nil
+    }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+    /// A drag on a window in the background pulls the rail too (as a divider drag does), not just brings it forward.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { startX = event.locationInWindow.x }
+    override func mouseDragged(with event: NSEvent) {
+        guard let s = startX, event.locationInWindow.x - s > 24 else { return }
+        startX = nil
+        onPull?()
+    }
+    override func mouseUp(with event: NSEvent) { startX = nil }
+}
+
 final class V2EdgeTracker: NSView {
     var onEnter: (() -> Void)?
     /// LAB-1367 / LAB-1368: open only after the pointer rests at the edge for `V2Layout.edgeRevealDwell`; opening on

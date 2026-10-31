@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.31 — Gemini needs an API key; Focus only where it applies; the rail drags; one list of loops; loop checks; shared Learn (30 Oct 2026)
+
+- **Picking Gemini says it needs an API key** (LAB-1826). Google no longer lets Gemini CLI sign in with a personal
+  Google account, so "Sign in with Google" fails and asks again. The New session panel now says so when you pick
+  Gemini (set GEMINI_API_KEY, or use Antigravity, one click away), and Gemini's card says "API key only".
+- **Focus and Single · Grid · Wall show only in Sessions** (LAB-1828). Elsewhere (Learn, Home, Needs you…) they changed
+  nothing but the dock, so the toolbar no longer shows them there.
+- **The rail drags closed and back open** (LAB-1829). Drag its edge left to fold Home · Needs you · Sessions… away
+  (the places then sit in the toolbar), and drag from the window's left edge to bring it back; View › Rail does the
+  same. The window remembers it. The Sessions column still drags closed and open on its own.
+- **One list of loops: Built-in and Mine** (LAB-1663). The Loops page shows the loops that come with the Agentic
+  Engineering kit (labelled Built-in, always off until you switch one on) next to your own (Mine). You can change a
+  built-in loop (your copy is kept apart; remove it to go back to the original) or copy one as your own with + New loop.
+- **A loop's check copied out of a terminal no longer fails every night** (LAB-1846). A check pasted with the
+  terminal's box edge or a sentence after it ("│ bash check.sh. The script passes when …") could not run, so the loop
+  failed and stopped. Saving now drops what the copy added, the editor says why a check can't run before you save it,
+  and a run with such a check stops at once with that reason.
+- **Learn shows the shared Agentic Engineering page** (LAB-1762). The same page every site shows, saved inside the app
+  so it works offline and updates with each release. The classic Learn screens are one toggle away.
+
 ## 1.9.30 — a question at the end of a turn waits for you in Needs you; the top-left, finished (30 Oct 2026)
 
 - **The top-left, finished** (LAB-1783). No column line sticks up into the toolbar any more: every one ends at the

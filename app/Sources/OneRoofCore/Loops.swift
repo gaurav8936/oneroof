@@ -107,9 +107,25 @@ public struct LoopRun: Codable, Equatable, Sendable {
     }
 }
 
+/// Where a loop comes from (LAB-1663): Built-in (from the Agentic Engineering kit, ships off, read-only default) or
+/// Mine (user-defined in `<shared>/loops`).
+public enum LoopOrigin: String, Codable, Equatable, Hashable, Sendable {
+    case builtIn = "built-in"
+    case mine = "user"
+
+    public var label: String {
+        switch self {
+        case .builtIn: return "Built-in"
+        case .mine: return "Mine"
+        }
+    }
+}
+
 public struct Loop: Codable, Identifiable, Equatable, Sendable {
     public var id: String
     public var name: String
+    public var title: String?
+    public var origin: LoopOrigin
     public var goal: String
     /// A shell command (zsh -lc) run in the loop's worktree; exit 0 = done.
     public var check: String
@@ -136,25 +152,32 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
     /// Why the last run ended, in plain words.
     public var stopReason: String?
 
-    public init(id: String, name: String, goal: String = "", check: String = "", repoPath: String,
-                agent: AgentKind = .claude, model: String? = nil, account: String? = nil, roundPrompt: String = "",
+    public var displayTitle: String {
+        if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
+        return name
+    }
+
+    public init(id: String, name: String, title: String? = nil, origin: LoopOrigin = .mine, goal: String = "", check: String = "",
+                repoPath: String, agent: AgentKind = .claude, model: String? = nil, account: String? = nil, roundPrompt: String = "",
                 trigger: LoopTrigger = .untilDone(everyMinutes: 0), limits: LoopLimits = LoopLimits(), pinned: Bool = false,
                 state: LoopState = .stopped, createdAt: Date = Date(), checkTimeout: TimeInterval = 600) {
-        self.id = id; self.name = name; self.goal = goal; self.check = check; self.repoPath = repoPath
-        self.agent = agent; self.model = model; self.account = account; self.roundPrompt = roundPrompt
+        self.id = id; self.name = name; self.title = title; self.origin = origin; self.goal = goal; self.check = check
+        self.repoPath = repoPath; self.agent = agent; self.model = model; self.account = account; self.roundPrompt = roundPrompt
         self.trigger = trigger; self.limits = limits; self.pinned = pinned; self.state = state; self.createdAt = createdAt
         self.checkTimeout = checkTimeout; self.run = nil; self.runRequested = false; self.lastRunAt = nil; self.stopReason = nil
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, goal, check, repoPath, agent, model, account, roundPrompt, trigger, limits, pinned, state, createdAt,
-             checkTimeout, run, runRequested, lastRunAt, stopReason
+        case id, name, title, origin, goal, check, repoPath, agent, model, account, roundPrompt, trigger, limits, pinned, state,
+             createdAt, checkTimeout, run, runRequested, lastRunAt, stopReason
     }
 
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? id
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        origin = try c.decodeIfPresent(LoopOrigin.self, forKey: .origin) ?? .mine
         goal = try c.decodeIfPresent(String.self, forKey: .goal) ?? ""
         check = try c.decodeIfPresent(String.self, forKey: .check) ?? ""
         repoPath = try c.decodeIfPresent(String.self, forKey: .repoPath) ?? ""
@@ -523,4 +546,110 @@ public enum LoopTemplates {
         trigger: .at(hour: 2, minute: 0), limits: LoopLimits(maxRounds: 3, maxDuration: 3600, sameFailureStop: 2))
 
     public static let all = [fixUntilGreen, nightlyTidy]
+
+    /// Templates derived from the built-in kit loops so "+ New loop" can also clone any built-in loop as Mine.
+    public static func builtInTemplates(catalogPath: String? = AEFolder.loopsCatalog()) -> [LoopTemplate] {
+        LoopBuiltIns.entries(from: catalogPath).map { e in
+            LoopTemplate(
+                id: e.id, title: e.title,
+                summary: e.goal,
+                name: "my-\(e.id)", goal: e.goal,
+                check: e.check, roundPrompt: e.roundPrompt,
+                trigger: .at(hour: e.hour, minute: e.minute),
+                limits: LoopLimits(maxRounds: max(1, e.maxRounds), maxDuration: TimeInterval(max(1, e.maxMinutes) * 60), sameFailureStop: 2))
+        }
+    }
+}
+
+/// LAB-1663 · Built-in loops from the Agentic Engineering kit (`kit/loops/catalog.json` in the bundled deck or repo,
+/// with an embedded fallback of the 8 built-in loops). Built-in loops always ship OFF (`.stopped`) so a kit update
+/// never turns a loop on by surprise.
+public enum LoopBuiltIns {
+    public static let referenceDate = Date(timeIntervalSince1970: 1_761_782_400)
+
+    public struct Entry: Codable, Equatable, Sendable {
+        public var id: String
+        public var name: String
+        public var title: String
+        public var origin: String
+        public var goal: String
+        public var check: String
+        public var cron: String
+        public var hour: Int
+        public var minute: Int
+        public var maxRounds: Int
+        public var maxMinutes: Int
+        public var costCapUsd: Double
+        public var roundPrompt: String
+
+        public init(id: String, title: String, goal: String, cron: String, hour: Int, minute: Int,
+                    maxRounds: Int = 1, maxMinutes: Int = 15, costCapUsd: Double = 0, roundPrompt: String = "") {
+            self.id = id; self.name = id; self.title = title; self.origin = "built-in"; self.goal = goal
+            self.check = "python3 -m ae.loops run \(id) --no-agent"; self.cron = cron; self.hour = hour; self.minute = minute
+            self.maxRounds = maxRounds; self.maxMinutes = maxMinutes; self.costCapUsd = costCapUsd; self.roundPrompt = roundPrompt
+        }
+    }
+
+    private struct CatalogFile: Codable {
+        var version: Int?
+        var loops: [Entry]
+    }
+
+    public static let fallbackEntries: [Entry] = [
+        Entry(id: "cost-watch", title: "Cost watch",
+              goal: "Spend per provider stays under the owner's limits, with a warning at 80 % and an alert on any usage-limit error.",
+              cron: "0 9-23 * * *", hour: 9, minute: 0, maxRounds: 1, maxMinutes: 5),
+        Entry(id: "dependency-security", title: "Dependency and security updates",
+              goal: "Outdated or vulnerable dependencies in every repo are listed with a proposed update.",
+              cron: "0 8 * * 1", hour: 8, minute: 0, maxRounds: 1, maxMinutes: 30),
+        Entry(id: "docs-drift", title: "Docs drift",
+              goal: "Always-on files, MEMORY.md and indexes are under their limits, links resolve and rendered files match their source, or each gap is proposed as a fix.",
+              cron: "0 6 * * *", hour: 6, minute: 0, maxRounds: 1, maxMinutes: 10),
+        Entry(id: "morning-health", title: "Morning health check",
+              goal: "The stack starts, one real transaction passes and every reader shows the main edition, or a failure is reported before work starts.",
+              cron: "30 7 * * *", hour: 7, minute: 30, maxRounds: 1, maxMinutes: 15),
+        Entry(id: "nightly-reflection", title: "Nightly reflection",
+              goal: "Every correction, repeated mistake and stale note from the last day is either proposed as a fix in proposals/ or recorded as \"nothing to change\".",
+              cron: "30 2 * * *", hour: 2, minute: 30, maxRounds: 2, maxMinutes: 20, costCapUsd: 0.5),
+        Entry(id: "regression-evals", title: "Regression evals",
+              goal: "The golden task set still passes at or above its last baseline after any model, prompt or skill change.",
+              cron: "0 3 * * *", hour: 3, minute: 0, maxRounds: 1, maxMinutes: 30, costCapUsd: 1.0),
+        Entry(id: "usage-report", title: "Monthly usage report",
+              goal: "Which Commands, hooks and loops fired this month, what they cost and what failed are recorded, with dead and missing items named.",
+              cron: "0 9 1 * *", hour: 9, minute: 0, maxRounds: 1, maxMinutes: 20),
+        Entry(id: "weekly-review", title: "Weekly review",
+              goal: "Stale issues are re-planned, notes are pruned, repeated gotchas are proposed as rules, and the week's numbers are recorded: the four passes of the weekly-review card.",
+              cron: "0 17 * * 5", hour: 17, minute: 0, maxRounds: 1, maxMinutes: 30, costCapUsd: 0.75),
+    ]
+
+    public static func entries(from catalogPath: String? = AEFolder.loopsCatalog()) -> [Entry] {
+        if let p = catalogPath, let data = FileManager.default.contents(atPath: p),
+           let decoded = try? JSONDecoder().decode(CatalogFile.self, from: data), !decoded.loops.isEmpty {
+            return decoded.loops
+        }
+        return fallbackEntries
+    }
+
+    /// Where a built-in loop runs until you pick a repo: the Agentic Engineering checkout ONEROOF_AE_PATH names (a
+    /// developer's own copy), else the shared folder (Settings › Foundations), else the projects folder.
+    public static func defaultRepoPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        let fm = FileManager.default
+        if let e = environment["ONEROOF_AE_PATH"], !e.isEmpty {
+            let p = (e as NSString).expandingTildeInPath
+            if fm.fileExists(atPath: p + "/.git") { return p }
+        }
+        if fm.fileExists(atPath: Workspace.sharedRoot + "/.git") { return Workspace.sharedRoot }
+        return Workspace.projectsRoot
+    }
+
+    public static func load(catalogPath: String? = AEFolder.loopsCatalog(), repoPath: String? = nil) -> [Loop] {
+        let repo = repoPath ?? defaultRepoPath()
+        return entries(from: catalogPath).map { e in
+            Loop(id: e.id, name: e.name, title: e.title, origin: .builtIn, goal: e.goal, check: e.check,
+                 repoPath: repo, agent: .claude, roundPrompt: e.roundPrompt,
+                 trigger: .at(hour: e.hour, minute: e.minute),
+                 limits: LoopLimits(maxRounds: max(1, e.maxRounds), maxDuration: TimeInterval(max(1, e.maxMinutes) * 60), sameFailureStop: 2),
+                 pinned: false, state: .stopped, createdAt: referenceDate)
+        }
+    }
 }

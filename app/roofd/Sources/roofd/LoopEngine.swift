@@ -76,7 +76,14 @@ enum LoopEngine {
                 end(id, store: store, outcome: .stop("Could not make the loop's worktree: \(error)"), runId: l.run?.id)
                 return
             }
-            let result = LoopCheck.run(l.check, in: wt, timeout: l.checkTimeout)
+            // A check that can't run as a command (a terminal copy, a sentence after it) stops the run with the reason,
+            // instead of failing with exit 127 until "the same failure twice" (LAB-1846).
+            let check = LoopSpecLint.clean(l.check)
+            if let problem = LoopSpecLint.checkProblem(check, folder: wt) {
+                end(id, store: store, outcome: .stop("The check can't run: \(problem) Fix it in the loop's editor."), runId: l.run?.id)
+                return
+            }
+            let result = LoopCheck.run(check, in: wt, timeout: l.checkTimeout)
             var line: LoopRound?
             _ = try? store.update(id) { cur in
                 guard cur.run?.id == l.run?.id else { return }       // stopped while the check ran: drop the result

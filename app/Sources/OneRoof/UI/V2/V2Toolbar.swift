@@ -83,7 +83,7 @@ private struct V2PlacesSlot: View {
         self.model = model; self.win = win; self.controller = controller; _step = ObservedObject(wrappedValue: win.step)
     }
     var body: some View {
-        if win.focusStep == .sessions && win.place == .sessions {
+        if (win.focusStep == .sessions && win.place == .sessions) || win.railFolded {   // LAB-1829: or the rail is folded
             V2PlacesIconRow(model: model, win: win, controller: controller).padding(.leading, 4)
         } else {
             Color.clear.frame(width: 1, height: 1)
@@ -176,7 +176,12 @@ private struct V2LayoutSlot: View {
     @ObservedObject var win: WindowState
     @ObservedObject var controller: MainWindowController
     var body: some View {
-        if controller.v2Bar.layoutControl { V2LayoutControl(win: win) } else { Color.clear.frame(width: 1, height: 1) }
+        // LAB-1828: Single · Grid · Wall arrange the Sessions place (and stay while the Wall is open, to go back).
+        if controller.v2Bar.layoutControl, V2Layout.showsLayoutControl(inSessions: win.place == .sessions, page: controller.v2Page) {
+            V2LayoutControl(win: win)
+        } else {
+            Color.clear.frame(width: 1, height: 1)
+        }
     }
 }
 
@@ -192,8 +197,13 @@ struct V2StepButton: View {
     }
 
     var body: some View {
+        // LAB-1828: the Focus steps arrange the Sessions place; elsewhere they only folded the dock.
+        if V2Layout.showsStepButton(inSessions: win.place == .sessions, page: controller.v2Page) { button } else { Color.clear.frame(width: 1, height: 1) }
+    }
+
+    @ViewBuilder private var button: some View {
         let focus = win.focusStep == .focus
-        let label = win.place == .sessions ? win.focusStep.title : "Focus"
+        let label = win.focusStep.title
         Menu {
             ForEach(FocusStep.allCases, id: \.self) { s in
                 Button("\(s.rawValue) · \(s.title)") { controller.v2SetStep(s) }

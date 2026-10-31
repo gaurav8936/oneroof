@@ -120,6 +120,7 @@ struct NewSessionSheet: View {
                     }
                 }
                 HStack(spacing: 10) { ForEach(marks, id: \.self) { agentCard($0) } }
+                if mark == .gemini { geminiKeyBanner }
                 HStack(alignment: .top, spacing: 10) {
                     if mark != .shell { labelled("Model") { modelMenu } }
                     labelled("Repo") { repoMenu }
@@ -584,6 +585,27 @@ struct NewSessionSheet: View {
         .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(t.now.color.opacity(0.35)))
     }
 
+    /// LAB-1826 · Gemini CLI no longer signs in with a personal Google account (Google, June 2026: "This client is no
+    /// longer supported for Gemini Code Assist for individuals"); it needs a Gemini API key. Shown whenever Gemini is
+    /// picked: the key lives in your shell or ~/.gemini, which One Roof does not read.
+    private var geminiKeyBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gemini needs an API key").ui(12.5, .semibold).foregroundStyle(t.needsText.color)
+                Text("Google no longer lets Gemini CLI sign in with a personal Google account, so \u{201C}Sign in with Google\u{201D} fails and asks again. Set GEMINI_API_KEY (a key from aistudio.google.com/apikey) in your shell before starting, or use Antigravity for Google's models.")
+                    .ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button { select(.antigravity) } label: {
+                Text("Use Antigravity").ui(12.5, .semibold).foregroundStyle(t.accentText.color)
+            }.buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.needsText.color.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(t.needsText.color.opacity(0.45)))
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: Agent cards (S09 §1.5)
 
     private func name(_ m: AgentMark) -> String {
@@ -618,6 +640,8 @@ struct NewSessionSheet: View {
             if let r = s.fiveHourResets { parts.append("resets " + r.formatted(date: .omitted, time: .shortened)) }
         } else if m == .shell {
             parts.append("plain shell, no agent")
+        } else if m == .gemini {
+            parts.append("API key only")   // LAB-1826: needs a Gemini API key
         } else {
             parts.append([.kimi, .antigravity].contains(m) ? "sessions only" : "no usage feed")
         }
@@ -811,8 +835,12 @@ struct NewSessionSheet: View {
 
     // MARK: Behaviour
 
+    /// Self-test only: the agent the next sheet opens with (`newsession <agent>`, LAB-1826).
+    static var selfTestMark: AgentMark?
+
     private func appear() {
         DispatchQueue.main.async { textFocused = true }
+        if SelfTest.isActive, let m = Self.selfTestMark { Self.selfTestMark = nil; DispatchQueue.main.async { select(m) } }
         roles = Role.load(agenticEngineering: model.settings.agenticEngineering.path)
         // LAB-1255: the project picker shows Linear's current list (fetched again when older than 10 s).
         model.loadWorkstreams(force: model.linearTeams.isEmpty, maxAge: 10)
