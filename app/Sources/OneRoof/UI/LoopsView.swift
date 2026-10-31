@@ -77,7 +77,7 @@ final class LoopBoard: ObservableObject {
     }
 
     func pauseAll() {
-        write("Pause all") { s in for l in s.all() where l.state.isActive || (l.trigger.isNightly && l.state != .stopped) { try s.update(l.id) { $0 = LoopController.pause($0) } } }
+        write("Pause all") { s in for l in s.all() where l.state.isActive || (l.trigger.isArmed && l.state != .stopped) { try s.update(l.id) { $0 = LoopController.pause($0) } } }
     }
 
     func resumeAll() {
@@ -88,7 +88,7 @@ final class LoopBoard: ObservableObject {
         write("Save") { s in
             var l = loop
             if isNew {
-                l.state = l.trigger.isNightly ? .waiting : .stopped
+                l.state = l.trigger.isArmed ? .waiting : .stopped
                 try s.save(l)
             } else {
                 try s.saveEdit(l)
@@ -290,13 +290,15 @@ struct LoopsView: View {
         case .needsYou: return "needs you"
         case .waiting:
             if let next = LoopController.nextStart(l, rounds: rs, now: Date()) { return "next " + next.formatted(date: .omitted, time: .shortened) }
+            if l.run == nil, l.trigger.isQuiet, !l.runRequested { return "waiting for quiet" }       // LAB-1369
+            if l.run == nil, let e = l.trigger.event, !l.runRequested { return "waiting for " + e }   // LAB-1865
             return l.runRequested ? "starting" : "waiting"
         case .done:
             let n = rs.last(where: { $0.kind == .stop }).map { s in rs.filter { $0.runId == s.runId && $0.kind == .round }.count } ?? 0
             return "done in \(n) round\(n == 1 ? "" : "s")"
         case .failed: return "stopped at a limit"
         case .paused: return "paused"
-        case .stopped: return l.trigger.isNightly ? "not running" : "run when you want"
+        case .stopped: return l.trigger.isArmed ? "not running" : "run when you want"
         }
     }
 
@@ -405,10 +407,10 @@ struct LoopDetail: View {
         HStack(spacing: 8) {
             RoofButton("Run now", .primary) { board.runNow(l.id) }
                 .disabled(l.state == .running || l.state == .needsYou || l.runRequested)
-            if l.state == .paused || l.state == .stopped && l.run == nil && l.trigger.isNightly {
+            if l.state == .paused || l.state == .stopped && l.run == nil && l.trigger.isArmed {
                 RoofButton("Resume") { board.resume(l.id) }
             } else {
-                RoofButton("Pause") { board.pause(l.id) }.disabled(!(l.state.isActive || (l.trigger.isNightly && l.state != .stopped)))
+                RoofButton("Pause") { board.pause(l.id) }.disabled(!(l.state.isActive || (l.trigger.isArmed && l.state != .stopped)))
             }
             RoofButton("Stop", .danger) { board.stopLoop(l.id) }.disabled(l.run == nil && !l.runRequested && l.state == .stopped)
             RoofButton("Edit") { edit() }
@@ -541,7 +543,7 @@ struct LoopEditor: View {
     @State private var template = ""
 
     private var l: Binding<Loop> { $draft.loop }
-    private var nightly: Bool { draft.loop.trigger.isNightly }
+    private var nightly: Bool { draft.loop.trigger.isArmed }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -626,9 +628,17 @@ struct LoopEditor: View {
                     }
                     field("Runs") {
                         VStack(alignment: .leading, spacing: 8) {
-                            Segmented(options: [(false, "Until done"), (true, "Nightly")], selection: Binding(
-                                get: { nightly },
-                                set: { draft.loop.trigger = $0 ? .at(hour: 2, minute: 0) : .untilDone(everyMinutes: 0) }))
+                            Segmented(options: [(0, "Until done"), (1, "Nightly"), (2, "When quiet"), (3, "On an event")], selection: Binding(
+                                get: { Self.triggerIndex(draft.loop.trigger) },
+                                set: { i in
+                                    guard i != Self.triggerIndex(draft.loop.trigger) else { return }
+                                    switch i {
+                                    case 1: draft.loop.trigger = .at(hour: 2, minute: 0)
+                                    case 2: draft.loop.trigger = .whenQuiet(quietMinutes: 15, fromHour: 1, toHour: 6)
+                                    case 3: draft.loop.trigger = .onEvent(LoopTrigger.knownEvents[0])
+                                    default: draft.loop.trigger = .untilDone(everyMinutes: 0)
+                                    }
+                                }))
                             triggerDetail
                         }
                     }
@@ -695,6 +705,38 @@ struct LoopEditor: View {
                 }), in: -15...1455, step: 15).ui(13).foregroundStyle(t.text.color)
             }
             Text("Runs only while this Mac is awake (missed nights are skipped). Pause stops it until Resume.").ui(11.5).foregroundStyle(t.text3.color)
+        case .whenQuiet(let q, let f, let to):
+            Stepper("After \(Schedule.every(q)) with no session of yours working or waiting on you",
+                    value: Binding(get: { q }, set: { draft.loop.trigger = .whenQuiet(quietMinutes: max($0, 5), fromHour: f, toHour: to) }),
+                    in: 5...240, step: 5).ui(13).foregroundStyle(t.text.color)
+            Toggle("Only between", isOn: Binding(get: { f != nil && to != nil },
+                                                 set: { draft.loop.trigger = .whenQuiet(quietMinutes: q, fromHour: $0 ? 1 : nil, toHour: $0 ? 6 : nil) }))
+                .ui(13).foregroundStyle(t.text.color)
+            if let f, let to {
+                HStack(spacing: 8) {
+                    Stepper(Schedule.clock(f, 0), value: Binding(get: { f }, set: { draft.loop.trigger = .whenQuiet(quietMinutes: q, fromHour: ($0 + 24) % 24, toHour: to) }), in: -1...24)
+                    Text("and").ui(13).foregroundStyle(t.text2.color)
+                    Stepper(Schedule.clock(to, 0), value: Binding(get: { to }, set: { draft.loop.trigger = .whenQuiet(quietMinutes: q, fromHour: f, toHour: ($0 + 24) % 24) }), in: -1...24)
+                }
+                .ui(13).foregroundStyle(t.text.color)
+            }
+            Text("Starts once your own sessions have been quiet that long, at most once " + (f != nil ? "a night" : "a day") + ". A session you start during the run does not stop it. The card shows Waiting for quiet.")
+                .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+        case .onEvent(let e):
+            FieldMenu(title: e, expand: false) {
+                ForEach(LoopTrigger.knownEvents, id: \.self) { ev in Button(ev) { draft.loop.trigger = .onEvent(ev) } }
+            }
+            Text("Starts once per event: `ae loops fire \(e)` records it (a webhook receiver or a git hook calls it), and roofd starts the loop within 30 s.")
+                .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    static func triggerIndex(_ t: LoopTrigger) -> Int {
+        switch t {
+        case .untilDone: return 0
+        case .at: return 1
+        case .whenQuiet: return 2
+        case .onEvent: return 3
         }
     }
 

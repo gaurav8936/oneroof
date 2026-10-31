@@ -13,15 +13,51 @@ public enum LoopTrigger: Codable, Equatable, Hashable, Sendable {
     case untilDone(everyMinutes: Int)
     /// Every night at this time: one run of rounds, until the check passes or a limit is hit.
     case at(hour: Int, minute: Int)
+    /// LAB-1369 · When quiet: once no session a person started has been working or waiting on you for `quietMinutes`,
+    /// optionally only between `fromHour` and `toHour` (local, may wrap midnight; nil = any time), at most once per
+    /// window (once per day without one). A session that becomes active during the run does not stop it (v1).
+    case whenQuiet(quietMinutes: Int, fromHour: Int?, toHour: Int?)
+    /// LAB-1865 · On an event (`linear.issue.created`, `woodpecker.pipeline.failed`, `git.push`, `oneroof.release`):
+    /// `ae loops fire <event>` (the kit's adapter, called by a webhook receiver or a git hook) drops it in
+    /// `<loops>/.events/`, and roofd starts one run per event that came after the loop's last run.
+    case onEvent(String)
 
     public var label: String {
         switch self {
         case .untilDone(let m): return m <= 0 ? "Until done" : "Until done · every " + Schedule.every(m)
         case .at(let h, let m): return "Nightly " + Schedule.clock(h, m)
+        case .whenQuiet(let q, let f, let t):
+            let window = (f != nil && t != nil) ? " · \(Schedule.clock(f!, 0))–\(Schedule.clock(t!, 0))" : ""
+            return "When quiet \(Schedule.every(q))" + window
+        case .onEvent(let e): return "On " + e
         }
     }
 
     public var isNightly: Bool { if case .at = self { return true }; return false }
+    /// Starts runs on its own (a clock, quiet or an event), so a saved loop is armed (waiting) rather than stopped.
+    public var isArmed: Bool { if case .untilDone = self { return false }; return true }
+    public var isQuiet: Bool { if case .whenQuiet = self { return true }; return false }
+    public var event: String? { if case .onEvent(let e) = self { return e }; return nil }
+
+    /// The kit's event names (`kit/loops/README.md`, Triggers).
+    public static let knownEvents = ["linear.issue.created", "woodpecker.pipeline.failed", "git.push", "oneroof.release"]
+}
+
+/// LAB-1369 · LAB-1865: what roofd knows besides the clock when it decides whether a loop starts.
+public struct LoopContext: Equatable, Sendable {
+    /// How long no manual session has been working or waiting on you (nil = unknown or busy now: never quiet).
+    public var quietFor: TimeInterval?
+    /// Events fired so far (name, when), newest last.
+    public var events: [LoopEventFire]
+    public init(quietFor: TimeInterval? = nil, events: [LoopEventFire] = []) { self.quietFor = quietFor; self.events = events }
+}
+
+/// One `ae loops fire <event>` (or a One Roof release): `<loops>/.events/<epoch>-<event>.json`.
+public struct LoopEventFire: Codable, Equatable, Sendable {
+    public var event: String
+    public var at: Date
+    public var detail: String?
+    public init(event: String, at: Date, detail: String? = nil) { self.event = event; self.at = at; self.detail = detail }
 }
 
 /// When a run stops on its own.
@@ -153,6 +189,18 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
     public var lastRunAt: Date?
     /// Why the last run ended, in plain words.
     public var stopReason: String?
+    /// LAB-1866: when you marked the last failure as seen in Needs you (it leaves Needs you until the loop fails again).
+    public var failureSeenAt: Date?
+    /// LAB-1843: the kit loop file (`<loops>/<name>.loop.yaml`) this loop comes from; `ae` owns the file and its
+    /// schedule, One Roof shows it and can run it (Run now) but edits it only in the file.
+    public var specFile: String?
+    /// The kit's schedule for a `.loop.yaml` loop ("cron 0 17 * * 5"), run by `ae` (launchd), never by roofd.
+    public var externalSchedule: String?
+    /// LAB-1867: the branch a harvested PR targets (nil = `develop` when the remote has it, else its default branch).
+    public var harvestBase: String?
+    /// LAB-1922: the kit's kind (reporter, prober, fixer, judge …) and how it acts (none · issue · pr), when known.
+    public var kind: String?
+    public var act: String?
 
     public var displayTitle: String {
         if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
@@ -168,11 +216,19 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
         self.hostedConnection = nil; self.hostedRuntime = nil
         self.trigger = trigger; self.limits = limits; self.pinned = pinned; self.state = state; self.createdAt = createdAt
         self.checkTimeout = checkTimeout; self.run = nil; self.runRequested = false; self.lastRunAt = nil; self.stopReason = nil
+        self.failureSeenAt = nil; self.specFile = nil; self.externalSchedule = nil; self.harvestBase = nil; self.kind = nil; self.act = nil
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, title, origin, goal, check, repoPath, agent, model, hostedConnection, hostedRuntime, account, roundPrompt, trigger, limits, pinned, state,
-             createdAt, checkTimeout, run, runRequested, lastRunAt, stopReason
+             createdAt, checkTimeout, run, runRequested, lastRunAt, stopReason, failureSeenAt, specFile, externalSchedule, harvestBase, kind, act
+    }
+
+    /// The failure Needs you shows (LAB-1866): the run stopped at a limit and you have not marked it seen since.
+    public var failureUnseen: Bool {
+        guard state == .failed else { return false }
+        guard let seen = failureSeenAt else { return true }
+        return seen < (lastRunAt ?? .distantPast)
     }
 
     public init(from d: Decoder) throws {
@@ -200,6 +256,12 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
         runRequested = try c.decodeIfPresent(Bool.self, forKey: .runRequested) ?? false
         lastRunAt = try c.decodeIfPresent(Date.self, forKey: .lastRunAt)
         stopReason = try c.decodeIfPresent(String.self, forKey: .stopReason)
+        failureSeenAt = try c.decodeIfPresent(Date.self, forKey: .failureSeenAt)
+        specFile = try c.decodeIfPresent(String.self, forKey: .specFile)
+        externalSchedule = try c.decodeIfPresent(String.self, forKey: .externalSchedule)
+        harvestBase = try c.decodeIfPresent(String.self, forKey: .harvestBase)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        act = try c.decodeIfPresent(String.self, forKey: .act)
     }
 
     /// The loop's own branch and worktree (never the live checkout).
@@ -304,11 +366,13 @@ public enum LoopDecision: Equatable, Sendable {
 public enum LoopController {
     /// What a loop should do now. `rounds` = its whole `rounds.jsonl` (only the current run's lines count).
     public static func next(_ loop: Loop, rounds: [LoopRound], now: Date, round: LoopRoundStatus,
-                            calendar: Calendar = .current) -> LoopDecision {
+                            calendar: Calendar = .current, context: LoopContext = LoopContext()) -> LoopDecision {
         if loop.state == .paused { return .wait }
         guard let run = loop.run else {
-            // Not in a run: start one on Run now, or at a nightly loop's time.
-            if loop.runRequested || nightlyDue(loop, now: now, calendar: calendar) { return .runCheck }
+            // Not in a run: start one on Run now, at a nightly loop's time, once it is quiet, or on its event.
+            if loop.runRequested || nightlyDue(loop, now: now, calendar: calendar)
+                || quietDue(loop, now: now, quietFor: context.quietFor, calendar: calendar)
+                || eventDue(loop, events: context.events) != nil { return .runCheck }
             return .wait
         }
         let mine = rounds.filter { $0.runId == run.id }
@@ -357,6 +421,31 @@ public enum LoopController {
               let occ = ScheduleClock.occurrence(atOrBefore: now, hour: h, minute: m, calendar: calendar) else { return false }
         let since = max(loop.createdAt, loop.lastRunAt ?? .distantPast)
         return occ > since && now.timeIntervalSince(occ) <= ScheduleClock.grace
+    }
+
+    /// LAB-1369: a When-quiet loop starts once no manual session has been active for its quiet time, inside its window,
+    /// and not already run in this window (once per day without a window).
+    public static func quietDue(_ loop: Loop, now: Date, quietFor: TimeInterval?, calendar: Calendar = .current) -> Bool {
+        guard case .whenQuiet(let q, let f, let t) = loop.trigger, loop.state != .stopped, loop.state != .paused,
+              let quiet = quietFor, quiet >= TimeInterval(max(q, 0) * 60),
+              let start = quietWindowStart(from: f, to: t, now: now, calendar: calendar) else { return false }
+        return (loop.lastRunAt ?? .distantPast) < start
+    }
+
+    /// The start of the window `now` is in (nil = outside it). No window: the start of today.
+    public static func quietWindowStart(from: Int?, to: Int?, now: Date, calendar: Calendar = .current) -> Date? {
+        guard let f = from, let t = to, f != t else { return calendar.startOfDay(for: now) }
+        let h = calendar.component(.hour, from: now)
+        let inside = f < t ? (h >= f && h < t) : (h >= f || h < t)
+        guard inside else { return nil }
+        return ScheduleClock.occurrence(atOrBefore: now, hour: f, minute: 0, calendar: calendar)
+    }
+
+    /// LAB-1865: the newest fired event this loop listens for that came after its last run (and after it was made).
+    public static func eventDue(_ loop: Loop, events: [LoopEventFire]) -> LoopEventFire? {
+        guard let name = loop.trigger.event, loop.state != .stopped, loop.state != .paused else { return nil }
+        let since = max(loop.createdAt, loop.lastRunAt ?? .distantPast)
+        return events.filter { $0.event == name && $0.at > since }.max { $0.at < $1.at }
     }
 
     /// When the loop starts something next, for the list (nil = nothing planned).
@@ -473,8 +562,8 @@ public enum LoopController {
 
     public static func pause(_ loop: Loop) -> Loop {
         var l = loop
-        // Anything that may still start rounds: a run in progress, or a nightly loop that has not been stopped.
-        if l.state.isActive || (l.trigger.isNightly && l.state != .stopped) { l.state = .paused }
+        // Anything that may still start rounds: a run in progress, or an armed loop (clock, quiet, event) not stopped.
+        if l.state.isActive || (l.trigger.isArmed && l.state != .stopped) { l.state = .paused }
         return l
     }
 
@@ -586,6 +675,15 @@ public enum LoopBuiltIns {
         public var maxMinutes: Int
         public var costCapUsd: Double
         public var roundPrompt: String
+        /// LAB-1922: the library's kind, how it acts, its trigger and what it writes (optional in older catalogs).
+        public var kind: String?
+        public var act: String?
+        public var trigger: String?
+        public var event: String?
+        public var manual: Bool?
+        public var library: Bool?
+        public var writes: [String]?
+        public var dryRun: String?
 
         public init(id: String, title: String, goal: String, cron: String, hour: Int, minute: Int,
                     maxRounds: Int = 1, maxMinutes: Int = 15, costCapUsd: Double = 0, roundPrompt: String = "") {
@@ -656,6 +754,33 @@ public enum LoopBuiltIns {
                  trigger: .at(hour: e.hour, minute: e.minute),
                  limits: LoopLimits(maxRounds: max(1, e.maxRounds), maxDuration: TimeInterval(max(1, e.maxMinutes) * 60), sameFailureStop: 2),
                  pinned: false, state: .stopped, createdAt: referenceDate)
+            .with { $0.kind = e.kind; $0.act = e.act }
         }
+    }
+}
+
+extension Loop {
+    /// A changed copy (for building loops in one expression).
+    public func with(_ change: (inout Loop) -> Void) -> Loop { var l = self; change(&l); return l }
+}
+
+/// LAB-1369 · how long the Mac has been quiet: no session a person started working or waiting on you. roofd probes
+/// each live manual session (loop rounds are left out) and keeps the last time one was busy.
+public enum LoopQuiet {
+    /// One live manual session as its holder reports it: `status` (working · blocked · done · idle …) and its last
+    /// activity.
+    public struct Probe: Equatable, Sendable {
+        public var status: String
+        public var active: Date
+        public init(status: String, active: Date) { self.status = status; self.active = active }
+        public var busy: Bool { !["done", "idle"].contains(status) }
+    }
+
+    /// (quiet for, the new last-busy time). Busy now = nil (never quiet). Otherwise the time since the later of the
+    /// last busy moment and the newest activity.
+    public static func quietFor(now: Date, probes: [Probe], lastBusy: Date) -> (TimeInterval?, Date) {
+        if probes.contains(where: \.busy) { return (nil, now) }
+        let last = max(lastBusy, probes.map(\.active).max() ?? .distantPast)
+        return (max(0, now.timeIntervalSince(last)), lastBusy)
     }
 }

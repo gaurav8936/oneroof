@@ -37,7 +37,33 @@ enum LoopEngine {
         let ids = ((try? FileManager.default.contentsOfDirectory(atPath: store.root)) ?? []).filter(Loop.validId)
         guard !ids.isEmpty else { return }
         let sessions = try? SessionStore(path: c.store)
-        for id in ids.sorted() { step(id, store: store, sessions: sessions, again: true) }
+        let context = self.context(store: store, ids: ids, sessions: sessions, now: Date())
+        for id in ids.sorted() { step(id, store: store, sessions: sessions, again: true, context: context) }
+    }
+
+    /// The last time a manual session was busy (roofd's start until one is seen: never quiet right after a restart).
+    nonisolated(unsafe) static var lastBusy = Date()
+
+    /// LAB-1369 · LAB-1865: quiet time and fired events, worked out only when a loop listens for them.
+    static func context(store: LoopStore, ids: [String], sessions: SessionStore?, now: Date) -> LoopContext {
+        let loops = ids.compactMap(store.load)
+        var ctx = LoopContext()
+        if loops.contains(where: { $0.trigger.event != nil }) {
+            LoopEvents.prune(root: store.root, now: now)
+            ctx.events = LoopEvents.read(root: store.root)
+        }
+        if loops.contains(where: { $0.trigger.isQuiet && $0.state != .stopped && $0.state != .paused }) {
+            let manual = SessionScope.manual(sessions?.all() ?? []).compactMap(\.runtimeId)
+            let probes = manual.compactMap { rid -> LoopQuiet.Probe? in
+                guard let info = try? Sock.holderRequest(Paths.session(rid), ["op": "info"], timeout: 1), info["exited"] == nil else { return nil }
+                let status = (info["opening"] as? String) == "failed" ? "blocked" : (info["status"] as? String ?? "unknown")
+                return LoopQuiet.Probe(status: status, active: (info["active"] as? Double).map { Date(timeIntervalSince1970: $0) } ?? .distantPast)
+            }
+            let (quiet, busy) = LoopQuiet.quietFor(now: now, probes: probes, lastBusy: lastBusy)
+            lastBusy = busy
+            ctx.quietFor = quiet
+        }
+        return ctx
     }
 
     /// The round session as its holder reports it. No answer from a socket that still accepts connections = busy for
@@ -49,12 +75,12 @@ enum LoopEngine {
         return .gone
     }
 
-    static func step(_ id: String, store: LoopStore, sessions: SessionStore?, again: Bool) {
+    static func step(_ id: String, store: LoopStore, sessions: SessionStore?, again: Bool, context: LoopContext = LoopContext()) {
         let now = Date()
         guard let loop = store.load(id) else { return }
         let rounds = store.rounds(id)
         let status: LoopRoundStatus = loop.run?.active.map { probe($0.runtimeId, now: now) } ?? .none
-        let decision = LoopController.next(loop, rounds: rounds, now: now, round: status)
+        let decision = LoopController.next(loop, rounds: rounds, now: now, round: status, context: context)
         switch decision {
         case .wait, .needsYou:
             _ = try? store.update(id) { $0 = LoopController.settle($0, decision) }
@@ -91,7 +117,7 @@ enum LoopEngine {
                 cur = next; line = ln
             }
             if let line { try? store.append(line, to: id) }
-            if again, line != nil { step(id, store: store, sessions: sessions, again: false) }   // decide now, not in 30 s
+            if again, line != nil { step(id, store: store, sessions: sessions, again: false, context: context) }   // decide now, not in 30 s
 
         case .startRound(let n):
             startRound(loop, n: n, rounds: rounds, store: store, sessions: sessions)
@@ -171,7 +197,7 @@ enum LoopEngine {
                         objective: fresh.goal, openingMessage: LoopPrompt.render(fresh, round: n, rounds: rounds),
                         tags: ["loop:\(fresh.id)"], lifecycle: .idle, startInRepo: true, model: fresh.model)
         if fresh.agent.isHosted {
-            guard !fresh.trigger.isNightly, fresh.limits.maxRounds == 1,
+            guard !fresh.trigger.isArmed, fresh.limits.maxRounds == 1,
                   let connection = fresh.hostedConnection, let runtime = fresh.hostedRuntime,
                   connection.model == fresh.model else {
                 end(fresh.id, store: store, outcome: .stop("Hosted loops require an explicitly selected connection and a single manual round; recurring paid runs are disabled."), runId: fresh.run?.id)
