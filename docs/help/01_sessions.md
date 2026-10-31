@@ -14,9 +14,9 @@ You should be able to look at the left panel and know, without clicking, which a
 
 | State | Where it comes from | What it means for you |
 |---|---|---|
-| Needs you | roofd (a prompt is waiting) | Stopped on a question or a permission prompt; it waits for you. Answer in its terminal, on the card over the bottom of its terminal (**Allow once**, **Always allow**, **Deny**, **Reply…**; hover a button to see what it does), or in Decisions (⌘I). Counted on the Dock badge. |
+| Needs you | roofd (a prompt is waiting) | Stopped on a question or a permission prompt; it waits for you. Answer in its terminal (its own options, by click or key) or in Needs you (⌘I), which lists every option the prompt shows. No card covers the terminal (since 1.9.33). Counted on the Dock badge. |
 | Working | roofd | Busy right now: thinking, running a tool or writing. Goes back to Ready or Idle a few seconds after it stops. |
-| Ready | roofd | Finished a turn you have not looked at yet. Turns Idle as soon as you open the session or type in it. There is no timer. |
+| Ready | roofd | Finished a turn you have not looked at yet. Turns Idle as soon as you open the session or type in it. There is no timer. The finished turn also waits in Needs you (with what it said last and a reply box) until you reply, set it aside or close the session. |
 | Idle | roofd | Alive at its prompt with nothing new for you; not executing. Plain terminals are always Idle (they have no agent). |
 | Next | One Roof | Planned and up next (When › Next, Mark as Next, or the Next sticker). |
 | Planned | One Roof | Written ahead of time, not started. |
