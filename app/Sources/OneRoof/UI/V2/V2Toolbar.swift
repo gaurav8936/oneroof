@@ -91,6 +91,16 @@ private struct V2PlacesSlot: View {
     }
 }
 
+/// LAB-1783 · where the title draws, apart from the controller so a column drag redraws only the title's offset.
+final class V2TitleShift: ObservableObject {
+    @Published var x: CGFloat = 0
+}
+
+private struct V2TitleShiftModifier: ViewModifier {
+    @ObservedObject var shift: V2TitleShift
+    func body(content: Content) -> some View { content.offset(x: shift.x) }
+}
+
 /// "Agentic engineering repo  Claude1 · LAB-AGENTIC", or the place's name ("Home", "Needs you  oldest first").
 struct V2TitleView: View {
     @Environment(\.theme) private var t
@@ -109,7 +119,7 @@ struct V2TitleView: View {
             }
             .frame(minWidth: 40, maxWidth: CGFloat(room) - 8, alignment: .leading)
             .padding(.leading, 8)
-            .offset(x: controller.v2TitleShift)   // LAB-1783: its text starts where the centre's content does
+            .modifier(V2TitleShiftModifier(shift: controller.v2TitleShift))   // LAB-1783: text on the centre's content edge
             .barHelp(sub.map { title + "  " + $0 } ?? title)
             .accessibilityElement(children: .combine)
             .onChange(of: title) { kick() }
