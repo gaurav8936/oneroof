@@ -39,23 +39,31 @@ public struct StatusEngine: Sendable {
     private var readyAt: Date?
     /// LAB-1592: someone typed into the session after a hook said it was blocked (an answer, or Esc).
     private var inputSinceBlockedHook = false
+    /// LAB-1606: the question the agent's last turn ended with; the session waits in Needs you until you reply.
+    public private(set) var question: String?
 
     public init() {}
 
     // MARK: Signals
 
     /// A Claude hook (`roofd report claude`): the strongest signal there is.
-    public mutating func hook(_ event: String, message: String? = nil, at now: Date) {
+    /// `question`: on Stop, the question the turn's last message ended with (LAB-1606), if any.
+    public mutating func hook(_ event: String, message: String? = nil, question: String? = nil, at now: Date) {
         switch event {
-        case "SessionStart": hookStatus = .idle; ready = true; readyAt = readyAt ?? now
-        case "UserPromptSubmit", "PreToolUse", "PostToolUse": hookStatus = .working; workedSinceInput = true
+        case "SessionStart": hookStatus = .idle; ready = true; readyAt = readyAt ?? now; self.question = nil
+        case "UserPromptSubmit", "PreToolUse", "PostToolUse": hookStatus = .working; workedSinceInput = true; self.question = nil
         case "Notification":
             // Permission and question notifications block; "waiting for your input" is just idle.
             let m = (message ?? "").lowercased()
             if m.contains("permission") || m.contains("approve") || m.contains("needs your") { hookStatus = .blocked; inputSinceBlockedHook = false }
             else { return }
-        case "Stop": hookStatus = .done; ready = true
-        case "SessionEnd": hookStatus = nil; status = .unknown; ready = false; return
+        case "Stop":
+            ready = true
+            // LAB-1606: a turn that ends asking something waits for you like a prompt does; your reply (typed in the
+            // terminal or sent from Needs you) ends it, as it ends a hook's "blocked" (below).
+            if let q = question, !q.isEmpty { hookStatus = .blocked; inputSinceBlockedHook = false; self.question = q }
+            else { hookStatus = .done; self.question = nil }
+        case "SessionEnd": hookStatus = nil; status = .unknown; ready = false; self.question = nil; return
         default: return
         }
         hookAt = now
@@ -85,6 +93,7 @@ public struct StatusEngine: Sendable {
             agent = o.agent
             agentSince = o.agent == nil ? nil : o.now
             hookStatus = nil; hookAt = nil; workedSinceInput = false; ready = false; readyAt = nil; inputSinceBlockedHook = false
+            question = nil
         }
         guard let kind = o.agent else { status = .unknown; ready = false; return status }
 
@@ -117,6 +126,7 @@ public struct StatusEngine: Sendable {
             // An approved tool that is still running keeps its spinner line: working until PostToolUse says more.
             hookStatus = spinner ? .working : .idle
             inputSinceBlockedHook = false
+            question = nil
             next = hookStatus ?? .idle
         } else if let h = hookStatus {
             // Hooks decide (UserPromptSubmit / PreToolUse → working, Stop → done): screen repaints after a Stop are
