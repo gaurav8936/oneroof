@@ -55,6 +55,10 @@ final class LoopEngineTests: XCTestCase {
         let after = try XCTUnwrap(store.load("green"))
         XCTAssertEqual(after.state, .done)
         XCTAssertEqual(store.rounds("green").map(\.kind), [.check, .stop])
+        // LAB-1917: the ended run is in the outcome ledger next to the loops (engine roofd).
+        let ledger = try LoopLedger(path: LoopLedger.defaultPath(loopsRoot: store.root))
+        XCTAssertEqual(ledger.summary().first(where: { $0.loop == "green" })?.lastResult, "done")
+        XCTAssertEqual(ledger.summary().first(where: { $0.loop == "green" })?.engine, "roofd")
         XCTAssertTrue(FileManager.default.fileExists(atPath: projects + "/acme/web/.worktrees/loop-green/.git"))
         // The live checkout is untouched: still on main.
         XCTAssertEqual(Foundations.run("/usr/bin/git", ["-C", projects + "/acme/web", "branch", "--show-current"]).1

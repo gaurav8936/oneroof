@@ -13,6 +13,8 @@ final class LoopBoard: ObservableObject {
     @Published private(set) var loops: [Loop] = []
     @Published private(set) var rounds: [String: [LoopRound]] = [:]
     @Published var error: String?
+    /// LAB-1918: per loop, from the outcome ledger (`<shared>/loops/ledger.sqlite`, shared with `ae loops ledger`).
+    @Published private(set) var outcomes: [LoopLedger.LoopSummary] = []
     private var timer: Timer?
     private let io = DispatchQueue(label: "oneroof.loops.io")
 
@@ -32,10 +34,13 @@ final class LoopBoard: ObservableObject {
         io.async { [weak self] in
             let ls = s.all()
             let rs = Dictionary(uniqueKeysWithValues: ls.map { ($0.id, s.rounds($0.id)) })
+            let path = LoopLedger.defaultPath(loopsRoot: s.root)
+            let os = FileManager.default.fileExists(atPath: path) ? ((try? LoopLedger(path: path))?.summary() ?? []) : []
             DispatchQueue.main.async {
                 guard let self else { return }
                 if self.loops != ls { self.loops = ls }
                 if self.rounds != rs { self.rounds = rs }
+                if self.outcomes != os { self.outcomes = os }
             }
         }
     }
@@ -132,6 +137,7 @@ struct LoopsView: View {
                 } else {
                     HStack(alignment: .top, spacing: 18) {
                         VStack(alignment: .leading, spacing: 14) {
+                            if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes) }   // LAB-1918 · LAB-1866
                             LoopRunsView(model: model, board: board)   // LAB-1933: loop rounds live here, not in the session rail
                             if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
                         }
@@ -744,5 +750,56 @@ struct LoopEditor: View {
         x.name = x.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if draft.isNew { x.id = LoopStore().newId(for: x.name); x.createdAt = Date() }
         onSave(x, run)
+    }
+}
+
+
+/// LAB-1918 · LAB-1866: the loops dashboard, from the outcome ledger: every loop's last outcome, streak, runs, cost and
+/// what it produced (by kind), with what waits for you (staged). Both engines write the ledger (roofd and `ae loops`).
+struct LoopOutcomesCard: View {
+    @Environment(\.theme) private var t
+    let rows: [LoopLedger.LoopSummary]
+
+    var body: some View {
+        Card(padding: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    MicroLabel("Outcomes")
+                    Spacer()
+                    let staged = rows.reduce(0) { $0 + $1.staged }
+                    if staged > 0 { Text("\(staged) waiting for you").ui(11.5, .semibold).foregroundStyle(t.needsText.color) }
+                }
+                ForEach(rows, id: \.loop) { r in
+                    HStack(spacing: 10) {
+                        Text(r.loop).ui(12.5, .semibold).foregroundStyle(t.text.color).frame(width: 170, alignment: .leading).lineLimit(1)
+                        Text(Self.result(r)).ui(12).foregroundStyle((Self.bad(r.lastResult) ? t.needsText : t.text2).color)
+                            .frame(width: 130, alignment: .leading)
+                        Text("\(r.runs) run\(r.runs == 1 ? "" : "s")").ui(11.5, mono: true).foregroundStyle(t.text3.color).frame(width: 60, alignment: .leading)
+                        Text(String(format: "$%.2f", r.costUSD)).ui(11.5, mono: true).foregroundStyle(t.text3.color).frame(width: 52, alignment: .trailing)
+                        Text(Self.produced(r)).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
+                        Spacer(minLength: 0)
+                        if r.staged > 0 { Text("\(r.staged) staged").ui(11).foregroundStyle(t.accentText.color) }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(r.loop): \(Self.result(r)), \(r.runs) runs, \(Self.produced(r))")
+                }
+            }
+        }
+    }
+
+    static func bad(_ r: String) -> Bool { ["fail", "failed", "capped"].contains(r) }
+
+    /// "failed ×2", "done ×3 · shadow".
+    static func result(_ r: LoopLedger.LoopSummary) -> String {
+        var s = r.lastResult.isEmpty ? "no run yet" : r.lastResult
+        if r.streak > 1 { s += " ×\(r.streak)" }
+        if r.lastMode == "shadow" { s += " · shadow" }
+        return s
+    }
+
+    /// "2 commits · 1 issue", or "nothing yet".
+    static func produced(_ r: LoopLedger.LoopSummary) -> String {
+        let parts = r.outcomes.sorted { $0.key < $1.key }.map { "\($0.value) \($0.key)\($0.value == 1 ? "" : "s")" }
+        return parts.isEmpty ? "nothing yet" : parts.joined(separator: " · ")
     }
 }

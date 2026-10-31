@@ -105,12 +105,47 @@ enum LoopEngine {
     static func end(_ id: String, store: LoopStore, outcome: LoopDecision, runId: String?) {
         let rounds = store.rounds(id)
         var line: LoopRound?
+        var finished: Loop?
+        var before: Loop?
         _ = try? store.update(id) { cur in
             guard cur.run?.id == runId else { return }
+            before = cur
             let (next, ln) = LoopController.ended(cur, rounds: rounds, outcome: outcome, now: Date())
-            cur = next; line = ln
+            cur = next; line = ln; finished = next
         }
         if let line { try? store.append(line, to: id) }
+        if let l = finished, let b = before, let line { record(l, before: b, line: line, root: store.root) }
+    }
+
+    /// LAB-1917 · LAB-1848: the ended run goes into the outcome ledger (with each commit it left on the loop branch,
+    /// staged for harvest, never pushed), and a run that stopped on a limit sends one alert through the kit's notifier.
+    static func record(_ l: Loop, before: Loop, line: LoopRound, root: String) {
+        let runId = line.runId
+        let result = l.state == .done ? "done" : (l.state == .failed ? "failed" : "stopped")
+        if let ledger = try? LoopLedger(path: LoopLedger.defaultPath(loopsRoot: root)) {
+            try? ledger.recordRun(loop: l.id, runId: runId, started: line.started, ended: line.ended, result: result,
+                                  summary: l.stopReason ?? "")
+            for c in commits(in: before.worktreePath, since: line.started) {
+                try? ledger.addOutcome(loop: l.id, runId: runId, kind: "commit", title: c.subject, link: "commit:\(c.sha)@\(l.branch)")
+            }
+        }
+        if l.state == .failed { LoopAlert.send(loop: l, reason: l.stopReason ?? "stopped at a limit") }
+    }
+
+    static func commits(in worktree: String, since: Date) -> [(sha: String, subject: String)] {
+        guard FileManager.default.fileExists(atPath: worktree) else { return [] }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.arguments = ["-C", worktree, "log", "--since=\(Int(since.timeIntervalSince1970))", "--format=%h %s", "-n", "50"]
+        let pipe = Pipe()
+        p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return [] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (String(data: data, encoding: .utf8) ?? "").split(separator: "\n").map { l in
+            let parts = l.split(separator: " ", maxSplits: 1).map(String.init)
+            return (parts.first ?? "", parts.count > 1 ? parts[1] : "")
+        }
     }
 
     static func startRound(_ loop: Loop, n: Int, rounds: [LoopRound], store: LoopStore, sessions: SessionStore?) {
