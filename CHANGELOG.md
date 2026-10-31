@@ -1,7 +1,10 @@
 # Changelog
 
-## 1.9.30 — a question at the end of a turn waits for you in Needs you (30 Oct 2026)
+## 1.9.30 — a question at the end of a turn waits for you in Needs you; the top-left, finished (30 Oct 2026)
 
+- **The top-left, finished** (LAB-1783). No column line sticks up into the toolbar any more: every one ends at the
+  toolbar's bottom edge, in every layout. The window's title lines up with the tabs under it, and when nothing is
+  left of the centre it starts just after the window's buttons instead of over them.
 - **Needs you shows an agent that ended its turn with a question** (LAB-1606). When Claude finishes with a plain
   question ("Should I commit this?"), the session now waits in Needs you, marked **Asked a question**, instead of
   showing as done. The card shows the question and a box for your answer; what you type goes to Claude as its next
