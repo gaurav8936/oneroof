@@ -866,9 +866,30 @@ public enum DecisionBuilder {
 
     /// LAB-1827: what the agent said last before it finished its turn (its final message, at most 4 sentences).
     public static func lastWords(_ text: String) -> String? {
-        guard let msg = CaptionEngine.assistantMessages(in: TerminalText.lines(text)).last else { return nil }
+        guard let msg = CaptionEngine.assistantMessages(in: TerminalText.lines(text)).last ?? replyAtBottom(text) else { return nil }
         let s = CaptionEngine.sentences(msg).suffix(4).joined(separator: " ")
         return s.isEmpty ? nil : String(s.prefix(600))
+    }
+
+    /// LAB-1827: the reply at the bottom of a screen without Claude/Codex markers (Goose, OpenCode, …): walking up from
+    /// the bottom, skip the input box, status and progress lines; the reply is the lines above them, up to the
+    /// previous prompt you typed ("> …" or OpenCode's "┃ …"). At most 6 lines.
+    static func replyAtBottom(_ text: String) -> String? {
+        let noise: (String) -> Bool = { l in
+            l.isEmpty || TerminalText.isChrome(l) || l.hasPrefix("⏱") || l.hasPrefix("▣") || l.hasPrefix("+ Thought") || l.hasPrefix("╹")
+                || l.localizedCaseInsensitiveContains("ctrl+") || l.contains("Enter to send")
+                || l.contains("╌") || l.contains("━") || l.contains("▀")
+        }
+        let typed: (String) -> Bool = { $0.hasPrefix(">") || $0.hasPrefix("┃") || $0.hasPrefix("❯") }
+        var reply: [String] = []
+        for raw in TerminalText.lines(text).suffix(80).reversed() {
+            let l = raw.trimmingCharacters(in: .whitespaces)
+            if typed(l) { if reply.isEmpty { continue } else { break } }
+            if noise(l) { if reply.isEmpty { continue } else { continue } }
+            reply.insert(l, at: 0)
+            if reply.count == 6 { break }
+        }
+        return reply.isEmpty ? nil : reply.joined(separator: " ")
     }
 
     /// A plan approval from the objectives runner.
