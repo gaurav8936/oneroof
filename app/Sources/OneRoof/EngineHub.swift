@@ -27,6 +27,8 @@ final class EngineHub {
         var plan: CaptionPlan?
         /// In a pane or selected in a window (LAB-1330: the on-device model is asked for visible sessions only).
         var visible = false
+        /// LAB-1606: the question the agent's turn ended with (it is waiting for your reply, not at a prompt).
+        var question: String?
     }
 
     private let q = DispatchQueue(label: "oneroof.engines", qos: .utility)
@@ -216,6 +218,15 @@ final class EngineHub {
     private func buildDecision(_ s: Live, now: Date) {
         guard openDecision[s.id] == nil else { return }
         let t = text(s, lines: 120)
+        if let q = s.question {
+            // LAB-1606: no prompt on screen, a question at the end of the turn: answered with a reply, never a key.
+            prompts[s.id] = nil
+            let d = Decision.asked(sessionId: s.id, agent: s.agent, question: q, repo: s.repoPath, now: now)
+            decisions.append(d)
+            openDecision[s.id] = d.id
+            store?.save(d)
+            return
+        }
         prompts[s.id] = DecisionMatcher.match(t, agent: s.agent)
         let ctx = DecisionContext(sessionId: s.id, agent: s.agent, terminalText: t, repoPath: s.repoPath,
                                   objective: s.objective.isEmpty ? nil : s.objective, ticket: s.ticket,
@@ -247,7 +258,8 @@ final class EngineHub {
     func answer(_ d: Decision, _ a: Answer, reply: String? = nil, pane: String?) {
         q.async { [weak self] in
             guard let self, let pane else { return }
-            let keys = AnswerKeys.keys(for: a, prompt: self.prompts[d.sessionId], agent: d.agent, reply: reply)
+            let keys = d.isQuestion ? AnswerKeys.reply(reply)
+                : AnswerKeys.keys(for: a, prompt: self.prompts[d.sessionId], agent: d.agent, reply: reply)
             for k in keys.sends {
                 switch k {
                 case AnswerKeys.escape, "esc": try? self.runtime.keys(pane: pane, [.escape])
@@ -411,8 +423,16 @@ extension Decision {
                         pattern: "ask:" + question, repo: Workspace.repoLabel(for: repo), askedAt: now)
     }
 
+    /// LAB-1606 · a turn that ended with a plain-text question: the card shows the question and a reply box.
+    static func asked(sessionId: String, agent: AgentKind, question: String, repo: String, now: Date) -> Decision {
+        Decision(sessionId: sessionId, agent: agent, kind: .other, why: question, touches: "Nothing: it is a question, not an action.",
+                 risk: .low, ifNo: "The agent keeps waiting for your answer.",
+                 pattern: Decision.questionPrefix + question, repo: Workspace.repoLabel(for: repo), askedAt: now)
+    }
+
     /// What the card says: the engine's title, or the agent's own question when the prompt was not recognised.
     var headline: String {
+        if isQuestion { return "\(agent.displayName) asked: " + pattern.dropFirst(Decision.questionPrefix.count) }
         if pattern.hasPrefix("ask:") { return "\(agent.displayName) is asking: " + pattern.dropFirst(4) }
         return title
     }

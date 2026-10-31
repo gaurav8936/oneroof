@@ -59,6 +59,8 @@ public struct RuntimeSessionState: Sendable, Equatable {
     public var memoryWarning: Bool = false
     /// Issue updates the session's agent asked for and the app has not answered yet (LAB-518).
     public var issueRequests: [IssueRequest] = []
+    /// LAB-1606: the question the agent's turn ended with, while it waits for your reply (roofd).
+    public var question: String?
 
     public init(id: RuntimeID, isAgent: Bool, agentName: String? = nil, status: RuntimeStatus = .unknown, ready: Bool = false,
                 title: String? = nil, cwd: String? = nil, pane: String, groupId: String? = nil, seq: Int? = nil,

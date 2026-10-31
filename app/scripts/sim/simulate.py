@@ -287,6 +287,16 @@ class Sim:
                     s["answered_at"] = None
                     s["answer_at"] = now + self.rng.uniform(*PERSONAS[s["persona"]])
                     self.log(s["name"], "ask-seen", f"next ask, no status change between; answer in {s['answer_at'] - now:.0f}s")
+                if s["answer_at"] and now >= s["answer_at"] and r.get("question"):
+                    # LAB-1606: the turn ended with a question (no menu): the owner answers it as the next message.
+                    s["answer_at"] = None
+                    reply = self.rng.choice(FOLLOW_UPS)
+                    self.roofd("input", s["id"], reply)
+                    time.sleep(0.3)
+                    self.roofd("input", s["id"], "\r")
+                    s["answered_at"] = time.time()
+                    self.log(s["name"], "answer", f"replied to the question: {reply}")
+                    continue
                 if s["answer_at"] and now >= s["answer_at"]:
                     scr = scr or self.screen(s)
                     key, why = self.pick_answer(s, scr)
@@ -415,7 +425,8 @@ class Sim:
         except Exception:
             pass
         lines += ["", f"Asks with a menu: {shown + missed} read while waiting · shown in Needs you: {shown} · missing: {missed}",
-                  f"Questions asked in plain text at the end of a turn (no menu; these end as Done, not Needs you): {text_q}",
+                  f"Questions other CLIs ask in plain text at the end of a turn (no menu, no hook: they end as Done): {text_q}"
+                  " · Claude's plain-text questions at the end of a turn are asks above (`end-question`, LAB-1606)",
                   f"Stale Needs you entries (ask already answered > 5 s before the read): {len(stale)}"
                   + (" · " + ", ".join(sorted({n for n, _ in stale})) if stale else ""),
                   f"Decisions the app recorded: {total} · closed within 2 s as 'answered in the terminal' (flapping): {flaps}", "",

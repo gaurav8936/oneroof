@@ -66,6 +66,10 @@ public struct Decision: Codable, Equatable, Identifiable, Sendable {
 
     public var isOpen: Bool { answer == nil }
 
+    /// LAB-1606: the agent ended its turn with a question ("asked a question"), not a permission prompt.
+    public static let questionPrefix = "asked:"
+    public var isQuestion: Bool { pattern.hasPrefix(Self.questionPrefix) }
+
     /// "Claude wants to run swift test".
     public var title: String {
         let who = agent.displayName
@@ -812,6 +816,13 @@ public struct AnswerKeys: Equatable, Sendable {
             let text = (reply ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return AnswerKeys(sends: text.isEmpty ? [first] : [first, text, "\r"], exact: true)
         }
+    }
+
+    /// LAB-1606: the answer to a question the agent asked at the end of its turn: the text and Enter at its input box
+    /// (no Esc first: nothing is being denied). An empty reply sends nothing.
+    public static func reply(_ text: String?) -> AnswerKeys {
+        let t = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return AnswerKeys(sends: t.isEmpty ? [] : [t, "\r"], exact: true)
     }
 
     /// Per-agent keys when the prompt's options could not be read.
