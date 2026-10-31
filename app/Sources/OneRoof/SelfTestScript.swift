@@ -104,6 +104,12 @@ enum SelfTestScript {
                 var s = Session(name: f[0], agent: agent, repoPath: (f[2] as NSString).expandingTildeInPath,
                                 openingMessage: f[3], lifecycle: .planned)
                 s.startInRepo = s.repoPath != Workspace.projectsRoot
+                if agent.isHosted {
+                    let id = f.count > 5 ? f[5] : m.settings.defaults(for: agent).hostedConnectionID
+                    s.hostedConnectionID = id
+                    s.model = m.settings.hostedConnections.first(where: { $0.id == id })?.model
+                    s.permissionMode = .manual
+                }
                 m.createPlanned(s, launchNow: f[4] == "1")
             } else { log(out, "  bad plan line") }
             delay = 1
@@ -154,6 +160,7 @@ enum SelfTestScript {
         case "popout": if let it = m.selected { PopOutWindowController.popOut(it, model: m) }; delay = 2
         case "roof": RoofWindowController.show(.repo((arg as NSString).expandingTildeInPath), model: m); delay = 3
         case "centre": if let v = CentreView(rawValue: arg) { m.show(v) }
+        case "settingspane": if let pane = Int(arg) { app.main.v2ShowSettings(pane: pane) }; delay = 1
         case "menu": SelfTest.invokeMenu(arg)
         case "answer":
             if let d = m.openDecisions.first, let a = Answer(rawValue: arg) { m.answer(d, a) } else { log(out, "  no open decision") }

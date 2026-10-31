@@ -1,0 +1,67 @@
+{
+  "provider": "together",
+  "model": "zai-org/GLM-5.3-Flash",
+  "versions": {
+    "goose": "1.57.0",
+    "opencode": "1.19.5"
+  },
+  "sessions": [
+    {
+      "source": "native-roofd",
+      "agent": "goose",
+      "exit": 0,
+      "requests": 13,
+      "forwarded": 12,
+      "reserved_usd": 0.09997244999999999,
+      "reported_total_tokens": 88072
+    },
+    {
+      "source": "native-roofd",
+      "agent": "opencode",
+      "exit": 0,
+      "requests": 7,
+      "forwarded": 7,
+      "reserved_usd": 0.07388515,
+      "reported_total_tokens": 79436
+    },
+    {
+      "source": "packaged-app",
+      "agent": "goose",
+      "exit": 129,
+      "requests": 3,
+      "reserved_usd": 0.02088465,
+      "reported_total_tokens": 15966
+    },
+    {
+      "source": "packaged-app",
+      "agent": "opencode",
+      "exit": 129,
+      "requests": 3,
+      "reserved_usd": 0.02702055,
+      "reported_total_tokens": 28675
+    },
+    {
+      "source": "packaged-app",
+      "agent": "goose",
+      "exit": 129,
+      "requests": 4,
+      "reserved_usd": 0.024629649999999996,
+      "reported_total_tokens": 16578
+    }
+  ],
+  "reserved_usd": 0.24639245,
+  "earlier_kit_reserved_usd": 0.2770655,
+  "provider_bill_verified": false,
+  "app_functional_journey_checks": 4,
+  "app_permission_journey_checks": 2,
+  "pre_landing_unit_tests": 773,
+  "reconnect": {
+    "agent": "goose",
+    "reattach_same_pid": true,
+    "daemon_restart_preserved_holder": true,
+    "opening_not_resent": true,
+    "no_inference_reservations_added": true,
+    "owned_supervisor_reaped": true
+  },
+  "rebased_unit_tests": 793
+}

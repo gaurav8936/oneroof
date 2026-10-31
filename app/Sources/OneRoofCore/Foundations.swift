@@ -48,10 +48,11 @@ public enum Foundations {
     // MARK: Running workspace scripts
 
     /// Run a command with a timeout; returns (exit code, combined output). Never uses a shell.
-    public static func run(_ exe: String, _ args: [String], cwd: String? = nil, timeout: TimeInterval = 20) -> (Int32, String) {
+    public static func run(_ exe: String, _ args: [String], cwd: String? = nil, timeout: TimeInterval = 20, environment: [String: String]? = nil) -> (Int32, String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
+        if let environment { p.environment = environment }
         if let cwd { p.currentDirectoryURL = URL(fileURLWithPath: cwd) }
         let pipe = Pipe()
         p.standardOutput = pipe

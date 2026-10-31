@@ -374,7 +374,8 @@ struct SettingsView: View {
         Form {
             Text("Defaults used when you plan a session. You can change them for each session.")
                 .font(.caption).foregroundStyle(.secondary)
-            ForEach(AgentKind.allCases.filter(\.isAgent)) { agent in
+            HostedSettingsView(model: model)
+            ForEach(AgentKind.allCases.filter { $0.isAgent && !$0.isHosted }) { agent in
                 Section(agent.displayName) {
                     if !AccountResolver.choices(for: agent).isEmpty {
                         Picker("Account", selection: binding(agent, \.account)) {
@@ -405,6 +406,7 @@ struct SettingsView: View {
                         ForEach(PermissionMode.allCases) { m in Text(m.label(for: agent)).tag(m) }
                     }
                     .pickerStyle(.segmented)
+                    .disabled(agent.isHosted)
                     .accessibilityLabel("\(agent.displayName) permission mode")
                     let m = model.settings.permissionMode(for: agent)
                     LabeledContent("Flags") {

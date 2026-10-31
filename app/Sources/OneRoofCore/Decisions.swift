@@ -124,7 +124,7 @@ public enum DecisionMatcher {
         let all = TerminalText.lines(text)
         let base = max(0, all.count - 80)
         let lines = Array(all[base...]).map(TerminalText.unboxed)
-        let order: [AgentKind] = agent.map { a in [a] + [.claude, .codex, .kimi, .gemini, .agy].filter { $0 != a } }
+        let order: [AgentKind] = agent.map { a in a.isHosted ? [a] : [a] + [.claude, .codex, .kimi, .gemini, .agy].filter { $0 != a } }
             ?? [.claude, .codex, .kimi, .gemini, .agy]
         for k in order {
             if var m = matcher(k)(lines) { m.startLine += base; return m }
@@ -139,8 +139,43 @@ public enum DecisionMatcher {
         case .kimi: return kimi
         case .gemini: return gemini
         case .agy: return antigravity
+        case .opencode: return opencode
+        case .goose: return goose
         case .shell: return { _ in nil }
         }
+    }
+
+    // Pinned 1.57.0 radio menu. Selection is explicit in text, unlike OpenCode's color-only highlight.
+    static func goose(_ lines: [String]) -> PromptMatch? {
+        guard let q = lines.lastIndex(where: { $0.contains("Goose would like to call the above tool, do you allow?") }) else { return nil }
+        let rows = lines[(q + 1)...].filter { $0.contains("●") || $0.contains("○") }
+        guard rows.count == 4, let selected = rows.firstIndex(where: { $0.contains("●") }),
+              rows[0].contains("Allow (Allow the tool call once)"), rows[1].contains("Always Allow"),
+              rows[2].contains("Deny"), rows[3].contains("Cancel") else { return nil }
+        let labels = ["Allow once", "Always Allow", "Deny", "Cancel"]
+        let options = labels.enumerated().map { i, label in
+            PromptMatch.Option(label: label, key: String(repeating: i >= selected ? "\u{1b}[B" : "\u{1b}[A", count: abs(i - selected)) + "\r")
+        }
+        var command: String?, path: String?
+        if let start = lines[..<q].lastIndex(where: { $0 == "Tool approval request" }),
+           let data = lines[(start + 1)..<q].joined(separator: "\n").data(using: .utf8),
+           let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            command = (body["arguments"] as? [String: Any])?["command"] as? String
+            path = (body["arguments"] as? [String: Any])?["path"] as? String
+        } else {
+            let commands = lines[..<q].filter { $0.hasPrefix("command: ") }
+            if commands.count == 1 { command = String(commands[0].dropFirst(9)) }
+        }
+        return PromptMatch(agent: .goose, ask: path != nil ? .edit : command == nil ? .other : .command, question: lines[q], command: command, path: path, options: options, startLine: q)
+    }
+
+    // Pinned 1.19.5: Escape rejects independently of the invisible color selection. Allow stays in the terminal.
+    static func opencode(_ lines: [String]) -> PromptMatch? {
+        guard let q = lines.lastIndex(where: { $0.contains("Permission required") }),
+              lines[(q + 1)...].contains(where: { $0.contains("Allow once") && $0.contains("Allow always") && $0.contains("Reject") && $0.contains("enter confirm") }) else { return nil }
+        let command = lines[(q + 1)...].first(where: { $0.hasPrefix("$ ") }).map { String($0.dropFirst(2)) }
+        return PromptMatch(agent: .opencode, ask: command == nil ? .other : .command, question: lines[q], command: command,
+            options: [.init(label: "Allow once · use terminal", key: ""), .init(label: "Allow always · use terminal", key: ""), .init(label: "Reject", key: "\u{1b}")], startLine: q)
     }
 
     // Claude Code:  Bash command / <cmd> / <description> / Do you want to proceed? / ❯ 1. Yes / 2. Yes, and don't ask…
@@ -797,6 +832,18 @@ public struct AnswerKeys: Equatable, Sendable {
     public static let escape = "\u{1B}"
 
     public static func keys(for answer: Answer, prompt: PromptMatch?, agent: AgentKind, reply: String? = nil) -> AnswerKeys {
+        if agent.isHosted {
+            guard let prompt, prompt.agent == agent else { return AnswerKeys(sends: [], exact: false) }
+            let key: String?
+            switch answer {
+            case .allowOnce: key = prompt.options.first { $0.label == "Allow once" }?.key
+            case .always: key = prompt.options.first { $0.label == "Always Allow" }?.key
+            case .deny: key = prompt.options.first { $0.label == "Deny" || $0.label == "Reject" }?.key
+            case .reply: key = nil // do not type a follow-up into a native permission dialog
+            }
+            guard let key, !key.isEmpty else { return AnswerKeys(sends: [], exact: false) }
+            return AnswerKeys(sends: [key], exact: true)
+        }
         let opts = prompt?.options ?? []
         func find(_ test: (String) -> Bool) -> String? { opts.first { test($0.label.lowercased()) }?.key }
         let alwaysWords = ["don't ask again", "always", "allow all", "for this session", "auto-accept"]
@@ -833,6 +880,7 @@ public struct AnswerKeys: Equatable, Sendable {
         case .kimi: return ("1", "2", "3")
         case .gemini: return ("1", "2", escape)
         case .agy: return ("y", "a", "n")
+        case .opencode, .goose: return ("", nil, "")
         case .shell: return ("y", nil, "n")
         }
     }

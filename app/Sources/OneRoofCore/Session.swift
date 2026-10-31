@@ -2,13 +2,14 @@ import Foundation
 
 /// The CLI agents One Roof can start. `cliName` is the command that starts it.
 public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case claude, codex, gemini, agy, kimi
+    case claude, codex, gemini, agy, kimi, opencode, goose
     /// A plain shell, no agent: One Roof as an ordinary terminal (kept by roofd like any session).
     case shell
 
     public var id: String { rawValue }
 
     public var isAgent: Bool { self != .shell }
+    public var isHosted: Bool { self == .opencode || self == .goose }
 
     /// The least dangerous mode in which each CLI works without asking per command (objective steps only):
     /// Claude's classifier-gated auto mode, Codex approving for you inside its sandbox, Kimi asking only when needed;
@@ -20,6 +21,7 @@ public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .kimi: return ["--yolo"]
         case .gemini: return ["--approval-mode", "yolo"]
         case .agy: return ["--dangerously-skip-permissions"]
+        case .opencode, .goose: return []
         case .shell: return []
         }
     }
@@ -42,6 +44,8 @@ public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .gemini: return "Gemini"
         case .agy: return "Antigravity"
         case .kimi: return "Kimi"
+        case .opencode: return "OpenCode"
+        case .goose: return "Goose"
         case .shell: return "Terminal"
         }
     }
@@ -54,6 +58,8 @@ public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .gemini: return "GM"
         case .agy: return "AG"
         case .kimi: return "KM"
+        case .opencode: return "OC"
+        case .goose: return "GS"
         case .shell: return ">_"
         }
     }
@@ -190,6 +196,9 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var agentArgs: [String]
     /// Model for the agent CLI (`--model <name>`); nil = the CLI's own default.
     public var model: String?
+    /// Stable reference only; credentials belong to the supervised launcher.
+    public var hostedConnectionID: String?
+    public var hostedLaunch: HostedPreparedLaunch?
     /// An emoji shown instead of the agent logo.
     public var icon: String?
     /// Row colour from `Sticker.palette`, e.g. "blue".
@@ -258,6 +267,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         openingSent: Bool = false,
         agentArgs: [String] = [],
         model: String? = nil,
+        hostedConnectionID: String? = nil,
         icon: String? = nil,
         color: String? = nil,
         pinned: Bool = false,
@@ -283,6 +293,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         self.openingSent = openingSent
         self.agentArgs = agentArgs
         self.model = model
+        self.hostedConnectionID = hostedConnectionID
+        self.hostedLaunch = nil
         self.icon = icon
         self.color = color
         self.pinned = pinned
@@ -295,7 +307,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         case id, name, agent, account, repoPath, workstream, objective, openingMessage, tags, notes, lifecycle,
              createdAt, launchedAt, startInRepo, openingSent, agentArgs, model, icon, color, pinned, ticket, ticketId, ticketTeam,
              moreTickets, reviewedTickets, pendingMessages, lastRepo, writtenFiles, parentSessionId,
-             conversationId, conversationPath, archived, permissionMode
+             conversationId, conversationPath, archived, permissionMode, hostedConnectionID, hostedLaunch
         // Renamed in LAB-15 (herdr → runtime); the stored keys stay, so old rows load unchanged.
         case runtimeId = "herdrAgent", runtimeGroup = "herdrWorkspace"
     }
@@ -322,6 +334,8 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         openingSent = try c.decodeIfPresent(Bool.self, forKey: .openingSent) ?? false
         agentArgs = try c.decodeIfPresent([String].self, forKey: .agentArgs) ?? []
         model = try c.decodeIfPresent(String.self, forKey: .model)
+        hostedConnectionID = try c.decodeIfPresent(String.self, forKey: .hostedConnectionID)
+        hostedLaunch = try c.decodeIfPresent(HostedPreparedLaunch.self, forKey: .hostedLaunch)
         icon = try c.decodeIfPresent(String.self, forKey: .icon)
         color = try c.decodeIfPresent(String.self, forKey: .color)
         pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
@@ -356,6 +370,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
         launchedAt = o.launchedAt
         openingSent = o.openingSent
         lifecycle = o.lifecycle
+        if o.agent.isHosted { hostedConnectionID = o.hostedConnectionID; hostedLaunch = o.hostedLaunch; model = o.model }
     }
 
     /// A waiting message can go in now: the agent is at its prompt (not working, not on a permission question).

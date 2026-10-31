@@ -138,6 +138,8 @@ public extension AgentKind {
         case .kimi: return Pastel.named("sky")!
         case .gemini: return Pastel.named("periwinkle")!
         case .agy: return Pastel.named("lavender")!
+        case .opencode: return Pastel.named("mint")!
+        case .goose: return Pastel.named("peach")!
         case .shell: return Pastel.named("stone")!
         }
     }
@@ -149,6 +151,8 @@ public extension AgentKind {
         case .kimi: return "moon.stars.fill"
         case .gemini: return "sparkles"
         case .agy: return "atom"
+        case .opencode: return "chevron.left.forwardslash.chevron.right"
+        case .goose: return "bird.fill"
         case .shell: return "terminal.fill"
         }
     }
