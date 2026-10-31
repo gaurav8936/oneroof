@@ -6,11 +6,11 @@
 
 ## The question
 
-One Roof's `LoopStore` previously scanned only `<shared>/loops/*/loop.json` (`~/Projects/_common/loops/` or `~/.oneroof/loops/`), while the 8 pre-packaged loops lived in `labs-agentic-engineering/kit/loops/*.loop.yaml`. As a result, the Loops screen only showed user-authored loops and had no visibility into the built-in kit loops.
+One Roof's `LoopStore` previously scanned only `<shared>/loops/*/loop.json` (the shared folder set in Settings › Foundations), while the 8 pre-packaged loops lived in the Agentic Engineering kit (`kit/loops/*.loop.yaml`). As a result, the Loops screen only showed user-authored loops and had no visibility into the built-in kit loops.
 
 ## Decision
 
-- **Bundle the kit loop catalog:** `app/scripts/bundle.sh` archives `kit/loops` into `Contents/Resources/agentic_engineering/deck/kit/loops/catalog.json`, resolved at runtime by `AEFolder.loopsCatalog(_:)` (falling back to `~/Projects/labs/labs-agentic-engineering/kit/loops/catalog.json` in dev).
+- **Bundle the kit loop catalog:** `app/scripts/bundle.sh` archives `kit/loops` into `Contents/Resources/agentic_engineering/deck/kit/loops/catalog.json`, resolved at runtime by `AEFolder.loopsCatalog(_:)` (in development, from the `ONEROOF_AE_PATH` checkout).
 - **Merge in `LoopStore` (`OneRoofCore/LoopStore.swift`):**
   - `LoopStore.all()` and `LoopStore.load(_:)` seed from `LoopBuiltIns.all()` (`origin: .builtIn`) and overlay `<shared>/loops/*/loop.json`.
   - If a disk file shares a built-in ID (because the owner paused, pinned, ran, or edited a built-in loop), `origin` stays `.builtIn` and `LoopStore.hasDiskOverride(_:)` is `true`.
