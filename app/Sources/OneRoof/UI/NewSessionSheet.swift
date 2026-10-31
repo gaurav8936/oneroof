@@ -1013,7 +1013,11 @@ struct NewSessionSheet: View {
                             ticket: ticket?.identifier, ticketId: ticket?.id,
                             ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
             if a.isHosted { s.hostedConnectionID = hostedConnectionID; s.model = modelName; s.startInRepo = true; s.agentArgs = []; s.permissionMode = .manual }
-            else if a.isAgent { s.permissionMode = permMode ?? model.settings.permissionMode(for: a) }   // LAB-1600
+            else if a.isAgent {   // LAB-1600; LAB-1935: the owner's own flags for that mode come along
+                let m = permMode ?? model.settings.permissionMode(for: a)
+                s.permissionMode = m
+                s.permissionFlags = model.settings.permissionFlags(for: a, mode: m)
+            }
             if several { s.moreTickets = moreTickets.map { SessionIssue(key: $0.identifier, id: $0.id, team: s.ticketTeam) } }
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
             model.createPlanned(s, launchNow: launch && !forcePlanned, in: targetWindowId.flatMap { model.window($0) } ?? win)   // LAB-1514

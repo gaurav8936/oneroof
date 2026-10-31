@@ -913,6 +913,7 @@ final class AppModel: ObservableObject {
         var s = s
         if s.agent.isAgent, s.permissionMode == nil, !PermissionMode.hasExplicit(s.agentArgs, agent: s.agent) {
             s.permissionMode = settings.permissionMode(for: s.agent)
+            s.permissionFlags = settings.permissionFlags(for: s.agent, mode: settings.permissionMode(for: s.agent))   // LAB-1935
         }
         assign(s.id, to: window)
         save(s)
