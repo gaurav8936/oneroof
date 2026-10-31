@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.32 — hosted coding with OpenCode and Goose; the rail stretches (30 Oct 2026)
+
+- **Hosted coding: OpenCode and Goose** (LAB-1799, LAB-1803). Two new agents that run here while the model runs at a
+  provider you choose (no local model or GPU). Settings › Hosted coding saves a connection: the exact model ID, a
+  credential file (never the key itself), prices and spending ceilings per session and per connection. Their own
+  permission prompts stay manual and show in Needs you; scheduled runs stay inside the ceilings.
+- **The rail stretches** (LAB-1829). Drag its edge right to make Home · Needs you · Sessions… wider (up to 132 pt,
+  room for longer labels), back left to its narrowest, or further to fold it away. Each window keeps its width.
+  (1.9.31's rail took a left drag but not a right one.)
+
 ## 1.9.31 — Gemini needs an API key; Focus only where it applies; the rail drags; one list of loops; loop checks; shared Learn (30 Oct 2026)
 
 - **Picking Gemini says it needs an API key** (LAB-1826). Google no longer lets Gemini CLI sign in with a personal
