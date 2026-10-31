@@ -33,6 +33,7 @@ import OneRoofCore
 ///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
 ///   pick <i>                       (LAB-1839: press the oldest open decision's i-th own option)
 ///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
+///   demo                           (the demo sessions, into this run's store)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
@@ -291,6 +292,7 @@ enum SelfTestScript {
             if let it = m.items.first(where: { i in i.status == .needsYou && m.openDecisions.contains { d in d.sessionId == i.id && !d.isFinished } }) {
                 m.selectedId = it.id; log(out, "  selected \(it.session.name)")
             } else { log(out, "  nothing blocked") }
+        case "demo": SelfTest.seedDemo(m); delay = 1   // the demo sessions (as ONEROOF_SELFTEST_DEMO=1 adds them), into the run's store
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":

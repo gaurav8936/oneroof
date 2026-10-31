@@ -191,6 +191,63 @@ public enum V2Layout {
         max(centreX + Bar.contentLead, lightsEnd + Bar.lightsGap) - (itemX + Bar.titleLead)
     }
 
+    /// LAB-1932 · one toolbar piece as the window lays it out: its left and right edge in window points.
+    public struct BarSpan: Equatable, Sendable {
+        public var name: String
+        public var minX: Double
+        public var maxX: Double
+        public init(_ name: String, _ minX: Double, _ maxX: Double) { self.name = name; self.minX = minX; self.maxX = maxX }
+        public func intersects(_ o: BarSpan, tolerance: Double = 0.5) -> Bool {
+            minX < o.maxX - tolerance && o.minX < maxX - tolerance
+        }
+    }
+
+    /// LAB-1932 · the title's reserved slot: how far its text is moved from the item (`shift`) and the widest it may
+    /// draw (`maxWidth`, 0 = no room: the title hides, it never draws over anything).
+    public struct TitleSlot: Equatable, Sendable {
+        public var shift: Double
+        public var maxWidth: Double
+        public init(shift: Double, maxWidth: Double) { self.shift = shift; self.maxWidth = maxWidth }
+    }
+
+    /// The narrowest title worth drawing; below it the title hides rather than squeeze or overlap.
+    public static let titleMinWidth: Double = 40
+    /// Clear room kept between the title and its neighbours.
+    public static let titleClearance: Double = 8
+
+    /// LAB-1932 · where the title may draw, from the toolbar as it is laid out now. The title wants to start on the
+    /// centre's content edge (LAB-1783, `titleShift`), but it is fenced in: never left of the window buttons
+    /// (`lightsEnd`) or of anything the toolbar shows left of it (`left`: the places icon row), never right of the
+    /// first item right of it (`right`: the player, Single · Grid · Wall, the Focus button, + New) or the window's
+    /// edge. The space between the fences is the title's; what doesn't fit truncates, and with less than
+    /// `titleMinWidth` the title hides. Before 1.9.34 only the window buttons fenced it, so with the icon row shown
+    /// (rail folded, or step 1) the title was moved back over the row's icons (owner screenshots, LAB-1932).
+    public static func titleSlot(itemX: Double, centreX: Double, lightsEnd: Double, left: [BarSpan], right: [BarSpan],
+                                 windowWidth: Double) -> TitleSlot {
+        let leftFence = max(lightsEnd + Bar.lightsGap, (left.map(\.maxX).max() ?? 0) + titleClearance)
+        let start = max(centreX + Bar.contentLead, leftFence)
+        let rightFence = min(right.map(\.minX).min() ?? .infinity, windowWidth - Bar.trailing) - titleClearance
+        let room = rightFence - start
+        return TitleSlot(shift: start - (itemX + Bar.titleLead), maxWidth: room < titleMinWidth ? 0 : room)
+    }
+
+    /// LAB-1932 · the guard: the names of the pieces (window buttons, toolbar items) the title's drawn span crosses.
+    /// Empty = nothing overlaps. Self-test step `barcheck` and the unit tests fail on any name.
+    public static func barOverlaps(title: BarSpan?, others: [BarSpan]) -> [String] {
+        guard let title, title.maxX - title.minX > 0.5 else { return [] }
+        return others.filter { $0.maxX - $0.minX > 2 && title.intersects($0) }.map(\.name)
+    }
+
+    /// LAB-1932 · the Needs you list column: dragged between these widths, and always leaving the detail
+    /// `centreMin` (a narrow window narrows the list first).
+    public static let needsListMin: Double = 240
+    public static let needsListMax: Double = 560
+    public static let needsListDefault: Double = 340
+    public static func needsListWidth(saved: Double?, available: Double) -> Double {
+        let w = min(needsListMax, max(needsListMin, saved ?? needsListDefault))
+        return max(needsListMin, min(w, available - centreMin))
+    }
+
     /// LAB-1828 · the Focus step button arranges the Sessions place (column, Plan, dock): only there, not on a page
     /// over it (Settings, All windows). Elsewhere every step showed the same layout and only folded the dock.
     public static func showsStepButton(inSessions: Bool, page: String?) -> Bool { inSessions && page == nil }

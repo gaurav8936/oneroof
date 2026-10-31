@@ -19,6 +19,8 @@ import OneRoofCore
 ///   hitch start · hitch stop <label>   frame timing on the main thread (display link) and terminal size changes in between
 ///   resizegesture <from> <to> <ms> the window's width from <from> to <to> pt, one step per display frame, over <ms>
 ///   windowsize <w> <h>             the window's frame size
+///   barcheck [label]               LAB-1932: CHECK the toolbar title crosses no window button or toolbar item
+///   barsweep [widths…]             LAB-1932: barcheck in every place × rail open/folded × Focus step × width
 enum SelfTestHarness {
     nonisolated(unsafe) static var searchHits = -1
     nonisolated(unsafe) static var probe: FrameProbe?
@@ -53,6 +55,7 @@ enum SelfTestHarness {
             s["filesopen"] = c.filesItemRef.isCollapsed ? "false" : "true"
             if let w = c.window { s["width"] = "\(Int(w.frame.width))"; s["height"] = "\(Int(w.frame.height))" }
             s["paneswidth"] = c.splitView.arrangedSubviews.map { "\(Int($0.frame.width))" }.joined(separator: ",")
+            s["baroverlap"] = "\(c.v2TitleOverlaps().count)"   // LAB-1932: what the toolbar title crosses (0 = clear)
         }
         return s
     }
@@ -167,10 +170,60 @@ enum SelfTestHarness {
             let v = parts.compactMap { Double($0) }
             if v.count == 2, let w = app.main.window { var f = w.frame; f.size = NSSize(width: v[0], height: v[1]); w.setFrame(f, display: true) }
             done(1.5)
+        case "barcheck":   // LAB-1932: the title crosses no window button or toolbar item, now
+            app.main.v2PaintBand()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                barCheck(app: app, label: arg.isEmpty ? "now" : arg, out: out, log: log)
+                done(0.1)
+            }
+        case "barsweep":   // LAB-1932: every place × rail open/folded × (Sessions: every Focus step) × width, a check each
+            let widths = parts.compactMap { Double($0) }
+            barSweep(app: app, widths: widths.isEmpty ? [1700, 1280, 1000, 800, 600] : widths, out: out, log: log, done: done)
         default:
             return false
         }
         return true
+    }
+
+    /// LAB-1932 · one toolbar check: `CHECK PASS|FAIL toolbar clear <label>` with what the title crossed, if anything.
+    @discardableResult
+    static func barCheck(app: AppDelegate, label: String, out: String, log: (String) -> Void, snapOnFail: Bool = true) -> Bool {
+        let c: MainWindowController = app.main
+        let hits = c.v2TitleOverlaps()
+        let span = c.v2TitleDrawnSpan.map { "\(Int($0.minX))…\(Int($0.maxX))" } ?? "hidden"
+        let items = c.v2BarSpans(excludingTitle: true).map { "\($0.name) \(Int($0.minX))…\(Int($0.maxX))" }.joined(separator: ", ")
+        log("  CHECK \(hits.isEmpty ? "PASS" : "FAIL") toolbar clear \(label) (title \(span); crosses \(hits.isEmpty ? "nothing" : hits.joined(separator: "+")); items \(items))")
+        if !hits.isEmpty && snapOnFail { SelfTest.snapshot(app: app, to: out + "-barfail-" + label.replacingOccurrences(of: " ", with: "_")) }
+        return hits.isEmpty
+    }
+
+    /// The sweep's cases, run one after another with time to lay out between them.
+    static func barSweep(app: AppDelegate, widths: [Double], out: String, log: @escaping (String) -> Void, done: @escaping (Double) -> Void) {
+        struct Case { let place: Place; let fold: Bool; let step: FocusStep?; let width: Double }
+        var cases: [Case] = []
+        for w in widths { for fold in [false, true] { for p in Place.allCases {
+            if p == .sessions { for st in FocusStep.allCases { cases.append(Case(place: p, fold: fold, step: st, width: w)) } }
+            else { cases.append(Case(place: p, fold: fold, step: nil, width: w)) }
+        } } }
+        var fails = 0
+        func run(_ i: Int) {
+            guard i < cases.count else {
+                log("  CHECK \(fails == 0 ? "PASS" : "FAIL") toolbar sweep \(cases.count) cases (got \(fails) overlapping)")
+                done(0.1); return
+            }
+            let k = cases[i]; let c: MainWindowController = app.main
+            if let w = c.window, abs(w.frame.width - k.width) > 0.5 { var f = w.frame; f.size.width = CGFloat(k.width); w.setFrame(f, display: true) }
+            if c.win.railFolded != k.fold { c.v2ToggleRail() }
+            c.v2Open(k.place)
+            if let st = k.step { c.v2SetStep(st) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                let label = "\(k.place.rawValue) \(k.fold ? "folded" : "rail") \(k.step.map { "step\($0.rawValue)" } ?? "-") \(Int(app.main.window?.frame.width ?? 0))"
+                if !barCheck(app: app, label: label, out: out, log: log) { fails += 1 }
+                if k.place == .needsYou { SelfTest.snapshot(app: app, to: out + "-bar-" + label.replacingOccurrences(of: " ", with: "_")) }
+                run(i + 1)
+            }
+        }
+        run(0)
     }
 }
 

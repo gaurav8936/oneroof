@@ -166,6 +166,15 @@ snap j10-needs-you
 place sessions
 expect place = sessions
 
+## J10b · the toolbar title never crosses an icon (LAB-1932): every place × rail open/folded × Focus step × width
+windowsize 1500 940
+barsweep 1500 1000 700 600
+rail open
+windowsize 1500 940
+place sessions
+focusstep 0
+barcheck restored
+
 ## J11 · session catalog: open, search, resume a row
 centre catalog
 expect centre = catalog
