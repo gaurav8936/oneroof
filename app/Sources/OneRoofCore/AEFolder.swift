@@ -78,8 +78,7 @@ public enum AEFolder {
         return FileManager.default.fileExists(atPath: d) ? d : nil
     }
 
-    /// LAB-1663 · the built-in loops catalog (`kit/loops/catalog.json`) in the bundled deck, or in the Agentic
-    /// Engineering checkout ONEROOF_AE_PATH points at (a developer's own copy).
+    /// Built-in loops catalog from the configured/bundled deck, with workspace kit discovery for developer checkouts.
     public static func loopsCatalog(_ ae: String = AEFolder.resolve(setting: "").path) -> String? {
         let fm = FileManager.default
         var candidates: [String] = []
@@ -89,7 +88,8 @@ public enum AEFolder {
         if !ae.isEmpty {
             candidates.append(ae + "/kit/loops/catalog.json")
         }
-        return candidates.first { fm.fileExists(atPath: $0) }
+        if let found = candidates.first(where: { fm.fileExists(atPath: $0) }) { return found }
+        return Workspace.listRepos().map { $0 + "/kit/loops/catalog.json" }.first { fm.fileExists(atPath: $0) }
     }
 
     /// LAB-768 · your own routing rules: `~/.config/oneroof/agent-routing/<name>` wins over One Roof's own copy, so the

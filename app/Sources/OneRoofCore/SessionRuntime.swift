@@ -104,6 +104,8 @@ public struct LaunchSpec: Sendable {
     public var claimed: Set<RuntimeID>
     /// The opening message, for a runtime that delivers it itself once the agent is ready (roofd); nil = the app does.
     public var opening: String?
+    /// Trusted supervised launcher; hosted sessions bypass the owner login shell.
+    public var executableOverride: String? = nil
 
     public init(id: RuntimeID, label: String, cwd: String, env: [String: String] = [:], agent: AgentKind, args: [String] = [],
                 command: String? = nil, previousGroup: String? = nil, adoptOrphan: Bool = false, claimed: Set<RuntimeID> = []) {

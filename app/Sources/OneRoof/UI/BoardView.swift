@@ -103,6 +103,8 @@ struct BoardView: View {
         case .kimi: return "Kimi"
         case .gemini: return "Gemini"
         case .antigravity: return "Antigravity"
+        case .opencode: return "OpenCode"
+        case .goose: return "Goose"
         case .shell: return "Shells"
         }
     }

@@ -73,7 +73,7 @@ struct V2Rail: View {
                     Image(systemName: "circle.lefthalf.filled").font(.system(size: 14, weight: .medium))
                     Text("Look").ui(10.5)
                 }
-                .foregroundStyle(t.text2.color).frame(width: 54, height: 44).contentShape(Rectangle())
+                .foregroundStyle(t.text2.color).frame(minWidth: 54, maxWidth: .infinity, minHeight: 44, maxHeight: 44).padding(.horizontal, 5).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Look: one preset sets every panel at once (Settings › Appearance)")
@@ -125,7 +125,8 @@ struct V2PlaceButton: View {
                 if labelled { Text(place.title).ui(10.5, selected ? .semibold : .regular).lineLimit(1).minimumScaleFactor(0.8) }
             }
             .foregroundStyle(selected ? t.text.color : t.text2.color)
-            .frame(width: labelled ? 56 : 26, height: labelled ? 44 : 24)
+            .frame(minWidth: labelled ? 56 : 26, maxWidth: labelled ? .infinity : 26, minHeight: labelled ? 44 : 24, maxHeight: labelled ? 44 : 24)
+            .padding(.horizontal, labelled ? 5 : 0)   // LAB-1829: a wider rail gives the label room
             .background(RoundedRectangle(cornerRadius: labelled ? 9 : 7, style: .continuous)
                 .fill(selected ? t.surface.color : .clear)
                 .shadow(color: selected ? t.separator.color : .clear, radius: 0.5, y: 0.5))

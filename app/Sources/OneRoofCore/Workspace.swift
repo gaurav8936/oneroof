@@ -62,7 +62,7 @@ public enum Workspace {
             ?? NSHomeDirectory() + "/Library/Application Support") + "/One Roof"
     }
 
-    static func expand(_ p: String) -> String { (p as NSString).expandingTildeInPath }
+    public static func expand(_ p: String) -> String { (p as NSString).expandingTildeInPath }
 
     /// True when `path` is the projects folder or inside it (agents start only here).
     public static func isInsideProjects(_ path: String, root: String = projectsRoot) -> Bool {
@@ -240,7 +240,7 @@ public enum AccountResolver {
             return (c as NSString).lastPathComponent
         case .gemini, .agy:
             return nil
-        case .kimi, .shell:
+        case .kimi, .opencode, .goose, .shell:
             return nil
         }
     }

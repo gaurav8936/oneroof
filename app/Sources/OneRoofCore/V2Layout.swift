@@ -119,6 +119,10 @@ public enum V2Layout {
     /// `PanelMinimums.windowWidth` (its four panels need it).
     public static let minWindowWidth: Double = 600
     public static let railWidth: Double = 66
+    /// LAB-1829 · the rail stretches to the right up to this (owner: a right drag must always respond; longer labels).
+    public static let railMax: Double = 132
+    /// The rail's width: the one you dragged it to (kept per window), within 66…132.
+    public static func railWidth(saved: Double?) -> Double { min(railMax, max(railWidth, saved ?? railWidth)) }
     public static let columnMin: Double = 200
     public static let centreMin: Double = 300
     public static let planMin: Double = 240
@@ -127,8 +131,8 @@ public enum V2Layout {
     /// At Full the Plan inspector shows in its column only while rail + column + a usable centre + the inspector fit;
     /// narrower, it folds to its 28 pt edge tab (the Plan then slides over the terminal, as at steps 1-2). Judged on
     /// the window width and the column's chosen width, never on live frames, so it cannot flap while you resize.
-    public static func planFits(windowWidth: Double, rail: Bool, column: Double) -> Bool {
-        windowWidth >= (rail ? railWidth : 0) + max(columnMin, column) + centreMin + planMin + 4
+    public static func planFits(windowWidth: Double, rail: Bool, column: Double, railSize: Double = railWidth) -> Bool {
+        windowWidth >= (rail ? railSize : 0) + max(columnMin, column) + centreMin + planMin + 4
     }
 
     /// The narrowest window each step needs with the Plan folded: rail, the column at its minimum, the edge tab and

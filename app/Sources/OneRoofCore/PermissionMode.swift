@@ -45,6 +45,7 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
         case (.auto, .kimi): return "Routine edits and commands run; risky actions still ask."
         case (.auto, .gemini): return "Approves every tool on its own."
         case (.auto, .agy): return "Works on its own in the CLI's auto mode."
+        case (.auto, .opencode), (.auto, .goose): return "Requires a configured guarded launcher; unattended approval is unavailable here."
         case (.auto, .shell): return ""
         }
     }
@@ -65,6 +66,7 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
         case (.agy, .manual): return []
         case (.agy, .plan): return ["--mode", "plan"]
         case (.agy, .auto): return ["--mode", "auto"]
+        case (.opencode, _), (.goose, _): return [] // supervised launcher owns approval mode
         case (.shell, _): return []
         }
     }
@@ -79,6 +81,7 @@ public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendabl
         case .kimi: return ["-y", "--yolo", "--auto", "--plan"]
         case .gemini: return ["--approval-mode", "-y", "--yolo"]
         case .agy: return ["--mode", "--dangerously-skip-permissions"]
+        case .opencode, .goose: return []
         case .shell: return []
         }
     }

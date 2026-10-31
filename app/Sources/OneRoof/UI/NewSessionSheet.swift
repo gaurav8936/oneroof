@@ -33,6 +33,7 @@ struct NewSessionSheet: View {
     @StateObject private var selection = IssueSelection()
     @State private var mark: AgentMark = .claude1
     @State private var modelName = ""
+    @State private var hostedConnectionID = ""
     @State private var repo = Workspace.projectsRoot
     @State private var startInRepo = false
     @State private var doneWhen = ""
@@ -67,7 +68,7 @@ struct NewSessionSheet: View {
     @StateObject private var sheetWindow = WindowRef()
 
     private let repos = [Workspace.projectsRoot] + Workspace.listRepos()
-    private let marks: [AgentMark] = AgentMark.available([.claude1, .claude2, .codex, .kimi, .gemini, .antigravity, .shell])
+    private let marks: [AgentMark] = AgentMark.available([.claude1, .claude2, .codex, .kimi, .gemini, .antigravity, .opencode, .goose, .shell])
     @State private var wsText = ""
 
     var body: some View {
@@ -119,12 +120,19 @@ struct NewSessionSheet: View {
                         }
                     }
                 }
-                HStack(spacing: 10) { ForEach(marks, id: \.self) { agentCard($0) } }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5), spacing: 10) {
+                    ForEach(marks, id: \.self) { agentCard($0) }
+                }
+                if agent(mark).isHosted {
+                    Text("Choose a specific repository and a saved connection. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
+                        .ui(12).foregroundStyle(t.text2.color)
+                }
                 if mark == .gemini { geminiKeyBanner }
                 HStack(alignment: .top, spacing: 10) {
-                    if mark != .shell { labelled("Model") { modelMenu } }
+                    if agent(mark).isHosted { labelled("Hosted connection · model") { hostedMenu } }
+                    else if mark != .shell { labelled("Model") { modelMenu } }
                     labelled("Repo") { repoMenu }
-                    labelled("Start in") { startIn }
+                    if !agent(mark).isHosted { labelled("Start in") { startIn } }
                     if kind == .session && !linked {
                         labelled("Project") {
                             TextField("CODE-…", text: $wsText).textFieldStyle(.plain).ui(13, mono: true)
@@ -465,6 +473,13 @@ struct NewSessionSheet: View {
     private var blockedReason: String? {
         guard !valid else { return nil }
         if text.trimmingCharacters(in: .whitespaces).isEmpty && useTicket == nil { return nil }
+        if agent(mark).isHosted {
+            if model.settings.hostedRuntime == nil { return "Configure the hosted runtime in Settings › Seats & accounts" }
+            guard let c = model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }) else { return "Choose a saved hosted connection" }
+            if let error = c.configurationErrors().first { return error }
+            if repo == Workspace.projectsRoot { return "Choose a specific repository for the hosted session" }
+            if when != .now && when != .next && when != .onDemand { return "Hosted sessions support Now, Next or On demand" }
+        }
         if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Say when it's done (Settings › General › Done when required)" }
         if model.linearLoading { return "Loading teams and projects from Linear…" }
         if linked && needsTeam && teamKey.isEmpty { return kind == .workstream ? "Pick a team (top right) for the project" : "Pick a team (top right) to file the ticket in" }
@@ -616,6 +631,8 @@ struct NewSessionSheet: View {
         case .kimi: return "Kimi"
         case .gemini: return "Gemini"
         case .antigravity: return "Antigravity"
+        case .opencode: return "OpenCode"
+        case .goose: return "Goose"
         case .shell: return "Terminal"
         }
     }
@@ -627,6 +644,8 @@ struct NewSessionSheet: View {
         case .kimi: return .kimi
         case .gemini: return .gemini
         case .antigravity: return .agy
+        case .opencode: return .opencode
+        case .goose: return .goose
         case .shell: return .shell
         }
     }
@@ -657,7 +676,7 @@ struct NewSessionSheet: View {
                     AgentBadge(m, size: 22)
                     Text(name(m)).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                 }
-                if m == .shell { Text(note(m)).ui(11).foregroundStyle(t.text3.color) }
+                if m == .shell || agent(m).isHosted { Text(agent(m).isHosted ? "Hosted API · Manual" : note(m)).ui(11).foregroundStyle(t.text3.color) }
                 else { SeatGauge(mark: m, used: seat(m)?.worst, note: note(m), style: .card) }
             }
             .padding(10)
@@ -678,12 +697,25 @@ struct NewSessionSheet: View {
         modelName = d.model
         args = d.args
         permMode = nil
+        if a.isHosted {
+            hostedConnectionID = d.hostedConnectionID ?? model.settings.hostedConnections.first?.id ?? ""
+            modelName = model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID })?.model ?? ""
+            args = ""; permMode = .manual; startInRepo = true
+        }
         refreshOpening()
     }
 
     // MARK: Model · repo · start in
 
     /// Any model name works (the CLI gets --model <name>); the menu offers the known ones.
+    private var hostedMenu: some View {
+        FieldMenu(title: model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }).map { "\($0.name) · \($0.model)" } ?? "Set up in Settings › Seats & accounts") {
+            ForEach(model.settings.hostedConnections) { c in
+                Button("\(c.name) · \(c.provider.displayName) · \(c.model)") { hostedConnectionID = c.id; modelName = c.model }
+            }
+        }
+    }
+
     private var modelMenu: some View {
         HStack(spacing: 4) {
             TextField("CLI default", text: $modelName).textFieldStyle(.plain).ui(13)
@@ -731,7 +763,7 @@ struct NewSessionSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 labelled("Agent arguments") {
-                    TextField("e.g. --permission-mode plan", text: $args).textFieldStyle(.plain).ui(12.5, mono: true)
+                    TextField("e.g. --permission-mode plan", text: $args).textFieldStyle(.plain).ui(12.5, mono: true).disabled(agent(mark).isHosted)
                         .padding(.horizontal, 8).frame(height: 28)
                         .background(RoundedRectangle(cornerRadius: Radius.field).fill(t.card.color))
                 }
@@ -745,7 +777,7 @@ struct NewSessionSheet: View {
                     }
                     .help(current.meaning(for: a) + " The default is set in Settings › Permissions; arguments that set a mode win.")
                     .accessibilityLabel("Permission mode: \(current.label(for: a))")
-                    .disabled(!a.isAgent)
+                    .disabled(!a.isAgent || a.isHosted)
                 }
                 labelled("Role") {
                     FieldMenu(title: roles.first { $0.id == roleId }?.title ?? "None") {
@@ -826,6 +858,11 @@ struct NewSessionSheet: View {
     private var doneWhenNeeded: Bool { model.settings.ui2 && model.settings.doneWhenRequired }
 
     private var valid: Bool {
+        if agent(mark).isHosted {
+            guard model.settings.hostedRuntime != nil,
+                  let c = model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }),
+                  c.configurationErrors().isEmpty, repo != Workspace.projectsRoot, when == .now || when == .onDemand || when == .next else { return false }
+        }
         let has = !text.trimmingCharacters(in: .whitespaces).isEmpty || useTicket != nil
         if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }   // NEW-30
         if (kind == .ticket || kind == .defect) && useTicket == nil { return has && (linked ? !teamKey.isEmpty : currentWorkstream != nil) }
@@ -978,7 +1015,8 @@ struct NewSessionSheet: View {
                             model: modelName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : modelName,
                             ticket: ticket?.identifier, ticketId: ticket?.id,
                             ticketTeam: ticket == nil ? w?.team : (w?.team ?? (teamKey.isEmpty ? nil : teamKey)))
-            if a.isAgent { s.permissionMode = permMode ?? model.settings.permissionMode(for: a) }   // LAB-1600
+            if a.isHosted { s.hostedConnectionID = hostedConnectionID; s.model = modelName; s.startInRepo = true; s.agentArgs = []; s.permissionMode = .manual }
+            else if a.isAgent { s.permissionMode = permMode ?? model.settings.permissionMode(for: a) }   // LAB-1600
             if several { s.moreTickets = moreTickets.map { SessionIssue(key: $0.identifier, id: $0.id, team: s.ticketTeam) } }
             if let r = roles.first(where: { $0.id == roleId }) { s.tags = [Sticker.resolve(r.kind).builtIn ? r.kind : "review"] }
             model.createPlanned(s, launchNow: launch && !forcePlanned, in: targetWindowId.flatMap { model.window($0) } ?? win)   // LAB-1514

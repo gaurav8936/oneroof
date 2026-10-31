@@ -44,10 +44,10 @@ enum Scheduler {
         })
     }
 
-    static func tick(now: Date = Date()) {
+    static func tick(now: Date = Date(), includeLoops: Bool = true) {
         // Loops (LAB-677) always run here, whatever Allow scheduled runs says: the app never runs them, so they can
         // never run twice. They run on their own queue (a check can take minutes) and need only a configured roofd.
-        LoopEngine.tick(config: config())
+        if includeLoops { LoopEngine.tick(config: config()) }
         guard let c = config(), c.enabled, let store = try? SessionStore(path: c.store) else { return }
         if let p = c.projects { Workspace.configure(root: p, shared: c.shared) }
         let records = store.schedules()
@@ -62,6 +62,10 @@ enum Scheduler {
                 store.recordScheduledRun(session: r.sessionId, at: now, result: "missed")
             case .run:
                 guard var s = all.first(where: { $0.id == r.sessionId }) else { continue }
+                if let reason = ScheduleClock.hostedRefusal(for: s.agent) {
+                    store.recordScheduledRun(session: r.sessionId, at: now, result: "refused: " + reason)
+                    continue
+                }
                 if let id = s.runtimeId, live.contains(id) {
                     if case .every = r.schedule {
                         // A loop round on a live session (LAB-254): its message again, once the agent waits.

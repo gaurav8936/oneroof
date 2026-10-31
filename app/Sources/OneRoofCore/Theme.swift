@@ -305,7 +305,7 @@ public enum StatusPalette {
 /// The agent mark: a monogram squircle in the agent's colour. The two Claude accounts get their own
 /// colours so they tell apart at a glance. Same colours in every theme.
 public enum AgentMark: String, CaseIterable, Sendable {
-    case claude1, claude2, codex, kimi, gemini, antigravity, shell
+    case claude1, claude2, codex, kimi, gemini, antigravity, opencode, goose, shell
 
     /// `marks` without Claude2 when this Mac has no second Claude account (~/.claude-2).
     public static func available(_ marks: [AgentMark], home: String = NSHomeDirectory()) -> [AgentMark] {
@@ -320,6 +320,8 @@ public enum AgentMark: String, CaseIterable, Sendable {
         case .kimi: return "KM"
         case .gemini: return "GM"
         case .antigravity: return "AG"
+        case .opencode: return "OC"
+        case .goose: return "GS"
         case .shell: return ">_"
         }
     }
@@ -332,6 +334,8 @@ public enum AgentMark: String, CaseIterable, Sendable {
         case .kimi: return RGB(0xBF5AF2)
         case .gemini: return RGB(0x0A84FF)
         case .antigravity: return RGB(0xFF375F)
+        case .opencode: return RGB(0x00A6A6)
+        case .goose: return RGB(0xD4A017)
         case .shell: return RGB(0xC7C7CC)
         }
     }
@@ -350,6 +354,8 @@ public enum AgentMark: String, CaseIterable, Sendable {
         case .kimi: self = .kimi
         case .gemini: self = .gemini
         case .agy: self = .antigravity
+        case .opencode: self = .opencode
+        case .goose: self = .goose
         case .shell: self = .shell
         }
     }

@@ -160,7 +160,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
         for fd: Int32 in [0, 1, 2] { posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == 0 ? O_RDONLY : O_WRONLY, 0) }
-        var env = ProcessInfo.processInfo.environment
+        var env = HostedPreparation.safeEnvironment([:])
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }   // never leak an account into sessions
         for k in env.keys where RoofdRuntime.appTestVariable(k) { env.removeValue(forKey: k) }
         env["ROOFD_DIR"] = dir
@@ -269,7 +269,7 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     }
 
     func environment(_ spec: LaunchSpec) -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
+        var env = spec.agent.isHosted ? HostedPreparation.safeEnvironment([:]) : ProcessInfo.processInfo.environment
         for k in AccountResolver.accountVariables { env.removeValue(forKey: k) }
         for k in ["GHOSTTY_BIN_DIR", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ROOFD_DIR"] + RoofdRuntime.holderVariables {
             env.removeValue(forKey: k)
@@ -293,12 +293,13 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
             env["ZDOTDIR"] = res + "/shell-integration/zsh"
         }
         RoofdRuntime.addRendererDefault(&env, agent: spec.agent)
-        for (k, v) in spec.env { env[k] = v }
+        for (k, v) in spec.env where !spec.agent.isHosted || k == "PYTHONPATH" { env[k] = v }
         return env
     }
 
     /// Q2: an agent starts through the owner's login shell and leaves a shell behind when it exits.
     func argv(_ spec: LaunchSpec) -> [String] {
+        if spec.agent.isHosted { return [spec.executableOverride ?? "/usr/bin/false"] + spec.args }
         let shell = "/bin/zsh"
         guard spec.agent.isAgent else { return [shell, "-l", "-i"] }
         let cmd = ([spec.agent.cliName] + spec.args).map(RoofdRuntime.shellQuote).joined(separator: " ")

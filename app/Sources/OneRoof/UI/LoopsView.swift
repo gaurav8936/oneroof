@@ -148,7 +148,7 @@ struct LoopsView: View {
         .onDisappear { board.stop() }
         .onReceive(NotificationCenter.default.publisher(for: .newLoop)) { _ in editing = LoopDraft.new() }
         .sheet(item: $editing) { d in
-            LoopEditor(draft: d, onSave: { loop, run in
+            LoopEditor(draft: d, settings: model.settings, onSave: { loop, run in
                 board.save(loop, isNew: d.isNew, run: run)
                 selected = loop.id
                 editing = nil
@@ -520,6 +520,7 @@ struct LoopDraft: Identifiable {
 
 struct LoopEditor: View {
     @State var draft: LoopDraft
+    var settings: AppSettings = AppSettings()
     var onSave: (Loop, Bool) -> Void
     var onCancel: () -> Void
     @Environment(\.theme) private var t
@@ -571,6 +572,21 @@ struct LoopEditor: View {
                                                                          set: { draft.loop.model = $0.isEmpty ? nil : $0 }))
                                 .textFieldStyle(.roundedBorder).frame(width: 200)
                         }
+                    }
+                    if draft.loop.agent.isHosted {
+                        field("Hosted connection") {
+                            FieldMenu(title: draft.loop.hostedConnection?.name ?? "Choose a saved connection") {
+                                ForEach(settings.hostedConnections) { c in
+                                    Button("\(c.name) · \(c.model)") {
+                                        draft.loop.hostedConnection = c; draft.loop.hostedRuntime = settings.hostedRuntime
+                                        draft.loop.model = c.model; draft.loop.limits.maxRounds = 1
+                                        draft.loop.trigger = .untilDone(everyMinutes: 0)
+                                    }
+                                }
+                            }
+                        }
+                        Text("Hosted runs use one bounded round with native manual approvals. Select a saved connection; nightly and repeating paid runs remain disabled.")
+                            .ui(12).foregroundStyle(t.text2.color)
                     }
                     field("Check") {
                         VStack(alignment: .leading, spacing: 6) {
@@ -681,6 +697,11 @@ struct LoopEditor: View {
     }
 
     private var problem: String? {
+        if draft.loop.agent.isHosted {
+            guard let c = draft.loop.hostedConnection, c.configurationErrors().isEmpty, settings.hostedRuntime != nil else {
+                return "Choose a verified hosted connection and configure its runtime in Settings."
+            }
+        }
         let x = draft.loop
         if x.name.trimmingCharacters(in: .whitespaces).isEmpty { return "Give the loop a name." }
         if x.check.trimmingCharacters(in: .whitespaces).isEmpty { return "Set a check: the command that exits 0 when the goal is met." }
@@ -712,6 +733,11 @@ struct LoopEditor: View {
     private func save(run: Bool) {
         guard problem == nil else { return }
         var x = draft.loop
+        if x.agent.isHosted {
+            guard let c = x.hostedConnection, c.configurationErrors().isEmpty, settings.hostedRuntime != nil else { return }
+            x.hostedRuntime = settings.hostedRuntime; x.model = c.model
+            x.limits.maxRounds = 1; x.trigger = .untilDone(everyMinutes: 0)
+        }
         x.name = x.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if draft.isNew { x.id = LoopStore().newId(for: x.name); x.createdAt = Date() }
         onSave(x, run)

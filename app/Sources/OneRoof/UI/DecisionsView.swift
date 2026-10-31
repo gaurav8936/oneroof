@@ -236,9 +236,15 @@ struct DecisionsView: View {
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.card.color))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(replyFocused ? t.accent.color : t.separator.color))
                 .onSubmit { send(d, .reply) }
+                .disabled(d.agent.isHosted)
+            if d.agent.isHosted {
+                Text(d.agent == .opencode ? "Approve in OpenCode's terminal; its selected option is shown by color. Deny here safely sends Escape." : "This is Goose's native approval menu. Unknown or changed menus must be answered in the terminal.")
+                    .ui(12).foregroundStyle(t.text2.color)
+                if let item { RoofButton("Open native terminal") { model.reveal(item) } }
+            }
             HStack(spacing: 10) {
-                RoofButton("Allow once ↩", .primary) { send(d, .allowOnce) }.keyboardShortcut(.defaultAction)
-                if !d.pattern.hasPrefix("ask:") {
+                RoofButton("Allow once ↩", .primary) { send(d, .allowOnce) }.keyboardShortcut(.defaultAction).disabled(d.agent == .opencode)
+                if !d.pattern.hasPrefix("ask:") && d.agent != .opencode {
                     if v2 {   // A6.1: short label; what it allows is in the tooltip
                         RoofButton("Always allow this") { send(d, .always) }.help("Always allow \(d.pattern) in \(d.repo)")
                     } else {

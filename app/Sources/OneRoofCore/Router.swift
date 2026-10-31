@@ -205,6 +205,7 @@ public extension AgentKind {
         case .codex: return "openai"
         case .gemini, .agy: return "google"
         case .kimi: return "moonshot"
+        case .opencode, .goose: return "hosted"
         case .shell: return "shell"
         }
     }
