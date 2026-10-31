@@ -54,7 +54,7 @@ struct BoardView: View {
 
     // MARK: Columns
 
-    private var all: [BoardItem] { model.items }
+    private var all: [BoardItem] { model.sessionItems }
 
     private var columns: [Column] {
         switch grouping {

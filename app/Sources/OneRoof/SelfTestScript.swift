@@ -34,6 +34,7 @@ import OneRoofCore
 ///   pick <i>                       (LAB-1839: press the oldest open decision's i-th own option)
 ///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
 ///   demo                           (the demo sessions, into this run's store)
+///   loopround <loop id> <name>     (LAB-1933: a loop round's stored session, tagged loop:<id>, as roofd makes it)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
     nonisolated(unsafe) static var perfBag: AnyCancellable?
@@ -292,7 +293,11 @@ enum SelfTestScript {
             if let it = m.items.first(where: { i in i.status == .needsYou && m.openDecisions.contains { d in d.sessionId == i.id && !d.isFinished } }) {
                 m.selectedId = it.id; log(out, "  selected \(it.session.name)")
             } else { log(out, "  nothing blocked") }
-        case "demo": SelfTest.seedDemo(m); delay = 1   // the demo sessions (as ONEROOF_SELFTEST_DEMO=1 adds them), into the run's store
+        case "demo": SelfTest.seedDemo(m); delay = 1
+        case "loopround":   // LAB-1933: `loopround <loop id> <name>`: a stored round session as roofd's loop engine tags it
+            let p = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            if p.count == 2 { m.save(Session(name: p[1], agent: .claude, repoPath: Workspace.projectsRoot, tags: ["loop:" + p[0]], startInRepo: true)) }
+            delay = 1.5   // the demo sessions (as ONEROOF_SELFTEST_DEMO=1 adds them), into the run's store
         case "snap": SelfTest.snapshot(app: app, to: out + "-" + arg)
         case "copytest": SelfTest.copyTest(app: app, to: out + "-" + arg); delay = 1
         case "dump":

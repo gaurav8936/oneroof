@@ -424,7 +424,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 m.chosenThemes = PanelThemes(sidebar: t, files: t, terminal: t, plan: t, centre: t)
             }
         }
-        for i in m.items {
+        for i in m.sessionItems {   // LAB-1933: the palette finds manual sessions
             add(i.session.name, [i.account ?? i.session.agent.displayName, m.caption(for: i).text, m.window(m.workspaceId(of: i))?.name].compactMap { $0 }.joined(separator: " · "),
                 "rectangle.stack", "Session") { m.reveal(i) }
         }

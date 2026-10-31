@@ -74,7 +74,7 @@ struct V2TonightPanel: View {
 
     /// Planned and Next sessions (as the row's Schedule › Tonight 2:00 AM).
     private var scheduleMenu: some View {
-        let planned = model.items.filter { ($0.status == .planned || $0.status == .next) && $0.session.agent.isAgent && model.scheduleRecords[$0.id] == nil }
+        let planned = model.sessionItems.filter { ($0.status == .planned || $0.status == .next) && $0.session.agent.isAgent && model.scheduleRecords[$0.id] == nil }
         return Menu {
             if planned.isEmpty { Text("No planned sessions to schedule") }
             ForEach(planned) { i in Button(i.session.name) { model.schedule(i, hour: 2, minute: 0, nightly: false) } }

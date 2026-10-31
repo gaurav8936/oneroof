@@ -131,7 +131,10 @@ struct LoopsView: View {
                     }
                 } else {
                     HStack(alignment: .top, spacing: 18) {
-                        if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
+                        VStack(alignment: .leading, spacing: 14) {
+                            LoopRunsView(model: model, board: board)   // LAB-1933: loop rounds live here, not in the session rail
+                            if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
+                        }
                         V2TonightPanel(model: model, board: board).frame(width: 250)
                     }
                 }

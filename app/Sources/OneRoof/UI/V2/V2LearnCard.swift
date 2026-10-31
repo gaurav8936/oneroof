@@ -604,7 +604,7 @@ struct LearnCardActions: View {
     }
 
     private func sessions(_ slug: String) -> some View {
-        let live = model.items.filter { $0.liveAgent != nil && $0.session.agent.isAgent }
+        let live = model.sessionItems.filter { $0.liveAgent != nil && $0.session.agent.isAgent }
         return VStack(alignment: .leading, spacing: 2) {
             Text("Type /\(slug) as the next message in").font(.system(size: 11)).foregroundStyle(t.text3.color).padding(.horizontal, 8).padding(.vertical, 4)
             if live.isEmpty {
