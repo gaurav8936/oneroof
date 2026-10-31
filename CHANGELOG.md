@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.9.31 — Gemini needs an API key; Focus only where it applies; the rail drags (30 Oct 2026)
+## 1.9.31 — Gemini needs an API key; Focus only where it applies; the rail drags; one list of loops (30 Oct 2026)
 
 - **Picking Gemini says it needs an API key** (LAB-1826). Google no longer lets Gemini CLI sign in with a personal
   Google account, so "Sign in with Google" fails and asks again. The New session panel now says so when you pick
@@ -10,6 +10,9 @@
 - **The rail drags closed and back open** (LAB-1829). Drag its edge left to fold Home · Needs you · Sessions… away
   (the places then sit in the toolbar), and drag from the window's left edge to bring it back; View › Rail does the
   same. The window remembers it. The Sessions column still drags closed and open on its own.
+- **One list of loops: Built-in and Mine** (LAB-1663). The Loops page shows the loops that come with the Agentic
+  Engineering kit (labelled Built-in, always off until you switch one on) next to your own (Mine). You can change a
+  built-in loop (your copy is kept apart; remove it to go back to the original) or copy one as your own with + New loop.
 
 ## 1.9.30 — a question at the end of a turn waits for you in Needs you; the top-left, finished (30 Oct 2026)
 
