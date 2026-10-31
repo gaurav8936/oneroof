@@ -8,6 +8,12 @@
 
 Learning how to work with agents should not mean leaving the place where the work happens. Learn shows the deck that ships with One Roof but never copies or rewrites it: every card, skill, band and track name comes from the Agentic Engineering deck's own repository, packaged when the app is built.
 
+## The shared page (1.9.32)
+
+Learn is the same Agentic Engineering page every site shows, from one copy. Each One Roof release saves that page inside the app, so it works offline and changes with the next release. Inside One Roof its buttons do One Roof things: **Play in One Roof** uses One Roof's player (it keeps playing while you work), **Use in a session ▾** lists your live agent sessions, **Show in Finder** opens the card's folder, and links to posts and sources open in your browser.
+
+For this release the earlier screens are still there: **Settings › Learn › Learn: classic screens** switches back. The rest of this page describes both; where they differ, the classic screens have a native post reader and file previews in All cards › By folder.
+
 ## Open it
 
 - **⇧⌘E** (View › Learn), **Learn** in the places rail, or "Learn" in Search (⌘K).

@@ -437,6 +437,27 @@ final class AppModel: ObservableObject {
     }
     private var deckCache: LearnDeck?
 
+    /// LAB-1835 · the shared Learn page saved in this build (`agentic_engineering/learn/`) and the deck it plays, checked once
+    /// per folder. Nil: no saved page (a build from source without the deck), so Learn shows the classic screens.
+    var learnShared: LearnShared.Location? {
+        let ae = settings.agenticEngineering.path
+        if let c = learnSharedCache, c.ae == ae { return c.loc }
+        let loc = LearnShared.locate(ae: ae, deck: AEFolder.deckRoot(ae))
+        learnSharedCache = (ae, loc)
+        return loc
+    }
+    private var learnSharedCache: (ae: String, loc: LearnShared.Location?)?
+
+    /// LAB-1837 · Learn shows the shared page unless Settings › Learn › classic screens is on, the build saved no page, or a
+    /// self-test asks for a classic screen (ONEROOF_SELFTEST_LEARNMODE, the native screens' captures; ONEROOF_LEARN_CLASSIC=0
+    /// keeps the shared page there too). ONEROOF_LEARN_CLASSIC=1 forces the classic screens.
+    var learnUsesShared: Bool {
+        let env = ProcessInfo.processInfo.environment
+        if env["ONEROOF_LEARN_CLASSIC"] == "1" || settings.learnClassic || learnShared == nil { return false }
+        if env["ONEROOF_SELFTEST_LEARNMODE"] != nil, env["ONEROOF_LEARN_CLASSIC"] != "0" { return false }
+        return true
+    }
+
     /// LAB-1274 · the deck cards that best answer `question` (v2: How do I…, Search, the Plan panel), best first.
     /// LAB-1316: ranking all the deck's cards runs from view bodies (the Plan panel's Related in Learn) on every
     /// redraw; the answer depends only on the question and the deck, so it is kept per question.
