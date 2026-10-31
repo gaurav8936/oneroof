@@ -49,6 +49,7 @@ enum SelfTestHarness {
         if let c {
             s["sessionsopen"] = c.sideItemRef.isCollapsed ? "false" : "true"
             s["railopen"] = c.v2RailItem?.isCollapsed == false ? "true" : "false"   // LAB-1829
+            s["railwidth"] = c.v2RailItem.map { "\(Int($0.viewController.view.frame.width.rounded()))" } ?? "0"
             s["filesopen"] = c.filesItemRef.isCollapsed ? "false" : "true"
             if let w = c.window { s["width"] = "\(Int(w.frame.width))"; s["height"] = "\(Int(w.frame.height))" }
             s["paneswidth"] = c.splitView.arrangedSubviews.map { "\(Int($0.frame.width))" }.joined(separator: ",")

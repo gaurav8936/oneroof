@@ -244,7 +244,9 @@ enum SelfTestScript {
                     (arranged.contains(v) ? "" : String(describing: type(of: v)) + ":") + (v.isHidden ? "h" : v.frame.width < 0.5 ? "0w" : "")
                         + "\(Int(v.frame.minX.rounded()))…\(Int(v.frame.maxX.rounded()))"
                 }
-                let hit = app.main.window?.contentView?.superview?.hitTest(NSPoint(x: 10, y: 400)).map { String(describing: type(of: $0)) } ?? "-"
+                let at = { (x: CGFloat) in app.main.window?.contentView?.superview?.hitTest(NSPoint(x: x, y: 400)).map { String(describing: type(of: $0)) } ?? "-" }
+                log(out, "  hit at the rail's edge: x=64 \(at(64)) · x=66 \(at(66)) · x=67 \(at(67)) · x=69 \(at(69))")
+                let hit = at(10)
                 log(out, "  hit at x=10: \(hit) · grip \(app.main.v2RailGrip.map { $0.isHidden ? "hidden" : "shown \(Int($0.frame.minX))…\(Int($0.frame.maxX)) h\(Int($0.frame.height))" } ?? "none") · folded \(app.main.win.railFolded)")
                 log(out, "  bar \(arg) window \(Int(w.frame.width))×\(Int(w.frame.height)) lights \(lights) items \(items) columns \(cols)")
             }
