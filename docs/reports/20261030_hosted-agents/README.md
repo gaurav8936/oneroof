@@ -42,3 +42,11 @@ Local landing/rebase validation and standard functional harness results are appe
 After preserving concurrent Gemini UI and loop title/origin changes, the combined code passed 793 tests. The portability test exposed workspace-specific lookup paths introduced by the concurrent loops change; discovery now uses the configured/bundled kit or workspace repositories instead of an author-specific name. The test was retained unchanged. Relaunch also checks the current connection rates, limits, key reference and runtime before reusing a prepared phase; a newly prepared phase retains the same aggregate ledger.
 
 A real managed Goose holder survived two client detach/reattach cycles and an isolated control-daemon restart with the same PID. Its opening stayed unsent (`none` in this no-opening trial), reservation ledger bytes did not change, and closing the test holder reaped its supervisor. Both independent coding-trial native processes exited zero.
+
+## Final acceptance
+
+The final full suite passed 794 tests, including a daemon test proving stored OpenCode/Goose repeating schedules are refused before a launch or another paid message. The same refusal is enforced when scheduling through the app and when its foreground scheduler processes existing records. Explicit single-round manual loops remain available.
+
+The standard packaged-app functional harness passed all 57 checks across 14 journeys, using an isolated synthetic profile with one archived terminal history row. An initial empty profile could not satisfy its history-resume check; copying an entire prior test store then introduced stale window/session selection. A clean one-row archived fixture satisfied the actual prerequisite without changing any test or product assertion. These earlier fixture failures are retained in the private logs.
+
+This was a functional run on a locked screen; performance, comparison and simulator suites were not run, and no release-gate artifact or installed-app readiness is claimed. The actual hosted app journeys and permission UI were separately captured and checked. All owned synthetic native processes and private idle test daemons were stopped.

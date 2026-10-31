@@ -63,5 +63,15 @@
     "no_inference_reservations_added": true,
     "owned_supervisor_reaped": true
   },
-  "rebased_unit_tests": 793
+  "rebased_unit_tests": 793,
+  "final_unit_tests": 794,
+  "standard_functional": {
+    "checks": 57,
+    "passed": 57,
+    "journeys": 14,
+    "profile": "synthetic single archived terminal",
+    "screen_locked": true,
+    "performance_suite_run": false
+  },
+  "legacy_hosted_schedule_refusal_test": true
 }
