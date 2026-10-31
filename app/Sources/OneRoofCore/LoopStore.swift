@@ -22,8 +22,13 @@ public struct LoopStore: Sendable {
 
     public func folder(_ id: String) -> String { (root as NSString).appendingPathComponent(id) }
     func specPath(_ id: String) -> String { folder(id) + "/loop.json" }
+    /// LAB-1942: run state (state, run, lastRunAt, stopReason …), written by roofd every round and by Run now / Pause /
+    /// Stop; `loop.json` holds only the definition and changes only when you edit the loop, so it can live in git.
+    func statePath(_ id: String) -> String { folder(id) + "/state.json" }
     func roundsPath(_ id: String) -> String { folder(id) + "/rounds.jsonl" }
-    public func hasDiskOverride(_ id: String) -> Bool { FileManager.default.fileExists(atPath: specPath(id)) }
+    public func hasDiskOverride(_ id: String) -> Bool {
+        FileManager.default.fileExists(atPath: specPath(id)) || FileManager.default.fileExists(atPath: statePath(id))
+    }
 
     static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -60,21 +65,60 @@ public struct LoopStore: Sendable {
         guard Loop.validId(id) else { return nil }
         let builtIn = builtIns.first { $0.id == id }
         let file = builtIn == nil ? fileLoops.first { $0.id == id } : nil
-        if let d = FileManager.default.contents(atPath: specPath(id)),
-           var disk = try? Self.decoder.decode(Loop.self, from: d) {
+        let fm = FileManager.default
+        var def: Loop?
+        var legacy = false
+        if let d = fm.contents(atPath: specPath(id)), var disk = try? Self.decoder.decode(Loop.self, from: d) {
+            legacy = LoopRunState.isLegacy(d)
             if let builtIn {
                 disk.origin = .builtIn
                 if disk.title == nil { disk.title = builtIn.title }
                 disk.kind = disk.kind ?? builtIn.kind; disk.act = disk.act ?? builtIn.act
-            } else if let file {
-                // The file is the spec (ae owns it); the folder only holds One Roof's run state for it.
-                disk.origin = .mine; disk.name = file.name; disk.title = file.title; disk.goal = file.goal
-                disk.check = file.check; disk.trigger = file.trigger; disk.limits = file.limits
-                disk.specFile = file.specFile; disk.externalSchedule = file.externalSchedule; disk.kind = file.kind; disk.act = file.act
             }
-            return disk
+            def = disk
         }
-        return builtIn ?? file
+        var state: LoopRunState?
+        if let d = fm.contents(atPath: statePath(id)) { state = try? Self.decoder.decode(LoopRunState.self, from: d) }
+        // LAB-1942 · migrate a loop.json that still holds run state, once: back it up, move the state to state.json and
+        // leave the definition in loop.json.
+        if legacy, state == nil, let disk = def {
+            state = LoopRunState(disk)
+            migrate(id, disk, state: state!)
+        }
+        if let file {
+            // The file is the spec (ae owns it); the folder only holds One Roof's run state for it.
+            var l = file
+            if let disk = def { LoopRunState(disk).apply(to: &l); l.pinned = disk.pinned }
+            state?.apply(to: &l)
+            return def == nil && state == nil ? file : l
+        }
+        guard var l = def ?? builtIn else { return nil }
+        state?.apply(to: &l)
+        return l
+    }
+
+    /// Back up the old loop.json (once), then write state.json and the definition-only loop.json. Safe to race: both
+    /// writers produce the same files.
+    private func migrate(_ id: String, _ l: Loop, state: LoopRunState) {
+        let fm = FileManager.default
+        let backup = specPath(id) + ".pre-split.bak"
+        if !fm.fileExists(atPath: backup) { try? fm.copyItem(atPath: specPath(id), toPath: backup) }
+        try? atomicWrite(statePath(id), Self.encoder.encode(state))
+        if let d = try? definitionData(l) { try? atomicWrite(specPath(id), d) }
+    }
+
+    /// The definition part of a loop as loop.json bytes (no run state, nothing derived from a kit file).
+    func definitionData(_ l: Loop) throws -> Data {
+        let full = try Self.encoder.encode(l)
+        guard var o = try JSONSerialization.jsonObject(with: full) as? [String: Any] else { return full }
+        for k in LoopRunState.keys + ["specFile", "externalSchedule"] { o.removeValue(forKey: k) }
+        return try JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    }
+
+    private func atomicWrite(_ path: String, _ data: Data) throws {
+        let tmp = path + ".tmp"
+        guard FileManager.default.createFile(atPath: tmp, contents: data) else { throw LoopStoreError("could not write \(tmp)") }
+        guard rename(tmp, path) == 0 else { throw LoopStoreError("could not save \(path)") }
     }
 
     /// True when `id` is a `.loop.yaml` loop (its folder, if any, holds run state only).
@@ -134,12 +178,26 @@ public struct LoopStore: Sendable {
         return id
     }
 
+    /// LAB-1942: run state always goes to state.json; loop.json is rewritten only when the definition changed (never
+    /// for a `.loop.yaml` loop, and for a Built-in only once it differs from the kit's default).
     private func write(_ l: Loop) throws {
-        try FileManager.default.createDirectory(atPath: folder(l.id), withIntermediateDirectories: true)
-        let data = try Self.encoder.encode(l)
-        let tmp = specPath(l.id) + ".tmp"
-        guard FileManager.default.createFile(atPath: tmp, contents: data) else { throw LoopStoreError("could not write \(tmp)") }
-        guard rename(tmp, specPath(l.id)) == 0 else { throw LoopStoreError("could not save \(specPath(l.id))") }
+        let fm = FileManager.default
+        try fm.createDirectory(atPath: folder(l.id), withIntermediateDirectories: true)
+        try atomicWrite(statePath(l.id), Self.encoder.encode(LoopRunState(l)))
+        if isFileLoop(l.id) {
+            // Only a pin is kept for a kit-file loop besides its state (the definition stays in its .loop.yaml).
+            guard l.pinned || fm.fileExists(atPath: specPath(l.id)) else { return }
+            let pin = try JSONSerialization.data(withJSONObject: ["id": l.id, "pinned": l.pinned], options: [.prettyPrinted, .sortedKeys])
+            if fm.contents(atPath: specPath(l.id)) != pin { try atomicWrite(specPath(l.id), pin) }
+            return
+        }
+        let def = try definitionData(l)
+        if let existing = fm.contents(atPath: specPath(l.id)) {
+            if existing != def { try atomicWrite(specPath(l.id), def) }
+            return
+        }
+        if let b = builtIns.first(where: { $0.id == l.id }), try definitionData(b.with { $0.origin = l.origin }) == def { return }
+        try atomicWrite(specPath(l.id), def)
     }
 
     private func withLock<T>(_ id: String, _ body: () throws -> T) throws -> T {
@@ -415,5 +473,34 @@ public enum LoopEvents {
             let ms = Double(n.prefix(while: { $0.isNumber })) ?? 0
             if ms > 0, now.timeIntervalSince1970 - ms / 1000 > age { try? FileManager.default.removeItem(atPath: p) }
         }
+    }
+}
+
+
+/// LAB-1942 · a loop's run state, kept apart from its definition (`<loops>/<id>/state.json`).
+public struct LoopRunState: Codable, Equatable, Sendable {
+    public var state: LoopState
+    public var run: LoopRun?
+    public var runRequested: Bool
+    public var lastRunAt: Date?
+    public var stopReason: String?
+    public var failureSeenAt: Date?
+
+    /// The loop.json keys that are run state (a loop.json holding any of them is from before the split).
+    public static let keys = ["state", "run", "runRequested", "lastRunAt", "stopReason", "failureSeenAt"]
+
+    public init(_ l: Loop) {
+        state = l.state; run = l.run; runRequested = l.runRequested; lastRunAt = l.lastRunAt; stopReason = l.stopReason
+        failureSeenAt = l.failureSeenAt
+    }
+
+    public func apply(to l: inout Loop) {
+        l.state = state; l.run = run; l.runRequested = runRequested; l.lastRunAt = lastRunAt; l.stopReason = stopReason
+        l.failureSeenAt = failureSeenAt
+    }
+
+    static func isLegacy(_ data: Data) -> Bool {
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return keys.contains { o[$0] != nil }
     }
 }
