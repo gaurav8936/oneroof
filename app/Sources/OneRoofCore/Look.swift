@@ -86,7 +86,7 @@ public enum Place: String, CaseIterable, Identifiable, Codable, Sendable {
     public var defaultStep: FocusStep { self == .sessions ? .sessions : .full }
 }
 
-public enum SessionLayout: String, CaseIterable, Codable, Sendable { case single, grid, wall
+public enum SessionLayout: String, CaseIterable, Codable, Sendable { case single, grid, wall, scroll   // scroll: LAB-1831
     public var title: String { rawValue.capitalized }
     public var defaultStep: FocusStep { self == .single ? .sessions : .wide }
 }

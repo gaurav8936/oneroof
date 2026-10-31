@@ -27,7 +27,7 @@ When round 2 starts, round 1's session closes unless you are attached to it or i
 ## Safety
 
 - Loops never push, merge or deploy, and never touch your checkout. The work stays on branch `loop/<id>` for you to review.
-- A round that needs permission waits for you in **Decisions**; the loop shows **Needs you**.
+- A round that needs permission shows on its loop as **Needs you**. Loop rounds are not sessions: they never appear in the session list, its counts, the session catalog or the Needs you place. The Loops page lists them under **Runs**; **Open ↗** shows a round's terminal (1.9.34, LAB-1933).
 
 ## Controls
 

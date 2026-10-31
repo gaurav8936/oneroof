@@ -187,6 +187,9 @@ class Sim:
             lines += ["place work", "wait 2", "snap tour-work", "place machine", "wait 2", "snap tour-machine",
                       "place loops", "wait 2", "snap tour-loops", "place learn", "wait 3", "snap tour-learn",
                       "place sessions", "newsession", "wait 2", "snap tour-newsession"]
+        if self.a.scroll:   # LAB-1831: Needs you with its decided history, then the Scroll layout's feed
+            lines += ["activate Main", "place needsYou", "wait 2", "snap scroll-needs-history", "needs scroll-end",
+                      "place sessions", "layout scroll", "wait 3", "snap scroll-feed", "scroll final", "layout single", "wait 1"]
         lines += ["place sessions", "snap end-sessions", "quit"]
         self.script = os.path.join(self.run, "script.txt")
         with open(self.script, "w") as f:
@@ -346,7 +349,7 @@ class Sim:
         self.prepare()
         print(f"run folder: {self.run}\nroofd dir:  {self.roofd_dir}", flush=True)
         self.launch()
-        end = time.time() + self.a.minutes * 60 + 25 + (180 if self.a.tour else 0)   # the tour runs after the reads
+        end = time.time() + self.a.minutes * 60 + 25 + (180 if self.a.tour else 0) + (150 if self.a.scroll else 0)   # the tour / Scroll run after the reads
         try:
             while time.time() < end and self.app.poll() is None:
                 self.poll()
@@ -457,9 +460,40 @@ class Sim:
                   f"Decisions the app recorded: {total} · closed within 2 s as 'answered in the terminal' (flapping): {flaps}", "",
                   "Files: `turns.tsv` (every turn, status and answer), `agents.tsv` (what each stand-in asked and heard), "
                   "`shots/sim-t*.needs.json` (Needs you at each read), `shots/sim-needs-*.png` (screenshots), `app.log`."]
+        if self.a.scroll:
+            lines += self._scroll_report(events, by_id)
         with open(os.path.join(self.run, "report.md"), "w") as f:
             f.write("\n".join(lines) + "\n")
         print("\n".join(lines))
+
+    def _scroll_report(self, events, by_id):
+        """LAB-1831: the Scroll feed at the end holds every ask the app recorded (store), each under its session, in
+        time order; finished turns too."""
+        path = os.path.join(self.shots, "sim-final.scroll.json")
+        try:
+            feed = json.load(open(path))["entries"]
+        except Exception:
+            return ["", "## Scroll (LAB-1831)", "", "**No Scroll dump** (`scroll final` did not run)."]
+        asks = [e for e in feed if e["kind"] in ("ask", "question", "finished")]
+        ordered = all(a["at"] <= b["at"] for a, b in zip(feed, feed[1:]))
+        recorded = 0
+        try:
+            import sqlite3
+            db = sqlite3.connect(os.path.join(self.run, "sessions.sqlite"))
+            recorded = db.execute("select count(*) from decisions").fetchone()[0]
+        except Exception:
+            pass
+        per = {}
+        for e in asks:
+            per[e["session"]] = per.get(e["session"], 0) + 1
+        sessions = sorted({e["session"] for e in feed})
+        out = ["", "## Scroll (LAB-1831)", "",
+               f"Feed entries: {len(feed)} from {len(sessions)} session(s) · in time order: {'yes' if ordered else '**NO**'}",
+               f"Asks and finished turns in the feed: {len(asks)} (open {sum(1 for e in asks if e['open'])}, answered "
+               f"{sum(1 for e in asks if e.get('answer'))}) · decisions the app recorded: {recorded}"
+               + ("" if len(asks) >= min(recorded, 400) else " · **some recorded asks are missing from the feed**"),
+               "Per session: " + ", ".join(f"{k} {v}" for k, v in sorted(per.items()))]
+        return out
 
     def _agent_log(self):
         p = os.path.join(self.run, "agents.tsv")
@@ -481,6 +515,7 @@ def main():
     p.add_argument("--pretty", action="store_true", help="LAB-1924: realistic session and window names (screenshots)")
     p.add_argument("--tour", action="store_true", help="LAB-1924: snap every place at the end of the run")
     p.add_argument("--each", action="store_true", help="LAB-1907: snap every open Needs you entry and a blocked terminal")
+    p.add_argument("--scroll", action="store_true", help="LAB-1831: snap Needs you's history and the Scroll feed at the end, check the feed")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args()
     Sim(a).go()

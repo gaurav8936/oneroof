@@ -36,6 +36,12 @@ extension AppModel {
         }
     }
 
+    /// LAB-1831 · Scroll's reply box: an instruction typed into the session's agent, then Return.
+    func sendInstruction(_ text: String, to item: BoardItem) {
+        guard let pane = item.paneId, !text.isEmpty else { return }
+        type(text + "\r", into: pane)
+    }
+
     private func type(_ text: String, into pane: String) {
         let rt = runtime
         DispatchQueue.global(qos: .userInitiated).async { try? rt.type(pane: pane, text: text) }

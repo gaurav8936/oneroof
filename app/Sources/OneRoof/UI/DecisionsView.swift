@@ -42,8 +42,14 @@ struct DecisionsView: View {
         return (model.openDecisions.map(Entry.prompt) + plans).sorted { $0.askedAt < $1.askedAt }
     }
 
+    /// LAB-1831 · what you decided, kept while its session is alive (newest first), under the open asks.
+    private var decided: [Decision] { ScrollFeed.decided(model.decisions) { model.item($0) } }
+
     private var current: Entry? {
         let list = entries
+        if let s = selected, let d = decided.first(where: { $0.id.uuidString == s }), !list.contains(where: { $0.id == s }) {
+            return .prompt(d)
+        }
         return list.first { $0.id == selected } ?? list.first
     }
 
@@ -96,6 +102,7 @@ struct DecisionsView: View {
             listEdge(current: w).zIndex(1)
             Group {
                 switch current {
+                case .prompt(let d) where !d.isOpen: decidedDetail(d)   // LAB-1831
                 case .prompt(let d): detail(d)
                 case .plan(let o): planDetail(o)
                 case nil: empty
@@ -123,8 +130,14 @@ struct DecisionsView: View {
             }
             .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(list) { e in listItem(e) }
+                    // LAB-1831: answered asks stay, newest first, while their session is alive: scroll back through them.
+                    let done = decided
+                    if !done.isEmpty {
+                        MicroLabel("Decided · \(done.count)").padding(.horizontal, 6).padding(.top, list.isEmpty ? 0 : 10)
+                        ForEach(done, id: \.id) { d in decidedItem(d) }
+                    }
                 }
                 .padding(.horizontal, 12)
             }
@@ -141,6 +154,56 @@ struct DecisionsView: View {
             }
         }
         .background(t.sidebar.color)
+    }
+
+    /// A decided ask in the list: dimmer, with what you answered and when.
+    private func decidedItem(_ d: Decision) -> some View {
+        let on = current?.id == d.id.uuidString
+        let item = model.item(d.sessionId)
+        return Button { withAnimation(Motion.fast) { selected = d.id.uuidString } } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+                    if let item { AgentBadge(item: item, size: 18, status: false) }
+                    Text(item?.session.name ?? "Session").ui(12.5, .semibold).foregroundStyle(t.text2.color).lineLimit(1)
+                    Spacer()
+                    Text(ageText(d.answeredAt ?? d.askedAt)).ui(11).foregroundStyle(t.text3.color)
+                }
+                Text(ScrollFeed.askText(d)).ui(12).foregroundStyle(t.text2.color).lineLimit(1)
+                Text(ScrollFeed.answerText(d) ?? "").ui(11, .semibold).foregroundStyle(t.text3.color).lineLimit(1)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(on ? t.surface.color : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(on ? t.separatorStrong.color : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Decided: \(ScrollFeed.askText(d)), \(ScrollFeed.answerText(d) ?? "")")
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// LAB-1831 · a decided ask, read only: what was asked, what you answered, when.
+    private func decidedDetail(_ d: Decision) -> some View {
+        let item = model.item(d.sessionId)
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                if let item { AgentBadge(item: item, size: 22, status: false) }
+                Text(item?.session.name ?? "Session").ui(13).foregroundStyle(t.text2.color).lineLimit(1)
+                Spacer()
+                Button { if let item { model.reveal(item) } } label: { Text("Open session ⌘↩").ui(12.5).foregroundStyle(t.text2.color) }
+                    .buttonStyle(.plain)
+            }
+            MicroLabel("Asked · " + d.askedAt.formatted(date: .abbreviated, time: .shortened))
+            Text(ScrollFeed.askText(d)).ui(22, .semibold).foregroundStyle(t.text.color)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            if !d.isQuestion && !d.isFinished && !d.why.isEmpty {
+                Text(d.why).ui(13.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            }
+            MicroLabel("You answered" + (d.answeredAt.map { " · " + $0.formatted(date: .abbreviated, time: .shortened) } ?? ""))
+            Text(ScrollFeed.answerText(d) ?? "").ui(15, .semibold).foregroundStyle(t.text.color).textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+        .padding(28)
     }
 
     private func listItem(_ e: Entry) -> some View {

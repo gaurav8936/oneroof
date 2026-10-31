@@ -161,7 +161,7 @@ public enum V2Layout {
 
     /// Measured widths of the toolbar pieces (points, 1.8.2 captures), with the toolbar's 10 pt item gap.
     public enum Bar {
-        public static let layout: Double = 140, stepFull: Double = 136, stepShort: Double = 102, new: Double = 86
+        public static let layout: Double = 192, stepFull: Double = 136, stepShort: Double = 102, new: Double = 86
         public static let gap: Double = 10, trailing: Double = 14, titleLead: Double = 8, slack: Double = 16
         /// The centre's content (tabs, page headings) starts this far in from its left edge.
         public static let contentLead: Double = 20
@@ -255,7 +255,16 @@ public enum V2Layout {
     /// LAB-1828 · Single · Grid · Wall arrange the Sessions place's terminals; they also stay while the Wall (the All
     /// windows page) is open, so it can be left the way it was opened.
     public static func showsLayoutControl(inSessions: Bool, page: String?) -> Bool {
-        inSessions && (page == nil || page == "All windows")
+        inSessions && (page == nil || page.flatMap(layout(forPage:)) != nil)
+    }
+
+    /// The layouts that are pages over the Sessions place: Wall is "All windows" (A4.2), Scroll is "Scroll" (LAB-1831).
+    /// Leaving the page goes back to Single.
+    public static func page(for layout: SessionLayout) -> String? {
+        switch layout { case .wall: return "All windows"; case .scroll: return "Scroll"; default: return nil }
+    }
+    public static func layout(forPage page: String) -> SessionLayout? {
+        SessionLayout.allCases.first { self.page(for: $0) == page }
     }
 
     /// `room`: the width from the centre section's start to the window's right edge; `extras`: the Learn player /
