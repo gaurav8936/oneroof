@@ -23,10 +23,16 @@ final class PickerSearchTests: XCTestCase {
 }
 
 final class TrafficLightTests: XCTestCase {
-    /// LAB-1620: macOS's spacing (20 pt, 14 pt buttons) puts the zoom button 4 pt inside the 66 pt rail.
+    /// LAB-1620 / LAB-1783: macOS's spacing (20 pt, 14 pt buttons) centred in the 66 pt rail: 6 pt each side.
     func test_LAB1620_buttonsSitInsideTheRail() {
         let x = V2Layout.trafficLightsStart(rail: 66, gap: 20, button: 14)
-        XCTAssertEqual(x, 8)
-        XCTAssertLessThanOrEqual(x + 2 * 20 + 14, 66 - 4)
+        XCTAssertEqual(x, 6)
+        XCTAssertEqual(66 - (x + 2 * 20 + 14), x)
+    }
+
+    /// LAB-1783: the Focus lane is as wide as the rail, so the buttons sit inside it too.
+    func test_LAB1783_focusLaneHoldsTheButtons() {
+        XCTAssertEqual(V2Layout.focusLane, V2Layout.railWidth)
+        XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320), V2Layout.railWidth)
     }
 }
