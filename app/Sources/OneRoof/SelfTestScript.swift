@@ -34,8 +34,10 @@ import OneRoofCore
 ///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
 ///   pick <i>                       (LAB-1839: press the oldest open decision's i-th own option)
 ///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
+///   needspick decided [i]          (LAB-1939: show the i-th decided ask, newest first)
 ///   demo                           (the demo sessions, into this run's store)
 ///   layout <single|grid|wall|scroll> · scroll <name>   (LAB-1831: the layout; the Scroll feed → <name>.scroll.json)
+///   themes <daylight|graphite|midnight|look>   (LAB-1939: every panel in that theme, or a look's themes)
 ///   loopround <loop id> <name>     (LAB-1933: a loop round's stored session, tagged loop:<id>, as roofd makes it)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
@@ -291,7 +293,10 @@ enum SelfTestScript {
             SelfTestScript.writeNeeds(m, to: out + "-" + arg + ".needs.json")
         case "needspick":   // LAB-1907: show Needs you's i-th open entry (0 = oldest), as a click in its list does
             let open = m.openDecisions
-            if let i = Int(arg), i < open.count { m.needsPick = open[i].id.uuidString; log(out, "  needs \(i): \(open[i].headline)") }
+            if arg.hasPrefix("decided") {   // LAB-1939: `needspick decided [i]`: the i-th decided ask (0 = newest), as a click does
+                let done = ScrollFeed.decided(m.decisions) { m.item($0) }, i = Int(arg.dropFirst(7).trimmingCharacters(in: .whitespaces)) ?? 0
+                if i < done.count { m.needsPick = done[i].id.uuidString; log(out, "  decided \(i): \(done[i].headline)") } else { log(out, "  no decided entry \(i)") }
+            } else if let i = Int(arg), i < open.count { m.needsPick = open[i].id.uuidString; log(out, "  needs \(i): \(open[i].headline)") }
             else { log(out, "  no needs entry \(arg)") }
             delay = 1
         case "selectblocked":   // LAB-1907: select a session waiting at a prompt (its terminal must show no card over it)
@@ -315,6 +320,9 @@ enum SelfTestScript {
         case "layout":   // LAB-1831: `layout single|grid|wall|scroll` in the active window, as the toolbar control does
             if let l = SessionLayout(rawValue: arg) { app.main.win.layout = l } else { log(out, "  bad layout") }
             delay = 1.5
+        case "themes":   // LAB-1939: `themes <daylight|graphite|midnight|look>`: every panel in that theme, as Look does
+            if let t = Look.selfTestThemes(arg) { m.chosenThemes = t } else { log(out, "  bad theme") }
+            delay = 1
         case "loopround":   // LAB-1933: `loopround <loop id> <name>`: a stored round session as roofd's loop engine tags it
             let p = arg.split(separator: " ", maxSplits: 1).map(String.init)
             if p.count == 2 { m.save(Session(name: p[1], agent: .claude, repoPath: Workspace.projectsRoot, tags: ["loop:" + p[0]], startInRepo: true)) }

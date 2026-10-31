@@ -201,7 +201,9 @@ final class AppModel: ObservableObject {
 
     init() {
         grouping = Grouping(rawValue: Prefs.defaults.string(forKey: "grouping") ?? "") ?? .status
-        let chosen = PanelThemes.load(Prefs.defaults)
+        var chosen = PanelThemes.load(Prefs.defaults)
+        // LAB-1951: ONEROOF_SELFTEST_LOOK picks the panels' themes too (a self-test never saves them).
+        if SelfTest.isActive, let v = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LOOK"], let t = Look.selfTestThemes(v) { chosen = t }
         chosenThemes = chosen
         themes = chosen
         let loaded = Prefs.loadSettings()

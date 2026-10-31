@@ -238,6 +238,51 @@ public enum V2Layout {
         return others.filter { $0.maxX - $0.minX > 2 && title.intersects($0) }.map(\.name)
     }
 
+    /// LAB-1938 · clear band kept around the right-hand group, so its edge never sits on a colour line.
+    public static let bandGroupPad: Double = 8
+    /// LAB-1938 · a column's band left narrower than this past the group is the group's colour too (no thin sliver).
+    public static let bandSliverMin: Double = 24
+
+    /// LAB-1938 · the toolbar band's segments (right edge, colour), left to right, from the columns under it, with the
+    /// right-hand group (player, Single · Grid · Wall · Scroll, the Focus step button, + New: `group`, its left and
+    /// right edge) kept on ONE colour: the centre's (`groupColour`), the theme the group is drawn in. Each column's
+    /// colour still runs under its part of the band, except where the group is: there the centre's colour runs on to
+    /// the group's far edge (+ `bandGroupPad`; to the window's edge when less than `bandSliverMin` would be left), and a column that ends under it starts after it.
+    /// Before 1.9.35 the Plan's darker colour started under the middle of the group in the Full step (owner, 1400 pt:
+    /// the layout control at 994–1179, the Plan band from 1131).
+    public static func bandSegments<C: Equatable>(columns: [(Double, C)], group: BarSpan?, groupColour: C,
+                                                  windowWidth: Double) -> [(Double, C)] {
+        guard let group, group.maxX - group.minX > 2, !columns.isEmpty else { return columns }
+        let lo = max(0, group.minX - bandGroupPad)
+        var hi = min(windowWidth, group.maxX + bandGroupPad)
+        if windowWidth - hi < bandSliverMin { hi = windowWidth }   // + New ends 14 pt from the edge: no 6 pt sliver after it
+        var out: [(Double, C)] = []
+        func push(_ end: Double, _ c: C) {
+            guard end > (out.last?.0 ?? 0) + 0.01 else { return }
+            if let last = out.last, last.1 == c { out[out.count - 1].0 = end } else { out.append((end, c)) }
+        }
+        var start = 0.0
+        for (end, c) in columns {
+            defer { start = max(start, end) }
+            guard end > start else { continue }
+            if end <= lo || start >= hi { push(end, c); continue }   // wholly left or right of the group
+            if start < lo { push(lo, c) }                            // its part before the group
+            push(hi, groupColour)                                    // under the group: the centre's colour
+            if end > hi { push(end, c) }                             // its part after the group
+        }
+        return out
+    }
+
+    /// LAB-1938 · the guard: the colours the band shows under the group (one = pass). `segments` as `bandSegments`.
+    public static func bandColours<C: Equatable>(under group: BarSpan, segments: [(Double, C)]) -> [C] {
+        var start = 0.0, out: [C] = []
+        for (end, c) in segments {
+            if end > group.minX + 0.5 && start < group.maxX - 0.5 && !out.contains(c) { out.append(c) }
+            start = end
+        }
+        return out
+    }
+
     /// LAB-1932 · the Needs you list column: dragged between these widths, and always leaving the detail
     /// `centreMin` (a narrow window narrows the list first).
     public static let needsListMin: Double = 240

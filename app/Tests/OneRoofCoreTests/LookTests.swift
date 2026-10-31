@@ -89,4 +89,16 @@ final class LookTests: XCTestCase {
         XCTAssertNil(back.look)
         XCTAssertFalse(back.ui2, "Classic layout, once chosen, stays")
     }
+
+    /// LAB-1951 · ONEROOF_SELFTEST_LOOK sets the panels' themes, by look or by theme name (it set only the look's name).
+    func test_LAB1951_selfTestLookSetsEveryPanelTheme() {
+        let all = { (t: ThemeName) in PanelThemes(sidebar: t, files: t, terminal: t, plan: t, centre: t) }
+        XCTAssertEqual(Look.selfTestThemes("midnight"), all(.midnight))
+        XCTAssertEqual(Look.selfTestThemes("graphite"), all(.graphite))
+        XCTAssertEqual(Look.selfTestThemes("daylight"), all(.daylight))
+        XCTAssertEqual(Look.selfTestThemes("dim"), all(.graphite), "v0.1 names map as stored themes do")
+        XCTAssertEqual(Look.selfTestThemes("skyStudio"), Look.skyStudio.panelThemes)
+        XCTAssertNil(Look.selfTestThemes("nonsense"))
+        XCTAssertNotEqual(Look.selfTestThemes("midnight"), PanelThemes(), "differs from a fresh profile's defaults")
+    }
 }

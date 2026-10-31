@@ -103,7 +103,7 @@ struct LoopNeedDetail: View {
             Text(item.kind == .failed
                  ? "Run again starts a new run (the check first). Mark seen takes it out of Needs you until the loop fails again."
                  : "A loop round's terminal is not in your session list: it opens here and from its loop's Runs.")
-                .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -145,7 +145,7 @@ struct LoopNeedDetail: View {
                     }
                 }
             }
-            Text(help).ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+            Text(help).ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -327,7 +327,7 @@ struct LoopGalleryView: View {
                 if l.origin == .builtIn { RoofButton("Start from this", .plain) { startFrom(l) } }
             }
             Text(l.goal).ui(12.5).foregroundStyle(t.text2.color).lineLimit(2)
-            Text("Output: " + LoopKinds.destination(act: l.act)).ui(11.5).foregroundStyle(t.text3.color).lineLimit(2)
+            Text("Output: " + LoopKinds.destination(act: l.act)).ui(11.5).foregroundStyle(t.text2.color).lineLimit(2)
             Group {
                 if let s = sample {
                     Text("Sample (\(s.kind), \(String(s.created.prefix(10)))): " + (s.title.isEmpty ? s.link : s.title))

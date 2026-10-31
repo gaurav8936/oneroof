@@ -127,7 +127,7 @@ struct V2ScrollPage: View {
     /// finished turn's reply box (the session's Reply opens it).
     @ViewBuilder private func askControls(_ d: Decision) -> some View {
         if d.isQuestion || d.isFinished {
-            Text("Answer with Reply above, or in its terminal").ui(11.5).foregroundStyle(t.text3.color)
+            Text("Answer with Reply above, or in its terminal").ui(11.5).foregroundStyle(t.text2.color)
         } else if let choices = d.choices, !choices.isEmpty {
             HStack(spacing: 6) {
                 // A choice that wants your own words is answered in the full card (Needs you), not here.
