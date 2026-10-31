@@ -96,6 +96,8 @@ final class WindowState: ObservableObject, Identifiable {
     /// v2 column widths you dragged (1.8.1; 0.5.2.9 kept its panel widths, v2 reset them on every step and launch).
     var columnWidth: Double? { didSet { if let w = columnWidth { save(w, "v2.columnWidth") } } }
     var planWidth: Double? { didSet { if let w = planWidth { save(w, "v2.planWidth") } } }
+    /// LAB-1829: you dragged the rail closed (it stays closed until you drag it back or use View › Show Rail).
+    @Published var railFolded = false { didSet { if railFolded != oldValue { save(railFolded, "v2.railFolded") } } }
     /// LAB-1366: the Focus lane dragged wide to show the full list (nil = 52 pt avatars). Its own width, so widening
     /// it at Focus leaves the column width of the other steps alone.
     var focusColumnWidth: Double? {
@@ -134,6 +136,7 @@ final class WindowState: ObservableObject, Identifiable {
             if sessionsStep == nil, place == .sessions { sessionsStep = focusStep }
             columnWidth = d.object(forKey: "v2.columnWidth." + id) as? Double
             planWidth = d.object(forKey: "v2.planWidth." + id) as? Double
+            railFolded = d.bool(forKey: "v2.railFolded." + id)
             focusColumnWidth = d.object(forKey: "v2.focusColumnWidth." + id) as? Double
         }
         // After the saved values are read: like didSet, these run for later changes only.

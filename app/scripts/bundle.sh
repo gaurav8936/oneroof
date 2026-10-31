@@ -57,12 +57,19 @@ AE_DECK_REF="${ONEROOF_AE_DECK_REF:-origin/main}"
 if [ -n "$AE_DECK_REPO" ] && git -C "$AE_DECK_REPO" rev-parse -q --verify "$AE_DECK_REF^{commit}" >/dev/null 2>&1; then
   [ "$AE_DECK_REF" = origin/main ] && { git -C "$AE_DECK_REPO" fetch -q origin main 2>/dev/null || true; }
   DECK="$APP/Contents/Resources/agentic_engineering/deck"; rm -rf "$DECK"; mkdir -p "$DECK"
-  # hooks/ joined the deck repository with LAB-1257; an older main has none.
-  PARTS=(skills content); git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:hooks" 2>/dev/null && PARTS+=(hooks)
+  # hooks/ joined the deck repository with LAB-1257; kit/loops joined with LAB-1663; an older main has none.
+  PARTS=(skills content)
+  git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:hooks" 2>/dev/null && PARTS+=(hooks)
+  git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:kit/loops" 2>/dev/null && PARTS+=(kit/loops)
   git -C "$AE_DECK_REPO" archive "$AE_DECK_REF" "${PARTS[@]}" | tar -x --exclude 'content/course' -C "$DECK"
   rm -rf "$DECK/content/course"
   printf '%s\n' "$AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")" > "$DECK/.deck-ref"
   echo "deck: $(find "$DECK/skills" -name SKILL.md | wc -l | tr -d ' ') skills, $(find "$DECK/skills" -name '*.mp3' | wc -l | tr -d ' ') clips from the deck repository at $AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")"
+  # LAB-1834 · Learn is the shared Agentic Engineering page (the one copy every site shows, from the blog hub): save it next to
+  # the deck so Learn works offline (scripts/learn-fetch.py; ONEROOF_GGAE_DIR uses a local embed build for test builds). A
+  # failed or empty fetch fails the build. ONEROOF_LEARN_SKIP=1 (local test builds only) leaves Learn on the classic screens.
+  if [ "${ONEROOF_LEARN_SKIP:-}" = 1 ]; then echo "learn: ONEROOF_LEARN_SKIP=1, the shared page is not saved (Learn shows the classic screens)"
+  else python3 scripts/learn-fetch.py "$DECK" "$APP/Contents/Resources/agentic_engineering/learn"; fi
 else
   echo "deck: ONEROOF_AE_DECK_REPO not set to a checkout with $AE_DECK_REF; bundling without the deck"
 fi

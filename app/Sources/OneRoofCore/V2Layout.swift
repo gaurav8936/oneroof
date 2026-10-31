@@ -29,11 +29,25 @@ public enum V2Layout {
     /// Sessions, 250 pt at Full and Wide), within the column's limits; Focus is the avatar lane (`focusLane`) unless
     /// the lane was dragged wide (`focusWide`, LAB-1366). LAB-1783: at Sessions the column also holds the places icon
     /// row in the toolbar above it (`sessionsColumnMin`), so the icons never run over the column's edge.
-    public static func columnWidth(step: FocusStep, saved: Double?, focusWide: Double? = nil, windowWidth: Double? = nil) -> Double {
+    /// `placesRow`: the toolbar's places icon row is over the column (step 1, or any step with the rail folded, LAB-1829).
+    public static func columnWidth(step: FocusStep, saved: Double?, focusWide: Double? = nil, windowWidth: Double? = nil,
+                                   placesRow: Bool? = nil) -> Double {
         if step == .focus { return focusWide.map { min(440, max(focusLaneSnapPoint, $0)) } ?? focusLane }
         let w: Double
         if let saved, saved > 0 { w = min(440, max(columnMin, saved)) } else { w = step == .sessions ? 280 : 250 }
-        return step == .sessions ? max(w, sessionsColumnMin(windowWidth: windowWidth)) : w
+        return placesRow ?? (step == .sessions) ? max(w, sessionsColumnMin(windowWidth: windowWidth)) : w
+    }
+
+    /// LAB-1829 · the rail shows at Full and Wide, and in every place but Sessions (audit D2), unless you folded it.
+    public static func showsRail(step: FocusStep, inSessions: Bool, folded: Bool) -> Bool {
+        !folded && (step == .full || step == .wide || !inSessions)
+    }
+
+    /// LAB-1829 · the rail's edge takes no drag only while the Sessions column is folded beside it in the Sessions
+    /// place: there the rail's edge and the column's sit on one spot, and the grab must take the column's (LAB-1612).
+    /// Everywhere else the rail drags closed, and back open from the window's left edge.
+    public static func railEdgeLocked(inSessions: Bool, columnFolded: Bool, railShown: Bool) -> Bool {
+        inSessions && columnFolded && railShown
     }
 
     /// LAB-1783 · the avatar lane at Focus is as wide as the rail, so the window's buttons sit inside the same left
@@ -171,6 +185,16 @@ public enum V2Layout {
     /// button (`lightsEnd`).
     public static func titleShift(itemX: Double, centreX: Double, lightsEnd: Double = 0) -> Double {
         max(centreX + Bar.contentLead, lightsEnd + Bar.lightsGap) - (itemX + Bar.titleLead)
+    }
+
+    /// LAB-1828 · the Focus step button arranges the Sessions place (column, Plan, dock): only there, not on a page
+    /// over it (Settings, All windows). Elsewhere every step showed the same layout and only folded the dock.
+    public static func showsStepButton(inSessions: Bool, page: String?) -> Bool { inSessions && page == nil }
+
+    /// LAB-1828 · Single · Grid · Wall arrange the Sessions place's terminals; they also stay while the Wall (the All
+    /// windows page) is open, so it can be left the way it was opened.
+    public static func showsLayoutControl(inSessions: Bool, page: String?) -> Bool {
+        inSessions && (page == nil || page == "All windows")
     }
 
     /// `room`: the width from the centre section's start to the window's right edge; `extras`: the Learn player /
