@@ -4,7 +4,7 @@ import WebKit
 import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
-///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
+///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look | daylight|graphite|midnight: every panel> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
 ///   ONEROOF_SELFTEST_WIDTH=<pt>                 the window this wide (1.8.2: narrow-window and toolbar checks)
 ///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
 ///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)

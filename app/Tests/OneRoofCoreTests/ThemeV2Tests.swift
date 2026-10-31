@@ -22,6 +22,21 @@ final class ThemeV2Tests: XCTestCase {
         }
     }
 
+    /// LAB-1939 · LAB-1951: the loop views, the Scroll page and Needs you put body text (text, text2, the needs red,
+    /// links) on the page, on cards (surface, or surface2 in light themes) and on rows: 4.5:1 in all three themes.
+    /// Help sentences there use text2 (text3 is 3.25:1 on a Daylight card: meta only). Graphite's red was 4.02:1 on a card.
+    func test_LAB1951_bodyTextOnPagesAndCards() {
+        for t in [ThemeName.daylight, .graphite, .midnight] {
+            let k = t.tokens
+            for (bn, bg) in [("window", k.window), ("surface", k.surface), ("surface2", k.surface2)] {
+                for (fn, fg) in [("text", k.text), ("text2", k.text2), ("needsText", k.needsText), ("accentText", k.accentText)] {
+                    XCTAssertGreaterThanOrEqual(RGB.contrast(fg, bg), 4.5, "\(t) \(fn)/\(bn)")
+                }
+                XCTAssertGreaterThanOrEqual(RGB.contrast(k.text3, bg), 3, "\(t) text3 (meta)/\(bn)")
+            }
+        }
+    }
+
     func testStatusPillsAndDots() {
         for t in themes {
             let k = t.tokens
