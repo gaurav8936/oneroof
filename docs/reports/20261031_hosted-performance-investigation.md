@@ -29,3 +29,7 @@ General gesture CPU samples found synchronous stack symbolication in the pre-exi
 Root cause UNPROVEN. The original comparison had workload and run-variance limitations; that does not clear the integration or invalidate the release hold. Neither session boxing nor the logger is established as the regression cause. No source fix, waiver, deployment or installed-app change was made.
 
 Owner explicitly requested analysis only and then closed the session. Controlled diagnostic source experiments that vary one part of the change require explicit permission before proceeding. Preserve the existing evidence, obtain that permission if desired, isolate causation, then have the release owner run the full gate after a proved fix. Do not ship based on unit/functional passes alone.
+
+## Concurrent release state observed at close
+
+A read-only installed-app check at 00:40 PDT found One Roof 1.9.32 running from Applications. Remote main contains the integration via cherry-picked equivalents (PRs 284/285). The separate release session performed that release; this investigation did not establish the root cause, approve a waiver, or verify its release-gate outcome. Reconcile the release owner’s evidence before claiming performance acceptance. LAB-1898 remains unresolved.
