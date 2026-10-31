@@ -167,7 +167,9 @@ struct LoopsView: View {
     private var subtitle: String {
         let running = board.loops.filter { $0.state == .running }.count
         let needs = board.loops.filter { $0.state == .needsYou }.count
-        var parts = ["\(board.loops.count) loop\(board.loops.count == 1 ? "" : "s")"]
+        let mine = board.loops.filter { $0.origin == .mine }.count
+        let builtIn = board.loops.filter { $0.origin == .builtIn }.count
+        var parts = [builtIn > 0 ? "\(mine) mine · \(builtIn) built-in" : "\(board.loops.count) loop\(board.loops.count == 1 ? "" : "s")"]
         if running > 0 { parts.append("\(running) running") }
         if needs > 0 { parts.append("\(needs) need\(needs == 1 ? "s" : "") you") }
         parts.append("run by roofd with the app open or closed, checked every 30 s")
@@ -194,7 +196,9 @@ struct LoopsView: View {
     // MARK: List
 
     private var list: some View {
-        let pinned = board.loops.filter(\.pinned), other = board.loops.filter { !$0.pinned }
+        let pinned = board.loops.filter(\.pinned)
+        let mine = board.loops.filter { !$0.pinned && $0.origin == .mine }
+        let builtIn = board.loops.filter { !$0.pinned && $0.origin == .builtIn }
         return Card(padding: 8) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
@@ -202,9 +206,13 @@ struct LoopsView: View {
                         MicroLabel("Pinned").padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 2)
                         ForEach(pinned) { row($0) }
                     }
-                    if !other.isEmpty {
-                        MicroLabel(pinned.isEmpty ? "Loops" : "Other").padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
-                        ForEach(other) { row($0) }
+                    if !mine.isEmpty {
+                        MicroLabel("Mine").padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
+                        ForEach(mine) { row($0) }
+                    }
+                    if !builtIn.isEmpty {
+                        MicroLabel("Built-in").padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
+                        ForEach(builtIn) { row($0) }
                     }
                 }
             }
@@ -221,7 +229,8 @@ struct LoopsView: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     StatusDot(status: l.state.pillStatus)
-                    Text(l.name).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                    Text(l.displayTitle).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                    Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text3.color)
                     Spacer(minLength: 4)
                     Text(rowRight(l, rs)).ui(11.5, l.state == .needsYou || l.state == .failed ? .semibold : .regular)
                         .foregroundStyle((l.state == .needsYou || l.state == .failed ? t.text : t.text2).color).lineLimit(1)
@@ -240,7 +249,7 @@ struct LoopsView: View {
         .buttonStyle(PressStyle(radius: Radius.row))
         .hoverHighlight(selected: isSel)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(l.name), \(l.state.label), \(rowRight(l, rs))" + (last.map { $0.checkPassed == true ? ", last check passed" : ", last check failed" } ?? ""))
+        .accessibilityLabel("\(l.displayTitle), \(l.origin.label), \(l.state.label), \(rowRight(l, rs))" + (last.map { $0.checkPassed == true ? ", last check passed" : ", last check failed" } ?? ""))
         .accessibilityAddTraits(isSel ? .isSelected : [])
     }
 
@@ -248,7 +257,10 @@ struct LoopsView: View {
     private func v2Row(_ l: Loop, _ rs: [LoopRound], _ last: LoopRound?) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(l.name).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(l.displayTitle).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                    Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text3.color)
+                }
                 Text([l.trigger.label, l.limits.label, Workspace.repoLabel(for: l.repoPath)].joined(separator: " · "))
                     .ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
             }
@@ -284,7 +296,9 @@ struct LoopsView: View {
     @ViewBuilder private var detail: some View {
         if let l = board.loops.first(where: { $0.id == (selected ?? board.loops.first?.id) }) {
             LoopDetail(loop: l, rounds: board.rounds[l.id] ?? [], model: model, board: board,
-                       edit: { editing = LoopDraft(loop: l, isNew: false) }, delete: { confirmDelete = l })
+                       edit: { editing = LoopDraft(loop: l, isNew: false) },
+                       duplicate: { editing = LoopDraft.duplicate(from: l) },
+                       delete: { confirmDelete = l })
         }
     }
 }
@@ -321,6 +335,7 @@ struct LoopDetail: View {
     @ObservedObject var model: AppModel
     @ObservedObject var board: LoopBoard
     var edit: () -> Void
+    var duplicate: () -> Void = {}
     var delete: () -> Void
     @Environment(\.theme) private var t
     @State private var open: Set<String> = []
@@ -333,8 +348,9 @@ struct LoopDetail: View {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 10) {
                         StatusDot(status: l.state.pillStatus, size: 10)
-                        Text(l.name).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                        Text(l.displayTitle).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                         StatusPill(status: l.state.pillStatus, label: l.state.label)
+                        StatusPill(status: .idle, label: l.origin.label)
                         if l.pinned { StatusPill(status: .idle, label: "Pinned") }
                         Spacer()
                         Text(l.trigger.label).ui(12.5).foregroundStyle(t.text2.color)
@@ -356,6 +372,7 @@ struct LoopDetail: View {
 
     private func facts(_ l: Loop) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 7) {
+            fact("Origin", l.origin == .builtIn ? "Built-in (Agentic Engineering kit · ships off)" : "Mine (saved in _common/loops)")
             fact("Goal", l.goal.isEmpty ? "—" : l.goal)
             fact("Check", l.check, mono: true)
             fact("Agent", l.agent.displayName + (l.model.map { " · " + $0 } ?? ""))
@@ -386,9 +403,16 @@ struct LoopDetail: View {
             }
             RoofButton("Stop", .danger) { board.stopLoop(l.id) }.disabled(l.run == nil && !l.runRequested && l.state == .stopped)
             RoofButton("Edit") { edit() }
+            if l.origin == .builtIn {
+                RoofButton("Duplicate as mine") { duplicate() }
+            }
             RoofButton(l.pinned ? "Unpin" : "Pin") { board.togglePin(l.id) }
             Spacer()
-            RoofButton("Delete", .danger) { delete() }
+            if l.origin == .mine {
+                RoofButton("Delete", .danger) { delete() }
+            } else if board.store.hasDiskOverride(l.id) {
+                RoofButton("Reset") { board.delete(l.id) }
+            }
         }
     }
 
@@ -478,6 +502,20 @@ struct LoopDraft: Identifiable {
         if let template { l = template.apply(to: l) }
         return LoopDraft(loop: l, isNew: true)
     }
+
+    static func duplicate(from src: Loop) -> LoopDraft {
+        var l = src
+        l.id = ""
+        l.origin = .mine
+        l.title = nil
+        l.name = "my-\(src.name)"
+        l.state = .stopped
+        l.run = nil
+        l.runRequested = false
+        l.lastRunAt = nil
+        l.stopReason = nil
+        return LoopDraft(loop: l, isNew: true)
+    }
 }
 
 struct LoopEditor: View {
@@ -502,7 +540,7 @@ struct LoopEditor: View {
                 Spacer()
                 if draft.isNew {
                     FieldMenu(title: template.isEmpty ? "Start from a template" : template, expand: false) {
-                        ForEach(LoopTemplates.all) { tpl in
+                        ForEach(LoopTemplates.all + LoopTemplates.builtInTemplates()) { tpl in
                             Button(tpl.title + " — " + tpl.summary) {
                                 template = tpl.title
                                 draft.loop = tpl.apply(to: draft.loop)

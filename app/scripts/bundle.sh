@@ -57,8 +57,10 @@ AE_DECK_REF="${ONEROOF_AE_DECK_REF:-origin/main}"
 if [ -n "$AE_DECK_REPO" ] && git -C "$AE_DECK_REPO" rev-parse -q --verify "$AE_DECK_REF^{commit}" >/dev/null 2>&1; then
   [ "$AE_DECK_REF" = origin/main ] && { git -C "$AE_DECK_REPO" fetch -q origin main 2>/dev/null || true; }
   DECK="$APP/Contents/Resources/agentic_engineering/deck"; rm -rf "$DECK"; mkdir -p "$DECK"
-  # hooks/ joined the deck repository with LAB-1257; an older main has none.
-  PARTS=(skills content); git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:hooks" 2>/dev/null && PARTS+=(hooks)
+  # hooks/ joined the deck repository with LAB-1257; kit/loops joined with LAB-1663; an older main has none.
+  PARTS=(skills content)
+  git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:hooks" 2>/dev/null && PARTS+=(hooks)
+  git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:kit/loops" 2>/dev/null && PARTS+=(kit/loops)
   git -C "$AE_DECK_REPO" archive "$AE_DECK_REF" "${PARTS[@]}" | tar -x --exclude 'content/course' -C "$DECK"
   rm -rf "$DECK/content/course"
   printf '%s\n' "$AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")" > "$DECK/.deck-ref"
