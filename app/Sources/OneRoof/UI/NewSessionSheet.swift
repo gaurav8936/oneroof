@@ -124,7 +124,7 @@ struct NewSessionSheet: View {
                     ForEach(marks, id: \.self) { agentCard($0) }
                 }
                 if agent(mark).isHosted {
-                    Text("Choose a specific repository and a saved connection. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
+                    Text("Choose a saved connection; start at ~/Projects or in any repository. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
                         .ui(12).foregroundStyle(t.text2.color)
                 }
                 if mark == .gemini { geminiKeyBanner }
@@ -469,17 +469,18 @@ struct NewSessionSheet: View {
         return c.isEmpty || Workspace.projectCode(name: c + " · x") != nil
     }
 
+    /// LAB-1931: the hosted conditions, in one place for the button and its reason; ~/Projects is a valid start.
+    private var hostedBlock: String? {
+        HostedSheetRules.blockedReason(hasRuntime: model.settings.hostedRuntime != nil,
+                                       connection: model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }),
+                                       startSupported: when == .now || when == .onDemand || when == .next, repo: repo)
+    }
+
     /// Why the primary button is greyed out, in words.
     private var blockedReason: String? {
         guard !valid else { return nil }
         if text.trimmingCharacters(in: .whitespaces).isEmpty && useTicket == nil { return nil }
-        if agent(mark).isHosted {
-            if model.settings.hostedRuntime == nil { return "Configure the hosted runtime in Settings › Seats & accounts" }
-            guard let c = model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }) else { return "Choose a saved hosted connection" }
-            if let error = c.configurationErrors().first { return error }
-            if repo == Workspace.projectsRoot { return "Choose a specific repository for the hosted session" }
-            if when != .now && when != .next && when != .onDemand { return "Hosted sessions support Now, Next or On demand" }
-        }
+        if agent(mark).isHosted, let why = hostedBlock { return why }
         if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Say when it's done (Settings › General › Done when required)" }
         if model.linearLoading { return "Loading teams and projects from Linear…" }
         if linked && needsTeam && teamKey.isEmpty { return kind == .workstream ? "Pick a team (top right) for the project" : "Pick a team (top right) to file the ticket in" }
@@ -858,11 +859,7 @@ struct NewSessionSheet: View {
     private var doneWhenNeeded: Bool { model.settings.ui2 && model.settings.doneWhenRequired }
 
     private var valid: Bool {
-        if agent(mark).isHosted {
-            guard model.settings.hostedRuntime != nil,
-                  let c = model.settings.hostedConnections.first(where: { $0.id == hostedConnectionID }),
-                  c.configurationErrors().isEmpty, repo != Workspace.projectsRoot, when == .now || when == .onDemand || when == .next else { return false }
-        }
+        if agent(mark).isHosted && hostedBlock != nil { return false }
         let has = !text.trimmingCharacters(in: .whitespaces).isEmpty || useTicket != nil
         if doneWhenNeeded && doneWhen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }   // NEW-30
         if (kind == .ticket || kind == .defect) && useTicket == nil { return has && (linked ? !teamKey.isEmpty : currentWorkstream != nil) }

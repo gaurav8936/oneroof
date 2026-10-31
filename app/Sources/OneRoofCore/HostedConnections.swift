@@ -117,13 +117,35 @@ public struct HostedPreparationPlan: @unchecked Sendable {
     public let kitConfig: [String: Any]
 }
 
+/// LAB-1931 · what New session needs before a hosted (OpenCode/Goose) session can start: a runtime, a valid saved
+/// connection and a supported start. Where it starts is not a condition: ~/Projects or any repository, as for every
+/// other agent (the runtime and credential checks happen in `HostedPreparation.plan`).
+public enum HostedSheetRules {
+    public static func blockedReason(hasRuntime: Bool, connection: HostedConnection?, startSupported: Bool,
+                                     repo: String, now: Date = Date()) -> String? {
+        if !hasRuntime { return "Configure the hosted runtime in Settings › Seats & accounts" }
+        guard let c = connection else { return "Choose a saved hosted connection" }
+        if let error = c.configurationErrors(now: now).first { return error }
+        if !startSupported { return "Hosted sessions support Now, Next or On demand" }
+        return nil
+    }
+}
+
 public enum HostedPreparation {
     static func fullPath(_ path: String) -> String {
         URL(fileURLWithPath: Workspace.expand(path)).standardizedFileURL.resolvingSymlinksInPath().path
     }
 
+    /// LAB-1931 · the session starts at the whole workspace (~/Projects), as any other agent may.
+    static func isWorkspaceRoot(_ root: String, workspace: String = Workspace.projectsRoot) -> Bool {
+        fullPath(root) == fullPath(workspace)
+    }
+
+    static func inside(_ path: String, _ root: String) -> Bool { path == root || path.hasPrefix(root + "/") }
+
     public static func plan(connection c: HostedConnection, runtime r: HostedRuntimeConfiguration,
-                            agent: AgentKind, repo: String, sharedDocs: String, now: Date = Date()) throws -> HostedPreparationPlan {
+                            agent: AgentKind, repo: String, sharedDocs: String, now: Date = Date(),
+                            workspace: String = Workspace.projectsRoot) throws -> HostedPreparationPlan {
         var errors = c.configurationErrors(now: now)
         if !agent.isHosted { errors.append("Choose OpenCode or Goose for a hosted connection.") }
         guard let native = r.nativeExecutables[agent.rawValue], native.hasPrefix("/") else {
@@ -134,12 +156,24 @@ public enum HostedPreparation {
         }
         if !r.timeoutSeconds.isFinite || r.timeoutSeconds <= 0 { errors.append("Set a finite positive session duration.") }
         let root = fullPath(repo), storage = fullPath(r.storageDirectory), credential = fullPath(c.keyFile)
-        if storage == root || storage.hasPrefix(root + "/") { errors.append("Private launch files must be outside the agent's repository.") }
+        // LAB-1931: at the workspace root (~/Projects) the runtime, private files and credential may sit inside the
+        // session's root, as they do for every other agent. The kit's guard then keeps them off limits: no tool reads
+        // the credential or the private files (protected_read), no tool edits the kit, Python or native agent
+        // (protected_write). A specific repository that holds them is still refused: use a worktree for the kit.
+        let atWorkspace = isWorkspaceRoot(root, workspace: workspace)
+        var protectedRead: [String] = [], protectedWrite: [String] = []
+        if inside(storage, root) {
+            if atWorkspace { protectedRead.append(storage) } else { errors.append("Private launch files must be outside the agent's repository.") }
+        }
         for trusted in [native, r.pythonExecutable, r.kitDirectory] {
             let path = fullPath(trusted)
-            if path == root || path.hasPrefix(root + "/") { errors.append("Keep the native executable, Python and kit outside this session's repository; use a worktree when editing the kit.") }
+            guard inside(path, root) else { continue }
+            if atWorkspace { if !protectedWrite.contains(path) { protectedWrite.append(path) } }
+            else { errors.append("Keep the native executable, Python and kit outside this session's repository; use a worktree when editing the kit.") }
         }
-        if credential == root || credential.hasPrefix(root + "/") { errors.append("Keep the provider credential outside the agent's repository.") }
+        if inside(credential, root) {
+            if atWorkspace { protectedRead.append(credential) } else { errors.append("Keep the provider credential outside the agent's repository.") }
+        }
         if !errors.isEmpty { throw HostedSetupError.invalid(errors) }
         let connectionDir = storage + "/connections/" + c.id
         let run = connectionDir + "/runs/" + UUID().uuidString
@@ -154,10 +188,13 @@ public enum HostedPreparation {
         for name in ["claude", "codex", "gemini", "kimi", "antigravity", "opencode", "goose"] {
             agents[name] = ["enabled": name == agent.rawValue, "bin": native]
         }
+        var permissions: [String: Any] = ["interactive_review": true, "read_roots": [docs], "write_roots": [docs + "/next-session-handoff"]]
+        if !protectedRead.isEmpty { permissions["protected_read"] = protectedRead }
+        if !protectedWrite.isEmpty { permissions["protected_write"] = protectedWrite }
         let config: [String: Any] = ["version": 1, "scope": "user", "install": "link", "profile": "standard", "packs": ["kit"],
             "workspace": ["root": root, "read_first": docs + "/READ-FIRST.md", "docs": "docs", "handoffs": docs + "/next-session-handoff"],
             "agents": agents, "rules": ["user": true],
-            "permissions": ["interactive_review": true, "read_roots": [docs], "write_roots": [docs + "/next-session-handoff"]],
+            "permissions": permissions,
             "tracker": ["adapter": "none"], "notifier": ["adapter": "none"], "knowledge": ["adapter": "none"],
             "journal": ["root": run + "/journal", "commit": false], "hosts": ["oneroof": true],
             "loops": ["scheduler": "none", "enabled": [String]()]]
@@ -286,7 +323,7 @@ public extension HostedPreparation {
 
 public extension HostedPreparedLaunch {
     /// Stored argv is data, never a free-form command. Recheck its complete shape at every relaunch.
-    func matches(repo: String) -> Bool {
+    func matches(repo: String, workspace: String = Workspace.projectsRoot) -> Bool {
         let flags = ["--agent", "--binary", "--home", "--cwd", "--profile", "--record", "--timeout"]
         guard arguments.count == 2 + flags.count * 2,
               Array(arguments.prefix(2)) == ["-m", "ae.hostedsession"],
@@ -303,6 +340,9 @@ public extension HostedPreparedLaunch {
               let timeout = Double(values["--timeout"] ?? ""), timeout.isFinite, timeout > 0,
               let native = values["--binary"], native.hasPrefix("/") else { return false }
         let root = HostedPreparation.fullPath(repo)
+        // LAB-1931: at the workspace root these may sit inside it; the kit's launch check then requires its guard to
+        // protect them, and refuses otherwise.
+        if HostedPreparation.isWorkspaceRoot(root, workspace: workspace) { return true }
         return [executable, kit, native, homeDirectory, profilePath, recordPath].allSatisfy {
             let p = HostedPreparation.fullPath($0)
             return p != root && !p.hasPrefix(root + "/")

@@ -13,7 +13,7 @@ OpenCode and Goose run the coding session on your Mac. Together AI, OpenRouter o
 
 ## Start and continue
 
-Open New session, choose OpenCode or Goose, the saved connection and a specific repository. Enter the opening message and launch. First launch prepares private native settings and verifies the pinned executable, guard and remaining budget. Provider authentication is checked when the first request is made.
+Open New session, choose OpenCode or Goose and the saved connection, and start at ~/Projects or in any repository, as with every other agent. At ~/Projects the kit, Python, the agent and the credential stay off limits to the agent's tools. Enter the opening message and launch. First launch prepares private native settings and verifies the pinned executable, guard and remaining budget. Provider authentication is checked when the first request is made.
 
 Answer native permissions in the terminal or in Needs you. Goose's approval menu shows all four of its options there (Allow once, Always Allow, Deny, Cancel), each pressing its own key. OpenCode's allow options can only be picked in its terminal because its selection is shown by color; its Reject works from Needs you (it sends Escape). When either agent finishes a turn, it waits in Needs you with what it said last and a reply box. Unknown menus stay manual. The normal composer sends follow-up messages into the same live conversation.
 
