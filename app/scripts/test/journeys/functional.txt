@@ -122,6 +122,20 @@ expect railopen = true
 dragdivider 0 350
 wait 1.5
 expect sessionsopen = true
+# The rail stretches right (owner: a right drag always responds) and keeps that width; it never goes past 132 pt.
+mark railwidth
+dragdivider 0 110
+wait 1
+expect railwidth >= 100
+expect railwidth <= 120
+snap j7b-rail-wider
+dragdivider 0 300
+wait 1
+expect railwidth = 132
+dragdivider 0 66
+wait 1
+expect railwidth = 66
+expect railopen = true
 
 ## J8 · Full and Wide
 focusstep 0
