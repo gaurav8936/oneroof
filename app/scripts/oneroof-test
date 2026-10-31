@@ -4,7 +4,7 @@
 #
 #   app/scripts/oneroof-test [--quick] [--suite functional,perf,compare,sim] [--app <One Roof.app>]
 #                            [--baseline <version|file|dir>] [--out <dir>] [--gate <version>] [--profile <dir>]
-#                            [--limits <json>] [--secs <n>]
+#                            [--limits <json>] [--secs <n>] [--ab <previous One Roof.app>] [--dry-run]
 #
 #   --quick     shorter perf windows (idle + places, 20 s each), compare over 10 s; not allowed with --gate
 #   --suite     which suites (default all four); functional + perf are required for a PASS, compare + sim are informational
@@ -15,6 +15,14 @@
 #   --gate <v>  release gate: requires version <v>, a full run of functional + perf; on PASS writes
 #               scratchpad/perf/release-<v>/result.json ({"version","fails":[]}) that ship-picks.sh checks
 #   --profile   a profile copy (sessions.sqlite + defaults.plist); default: a fresh copy of the owner's (read only)
+#   --ab        LAB-1903: the previous release's app. When the perf suite finds a regression against the stored baseline,
+#               only the affected scenarios / gestures are re-measured with that app and the candidate interleaved
+#               (B A B A) on this Mac, and the verdict comes from that same-time comparison with each measure's noise
+#               band (test/ab.py): a busy Mac cannot fail the gate on its own.
+#   --dry-run   print what would run (build, suites, A/B, gate files) and exit; launches nothing
+#   The gate records the exact source it tested: the tree of the commit (from candidate.json next to an --app built by
+#   tools/package-app.sh --build-only, else this checkout's HEAD), so the release signs only a tested tree (LAB-1561),
+#   and writes scratchpad/gate/<commit>/verdict.json + report.md (LAB-1560).
 #
 # Everything runs on a TEST COPY (bundle id io.github.gaurav8936.oneroof.perf) with its own roofd and a copy of the
 # profile, in a minimal environment (env -i): the installed app, its roofd and the owner's store are never touched.
@@ -30,16 +38,39 @@ fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; APPDIR="$(cd "$HERE/.." && pwd)"; REPO="$(cd "$APPDIR/.." && pwd)"; T="$HERE/test"
 MAIN="$(cd "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"   # main checkout, also from a worktree
-QUICK=0; SUITES="functional,perf,compare,sim"; SRC=""; BASE=""; OUT=""; GATE=""; PROFILE=""; LIMITS="$T/limits.json"; SECS=""
+QUICK=0; SUITES="functional,perf,compare,sim"; SRC=""; BASE=""; OUT=""; GATE=""; PROFILE=""; LIMITS="$T/limits.json"; SECS=""; AB=""; DRY=0
 while [ $# -gt 0 ]; do case "$1" in
   --quick) QUICK=1; shift ;; --suite|--suites) SUITES=$2; shift 2 ;; --app) SRC=$2; shift 2 ;; --baseline) BASE=$2; shift 2 ;;
   --out) OUT=$2; shift 2 ;; --gate) GATE=$2; shift 2 ;; --profile) PROFILE=$2; shift 2 ;; --limits) LIMITS=$2; shift 2 ;;
-  --secs) SECS=$2; shift 2 ;;
-  -h|--help) sed -n 2,24p "$0"; exit 0 ;; *) echo "oneroof-test: unknown option $1" >&2; exit 2 ;; esac; done
+  --secs) SECS=$2; shift 2 ;; --ab) AB=$2; shift 2 ;; --dry-run) DRY=1; shift ;;
+  -h|--help) sed -n 2,33p "$0"; exit 0 ;; *) echo "oneroof-test: unknown option $1" >&2; exit 2 ;; esac; done
 has() { case ",$SUITES," in *",$1,"*) return 0 ;; esac; return 1; }
 if [ -n "$GATE" ]; then
   [ "$QUICK" = 1 ] && { echo "oneroof-test: --gate needs a full run (no --quick)" >&2; exit 2; }
   has functional && has perf || { echo "oneroof-test: --gate needs the functional and perf suites" >&2; exit 2; }
+fi
+if [ -n "$AB" ]; then
+  [ -x "$AB/Contents/MacOS/OneRoof" ] || { echo "oneroof-test: --ab $AB is not a One Roof app" >&2; exit 2; }
+  AB_VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$AB/Contents/Info.plist" 2>/dev/null)
+fi
+# What source is being tested (LAB-1561): a candidate built by package-app.sh --build-only says so in candidate.json.
+CAND_JSON=""; [ -n "$SRC" ] && [ -f "$(dirname "$SRC")/candidate.json" ] && CAND_JSON="$(dirname "$SRC")/candidate.json"
+if [ -n "$CAND_JSON" ]; then
+  TESTED_COMMIT=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["commit"])' "$CAND_JSON")
+  TESTED_TREE=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["tree"])' "$CAND_JSON")
+elif [ -z "$SRC" ] && [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
+  TESTED_COMMIT=$(git -C "$REPO" rev-parse HEAD); TESTED_TREE=$(git -C "$REPO" rev-parse 'HEAD^{tree}')
+else
+  TESTED_COMMIT=""; TESTED_TREE=""   # an --app without candidate.json, or uncommitted changes: the source is unknown
+fi
+if [ "$DRY" = 1 ]; then
+  echo "oneroof-test --dry-run (nothing launched)"
+  echo "  app        : ${SRC:-build this checkout with scripts/bundle.sh release}"
+  echo "  suites     : $SUITES$([ "$QUICK" = 1 ] && echo ' (quick)')"
+  echo "  perf       : vs ${BASE:-the newest stored baseline older than the app}$([ -n "$AB" ] && echo "; on a regression, A/B with $AB_VERSION ($AB), 2 interleaved rounds of only the affected measures")"
+  echo "  tested     : commit ${TESTED_COMMIT:-unknown} tree ${TESTED_TREE:-unknown}"
+  [ -n "$GATE" ] && echo "  gate       : $GATE → scratchpad/perf/release-$GATE/result.json + scratchpad/gate/${TESTED_COMMIT:-<commit>}/verdict.json$([ -z "$TESTED_TREE" ] && echo ' (tree unknown: the release will refuse this verdict)')"
+  exit 0
 fi
 pgrep -f oneroof-install >/dev/null && { echo "oneroof-test: an install is running (it quits test builds); try later" >&2; exit 2; }
 OTHERS=$(pgrep -f "Contents/MacOS/OneRoof" | while read -r p; do ps -o comm= -p "$p"; done | grep -vc "^/Applications/")
@@ -92,6 +123,36 @@ suite_perf() {
   # Three runs; perf.py takes each measure's median (one run's resize hitches varied 2x between back-to-back runs).
   for n in "" -2 -3; do bash "$T/run-app.sh" "$APP" "$T/journeys/gestures.txt" "$OUT/perf/gestures$n" "$PROFILE" 300; done
   python3 "$T/perf.py" "$OUT" "$VERSION" "$LIMITS" "$BASE" "$MAIN/scratchpad/perf" "$QUICK" "$LOCKED" | tee -a "$LOG"
+  local rc=${PIPESTATUS[0]}
+  [ "$rc" != 0 ] && [ -n "$AB" ] && { ab_confirm "$secs" "$tp"; return $?; }
+  return "$rc"
+}
+
+# LAB-1903 · re-measure only what regressed, previous release and candidate interleaved (B A B A), then judge on that.
+ab_confirm() {
+  local secs=$1 tp=$2 SCEN GEST RESCUE
+  eval "$(python3 "$T/ab.py" plan "$OUT")"
+  [ "$RESCUE" = 1 ] || { say "· perf A/B: not attempted (a failure other than a measured regression)"; return 1; }
+  say "· perf A/B: regressions vs the stored baseline; re-measuring ${SCEN:-no scenarios}$([ "$GEST" = 1 ] && echo ' + gestures') with $AB_VERSION, interleaved"
+  local PREV="$OUT/app-prev/One Roof.app"; mkdir -p "$OUT/app-prev"; rm -rf "$PREV"; ditto "$AB" "$PREV" || return 1
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier io.github.gaurav8936.oneroof.perf" "$PREV/Contents/Info.plist"
+  codesign --force --deep -s - "$PREV" >> "$LOG" 2>&1
+  for r in 1 2; do
+    for side in prev cand; do
+      local app="$APP"; [ "$side" = prev ] && app="$PREV"
+      [ -n "$SCEN" ] && ONEROOF_PERF_PROFILE="$PROFILE" bash "$APPDIR/scripts/perf/perf-check.sh" --app "$app" --scenarios "$SCEN" \
+        --secs "$secs" --tp "$tp" --out "$OUT/perf-ab/$side-$r/scenarios" >> "$LOG" 2>&1
+      [ "$GEST" = 1 ] && bash "$T/run-app.sh" "$app" "$T/journeys/gestures.txt" "$OUT/perf-ab/$side-g$r" "$PROFILE" 300
+    done
+  done
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$PREV" 2>/dev/null
+  python3 "$T/ab.py" merge "$OUT" "$AB_VERSION" >> "$LOG" || return 1
+  mv "$OUT/perf.json" "$OUT/perf-first.json"
+  python3 "$T/perf.py" "$OUT/perf-ab/merged" "$VERSION" "$LIMITS" "$OUT/perf-ab/baseline.json" "$MAIN/scratchpad/perf" "$QUICK" "$LOCKED" | tee -a "$LOG"
+  local rc=${PIPESTATUS[0]}
+  cp "$OUT/perf-ab/merged/perf.json" "$OUT/perf.json"
+  say "· perf A/B: $([ "$rc" = 0 ] && echo 'PASS (the first comparison was the Mac, not the build)' || echo 'FAIL (confirmed against the previous release on this Mac)')"
+  return "$rc"
 }
 suite_compare() {
   local secs=30; [ "$QUICK" = 1 ] && secs=10
@@ -131,18 +192,35 @@ if [ -n "$GATE" ]; then
   G="$MAIN/scratchpad/perf/release-$GATE"
   if [ "$RC" = 0 ]; then
     mkdir -p "$G"
-    python3 - "$OUT" "$G/result.json" "$GATE" <<'PY'
+    python3 - "$OUT" "$G/result.json" "$GATE" "$TESTED_COMMIT" "$TESTED_TREE" <<'PY'
 import json, pathlib, sys
-out, dst, v = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+out, dst, v, commit, tree = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4] or None, sys.argv[5] or None
 perf = json.loads((out / 'perf.json').read_text()); fn = json.loads((out / 'functional.json').read_text())
-json.dump(dict(version=v, fails=[], source='oneroof-test', run=str(out), baseline=perf['baseline'].get('version'),
+json.dump(dict(version=v, fails=[], source='oneroof-test', run=str(out), commit=commit, tree=tree, baseline=perf['baseline'].get('version'),
                scenarios=perf['scenarios'], gestures=perf['gestures'], functional=dict(checks=fn['checks'], passed=fn['passed']),
                screen_locked=perf['screen_locked']), open(dst, 'w'), indent=1)
 PY
     cp "$OUT/report.md" "$G/report.md"; cp "$OUT/report.md" "$G/result.md"
-    say "gate $GATE: PASS → $G/result.json"
+    say "gate $GATE: PASS → $G/result.json (tree ${TESTED_TREE:-unknown})"
   else
+    rm -f "$G/result.json"   # never leave an older PASS for this version behind a failed run
     say "gate $GATE: FAIL — $G/result.json not written"
+  fi
+  # LAB-1560 · one verdict per tested commit, with every stage's result.
+  if [ -n "$TESTED_COMMIT" ]; then
+    V="$MAIN/scratchpad/gate/$TESTED_COMMIT"; mkdir -p "$V"; cp "$OUT/report.md" "$V/report.md"
+    python3 - "$OUT" "$V/verdict.json" "$GATE" "$TESTED_COMMIT" "$TESTED_TREE" "$RC" <<'PY'
+import json, pathlib, sys
+out, dst, v, commit, tree, rc = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], int(sys.argv[6])
+stages = {}
+for name in ('functional', 'perf', 'compare', 'sim'):
+    p = out / f'{name}.json'
+    if p.exists():
+        j = json.loads(p.read_text()); stages[name] = dict(ok=bool(j.get('ok', not j.get('fails'))), informational=name in ('compare', 'sim'),
+                                                           fails=j.get('fails', [])[:20])
+json.dump(dict(verdict='PASS' if rc == 0 else 'FAIL', version=v, commit=commit, tree=tree, run=str(out), stages=stages), open(dst, 'w'), indent=1)
+PY
+    say "verdict: $V/verdict.json"
   fi
 fi
 say "report: $OUT/report.md · $OUT/report.html  ($(( $(date +%s) - T0 )) s)"
