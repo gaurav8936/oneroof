@@ -33,7 +33,7 @@ struct SettingsView: View {
         case 3: Form { notifications }.formStyle(.grouped)
         case 4: v2Model
         case 5: v2Foundations
-        case 6: Form { learnClassicRow; autoAdvanceRow; aeRow; learnFoldersRow }.formStyle(.grouped)
+        case 6: Form { autoAdvanceRow; aeRow; learnFoldersRow }.formStyle(.grouped)
         case 7: ShortcutsSettings(model: model)
         case 9: permissions
         default: v2Updates
@@ -514,19 +514,6 @@ struct SettingsView: View {
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         panel.message = message
         return panel.runModal() == .OK ? panel.url?.path : nil
-    }
-
-    /// LAB-1837 · the way back to the native Learn screens for this release; off = the shared Agentic Engineering page.
-    private var learnClassicRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle("Learn: classic screens", isOn: $model.settings.learnClassic)
-            Text("Off: Learn shows the shared Agentic Engineering page, the same one every site shows, saved in this version of One Roof so it works offline. On: the earlier native screens.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if !model.settings.learnClassic, model.learnShared == nil {
-                Text("This build has no saved shared page, so Learn shows the classic screens.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 
     /// LAB-1621 · a card played to its end rolls over to the next one after a three-second countdown.
