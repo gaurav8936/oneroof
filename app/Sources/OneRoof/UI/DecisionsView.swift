@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OneRoofCore
 
@@ -55,10 +56,44 @@ struct DecisionsView: View {
         .onChange(of: model.openDecisions.count) { old, new in if new > old { showRules = false } }   // a new decision shows
     }
 
+    /// LAB-1932 · the list column's width, dragged on its edge (240…560 pt), kept across launches.
+    @AppStorage("v2.needsYou.listWidth", store: Prefs.defaults) private var listWidth: Double = V2Layout.needsListDefault
+    @State private var dragFrom: Double?
+
     private var queue: some View {
+        GeometryReader { g in
+            let w = V2Layout.needsListWidth(saved: listWidth, available: Double(g.size.width))
+            queueRow(listWidth: w)
+        }
+    }
+
+    /// The list's right edge: a 1 pt line with a 9 pt grab area and the resize cursor.
+    private func listEdge(current: Double) -> some View {
+        Rectangle().fill(t.separator.color).frame(width: 1)
+            .overlay(
+                Color.clear.frame(width: 9).contentShape(Rectangle())
+                    .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                        .onChanged { v in
+                            let from = dragFrom ?? current
+                            if dragFrom == nil { dragFrom = current }
+                            listWidth = min(V2Layout.needsListMax, max(V2Layout.needsListMin, from + Double(v.translation.width)))
+                        }
+                        .onEnded { _ in dragFrom = nil })
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Needs you list width")
+            .accessibilityValue("\(Int(current)) points")
+            .accessibilityAdjustableAction { dir in
+                listWidth = min(V2Layout.needsListMax, max(V2Layout.needsListMin, current + (dir == .increment ? 20 : -20)))
+            }
+            .help("Drag to resize the list")
+    }
+
+    private func queueRow(listWidth w: Double) -> some View {
         HStack(spacing: 0) {
-            list.frame(width: 340)
-            Rectangle().fill(t.separator.color).frame(width: 1)
+            list.frame(width: CGFloat(w))
+            listEdge(current: w).zIndex(1)
             Group {
                 switch current {
                 case .prompt(let d): detail(d)
