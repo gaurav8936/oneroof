@@ -634,7 +634,9 @@ enum SelfTest {
     static func dragDivider(_ split: NSSplitView, in w: NSWindow, index: Int, toX: CGFloat) {
         let views = split.arrangedSubviews
         guard views.indices.contains(index) else { return }
-        let x = views[index].frame.maxX + split.dividerThickness / 2
+        // A folded (hidden) panel comes back by a drag from AppKit's 15 pt strip where it starts (LAB-1829: the folded
+        // rail, at the window's left edge; the outer 3 pt are the window's own resize edge).
+        let x = views[index].isHidden ? views[index].frame.minX + 10 : views[index].frame.maxX + split.dividerThickness / 2
         let y = split.bounds.midY
         let start = split.convert(NSPoint(x: x, y: y), to: nil)
         let end = split.convert(NSPoint(x: toX, y: y), to: nil)
@@ -643,6 +645,17 @@ enum SelfTest {
                                windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
         }
         let steps = 12
+        if views[index].isHidden {
+            // A folded panel's edge is hidden: a real drag there goes through the window to what it hits (LAB-1829: the
+            // rail grip), so queue press, drags and release in order.
+            if let down = ev(.leftMouseDown, start) { NSApp.postEvent(down, atStart: false) }
+            for i in 1...steps {
+                let p = NSPoint(x: start.x + (end.x - start.x) * CGFloat(i) / CGFloat(steps), y: start.y)
+                if let e = ev(.leftMouseDragged, p) { NSApp.postEvent(e, atStart: false) }
+            }
+            if let up = ev(.leftMouseUp, end) { NSApp.postEvent(up, atStart: false) }
+            return
+        }
         for i in 1...steps {
             let p = NSPoint(x: start.x + (end.x - start.x) * CGFloat(i) / CGFloat(steps), y: start.y)
             if let e = ev(.leftMouseDragged, p) { NSApp.postEvent(e, atStart: false) }

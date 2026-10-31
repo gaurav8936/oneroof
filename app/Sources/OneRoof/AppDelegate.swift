@@ -805,6 +805,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(v2ToggleRail(_:)):
+            item.state = main?.win.railFolded == false ? .on : .off; return isV2Window
         case #selector(v2LayoutSingle(_:)):
             item.state = main?.win.layout == .single ? .on : .off; return isV2Window
         case #selector(v2LayoutWall(_:)):

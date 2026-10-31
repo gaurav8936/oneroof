@@ -45,6 +45,10 @@ extension AppDelegate {
             view.insertItem(mi, at: at); at += 1
         }
         view.insertItem(.separator(), at: at)
+        // LAB-1829: the rail (Home · Needs you · Sessions …) folds away and comes back, as a drag of its edge does.
+        let rail = NSMenuItem(title: "Rail", action: #selector(v2ToggleRail(_:)), keyEquivalent: "")
+        rail.target = self
+        view.insertItem(rail, at: at + 1)
         let look = NSMenuItem(title: "Look…", action: #selector(v2ShowLook(_:)), keyEquivalent: "")
         look.target = self
         view.addItem(.separator()); view.addItem(look)
@@ -55,6 +59,8 @@ extension AppDelegate {
         copy.target = self
         if let i = edit.items.firstIndex(where: { $0.title == "Clear Terminal" }) { edit.insertItem(copy, at: i + 1) } else { edit.addItem(copy) }
     }
+
+    @objc func v2ToggleRail(_ sender: Any?) { if isV2Window { main.v2ToggleRail() } }
 
     @objc func v2OpenSessions(_ sender: Any?) {
         if isV2Window { main.v2Open(.sessions) }

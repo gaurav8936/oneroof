@@ -101,6 +101,28 @@ expect sessionsopen = true
 panels
 snap j7-dragged-open
 
+## J7b · drag the rail closed and back open (LAB-1829); the Sessions column still drags on its own
+rail open
+place sessions
+focusstep 0
+expect railopen = true
+dragdivider 0 0
+wait 1
+expect railopen = false
+expect sessionsopen = true
+snap j7b-rail-folded
+dragdivider 0 80
+wait 1.5
+expect railopen = true
+snap j7b-rail-back
+dragdivider 1 30
+wait 1
+expect sessionsopen = false
+expect railopen = true
+dragdivider 0 350
+wait 1.5
+expect sessionsopen = true
+
 ## J8 · Full and Wide
 focusstep 0
 expect focusstep = 0
