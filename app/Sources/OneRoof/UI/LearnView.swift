@@ -24,8 +24,16 @@ struct LearnView: View {
     /// LAB-1251: the owner's posts come from the blog hub (BlogHub, cached), plus any in Learn folders.
     @ObservedObject private var blog = LearnBlogFeed.shared
 
+    /// LAB-1835 · the shared Agentic Engineering page (default from 1.9.32) and its bridge; LAB-1837: Settings › Learn › classic
+    /// screens (or a build without the saved page) shows the native v2 screens below instead.
+    @StateObject private var shared = LearnSharedController()
+    @State private var sharedAppeared = false
+    @Environment(\.textScale) private var textScale
+
     var body: some View {
-        if model.settings.ui2 { v2Body } else { pagesBody }
+        if model.settings.ui2 {
+            if model.learnUsesShared, let loc = model.learnShared { sharedBody(loc) } else { v2Body }
+        } else { pagesBody }
     }
 
     private var pagesBody: some View {
@@ -280,6 +288,107 @@ private struct LearnPlayerBar: View {
         if player.pageId != nil {
             Divider()
             PlayerBar(player: player, tokens: tokens, onOpenPage: openPage, onPrevCard: onPrevCard, onNextCard: onNextCard, onBand: onBand)
+        }
+    }
+}
+
+// MARK: - The shared page (LAB-1762: the one Agentic Engineering page every site shows, saved in the app at build)
+
+extension LearnView {
+    func sharedBody(_ loc: LearnShared.Location) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                LearnSharedWeb(loc: loc, controller: shared, initialHash: sharedInitialHash())
+                if let e = shared.error {
+                    VStack(spacing: 8) {
+                        Text("Learn could not load").font(.system(size: 15, weight: .semibold)).foregroundStyle(t.text.color)
+                        Text(e + ". Settings › Learn › classic screens shows the earlier screens.").font(.system(size: 12)).foregroundStyle(t.text2.color)
+                    }
+                    .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity).background(t.window.color)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            LearnPlayerBar(player: model.player, tokens: t, openPage: { sharedOpenPlaying() },
+                           onPrevCard: model.learnDeck == nil ? nil : { sharedPlayCard(next: false) },
+                           onNextCard: model.learnDeck == nil ? nil : { sharedPlayCard(next: true) },
+                           onBand: model.learnDeck == nil ? nil : { sharedBackToBand() })
+        }
+        .background(t.window.color)
+        .overlay(alignment: .top) { sharedToast }
+        .onAppear { sharedAppear() }
+        .onChange(of: model.learnTarget) { _, target in sharedTake(target) }
+        .onChange(of: model.learnQuery) { _, _ in sharedTakeQuestion() }
+        .onChange(of: LearnShared.mountOptions(t)) { _, _ in shared.theme(t, scale: textScale) }
+        .onChange(of: textScale) { _, s in shared.theme(t, scale: s) }
+        .onChange(of: model.settings.learnAutoAdvance) { _, _ in shared.theme(t, scale: textScale) }
+    }
+
+    /// Where the page opens: a pending link or question is taken on appear; else where it was last time Learn showed.
+    private func sharedInitialHash() -> String? {
+        model.learnTarget == nil && model.learnQuery == nil ? LearnSharedController.lastHash : nil
+    }
+
+    private func sharedAppear() {
+        shared.model = model
+        shared.theme(t, scale: textScale)
+        model.loadLearn()
+        guard !sharedAppeared else { sharedTakeQuestion(); return }
+        sharedAppeared = true
+        if model.learnQuery != nil { sharedTakeQuestion() }
+        else if let target = model.learnTarget { sharedTake(target) }
+    }
+
+    /// LAB-1837 · every way into Learn (a link, Search, the Plan panel, Foundations › Skills, the mini player) opens the page
+    /// where the classic screens would: a card, a band at its track, Radio; One Roof Help stays the window's Help page.
+    private func sharedTake(_ target: String?) {
+        guard let target else { return }
+        let help = AppResources.helpFolder
+        let route = model.learnDeck?.route(target, helpFolder: help)
+            ?? (help.map { target.hasPrefix($0 + "/") } == true ? .help(target) : .none)
+        if case .help(let page) = route { v2OpenHelp(page); return }
+        if let h = LearnShared.hash(route) { shared.go(h) }
+    }
+
+    /// "How do I…": the best card; no question: the search field; no match: All cards › search with the question.
+    private func sharedTakeQuestion() {
+        guard let q = model.learnQuery else { return }
+        model.learnQuery = nil
+        let question = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else { shared.search(""); return }
+        if let best = model.learnDeck?.bestCards(for: question, limit: 1).first { shared.go(LearnShared.hash(.card(best)) ?? "#ae/radio") }
+        else { shared.search(question) }
+    }
+
+    /// The player bar's title: the playing card's screen.
+    private func sharedOpenPlaying() {
+        guard let id = model.player.pageId, let slug = model.learnDeck?.slug(forPage: id) else { return }
+        shared.go(LearnShared.hash(.card(slug)) ?? "#ae/radio")
+    }
+
+    /// ⏮ ⏭ on the player bar: the previous or next card in the roll-over order plays on (its screen opens when a card shows).
+    private func sharedPlayCard(next: Bool) {
+        guard let deck = model.learnDeck, let id = model.player.pageId, let slug = deck.slug(forPage: id) else { return }
+        guard let k = next ? LearnRollover.next(after: slug, in: deck) : LearnRollover.previous(before: slug, in: deck) else { return }
+        let audio = LearnAudio(deck: deck, player: model.player, nav: lnav)
+        shared.pauseMedia()
+        audio.play(k, then: audio.bandFrom(k))
+        if shared.hash.hasPrefix("#ae/card/") { shared.go(LearnShared.hash(.card(k)) ?? "#ae/radio") }
+    }
+
+    /// Back to band from the player bar: the playing card's band.
+    private func sharedBackToBand() {
+        guard let deck = model.learnDeck, let id = model.player.pageId, let slug = deck.slug(forPage: id) else { return }
+        shared.go(LearnShared.hash(.band(deck.band(of: slug).id, track: nil)) ?? "#ae/radio")
+    }
+
+    @ViewBuilder private var sharedToast: some View {
+        if !shared.toast.isEmpty {
+            let d = t.display
+            Text(shared.toast).font(.system(size: 13)).foregroundStyle(d.text.color)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(d.fill.color).shadow(color: t.text.color.opacity(0.25), radius: 12, y: 8))
+                .padding(.top, 72)
+                .transition(.opacity)
         }
     }
 }
