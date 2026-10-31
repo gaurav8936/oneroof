@@ -175,6 +175,19 @@ place sessions
 focusstep 0
 barcheck restored
 
+## J10c · loop rounds are not sessions (LAB-1933): not in the rail, the counts, the catalog or Needs you
+place sessions
+mark sessions
+mark allsessions
+loopround oneroof-nightly-bugs oneroof-nightly-bugs · round 1
+expect looprounds >= 1
+expect sessions = @sessions
+expect allsessions = @allsessions
+snap j10c-rail-without-loop-rounds
+place loops
+snap j10c-loops-runs
+place sessions
+
 ## J11 · session catalog: open, search, resume a row
 centre catalog
 expect centre = catalog

@@ -151,7 +151,7 @@ final class LearnSharedController: ObservableObject {
         let head = NSMenuItem(title: "Type /\(slug) as the next message in", action: nil, keyEquivalent: "")
         head.isEnabled = false
         menu.addItem(head)
-        let live = model.items.filter { $0.liveAgent != nil && $0.session.agent.isAgent }
+        let live = model.sessionItems.filter { $0.liveAgent != nil && $0.session.agent.isAgent }
         if live.isEmpty {
             let none = NSMenuItem(title: "No live agent session. Start one, then send the card to it.", action: nil, keyEquivalent: "")
             none.isEnabled = false

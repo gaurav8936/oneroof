@@ -43,7 +43,7 @@ extension CentreView {
 /// Live counts the chrome shows (needs you, tonight), shared by the rail, the icon row, the avatars and the dock.
 enum V2Counts {
     @MainActor static func needsYou(_ model: AppModel) -> Int {
-        max(model.openDecisionCount, model.items.filter { $0.status == .needsYou }.count)
+        model.needsYouBadge   // LAB-1933
     }
     @MainActor static func tonight(_ model: AppModel) -> Int {
         model.scheduleRecords.values.filter { if case .tonight = $0.schedule { return true }; if case .nightly = $0.schedule { return true }; return false }.count

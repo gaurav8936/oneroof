@@ -36,7 +36,9 @@ enum SelfTestHarness {
             "window": m.active.name,
             "sessions": "\(mine.count)",
             "live": "\(mine.filter { $0.liveAgent != nil }.count)",
-            "allsessions": "\(m.items.filter { !$0.session.archived }.count)",
+            "allsessions": "\(m.sessionItems.filter { !$0.session.archived }.count)",   // LAB-1933: manual only
+            "looprounds": "\(m.items.filter { SessionScope.isLoop($0.session) }.count)",
+            "needsbadge": "\(m.needsYouBadge)",
             "alllive": "\(m.items.filter { $0.liveAgent != nil }.count)",
             "centre": m.active.centre.rawValue,
             "place": m.active.place.rawValue,

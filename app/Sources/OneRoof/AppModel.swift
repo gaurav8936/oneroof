@@ -4,7 +4,10 @@ import OneRoofCore
 
 /// App state: stored sessions + the session runtime's live sessions → sidebar rows. Polls the runtime once a second.
 final class AppModel: ObservableObject {
-    @Published private(set) var items: [BoardItem] = []
+    /// Every stored session, manual and loop rounds (roofd, engines and the Loops area need them all).
+    @Published private(set) var items: [BoardItem] = [] { didSet { sessionItems = SessionScope.sessions(items) } }
+    /// LAB-1933 · the sessions a person started: what every session list, count, search and Needs you shows.
+    private(set) var sessionItems: [BoardItem] = []
     @Published var grouping: Grouping {
         didSet { if !SelfTest.isActive { Prefs.defaults.set(grouping.rawValue, forKey: "grouping") } }
     }

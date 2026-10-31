@@ -6,7 +6,7 @@ extension AppModel {
     /// Every session the board knows (live and history, every window, open or closed).
     func catalogEntries() -> [SessionCatalog.Entry] {
         let names = Dictionary(WorkspaceStore.shared.workspaces.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
-        return items.map { i in
+        return sessionItems.map { i in   // LAB-1933: All sessions lists manual sessions only
             SessionCatalog.entry(i.session, state: catalogState(i), window: names[workspaceId(of: i)], lastActive: lastActiveDate(i))
         }
     }
@@ -61,7 +61,7 @@ extension AppModel {
     /// reads the conversations, off the main thread.
     func catalogSearchRows() -> [(session: Session, window: String)] {
         let names = Dictionary(WorkspaceStore.shared.workspaces.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
-        return items.map { ($0.session, names[workspaceId(of: $0)] ?? "") }
+        return sessionItems.map { ($0.session, names[workspaceId(of: $0)] ?? "") }   // LAB-1933
     }
 }
 
