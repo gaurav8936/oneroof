@@ -29,7 +29,8 @@ struct FleetPage<Trailing: View, Content: View>: View {
             }
             content()
         }
-        .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 26)
+        // LAB-1783: in the v2 window a page's heading starts where the toolbar title and the other places' do (20 pt).
+        .padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28).padding(.top, 22).padding(.bottom, 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(v2 ? AnyShapeStyle(t.window.color) : AnyShapeStyle(LinearGradient(colors: [t.desk.top.color, t.desk.bottom.color], startPoint: .top, endPoint: .bottom)))
     }

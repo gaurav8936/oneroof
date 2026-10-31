@@ -114,6 +114,7 @@ struct V2TitleView: View {
             }
             .frame(minWidth: 40, maxWidth: CGFloat(room) - 8, alignment: .leading)
             .padding(.leading, 8)
+            .offset(x: controller.v2TitleShift)   // LAB-1783: drawn over the room macOS keeps after the window buttons
             .barHelp(sub.map { title + "  " + $0 } ?? title)
             .accessibilityElement(children: .combine)
             .onChange(of: title) { kick() }

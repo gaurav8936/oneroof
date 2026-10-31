@@ -11,6 +11,19 @@ public enum WindowZoom {
         return !shrinks
     }
 
+    /// LAB-1758 · a frame change made while a click on one of One Roof's own controls (a rail or toolbar button, a
+    /// page) is handled was not asked for: such a click never sizes the window. Undo it when it made the window
+    /// smaller and the frame you gave it still fits the screen. A window tiled to half the screen that AppKit resizes
+    /// even by a point is untiled by macOS and jumps back to its size from before the tile (the "small box"). Drags of
+    /// the title bar, the Window menu, keyboard shortcuts, the green button and live resizes are never undone.
+    public static func undoUnasked(owner: CGRect, now: CGRect, visible: CGRect?, duringControlClick: Bool) -> Bool {
+        guard duringControlClick else { return false }
+        let shrinks = now.width < owner.width - 1 || now.height < owner.height - 1
+        guard shrinks else { return false }
+        guard let visible else { return true }
+        return visible.insetBy(dx: -1, dy: -1).contains(owner)
+    }
+
     /// The click count a toolbar mouse event should carry. Two quick clicks on toolbar controls (the view tabs, the
     /// window name, the panel toggles) are two clicks, not a title-bar double-click: macOS would zoom or "fill" the
     /// window. Only empty toolbar space keeps the double-click.

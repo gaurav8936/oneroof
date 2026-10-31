@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.9.29 — the window keeps its size; the top-left lines up (30 Oct 2026)
+
+- **The window keeps the size you gave it** (LAB-1758). After every install or relaunch, a window you had set to half
+  the screen opened as a small box in the screen's top-left corner. The window's saved size was overwritten while
+  the window was being built; it is now saved only once it has its real size. A click on a button can no longer
+  make the window smaller, and any size change you did not make is written to
+  `~/Library/Logs/One Roof/window-frames.log`. A window that is small right now opens small once more: resize it
+  one time and it stays.
+- **The top-left lines up in every layout** (LAB-1783). The window's close, minimise and zoom buttons sit in the same
+  spot at every step and in every place, inside the left strip; the Focus avatar lane is as wide as the rail, so
+  the buttons no longer hang over its edge. At Sessions the column is wide enough for the icon row above it. The
+  title starts on the same line as the tabs and page headings under it, and the column's divider line shows only
+  where there is a column.
+
 ## 1.9.28 — switching views is about twice as fast (30 Oct 2026)
 
 - **Full, Wide, Focus and Sessions switch faster** (LAB-1736). Each switch used to hold the window still for 70–120 ms;
