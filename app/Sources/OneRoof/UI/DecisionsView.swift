@@ -257,7 +257,7 @@ struct DecisionsView: View {
                     }
                 case .plan(let o):
                     HStack(spacing: 7) {
-                        AgentBadge(.claude1, size: 20)
+                        AgentBadge(AgentMark.claude1, size: 20)
                         Text(o.title).ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                         Spacer()
                         Text(ageText(o.createdAt)).ui(11.5).foregroundStyle(t.text3.color)

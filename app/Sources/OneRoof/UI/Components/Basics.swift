@@ -6,18 +6,24 @@ import OneRoofCore
 /// status dot at the bottom-right ringed in the panel colour. Running dots pulse unless Reduce Motion is on.
 struct AgentBadge: View {
     @Environment(\.theme) private var t
-    let mark: AgentMark
+    /// LAB-1999: an agent on one account, so an added account shows its own monogram (X2, G3) in its agent's colour.
+    let mark: SeatMark
     var size: CGFloat = 30
     var status: SessionStatus?
     /// Ring colour behind the status dot (the panel background).
     var ring: RGB?
 
-    init(_ mark: AgentMark, size: CGFloat = 30, status: SessionStatus? = nil, ring: RGB? = nil) {
+    init(_ mark: SeatMark, size: CGFloat = 30, status: SessionStatus? = nil, ring: RGB? = nil) {
         self.mark = mark; self.size = size; self.status = status; self.ring = ring
     }
 
+    init(_ mark: AgentMark, size: CGFloat = 30, status: SessionStatus? = nil, ring: RGB? = nil) {
+        self.init(SeatMark(mark), size: size, status: status, ring: ring)
+    }
+
     init(item: BoardItem, size: CGFloat = 30, status: Bool = true, ring: RGB? = nil) {
-        self.init(AgentMark(agent: item.session.agent, account: item.account), size: size, status: status ? item.status : nil, ring: ring)
+        self.init(SeatMark(agent: item.session.agent, account: item.account ?? item.session.account), size: size,
+                  status: status ? item.status : nil, ring: ring)
     }
 
     private var radius: CGFloat {
@@ -199,10 +205,18 @@ struct StickerTag: View {
 struct SeatGauge: View {
     @Environment(\.theme) private var t
     enum Style { case bar, chip, card }
-    let mark: AgentMark
+    let mark: SeatMark
     let used: Double?
     var note: String?
     var style: Style = .bar
+
+    init(mark: SeatMark, used: Double?, note: String? = nil, style: Style = .bar) {
+        self.mark = mark; self.used = used; self.note = note; self.style = style
+    }
+
+    init(mark: AgentMark, used: Double?, note: String? = nil, style: Style = .bar) {
+        self.init(mark: SeatMark(mark), used: used, note: note, style: style)
+    }
 
     var body: some View {
         switch style {

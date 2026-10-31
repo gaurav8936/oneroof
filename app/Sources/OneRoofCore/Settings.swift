@@ -107,6 +107,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// LAB-1998: agents (AgentMark raw values) the owner took out of the bottom bar in Settings › Seats & accounts.
     /// Every agent that is set up on this Mac shows there unless it is listed here.
     public var dockHidden: [String]
+    /// LAB-1999: accounts the owner added in Settings › Seats & accounts (and renamed ones). With none, the list is
+    /// the first account of every agent plus Claude2 when ~/.claude-2 exists (`agentAccounts()`), as before.
+    public var accounts: [AgentAccount]
+    /// LAB-1999: account ids the owner removed from One Roof (their folders stay on disk).
+    public var removedAccounts: [String]
     /// The look, or nil when the panels were customised one by one.
     public var look: Look? {
         get { Look(rawValue: lookName) }
@@ -124,6 +129,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         permissionFlags = [:]
         permissionDefaultsVersion = 1
         dockHidden = []
+        accounts = []
+        removedAccounts = []
         stepReview = false
         alwaysShowComposer = false
         terminalApprovalCard = false
@@ -220,6 +227,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         permissionModes = (try? c.decodeIfPresent([String: PermissionMode].self, forKey: .permissionModes)) ?? [:]
         permissionFlags = (try? c.decodeIfPresent([String: String].self, forKey: .permissionFlags)) ?? [:]
         dockHidden = (try? c.decodeIfPresent([String].self, forKey: .dockHidden)) ?? []
+        accounts = (try? c.decodeIfPresent([AgentAccount].self, forKey: .accounts)) ?? []
+        removedAccounts = (try? c.decodeIfPresent([String].self, forKey: .removedAccounts)) ?? []
         permissionDefaultsVersion = (try? c.decodeIfPresent(Int.self, forKey: .permissionDefaultsVersion)) ?? 0
         // LAB-1935 (owner 10-31): Antigravity moves to Full once, even where Auto was saved; a later choice stays.
         if permissionDefaultsVersion < 1 {

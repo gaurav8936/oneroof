@@ -31,7 +31,7 @@ struct NewSessionSheet: View {
     @State private var textForIssue = ""
     /// The picked issues (LAB-518), shared with the issue picker panel (LAB-523): the first is the session's ticket.
     @StateObject private var selection = IssueSelection()
-    @State private var mark: AgentMark = .claude1
+    @State private var mark: SeatMark = .claude1
     @State private var modelName = ""
     @State private var hostedConnectionID = ""
     @State private var repo = Workspace.projectsRoot
@@ -55,7 +55,7 @@ struct NewSessionSheet: View {
     @State private var nightly = false
     @State private var everyMinutes = 60
     @State private var suggestion: RouteSuggestion?
-    @State private var suggestedMark: AgentMark?
+    @State private var suggestedMark: SeatMark?
     @State private var busy = false
     @State private var error: String?
     @State private var debounce: DispatchWorkItem?
@@ -68,7 +68,13 @@ struct NewSessionSheet: View {
     @StateObject private var sheetWindow = WindowRef()
 
     private let repos = [Workspace.projectsRoot] + Workspace.listRepos()
-    private let marks: [AgentMark] = AgentMark.available([.claude1, .claude2, .codex, .kimi, .gemini, .antigravity, .opencode, .goose, .shell])
+    /// One card per agent account (LAB-1999: Codex2, Gemini3 … follow their agent's first card), then Terminal.
+    private var marks: [SeatMark] { Self.cards(model.settings.agentAccounts()) }
+
+    static func cards(_ accounts: [AgentAccount]) -> [SeatMark] {
+        let kinds: [AgentKind] = [.claude, .codex, .kimi, .gemini, .agy, .opencode, .goose]
+        return kinds.flatMap { k in accounts.filter { $0.agent == k }.map(\.seat) } + [.shell]
+    }
     @State private var wsText = ""
 
     var body: some View {
@@ -127,7 +133,7 @@ struct NewSessionSheet: View {
                     Text("Choose a saved connection; start at ~/Projects or in any repository. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
                         .ui(12).foregroundStyle(t.text2.color)
                 }
-                if mark == .gemini { geminiKeyBanner }
+                if mark.mark == .gemini { geminiKeyBanner }
                 HStack(alignment: .top, spacing: 10) {
                     if agent(mark).isHosted { labelled("Hosted connection · model") { hostedMenu } }
                     else if mark != .shell { labelled("Model") { modelMenu } }
@@ -624,52 +630,38 @@ struct NewSessionSheet: View {
 
     // MARK: Agent cards (S09 §1.5)
 
-    private func name(_ m: AgentMark) -> String {
-        switch m {
-        case .claude1: return "Claude1"
-        case .claude2: return "Claude2"
-        case .codex: return "Codex"
-        case .kimi: return "Kimi"
-        case .gemini: return "Gemini"
-        case .antigravity: return "Antigravity"
-        case .opencode: return "OpenCode"
-        case .goose: return "Goose"
-        case .shell: return "Terminal"
-        }
+    /// The card's name: Claude1 · Claude2 · Codex · Kimi …, and an added account's name (LAB-1999: "Codex2", or what
+    /// the owner renamed it to).
+    private func name(_ m: SeatMark) -> String {
+        if m == .shell { return "Terminal" }
+        if m.agent == .claude || !m.isFirst { return AgentAccounts.label(of: m.accountID, agent: m.agent) }
+        return m.agent.displayName
     }
 
-    private func agent(_ m: AgentMark) -> AgentKind {
-        switch m {
-        case .claude1, .claude2: return .claude
-        case .codex: return .codex
-        case .kimi: return .kimi
-        case .gemini: return .gemini
-        case .antigravity: return .agy
-        case .opencode: return .opencode
-        case .goose: return .goose
-        case .shell: return .shell
-        }
+    private func agent(_ m: SeatMark) -> AgentKind { m.agent }
+
+    private func seat(_ m: SeatMark) -> SeatUsage? {
+        guard let n = DockSeats.usageName(m) else { return nil }
+        return model.seats.first { $0.seat == n }
     }
 
-    private func seat(_ m: AgentMark) -> SeatUsage? { model.seats.first { $0.seat == name(m) } }
-
-    private func note(_ m: AgentMark) -> String {
+    private func note(_ m: SeatMark) -> String {
         var parts: [String] = []
         if let s = seat(m) {
             if let f = s.fiveHour { parts.append("5h \(Int(f))%") } else if let w = s.sevenDay { parts.append("7d \(Int(w))%") }
             if let r = s.fiveHourResets { parts.append("resets " + r.formatted(date: .omitted, time: .shortened)) }
         } else if m == .shell {
             parts.append("plain shell, no agent")
-        } else if m == .gemini {
+        } else if m.mark == .gemini {
             parts.append("API key only")   // LAB-1826: needs a Gemini API key
         } else {
-            parts.append([.kimi, .antigravity].contains(m) ? "sessions only" : "no usage feed")
+            parts.append([.kimi, .antigravity].contains(m.mark) ? "sessions only" : "no usage feed")
         }
         if suggestedMark == m { parts.append("suggested") }
         return parts.joined(separator: " · ")
     }
 
-    private func agentCard(_ m: AgentMark) -> some View {
+    private func agentCard(_ m: SeatMark) -> some View {
         let on = mark == m
         return Button { select(m) } label: {
             VStack(alignment: .leading, spacing: 8) {
@@ -691,7 +683,7 @@ struct NewSessionSheet: View {
         .accessibilityLabel("\(name(m))\(on ? ", selected" : "")")
     }
 
-    private func select(_ m: AgentMark) {
+    private func select(_ m: SeatMark) {
         mark = m
         let a = agent(m)
         let d = model.settings.defaults(for: a)
@@ -881,7 +873,7 @@ struct NewSessionSheet: View {
     // MARK: Behaviour
 
     /// Self-test only: the agent the next sheet opens with (`newsession <agent>`, LAB-1826).
-    static var selfTestMark: AgentMark?
+    static var selfTestMark: SeatMark?
 
     private func appear() {
         DispatchQueue.main.async { textFocused = true }
@@ -891,7 +883,8 @@ struct NewSessionSheet: View {
         model.loadWorkstreams(force: model.linearTeams.isEmpty, maxAge: 10)
         defaultWorkstream()
         let acc = model.settings.defaults(for: .claude).account
-        select(acc == "Claude2" && marks.contains(.claude2) ? .claude2 : .claude1)
+        let preferred = SeatMark(agent: .claude, account: acc)
+        select(marks.contains(preferred) ? preferred : .claude1)
         let env = ProcessInfo.processInfo.environment
         if let k = env["ONEROOF_SELFTEST_KIND"].flatMap(Kind.init(rawValue:)) { kind = k; kindTouched = true }
         if let k = env["ONEROOF_SELFTEST_TEAM"] { teamKey = k }
@@ -923,7 +916,7 @@ struct NewSessionSheet: View {
             if let w = currentWorkstream { model.loadIssues(w, maxAge: 120) }
             model.suggestAgent(for: v) { r, _ in
                 suggestion = r
-                let m = AgentMark(agent: r.agent, account: r.account)
+                let m = SeatMark(agent: r.agent, account: r.account)
                 withAnimation(Motion.base) { suggestedMark = m }
             }
         }
@@ -957,7 +950,7 @@ struct NewSessionSheet: View {
 
     private func applyRole(_ r: Role) {
         roleId = r.id
-        mark = AgentMark(agent: r.agent, account: model.settings.defaults(for: r.agent).account)
+        mark = SeatMark(agent: r.agent, account: model.settings.defaults(for: r.agent).account)
         if let m = r.model { modelName = m }
         if text.isEmpty { text = r.title }
         opening = r.opening(repo: Workspace.repoLabel(for: repo), workstream: currentWorkstream?.wsId)
@@ -1013,7 +1006,7 @@ struct NewSessionSheet: View {
             let sessionName = several ? Intake.sessionName(keys: pickedIssues.map(\.identifier), title: typed)
                 : ticket.map { Intake.sessionName(key: $0.identifier, title: title) } ?? title
             var s = Session(name: sessionName, agent: a,
-                            account: a == .claude ? name(mark) : (AccountResolver.choices(for: a).first),
+                            account: a == .claude || mark.number > 1 ? mark.accountID : (AccountResolver.choices(for: a).first),
                             repoPath: repo,
                             workstream: w?.wsId ?? (wsText.trimmingCharacters(in: .whitespaces).isEmpty ? Workspace.workstream(in: title) : wsText.trimmingCharacters(in: .whitespaces).uppercased()),
                             objective: doneWhen, openingMessage: a.isAgent ? ImageAttachments.openingMessage(opening, images: images) : "",

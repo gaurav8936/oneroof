@@ -374,6 +374,7 @@ struct SettingsView: View {
         Form {
             Text("Defaults used when you plan a session. You can change them for each session.")
                 .font(.caption).foregroundStyle(.secondary)
+            AccountsSettings(model: model)   // LAB-1999: more accounts per agent
             // LAB-1998: the bottom bar shows every agent set up on this Mac; switch one off to take it out.
             Section("Bottom bar") {
                 let shown = model.dockFacts.map { DockSeats.setUp($0, usageSeats: Set(model.seats.map(\.seat))) } ?? model.dockMarks
@@ -386,12 +387,14 @@ struct SettingsView: View {
                         })) {
                         HStack(spacing: 8) {
                             AgentBadge(m, size: 18)
-                            Text(DockSeats.agent(m).displayName + (m == .claude2 ? " (second account)" : ""))
+                            Text(m.isFirst && m != .claude2 ? m.agent.displayName
+                                 : m == .claude2 && AgentAccounts.label(of: "Claude2", agent: .claude) == "Claude2" ? "Claude (second account)"
+                                 : AgentAccounts.label(of: m.accountID, agent: m.agent))
                         }
                     }
                     .accessibilityLabel("Show \(m.mono) in the bottom bar")
                 }
-                Text("Agents appear here once they are set up: installed, signed in, or (OpenCode, Goose) with a hosted connection.")
+                Text("Agents appear here once they are set up: installed, signed in, or (OpenCode, Goose) with a hosted connection. Each account added above is a seat of its own.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             HostedSettingsView(model: model)
@@ -399,7 +402,7 @@ struct SettingsView: View {
                 Section(agent.displayName) {
                     if !AccountResolver.choices(for: agent).isEmpty {
                         Picker("Account", selection: binding(agent, \.account)) {
-                            ForEach(AccountResolver.choices(for: agent), id: \.self) { Text($0).tag(Optional($0)) }
+                            ForEach(AccountResolver.choices(for: agent), id: \.self) { Text(AgentAccounts.label(of: $0, agent: agent)).tag(Optional($0)) }
                         }
                     } else if agent == .codex {
                         LabeledContent("Account") { Text("One seat (~/.codex)").foregroundStyle(.secondary) }
