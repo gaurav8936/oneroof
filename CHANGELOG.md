@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.9.35 — Every session knows what the others are doing; Learn grows (new people, deep dives, papers); more accounts per agent (31 Oct 2026)
+
+- **Cross-session memory** (LAB-1971). When you start a session while other work is running, the agent gets a short
+  brief before it does anything: the other sessions and what they are on, releases or deploys in progress, today's
+  commits and worktrees, the issues in flight and your milestone messages. It works across agents: Claude, Codex,
+  Kimi and Antigravity get it from the kit's session-start hook, and OpenCode and Goose now get it in their opening
+  message. Facts only, about a second, and silent when nothing else is running.
+- **Learn: the shared page does everything the old screens did** (LAB-1893), then the old screens go (LAB-1894). The
+  Radio follows One Roof's player, Listen follows the scene that is playing, Transcript has Play from here, posts open
+  in an in-app reader with your Learn folders, By folder shows the real folders with previews and Open in Terminal,
+  and search uses One Roof's ranking.
+- **Learn: new people, deep dives and papers.** Twelve new narrated people in two themes, Pioneers of deep learning
+  and The road to the language model (LAB-1966). An optional **Deep dive** on a person's card opens a narrated
+  walk-through with worked examples, starting with Jason Liu (LAB-1967). A new **Papers** track, starting with ReAct
+  and Lost in the Middle, each traced to the paper's own tables and figures (LAB-1964).
+- **Add as many accounts per agent as you need** (LAB-1999). Settings › Seats & accounts: + Add account for Claude,
+  Codex, Gemini and Kimi (Codex 2, Gemini 3 …), each with its own folder and a one-time sign-in command; rename or
+  remove (the folder is kept). Antigravity, OpenCode and Goose stay on one account: their CLIs cannot keep a second
+  sign-in apart.
+- **The bottom bar follows what is set up** (LAB-1998). Every agent and account you use shows there (Antigravity,
+  OpenCode, Goose and added accounts too), and Settings › Seats & accounts › Bottom bar switches each one off.
+- **Clearer icons** (LAB-2002): the rail and the toolbar's place icons are bigger and in the accent colour; labels and
+  widths are unchanged.
+- **Toolbar on one colour** (LAB-1938), Gallery opens at its top, loop views and Scroll checked in every theme
+  (LAB-1939, LAB-1951).
+- **Loop notifications only when they matter** (LAB-1940): a loop round notifies you when it needs you or a command
+  fails, never for a finished turn.
+- **Release tests never touch your loops** (LAB-2001): test copies use a scratch folder, and the release gate fails if
+  a run changed your loop definitions.
+
 ## 1.9.34 — Loops & all: loops leave the session list and get a home; Full permission mode; verified open-source models; Scroll (31 Oct 2026)
 
 - **Loops get their own home** (LAB-LOOPS). Loop runs no longer show in the session list, its counts, search or Needs
