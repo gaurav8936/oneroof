@@ -14,9 +14,9 @@ You should be able to look at the left panel and know, without clicking, which a
 
 | State | Where it comes from | What it means for you |
 |---|---|---|
-| Needs you | roofd (a prompt is waiting) | Stopped on a question or a permission prompt; it waits for you. Answer in its terminal (its own options, by click or key) or in Needs you (⌘I), which lists every option the prompt shows. No card covers the terminal (since 1.9.33). Counted on the Dock badge. |
+| Needs you | roofd (a prompt is waiting) | Stopped on a question or a permission prompt; it waits for you. Answer in its terminal (its own options, by click or key) or in the Inbox (⌘I), which shows every option the prompt shows. No card covers the terminal (since 1.9.33). Counted on the Dock badge. |
 | Working | roofd | Busy right now: thinking, running a tool or writing. Goes back to Ready or Idle a few seconds after it stops. |
-| Ready | roofd | Finished a turn you have not looked at yet. Turns Idle as soon as you open the session or type in it. There is no timer. The finished turn also waits in Needs you (with what it said last and a reply box) until you reply, set it aside or close the session. |
+| Ready | roofd | Finished a turn you have not looked at yet. Turns Idle as soon as you open the session or type in it. There is no timer. The finished turn also waits in the Inbox (with what it said last and a reply box) until you reply, set it aside or close the session. |
 | Idle | roofd | Alive at its prompt with nothing new for you; not executing. Plain terminals are always Idle (they have no agent). |
 | Next | One Roof | Planned and up next (When › Next, Mark as Next, or the Next sticker). |
 | Planned | One Roof | Written ahead of time, not started. |
@@ -26,6 +26,20 @@ You should be able to look at the left panel and know, without clicking, which a
 Working, Ready and Idle are all **Active**: alive and not waiting on you. The list groups them together, so a session that switches between working and resting keeps its place; its dot and the line under its name say which it is right now. Grouped by status the panel shows **Needs you · Active · Next · Planned · Exited**, needs you first, and rows inside a group stay in name order. A row moves to another group only once its new status has held for a moment (2 seconds for Needs you, 6 for the rest), so a quick flicker never moves it. Pinned sessions always sit in a Pinned group on top.
 
 The chips use the same names: **All · Needs you · Active · Exited**. Hover a chip or a heading to see what it means.
+
+## Inbox: answer every session in one place
+
+**Needs you** is a session's state; the **Inbox** (⌘I, ⌃⌘2, the tray in the rail) is the place where you answer them all. It is one column of dark, terminal-style blocks, newest at the top, one per session that needs you: a permission prompt with every option it shows, a question, a menu, a finished turn waiting for your next message, then plans waiting for approval and loop items. Type a reply (several lines; paste or drop a screenshot and the agent reads it), press any of the prompt's own options, or **Open session ↗**. Sessions with nothing for you are left out and counted in the header. Keys: ↑ ↓ move, Return the first option, Esc deny or cancel, 1–9 an option, ⌘↩ open the session, Tab the reply box. Full detail: Launchpad, Board, palette and shortcuts › Inbox (LAB-2042, LAB-2043).
+
+## History: what every session did (⌃⌘9)
+
+History (⌃⌘9, the clock under the Inbox on the rail; View › History) is the record of every session's important moments, newest first. It is read-only; answer asks in the Inbox. Finished steps, findings, choices, subagents, errors, what each agent asked you and what you answered, finished turns, and the handovers: **Session started**, **Session closed**, **Handed off**, **Handoff written**, **Release started** and **Release finished** (or failed). Never code, diffs or tool output. A session that was closed or deleted keeps its moments, shown as "<name> (closed)". Moments are kept 30 days (decisions are kept for good in the Action log). (LAB-2044, LAB-2045, LAB-2046)
+
+- **Every line** shows its date and time ("Sat 31 Oct · 23:06"; hover for the seconds), under a day heading (Today, Yesterday, Thu 29 Oct). Each run of one session's moments is its own card with the session's badge, name and agent.
+- **Each kind looks different**: Error is red with a tinted row and a red bar; Asks you, Question and Finished have a blue bar; Done is green ✓, Found amber ★, steps grey •; your answer is its own indented, tinted row under the ask ("↩ You: Allowed once"); handovers are centred dividers. An ask still open says **Waiting in the Inbox**.
+- **Search** (⌘F; Esc clears) matches the moments, session names and your answers. **Sort**: Newest first or Oldest first. **Filters**: Session (search the list, pick several), Agent, Kind (Asks, Your answers, Errors, Done, Found, Steps, Handovers) and Date (Today, Yesterday, Last 7 days, Last 30 days, Custom… with both days included; Last 7 days by default). Active filters show as chips with ×, and **Clear all**. Right-click a session's card for **Show only this session**. Filters and sort are kept per window; the search is not.
+- Two examples: "everything session X did yesterday" is Session = X, then Date = Yesterday; "every error this week" is Kind = Errors (Last 7 days is the default).
+- If you have scrolled down when new moments arrive, the list stays put and **N new ↑** takes you to the top.
 
 ## Where sessions live (roofd)
 

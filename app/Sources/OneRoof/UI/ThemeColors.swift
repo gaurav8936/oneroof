@@ -89,17 +89,29 @@ struct HoverHighlight: ViewModifier {
     @State private var hover = false
     var radius: CGFloat = Radius.row
     var selected = false
+    /// LAB-2052 · the row's background when known: hover is then drawn at ≥ 1.3:1 against it (ResourceMarks.hover).
+    var over: RGB? = nil
+    /// Self-tests: draw as hovered.
+    var forced = false
     func body(content: Content) -> some View {
         content
             .background(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(selected ? t.selection.color : (hover ? t.selection.color.opacity(0.5) : .clear)))
+                .fill(selected ? t.selection.color : ((hover || forced) ? hoverColour : .clear)))
             .onHover { hover = $0 }
+    }
+    private var hoverColour: Color {
+        guard let over else { return t.selection.color.opacity(0.5) }
+        return ResourceMarks.hover(over: over, dark: t.isDark).color
     }
 }
 
 extension View {
     func hoverHighlight(radius: CGFloat = Radius.row, selected: Bool = false) -> some View {
         modifier(HoverHighlight(radius: radius, selected: selected))
+    }
+    /// LAB-2052 · a hover you can see (≥ 1.3:1) on a row whose background is `bg`.
+    func hoverHighlight(over bg: RGB, radius: CGFloat = Radius.row, forced: Bool = false) -> some View {
+        modifier(HoverHighlight(radius: radius, over: bg, forced: forced))
     }
 }
 
@@ -176,11 +188,7 @@ struct Chip: View {
 /// v0.1 status token names, read from the v2 status palette (views being restyled still use them).
 extension ThemeTokens {
     var statusNeedsYou: RGB { needsText }
-    var statusDone: RGB { isDark ? StatusPalette.dot(.done) : diffAddText }
     var statusRunning: RGB { accentText }
 }
 
-extension ThemeTokens {
-    /// A card or field on a panel: Daylight's surface is the window colour, so cards there use surface2.
-    var card: RGB { isDark ? surface : surface2 }
-}
+// `card` and `statusDone` live in OneRoofCore (History.swift, LAB-2045), so the History styles can be contrast-tested.

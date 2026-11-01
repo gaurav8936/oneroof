@@ -80,24 +80,39 @@ public enum FocusStep: Int, CaseIterable, Codable, Sendable, Comparable {
 
 /// Places (shared/NAVIGATION.md).
 public enum Place: String, CaseIterable, Identifiable, Codable, Sendable {
-    case home, needsYou, sessions, work, machine, loops, learn, evals   // evals: LAB-EVALS
+    // LAB-2044: History sits right under the Inbox on the rail (the live list, then its record).
+    case home, needsYou, history, sessions, work, machine, loops, learn, evals   // evals: LAB-EVALS
     public var id: String { rawValue }
     public var title: String {
-        switch self { case .home: return "Home"; case .needsYou: return "Needs you"; case .sessions: return "Sessions"; case .work: return "Work"
-        case .machine: return "Machine"; case .loops: return "Loops"; case .learn: return "Learn"; case .evals: return "Evals" }
+        switch self { case .home: return "Home"; case .needsYou: return "Inbox"; case .history: return "History"; case .sessions: return "Sessions"; case .work: return "Projects"   // LAB-2049 (was Work); Resources: LAB-2039 (was Machine)
+        case .machine: return "Resources"; case .loops: return "Loops"; case .learn: return "Learn"; case .evals: return "Evals" }
     }
     public var symbol: String {
-        switch self { case .home: return "house"; case .needsYou: return "exclamationmark.bubble"; case .sessions: return "rectangle.stack"
+        switch self { case .home: return "house"; case .needsYou: return "tray"; case .history: return "clock.arrow.circlepath"; case .sessions: return "rectangle.stack"
         case .work: return "square.grid.2x2"; case .machine: return "gauge"; case .loops: return "arrow.triangle.2.circlepath"; case .learn: return "graduationcap"
         case .evals: return "chart.bar.xaxis" }
     }
-    /// Digit for the ⌃⌘1–⌃⌘8 place keys (KeymapV2.places). ⌘1–⌘6 stay Group by; ⌥⌘1–9 stay Workspaces.
-    public var controlKey: Character { Character(String((Place.allCases.firstIndex(of: self) ?? 0) + 1)) }
+    /// LAB-2043: the Inbox's icon fills when something waits (tray → tray.full); the others never change.
+    public func symbol(count: Int) -> String { self == .needsYou && count > 0 ? "tray.full" : symbol }
+    /// Digit for the ⌃⌘1–⌃⌘9 place keys (KeymapV2.places). ⌘1–⌘6 stay Group by; ⌥⌘1–9 stay Workspaces.
+    /// LAB-2044: an explicit table, not the rail order, so History (⌃⌘9, second on the rail) moves no other place's key.
+    public var controlKey: Character {
+        switch self {
+        case .home: return "1"; case .needsYou: return "2"; case .sessions: return "3"; case .work: return "4"; case .machine: return "5"
+        case .loops: return "6"; case .learn: return "7"; case .evals: return "8"; case .history: return "9"
+        }
+    }
     /// Step a place opens at.
     public var defaultStep: FocusStep { self == .sessions ? .sessions : .full }
 }
 
-public enum SessionLayout: String, CaseIterable, Codable, Sendable { case single, grid, wall, scroll   // scroll: LAB-1831
+/// LAB-2044: Single · Grid · Wall arrange terminals only. Scroll (LAB-1831) left the switch and became the History place.
+public enum SessionLayout: String, CaseIterable, Codable, Sendable { case single, grid, wall
     public var title: String { rawValue.capitalized }
+    /// A saved layout, read back: "scroll" (One Roof 1.9.31–1.9.37) opens as Single; anything unknown is nil.
+    public init?(stored: String) {
+        if stored == "scroll" { self = .single; return }
+        self.init(rawValue: stored)
+    }
     public var defaultStep: FocusStep { self == .single ? .sessions : .wide }
 }

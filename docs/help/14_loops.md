@@ -1,8 +1,27 @@
 # One Roof help: Loops
 
-**Status:** LIVE · **Date:** 2026-10-31
+**Status:** LIVE · **Date:** 2026-11-01
 
 > **One line:** A loop repeats work until a check passes, or runs every night at a time you choose. One Roof runs the check and decides whether another round starts; the agent does the work in the loop's own worktree, never in your checkout.
+
+## Find a loop (2.0.0)
+
+**View › Loops** opens on **Kinds**: four cards, one per family of loops, two side by side when the page is 960 pt or wider (it is at 1280 × 800 and up, where every card and every loop name fits without scrolling):
+
+- **Watch** (Sentinel · Prober): keeps an eye on a number or a live thing and speaks up when it goes wrong.
+- **Check** (Auditor · Judge): measures work against a rule or a bar and reports the gaps.
+- **Report** (Reporter · Researcher · Writer): sums up what happened, or what changed outside, for you to read.
+- **Improve** (Fixer · Refresher · Learner): changes something: fixes until a check passes, refreshes data, proposes rules.
+- **Other** appears only when a loop has no kind (yours made in One Roof or `ae`, or a library loop whose catalog names none).
+
+Each card names every loop of its family as a small chip with its state dot: **filled = yours, outlined = built-in**, those that need you or are running first. A badge on the card says "1 needs you" or "2 running". Pinned loops are also in a **Pinned** strip at the top.
+
+- **Click a loop** (a chip, a pinned chip, a row): its details open in a card over the dimmed page, not a full page. ✕, Esc or a click outside closes it. The card has everything: origin, schedule, kind and family, goal, check, agent, repo, worktree, limits, output, gates, why it last stopped, **Run now**, **Pause** / **Resume**, **Stop**, **Edit** (or **Edit the file** for an ae loop), **Duplicate as mine** (start from a built-in), **Pin** / **Unpin**, **Delete** or **Reset**, the fences, its **Outcomes** (approve or reject from the row; the last run when nothing was produced yet) and its **Rounds** (Open ↗).
+- **Click a family's name or Open ›**: its page lists what each kind does and produces, then one row per loop (two columns when wide): name, Mine or Built-in, schedule, state, the last result ("Never run", "done · Oct 30", "failed ×2"), the goal on one line, and **Start from this** on built-ins. **‹ Loops** (⌘[) goes back.
+- **Activity** (the switch beside Kinds, remembered) is the page as it was: the Outcomes card, Runs, the list (Pinned, Mine, Built-in) and Tonight. A row or an Outcomes line opens the same card.
+- The Inbox's **Open loop** opens the card too.
+
+States read in plain words: **Off** (stopped: not running and not armed), **Waiting**, **Waiting for quiet**, **Running**, **Needs you**, **Paused**, **Done**, **Stopped at a limit**. A button that cannot be pressed stays readable and says why on hover: Stop "Nothing is running", Run now "Already running" or "Waiting for you", Pause "Not running or scheduled". Text, chips, card edges and the check bars meet the contrast rules (4.5:1 text, 3:1 edges) in Daylight, Graphite and Midnight.
 
 ## Make a loop
 
@@ -27,18 +46,18 @@ When round 2 starts, round 1's session closes unless you are attached to it or i
 ## Safety
 
 - Loops never push, merge or deploy, and never touch your checkout. The work stays on branch `loop/<id>` for you to review.
-- A round that needs permission shows on its loop as **Needs you**. Loop rounds are not sessions: they never appear in the session list, its counts, the session catalog or the Needs you place. The Loops page lists them under **Runs**; **Open ↗** shows a round's terminal (1.9.34, LAB-1933).
+- A round that needs permission shows on its loop as **Needs you**. Loop rounds are not sessions: they never appear in the session list, its counts, the session catalog or the Inbox as sessions. The Loops page lists them under **Runs**; **Open ↗** shows a round's terminal (1.9.34, LAB-1933).
 
 ## Today: what loops staged for you
 
-Loops never act on their own. What a run produces (commits on its branch, a staged PR, an issue, a proposal, a report) is written to the outcome ledger as *staged*, and shows in **Needs you** under **Loops · Today**, oldest first, grouped by loop, with its action right there:
+Loops never act on their own. What a run produces (commits on its branch, a staged PR, an issue, a proposal, a report) is written to the outcome ledger as *staged*, and shows in the **Inbox** under **Loops · Today**, newest first, grouped by loop, with its action right there:
 
 - **Approve → open PR** (commits, a staged PR): One Roof records your approval, runs the gate (the loop's check on its branch, then an LLM judge on the diff), and only if both pass pushes `loop/<id>` and opens the PR. A failed gate keeps it in Today with the reason. Nothing is merged.
 - **Approve** (proposal, issue) · **Apply** (a data update) · **Open** (the commit in Review changes, the PR or report link, the file) · **Dismiss** (with your reason).
 
-A loop that stopped at a limit, or whose round asks something, is in Needs you too, as a loop item (never a session): **Run again**, **Open loop**, **Mark seen**. Loop items count in the Needs you badge.
+A loop that stopped at a limit, or whose round asks something, is in the Inbox too, as a loop item (never a session): **Run again**, **Open loop**, **Mark seen**. Loop items count in the Inbox badge.
 
-On the Loops page each loop lists its **Outcomes** (approve or reject from the row), and the Outcomes card opens a loop. **Gallery** shows every kind of loop, what it produces, where its output goes, and a real sample from its runs.
+On the Loops page each loop's card lists its **Outcomes** (approve or reject from the row), and the Outcomes card under **Activity** opens a loop. What the old **Gallery** showed (every kind, what it produces, where its output goes, a real sample) is now in **Kinds**, a family's page and the loop's card (Output in its facts, samples under Outcomes).
 
 ## Your ae loops
 
@@ -46,7 +65,7 @@ Loops made with `ae loops new` (`<name>.loop.yaml` in the same folder) show here
 
 ## Controls
 
-**Run now** · **Pause** / **Resume** · **Stop** (ends the run, leaves the round's session open) · **Pause all** · **Pin** (keeps a loop at the top) · **Delete** (removes the loop's files; keeps its worktree and branch).
+**Run now** · **Pause** / **Resume** · **Stop** (ends the run, leaves the round's session open) · **Pause all** / **Resume all** · **Pin** (keeps a loop in the Pinned strip and at the top of the list) · **Delete** (asks first; removes the loop's files, keeps its worktree and branch, and closes the card) · **Kinds · Activity** (the page's two views).
 
 ## Where it lives
 

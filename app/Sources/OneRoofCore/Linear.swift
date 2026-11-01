@@ -7,10 +7,24 @@ import Foundation
 public struct LinearWorkstream: Identifiable, Equatable, Sendable {
     public var id: String           // Linear project id
     public var name: String         // "WS-WEB-12 · New checkout"
-    public var state: String        // planned / started / completed / …
+    public var state: String        // the status type: backlog / planned / started / paused / completed / canceled
     public var url: String
     public var team: String         // CMN, GBL, HYP, AGM
     public var milestones: [LinearMilestone]
+    /// LAB-2050: the project status's name ("In Progress"; a status named "In Review" counts as In review).
+    public var statusName: String = ""
+    /// LAB-2050: it has an open issue In Progress (`working`) / In Review (`reviewing`), read with the project list.
+    public var working: Bool = false
+    public var reviewing: Bool = false
+
+    public init(id: String, name: String, state: String, url: String, team: String, milestones: [LinearMilestone],
+                statusName: String = "", working: Bool = false, reviewing: Bool = false) {
+        self.id = id; self.name = name; self.state = state; self.url = url; self.team = team; self.milestones = milestones
+        self.statusName = statusName; self.working = working; self.reviewing = reviewing
+    }
+
+    /// The Projects page status (chip and pill): In review is worked out from the issues (ProjectList.swift).
+    public var status: ProjectStatus { ProjectStatus.of(type: state, name: statusName, working: working, reviewing: reviewing) }
 
     /// The project code at the start of the name (TEAM-TOPIC, or an older WS- id).
     public var wsId: String? { Workspace.projectCode(name: name) }
@@ -18,17 +32,8 @@ public struct LinearWorkstream: Identifiable, Equatable, Sendable {
         guard let r = name.range(of: " · ") else { return name }
         return String(name[r.upperBound...])
     }
-    public var stateLabel: String {
-        switch state {
-        case "started": return "In progress"
-        case "completed": return "Shipped"
-        case "planned": return "Planned"
-        case "backlog": return "Backlog"
-        case "canceled": return "Canceled"
-        case "paused": return "Paused"
-        default: return state.capitalized
-        }
-    }
+    /// The status words the Projects page uses for its chip and pill (LAB-2050: "Completed", never "Shipped").
+    public var stateLabel: String { status.label }
 }
 
 public struct LinearMilestone: Identifiable, Equatable, Sendable {
@@ -207,7 +212,9 @@ public final class LinearClient: @unchecked Sendable {
             let d = try gql("""
             query($after: String) { projects(first: 50, after: $after) {
               pageInfo { hasNextPage endCursor }
-              nodes { id name state url teams(first: 1) { nodes { key } } projectMilestones(first: 20) { nodes { id name sortOrder } } } } }
+              nodes { id name state status { name type } url teams(first: 1) { nodes { key } } projectMilestones(first: 20) { nodes { id name sortOrder } }
+                working: issues(first: 1, filter: { state: { type: { eq: "started" }, name: { neqIgnoreCase: "In Review" } } }) { nodes { id } }
+                reviewing: issues(first: 1, filter: { state: { name: { eqIgnoreCase: "In Review" } } }) { nodes { id } } } } }
             """, after.map { ["after": $0] } ?? [:])
             let p = d["projects"] as? [String: Any] ?? [:]
             for n in p["nodes"] as? [[String: Any]] ?? [] {
@@ -215,8 +222,14 @@ public final class LinearClient: @unchecked Sendable {
                     LinearMilestone(id: $0["id"] as? String ?? "", name: $0["name"] as? String ?? "", sortOrder: $0["sortOrder"] as? Double ?? 0)
                 }.sorted { $0.sortOrder < $1.sortOrder }
                 let team = (((n["teams"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first?["key"] as? String) ?? ""
-                out.append(LinearWorkstream(id: n["id"] as? String ?? "", name: n["name"] as? String ?? "", state: n["state"] as? String ?? "",
-                                            url: n["url"] as? String ?? "", team: team, milestones: ms))
+                // LAB-2050: `status { name type }` (the deprecated `state` is the fallback), and whether any open issue is
+                // In Progress / In Review (In review is worked out from those).
+                let status = n["status"] as? [String: Any]
+                func has(_ k: String) -> Bool { !(((n[k] as? [String: Any])?["nodes"] as? [Any]) ?? []).isEmpty }
+                out.append(LinearWorkstream(id: n["id"] as? String ?? "", name: n["name"] as? String ?? "",
+                                            state: status?["type"] as? String ?? n["state"] as? String ?? "",
+                                            url: n["url"] as? String ?? "", team: team, milestones: ms,
+                                            statusName: status?["name"] as? String ?? "", working: has("working"), reviewing: has("reviewing")))
             }
             let info = p["pageInfo"] as? [String: Any] ?? [:]
             after = (info["hasNextPage"] as? Bool ?? false) ? info["endCursor"] as? String : nil

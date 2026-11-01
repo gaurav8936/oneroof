@@ -520,3 +520,94 @@ extension LoopsTests {
         XCTAssertEqual(try store.saveEdit(edit).check, "swift test")
     }
 }
+
+/// LAB-2055 · LAB-2056: the Loops page's four family cards, chip order, the Other card and the Off chip.
+final class LoopFamiliesTests: XCTestCase {
+    func l(_ id: String, kind: String? = nil, origin: LoopOrigin = .builtIn, state: LoopState = .stopped, pinned: Bool = false, title: String? = nil) -> Loop {
+        Loop(id: id, name: id, title: title, origin: origin, repoPath: "/p/r", pinned: pinned, state: state).with { $0.kind = kind }
+    }
+
+    func test_LAB2055_VIEW_everyKindInExactlyOneOfFourFamilies() {
+        XCTAssertEqual(LoopKinds.families.map(\.title), ["Watch", "Check", "Report", "Improve"])
+        for k in LoopKinds.all {
+            let owners = LoopKinds.families.filter { $0.kinds.contains(k.id) }
+            XCTAssertEqual(owners.count, 1, "\(k.id) is in exactly one family")
+            XCTAssertEqual(k.family?.id, owners.first?.id)
+        }
+        XCTAssertEqual(Set(LoopKinds.families.flatMap(\.kinds)), Set(LoopKinds.all.map(\.id)), "no family names an unknown kind")
+        XCTAssertEqual(LoopKinds.family(ofKind: "sentinel")?.id, "watch")
+        XCTAssertEqual(LoopKinds.family(ofKind: "prober")?.id, "watch")
+        XCTAssertEqual(LoopKinds.family(ofKind: "auditor")?.id, "check")
+        XCTAssertEqual(LoopKinds.family(ofKind: "judge")?.id, "check")
+        XCTAssertEqual(LoopKinds.family(ofKind: "reporter")?.id, "report")
+        XCTAssertEqual(LoopKinds.family(ofKind: "researcher")?.id, "report")
+        XCTAssertEqual(LoopKinds.family(ofKind: "writer")?.id, "report")
+        XCTAssertEqual(LoopKinds.family(ofKind: "fixer")?.id, "improve")
+        XCTAssertEqual(LoopKinds.family(ofKind: "refresher")?.id, "improve")
+        XCTAssertEqual(LoopKinds.family(ofKind: "learner")?.id, "improve")
+        XCTAssertNil(LoopKinds.family(ofKind: nil)); XCTAssertNil(LoopKinds.family(ofKind: "nonsense"))
+        XCTAssertEqual(LoopKinds.families[0].kindTitles, "Sentinel · Prober")
+        XCTAssertFalse(LoopKinds.families.contains { $0.blurb.isEmpty })
+    }
+
+    func test_LAB2055_VIEW_groupsCountAndOtherOnlyWhenNeeded() {
+        let loops = [l("cost", kind: "sentinel"), l("probe", kind: "prober"), l("audit", kind: "auditor"), l("fix", kind: "fixer")]
+        let g = LoopFamilies.groups(loops)
+        XCTAssertEqual(g.map(\.id), ["watch", "check", "report", "improve"], "four cards always; no Other without kind-less loops")
+        XCTAssertEqual(g.map { $0.loops.count }, [2, 1, 0, 1])
+        let g2 = LoopFamilies.groups(loops + [l("mine", origin: .mine), l("odd", kind: "nonsense")])
+        XCTAssertEqual(g2.map(\.id), ["watch", "check", "report", "improve", "other"])
+        XCTAssertEqual(g2.last?.loops.map(\.id), ["mine", "odd"], "kind-less and unknown kinds go to Other")
+        XCTAssertEqual(g2.reduce(0) { $0 + $1.loops.count }, 6, "every loop is on exactly one card")
+    }
+
+    func test_LAB2055_VIEW_chipOrder() {
+        let loops = [l("b-built", kind: "sentinel"), l("a-built", kind: "sentinel"), l("mine", kind: "sentinel", origin: .mine),
+                     l("pin", kind: "sentinel", pinned: true), l("run", kind: "sentinel", state: .running),
+                     l("ask", kind: "sentinel", state: .needsYou)]
+        XCTAssertEqual(LoopFamilies.ordered(loops).map(\.id), ["ask", "run", "pin", "mine", "a-built", "b-built"])
+    }
+
+    func test_LAB2055_STATE_badgeAndVoiceOver() {
+        let g = LoopFamilies.groups([l("a", kind: "sentinel", state: .needsYou), l("b", kind: "prober", state: .running), l("c", kind: "prober")])[0]
+        XCTAssertEqual(g.badge, "1 needs you")
+        XCTAssertEqual(g.accessibilityLabel, "Watch, 3 loops, 1 needs you")
+        let r = LoopFamilies.groups([l("b", kind: "prober", state: .running), l("c", kind: "prober", state: .running)])[0]
+        XCTAssertEqual(r.badge, "2 running")
+        XCTAssertNil(LoopFamilies.groups([l("c", kind: "prober")])[0].badge)
+    }
+
+    func test_LAB2055_VIEW_twoColumnsBalanced() {
+        let g = LoopFamilies.groups((0..<9).map { l("w\($0)", kind: "sentinel") } + (0..<8).map { l("c\($0)", kind: "auditor") }
+                                    + (0..<6).map { l("r\($0)", kind: "reporter") } + (0..<3).map { l("i\($0)", kind: "fixer") }
+                                    + (0..<4).map { l("o\($0)", origin: .mine) })
+        let cols = LoopFamilies.columns(g, count: 2)
+        XCTAssertEqual(cols.count, 2)
+        XCTAssertEqual(cols.flatMap { $0 }.count, 5, "every card placed once")
+        XCTAssertEqual(cols[0].first?.id, "watch"); XCTAssertEqual(cols[1].first?.id, "check")
+        XCTAssertEqual(LoopFamilies.columns(g, count: 1).first?.map(\.id), ["watch", "check", "report", "improve", "other"])
+    }
+
+    func test_LAB2056_STATE_stoppedLoopIsOffAndNeverStruck() {
+        let off = l("x")
+        XCTAssertEqual(off.state.label, "Off")
+        XCTAssertEqual(LoopLook.label(off), "Off")
+        for theme in ThemeName.panelChoices {
+            for s in LoopState.allCases {
+                XCTAssertNotEqual(LoopLook.pill(s, theme: theme).edge, .strike, "\(theme) \(s): no strikethrough on Loops")
+            }
+        }
+        XCTAssertEqual(LoopLook.label(Loop(id: "q", name: "q", repoPath: "/p", trigger: .whenQuiet(quietMinutes: 15, fromHour: nil, toHour: nil), state: .waiting)),
+                       "Waiting for quiet")
+    }
+
+    func test_LAB2056_ACTION_disabledButtonsSayWhy() {
+        let off = l("x")
+        XCTAssertEqual(LoopLook.disabledReason("Stop", off), "Nothing is running")
+        XCTAssertEqual(LoopLook.disabledReason("Pause", off), "Not running or scheduled")
+        XCTAssertNil(LoopLook.disabledReason("Run now", off))
+        XCTAssertEqual(LoopLook.disabledReason("Run now", l("r", state: .running)), "Already running")
+        XCTAssertEqual(LoopLook.disabledReason("Run now", l("n", state: .needsYou)), "Waiting for you")
+        XCTAssertNil(LoopLook.disabledReason("Stop", l("r", state: .running).with { $0.runRequested = true }))
+    }
+}

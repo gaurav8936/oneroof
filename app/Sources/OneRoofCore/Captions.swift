@@ -466,7 +466,15 @@ public enum TerminalText {
     public static func isChrome(_ s: String) -> Bool {
         guard let f = s.unicodeScalars.first else { return true }
         if "╭╰─━┌└╮╯".unicodeScalars.contains(f), s.unicodeScalars.allSatisfy({ "╭╰─━┌└╮╯┐┘ ".unicodeScalars.contains($0) }) { return true }
-        return s.contains("? for shortcuts") || s.hasPrefix("esc to interrupt") || s.contains("⏵⏵")
+        return s.contains("? for shortcuts") || s.hasPrefix("esc to interrupt") || s.contains("⏵⏵") || isStatusLine(s)
+    }
+
+    /// QA M4: an agent's own status line ("[Claude1] you@host · Max 20x · 7d 9%"): a bracketed seat, " · " parts and a
+    /// usage percentage. It is screen furniture, never a message, so captions, History and the Inbox skip it.
+    public static func isStatusLine(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        guard t.hasPrefix("["), let close = t.firstIndex(of: "]"), t.distance(from: t.startIndex, to: close) < 24 else { return false }
+        return t.contains(" · ") && t.range(of: #"\d+%\s*$"#, options: .regularExpression) != nil
     }
 }
 

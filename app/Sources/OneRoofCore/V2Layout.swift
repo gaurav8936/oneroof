@@ -303,10 +303,10 @@ public enum V2Layout {
         inSessions && (page == nil || page.flatMap(layout(forPage:)) != nil)
     }
 
-    /// The layouts that are pages over the Sessions place: Wall is "All windows" (A4.2), Scroll is "Scroll" (LAB-1831).
-    /// Leaving the page goes back to Single.
+    /// The layouts that are pages over the Sessions place: Wall is "All windows" (A4.2). Leaving the page goes back to
+    /// Single. (LAB-2044: Scroll was one too; it is the History place now.)
     public static func page(for layout: SessionLayout) -> String? {
-        switch layout { case .wall: return "All windows"; case .scroll: return "Scroll"; default: return nil }
+        switch layout { case .wall: return "All windows"; default: return nil }
     }
     public static func layout(forPage page: String) -> SessionLayout? {
         SessionLayout.allCases.first { self.page(for: $0) == page }

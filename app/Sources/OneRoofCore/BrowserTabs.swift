@@ -221,6 +221,212 @@ public enum BrowserTabs {
         return .failed(line.trimmingCharacters(in: .whitespaces))
     }
 
+    // MARK: Big helpers (LAB-2053)
+
+    /// A browser's helper or renderer counts as "using a lot" above either line (owner, 2026-10-31).
+    public static let bigBytes: UInt64 = 250 * 1_048_576          // 262,144,000 bytes, "250 MB" as ResourceFormat shows it
+    public static let bigCPU: Double = 10                          // percent, as the row shows it
+    /// A process that drops below both lines stays listed this long, so the list does not flicker.
+    public static let bigHold: TimeInterval = 30
+
+    /// Over 250 MB or over 10 % CPU (exactly on a line is not over it).
+    public static func isBig(_ p: MacProc) -> Bool { p.footprint > bigBytes || (p.cpu ?? 0) > bigCPU }
+
+    /// The helpers and renderers to show under "Using a lot": over a line now, or over one within the last 30 s
+    /// (`since`: when each pid was last seen over a line). The browser's own main process is not a helper (Quit is on
+    /// the app row). Heaviest first.
+    public static func bigProcesses(_ procs: [MacProc], since: [Int32: Date], now: Date, mainPid: Int32? = nil) -> [MacProc] {
+        procs.filter { p in
+            guard p.pid != mainPid, p.kind != "Browser" else { return false }
+            if isBig(p) { return true }
+            if let t = since[p.pid] { return now.timeIntervalSince(t) <= bigHold }
+            return false
+        }
+        .sorted { a, b in a.footprint != b.footprint ? a.footprint > b.footprint : a.pid < b.pid }
+    }
+
+    /// `since` after a new sample: every pid over a line now is stamped `now`; pids that are gone or past the hold drop.
+    public static func bigSeen(_ procs: [MacProc], since: [Int32: Date], now: Date) -> [Int32: Date] {
+        var out: [Int32: Date] = [:]
+        for p in procs {
+            if isBig(p) { out[p.pid] = now }
+            else if let t = since[p.pid], now.timeIntervalSince(t) <= bigHold { out[p.pid] = t }
+        }
+        return out
+    }
+
+    // MARK: Closing tabs and windows (LAB-2054 Chrome, LAB-2060 Safari)
+
+    /// Can One Roof close this browser's tabs? Chrome (verified with `sdef`, the same Automation permission as reading)
+    /// and Safari (closes by window id + position, guarded by the address). Brave and Arc stay read-only until they
+    /// are installed on a test Mac (agent decision 2026-11-01, LAB-2060); Edge, Vivaldi, Opera are out of scope.
+    public enum CloseSupport: Equatable, Sendable {
+        case closes
+        /// Tabs are listed, never closed; the reason is shown under the list.
+        case readOnly(String)
+    }
+
+    public static func closeSupport(appName: String) -> CloseSupport {
+        if appName == "Google Chrome" || appName.hasPrefix("Google Chrome ") { return .closes }
+        if family(appName: appName) == .safari { return .closes }
+        return .readOnly("Closing \(appName) tabs from One Roof comes later: it is not tested yet, so its tabs are listed only.")
+    }
+
+    /// What to close: one tab (by its id, or for Safari its position, guarded by its address) or a whole window (by its
+    /// id, guarded by how many tabs it had when the list was read).
+    public enum CloseTarget: Equatable, Sendable {
+        case tab(BrowserTab)
+        case window(id: String, number: Int, tabs: Int)
+    }
+
+    /// What a close script answered.
+    public enum CloseOutcome: Equatable, Sendable {
+        /// Closed.
+        case closed
+        /// Already closed (or the browser is not running): just refresh.
+        case gone
+        /// The tab moved or navigated, or the window gained or lost tabs since the list was read: nothing closed.
+        case changed
+        /// No answer in time: the browser may be busy or hung.
+        case timedOut
+        case notAllowed
+        case failed(String)
+    }
+
+    /// Seconds a close may take before the browser counts as not answering.
+    public static let closeTimeout: TimeInterval = 10
+
+    /// AppleScript that closes one tab. Never launches the browser ("gone" when it is not running); closes only when
+    /// the tab still shows the address that was read ("changed" otherwise). Answers ok · gone · changed.
+    public static func closeTabScript(app: String, family: Family, tab: BrowserTab) -> String {
+        let a = quoted(app), u = quoted(tab.url)
+        let wid = Int(tab.windowId) ?? 0
+        let body: String
+        switch family {
+        case .chromium:
+            let tid = Int(tab.tabId) ?? 0
+            body = """
+                set ts to (every tab of w whose id is \(tid))
+                if (count of ts) is 0 then return "gone"
+                set t to item 1 of ts
+                set u to URL of t
+                if u is missing value then set u to ""
+                if (u as text) is not \(u) then return "changed"
+                close t
+                return "ok"
+            """
+        case .safari:
+            // Safari's tabs have no id: the tab at the position that was read, only if it still shows that address.
+            body = """
+                if (count of tabs of w) < \(tab.index) then return "changed"
+                set u to URL of tab \(tab.index) of w
+                if u is missing value then set u to ""
+                if (u as text) is not \(u) then return "changed"
+                close tab \(tab.index) of w
+                return "ok"
+            """
+        }
+        return """
+        if application \(a) is not running then return "gone"
+        tell application \(a)
+            try
+                set w to window id \(wid)
+            on error
+                return "gone"
+            end try
+        \(body)
+        end tell
+        """
+    }
+
+    /// AppleScript that closes a whole window, only when it still has the number of tabs that was read.
+    public static func closeWindowScript(app: String, windowId: String, tabs: Int) -> String {
+        let a = quoted(app)
+        let wid = Int(windowId) ?? 0
+        return """
+        if application \(a) is not running then return "gone"
+        tell application \(a)
+            try
+                set w to window id \(wid)
+                set n to count of tabs of w
+            on error
+                return "gone"
+            end try
+            if n is not \(tabs) then return "changed"
+            close w
+            return "ok"
+        end tell
+        """
+    }
+
+    /// The script for a target.
+    public static func closeScript(app: String, family: Family, target: CloseTarget) -> String {
+        switch target {
+        case .tab(let t): return closeTabScript(app: app, family: family, tab: t)
+        case .window(let id, _, let n): return closeWindowScript(app: app, windowId: id, tabs: n)
+        }
+    }
+
+    /// osascript's exit status and output → what happened. Status 124 is `Foundations.run`'s timeout.
+    public static func closeOutcome(status: Int32, output: String) -> CloseOutcome {
+        if status == 124 && output.hasPrefix("timed out") { return .timedOut }
+        if let f = failure(status: status, stderr: output) {
+            switch f {
+            case .notAllowed: return .notAllowed
+            case .failed(let why): return .failed(why)
+            }
+        }
+        switch output.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "ok": return .closed
+        case "gone": return .gone
+        case "changed": return .changed
+        case let other: return .failed(other.isEmpty ? "no answer" : "unexpected answer \"\(other)\"")
+        }
+    }
+
+    /// Runs a script with a timeout → (exit status, output). Tests pass a stub; the app runs /usr/bin/osascript.
+    public typealias ScriptRunner = @Sendable (_ script: String, _ timeout: TimeInterval) -> (Int32, String)
+    public static let osascript: ScriptRunner = { script, timeout in
+        Foundations.run("/usr/bin/osascript", ["-e", script], timeout: timeout)
+    }
+
+    /// Close a tab or a window (call off the main thread). Never launches the browser.
+    public static func close(app: String, family: Family, target: CloseTarget, runner: ScriptRunner = osascript,
+                             timeout: TimeInterval = closeTimeout) -> CloseOutcome {
+        if case .readOnly = closeSupport(appName: app) { return .failed("\(app) tabs can't be closed from One Roof yet") }
+        let (status, out) = runner(closeScript(app: app, family: family, target: target), timeout)
+        return closeOutcome(status: status, output: out)
+    }
+
+    /// A window with this many tabs asks before closing (one tab closes at once: the browser can reopen it).
+    public static func closeWindowAsks(tabs: Int) -> Bool { tabs >= 2 }
+
+    /// The words around closing (LAB-2054), so the page and the tests say the same.
+    public enum CloseCopy {
+        public static func closed(_ title: String, app: String) -> String {
+            "Closed \u{201C}\(title.isEmpty ? "Untitled tab" : title)\u{201D}. Reopen it in \(app) with ⇧⌘T."
+        }
+        public static func closedWindow(_ number: Int, tabs: Int, app: String) -> String {
+            "Closed window \(number) (\(tabs) tab\(tabs == 1 ? "" : "s")). Reopen it in \(app) with ⇧⌘T."
+        }
+        public static let changed = "That tab changed since the list was read. The list is fresh now; try again."
+        public static let windowChanged = "That window's tabs changed since the list was read. The list is fresh now; try again."
+        public static func timedOut(_ app: String) -> String {
+            "\(app) did not answer in \(Int(closeTimeout)) s. It may be busy or hung."
+        }
+        public static func failed(_ why: String) -> String { "Could not close the tab: \(why)" }
+        public static func confirmTitle(window number: Int, app: String) -> String { "Close window \(number) of \(app)?" }
+        public static func confirmMessage(tabs: Int, app: String) -> String {
+            "This closes its \(tabs) tabs. \(app) can reopen the window with ⇧⌘T."
+        }
+        /// The ⓘ on the one-line Task Manager note.
+        public static func taskManager(_ app: String) -> String {
+            "\(app)'s own Task Manager (⇧Esc in \(app), or Window › Task Manager) lists each tab with its memory and can end it. "
+            + "macOS does not tell other apps which process is which tab, so One Roof cannot show memory per tab or force-close one tab. "
+            + "To end one hung tab, use \(app)'s Task Manager (⇧Esc) › End process: that tab shows as crashed until reloaded."
+        }
+    }
+
     // MARK: Running the scripts (call off the main thread)
 
     /// Every tab of `app`. The first time, macOS asks the owner whether One Roof may control the browser and the call

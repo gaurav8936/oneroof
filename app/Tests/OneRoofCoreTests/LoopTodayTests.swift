@@ -338,3 +338,16 @@ final class LoopTodayTests: XCTestCase {
         XCTAssertTrue(p.last!.contains("Nothing is pushed or merged"))
     }
 }
+
+/// LAB-2055: the last-result value on a family's page (the gallery's mono "No run yet" line is gone, LAB-2056).
+final class LoopLastResultTests: XCTestCase {
+    func run(_ result: String, _ started: String = "2026-10-30T03:00:00Z") -> LoopLedger.Run {
+        LoopLedger.Run(id: UUID().uuidString, loop: "x", engine: "roofd", mode: "live", started: started, ended: started, result: result, cost: nil, summary: "")
+    }
+    func test_LAB2055_VIEW_lastResultText() {
+        XCTAssertEqual(LoopFamilies.lastResult(runs: []), "Never run")
+        XCTAssertEqual(LoopFamilies.lastResult(runs: [run("failed"), run("failed"), run("done")]), "failed ×2")
+        XCTAssertEqual(LoopFamilies.lastResult(runs: [run("done", "2026-10-30T12:00:00Z"), run("failed")]), "done · Oct 30")
+        XCTAssertTrue(LoopFamilies.lastResult(runs: [], lastRunAt: Date(timeIntervalSince1970: 1_761_800_000)).hasPrefix("ran · "))
+    }
+}

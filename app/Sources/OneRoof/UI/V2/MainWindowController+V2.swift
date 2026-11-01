@@ -130,7 +130,6 @@ extension MainWindowController {
             if self?.v2Page != "All windows" { self?.v2Page = nil }
         }.store(in: &v2Bag)
         // Wall (A4.2) is the "All windows" page; leaving it (Esc, ⌘[, a place, a tile) goes back to Single.
-        // LAB-1831: Scroll is the "Scroll" page the same way.
         win.$layout.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] l in
             guard let self else { return }
             if let page = V2Layout.page(for: l) { self.v2ShowPage(page) }

@@ -6,6 +6,35 @@ import OneRoofCore
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
 ///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look | daylight|graphite|midnight: every panel> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
 ///   ONEROOF_SELFTEST_WIDTH=<pt>                 the window this wide (1.8.2: narrow-window and toolbar checks)
+///   ONEROOF_SELFTEST_INBOX=<0-7>                LAB-2042: with DEMO=1, the demo sessions ask you things (permission with
+///                                               4 options, menu, question, finished turn, plan, loop item, fixed answers;
+///                                               n ≥ 6 adds an answered ask), see SelfTestInbox.swift; INBOXPICK=<i> focuses
+///                                               block i (=decided: the newest decided ask), INBOXDECIDED=1 opens Decided, INBOXIMAGE=<png> attaches an image,
+///                                               INBOXREPLY=<text> sends a reply, INBOXPRESS=<n> presses option n,
+///                                               INBOXOFFLINE=1 makes the seeded sessions unreachable
+///   ONEROOF_SELFTEST_HISTORY=<n> · HISTORYFILTER=<f> · HISTORYNEW=<n> · ACTIONLOG=decisions|rules|open:<i> · ACTIONLOGFILTER=<f>
+///                                               LAB-2044–2048: seed History (one moment of every kind over three days, a
+///                                               deleted session, answered asks with options, rules; n > 1 adds n more),
+///                                               filter it, show the "N new ↑" pill, open the Action log (SelfTestHistory.swift).
+///                                               PLACE=history opens History (LAYOUT=scroll does too, LAB-2044)
+///   ONEROOF_SELFTEST_PROJECTS=1 · PROJECTSTATUSES=<ids|all> · PROJECTSQUERY=<text> · PROJECTSFOLD=<team keys|all>
+///                                               LAB-2050: the Projects page reads a fixture Linear (6 teams, 18 projects in
+///                                               every status, milestones and issues; never the network, writes refused) and
+///                                               starts with that status filter, text and folded teams (SelfTestProjects.swift);
+///                                               WORK=<code> picks a project, PLACE=work opens the page
+///   ONEROOF_SELFTEST_MACFIXTURE=<tabs|windows|sites|notasked|denied|safari|brave>   Resources › This Mac from fake
+///                                               data (SelfTestMacFixture.swift): a browser with fake windows and tabs,
+///                                               big and small helpers, a One Roof leftover and three running sessions
+///                                               (LAB-853, LAB-2052, LAB-2053). The real browser is never asked anything.
+///   ONEROOF_SELFTEST_TABCLOSE=tab:<id>,window:<id>,ask:<id>,hung:<id>,changed:<id> · TABHOVER=<tabId> · ALLPROCS=1
+///                                               LAB-2054: press Close on fake tabs and windows (logged to <out>.tabclose.txt,
+///                                               the row dropped from the fixture; never the owner's browser), draw a tab
+///                                               row hovered, open "All processes"
+///   ONEROOF_SELFTEST_LOOPVIEW=kinds|activity|kind:<family>|loop:<id>|empty   LAB-2055 (with PLACE=loops): the Loops page on
+///                                               Kinds (the four family cards), Activity, a family's page (watch, check,
+///                                               report, improve, other), a loop's pop-out card over Kinds, or the
+///                                               no-loops card (empty, drawn for the capture only); never saved.
+///                                               LOOPGALLERY=1 maps to kinds in the v2 window; LOOP=<id> opens the pop-out too
 ///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
 ///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)
 ///   ONEROOF_SELFTEST_TERMCOLS=<n>               LAB-1299: the width the TERMTEXT rows were cut at (rows that long rejoin)
@@ -140,7 +169,7 @@ enum SelfTest {
         if app.model.settings.ui2, let p = env["ONEROOF_SELFTEST_PLACE"], let place = Place(rawValue: p) { app.model.active.open(place) }
         if let l = env["ONEROOF_SELFTEST_LAYOUT"], let layout = SessionLayout(rawValue: l) {
             app.model.active.layout = layout
-        }
+        } else if env["ONEROOF_SELFTEST_LAYOUT"] == "scroll", app.model.settings.ui2 { app.model.active.open(.history) }   // LAB-2044
         if let f = Int(env["ONEROOF_SELFTEST_FOCUS"] ?? ""), let step = FocusStep(rawValue: f) { app.model.active.focusStep = step }
         // SELECTFIRST=1 selects the window's first session (demo ids are random) so the Plan and session tabs have one.
         if env["ONEROOF_SELFTEST_SELECTFIRST"] == "1" {
@@ -167,7 +196,8 @@ enum SelfTest {
         //   LOOPPICK=<n>   Needs you shows its n-th loop item (failures and asks, then Today)
         //   LOOP=<id>      the Loops page opens that loop (its outcomes and rounds)
         //   LOOPDRAFT=<words>   the New loop editor opens with the rule-based draft of those words (LOOPPREVIEW=1 opens the dry run)
-        //   LOOPGALLERY=1  the Loops page shows the gallery
+        //   LOOPGALLERY=1  the Loops page shows the gallery (v2: Kinds, LAB-2055)
+        //   LOOPVIEW=kinds|activity|kind:<family>|loop:<id>   read by LoopsView itself (LAB-2055)
         if env.keys.contains(where: { $0.hasPrefix("ONEROOF_SELFTEST_LOOP") }) { app.model.refreshLoopInbox() }
         if let n = Int(env["ONEROOF_SELFTEST_LOOPPICK"] ?? "") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -184,6 +214,30 @@ enum SelfTest {
             }
         }
         if env["ONEROOF_SELFTEST_DEMO"] == "1" { seedDemo(app.model) }
+        if SelfTestProjects.active { SelfTestProjects.install(app.model) }   // LAB-2050: a fixture Linear (SelfTestProjects.swift)
+        SelfTestHistory.run(app, env: env)   // LAB-2044–2048: History and the Action log (SelfTestHistory.swift)
+        // LAB-2042 · the Inbox's blocks from the demo sessions (SelfTestInbox.swift says what each n adds).
+        if let n = Int(env["ONEROOF_SELFTEST_INBOX"] ?? "") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { SelfTestInbox.seed(app.model, count: n) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                if env["ONEROOF_SELFTEST_INBOXDECIDED"] == "1" { NotificationCenter.default.post(name: .inboxSelfTest, object: ["decided": true]) }
+                if env["ONEROOF_SELFTEST_INBOXPICK"] == "decided", let d = app.model.inboxDecided.first {   // the newest decided ask
+                    app.model.needsPick = d.id.uuidString
+                } else if let i = Int(env["ONEROOF_SELFTEST_INBOXPICK"] ?? ""), i < app.model.inboxLayout.all.count {
+                    app.model.needsPick = app.model.inboxLayout.all[i].id
+                }
+            }
+            if let text = env["ONEROOF_SELFTEST_INBOXREPLY"] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["reply": text]) }
+            }
+            if let k = Int(env["ONEROOF_SELFTEST_INBOXPRESS"] ?? "") {
+                let at = Double(env["ONEROOF_SELFTEST_INBOXPRESSAT"] ?? "") ?? 6.2
+                DispatchQueue.main.asyncAfter(deadline: .now() + at) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["press": k]) }
+            }
+            if let png = env["ONEROOF_SELFTEST_INBOXIMAGE"] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["attach": png]) }
+            }
+        }
         if env["ONEROOF_SELFTEST_FOUNDATIONS"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.showFoundations(nil) } }
         if let w = env["ONEROOF_SELFTEST_WORK"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.model.workMode = true; app.model.loadWorkstreams() }
@@ -543,7 +597,9 @@ enum SelfTest {
              "account": i.account ?? "", "repo": i.repoLabel, "workstream": i.session.workstream ?? "",
              "live": i.liveAgent ?? "", "adopted": i.adopted ? "yes" : "no"]
         }
+        let inbox = app.model.inboxLayout.all.map { "\($0.kind.rawValue) \($0.id)" }   // LAB-2042: the Inbox's blocks, top to bottom
         let meta: [String: Any] = ["rows": rows, "runtime": app.model.runtimeState, "selected": app.model.selectedId ?? "",
+                                   "inbox": inbox, "inboxBadge": app.model.needsYouBadge, "loopItems": LoopInboxState.shared.items.map(\.id),
                                    "firstResponder": app.main.window?.firstResponder.map { String(describing: Swift.type(of: $0)) } ?? "-",
                                    "themes": [app.model.themes.sidebar.rawValue, app.model.themes.terminal.rawValue, app.model.themes.plan.rawValue],
                                    "grouping": app.model.grouping.rawValue, "error": app.model.lastError ?? "",

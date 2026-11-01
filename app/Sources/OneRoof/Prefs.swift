@@ -17,6 +17,16 @@ enum Prefs {
         return d
     }()
 
+    /// LAB-2050 · page state a view remembers (the Projects filter, chips and folded teams): `defaults`, except in a
+    /// self-test, where it is a separate suite emptied at launch, so a capture never changes the owner's settings.
+    static let viewState: UserDefaults = {
+        guard ProcessInfo.processInfo.environment.keys.contains(where: { $0.hasPrefix("ONEROOF_SELFTEST_") }), !freshProfile,
+              let d = UserDefaults(suiteName: selfTestSuite) else { return defaults }
+        d.removePersistentDomain(forName: selfTestSuite)
+        return d
+    }()
+    static let selfTestSuite = "io.github.gaurav8936.oneroof.selftest"
+
     /// Test only (1.8.1 real-profile audit): ONEROOF_PROFILE_SEED=<plist> imports an exported defaults domain into the
     /// emptied fresh suite, so a self-test starts with someone's real settings and window state. Honoured only with a
     /// fresh profile: it can never write the app's own defaults domain.

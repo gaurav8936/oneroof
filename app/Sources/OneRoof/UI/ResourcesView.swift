@@ -24,7 +24,7 @@ struct ResourcesView: View {
     @ViewBuilder private var watchedBody: some View {
         let snap = res.snapshot
         let groups = ResourceBoard.group(rows(snap), windows: model.windows.map { ($0.id, $0.name) }, sort: sort)
-        FleetPage(title: v2 ? "Machine" : "Resources", subtitle: subtitle(snap)) {
+        FleetPage(title: "Resources", subtitle: subtitle(snap)) {
             HStack(spacing: 10) {
                 Text("Sort").ui(12.5).foregroundStyle(t.text2.color)
                 Segmented(options: [(ResourceSort.heaviest, "Heaviest"), (.name, "Name")], selection: $sort)
@@ -73,7 +73,7 @@ struct ResourcesView: View {
         return ResourceBoard.rows(items: model.items, sessions: snap.sessions, window: { i in
             let home = model.workspaceId(of: i)
             return open.contains(home) ? home : nil
-        }, title: { live[$0]?.title })
+        }, title: { live[$0]?.title ?? SelfTestMacFixture.sessionTitle($0) })
     }
 
     // MARK: v2 (A8): four meters, then This Mac by app | One Roof itself + sessions (this window first)
@@ -84,14 +84,14 @@ struct ResourcesView: View {
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 v2Meter("One Roof memory", ResourceFormat.bytes(snap.footprint), "\(snap.processCount) processes", tint: nil) {
-                    Sparkline(values: total.map { Double($0.footprint) }, color: t.accent).frame(height: 26)
+                    Sparkline(values: total.map { Double($0.footprint) }, color: t.resourceMarks.bar).frame(height: 26)
                 }
                 v2Meter("One Roof CPU", ResourceFormat.cpu(snap.cpu), "last 10 minutes", tint: nil) {
-                    Sparkline(values: total.map(\.cpu), color: t.statusRunning, floor: 100).frame(height: 26)
+                    Sparkline(values: total.map(\.cpu), color: t.resourceMarks.bar, floor: 100).frame(height: 26)
                 }
                 if let m = snap.mac {
                     v2Meter("This Mac", "\(ResourceFormat.bytes(m.used)) of \(ResourceFormat.bytes(m.total))", "Memory \(m.label) · swap \(ResourceFormat.bytes(m.swapUsed))", tint: pressureColour(m.pressure)) {
-                        Meter(fraction: Double(m.used) / Double(max(m.total, 1)), colour: pressureColour(m.pressure) ?? t.accent)
+                        Meter(fraction: Double(m.used) / Double(max(m.total, 1)), colour: pressureColour(m.pressure) ?? t.resourceMarks.bar)
                     }
                 }
                 v2Meter("roofd", snap.daemon.map { ResourceFormat.bytes($0.footprint) } ?? "not found",
@@ -112,7 +112,7 @@ struct ResourcesView: View {
                             }
                         }
                         ForEach(mine) { g in windowCard(g) }
-                        Text("roofd warns at 1.0 GB and ends a session at 2.0 GB.").ui(11.5).foregroundStyle(t.text3.color)
+                        Text("roofd warns at 1.0 GB and ends a session at 2.0 GB.").ui(11.5).foregroundStyle(t.text2.color)
                     }
                     .padding(.bottom, 8)
                 }
@@ -127,7 +127,7 @@ struct ResourcesView: View {
             VStack(alignment: .leading, spacing: 5) {
                 MicroLabel(label)
                 Text(value).ui(20, .semibold).monospacedDigit().foregroundStyle((tint ?? t.text).color).lineLimit(1).minimumScaleFactor(0.8)
-                Text(note).ui(11.5).foregroundStyle((tint ?? t.text3).color).lineLimit(1)
+                Text(note).ui(11.5).foregroundStyle((tint ?? t.text2).color).lineLimit(1)
                 below
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,24 +142,24 @@ struct ResourcesView: View {
         return Card(padding: 16) {
             HStack(alignment: .top, spacing: 22) {
                 stat("One Roof memory", ResourceFormat.bytes(s.footprint), tint: nil) {
-                    Sparkline(values: total.map { Double($0.footprint) }, color: t.accent).frame(height: 30)
+                    Sparkline(values: total.map { Double($0.footprint) }, color: t.resourceMarks.bar).frame(height: 30)
                 }
                 .accessibilityLabel("One Roof memory \(ResourceFormat.bytes(s.footprint))")
                 stat("One Roof CPU", ResourceFormat.cpu(s.cpu), tint: nil) {
-                    Sparkline(values: total.map(\.cpu), color: t.statusRunning, floor: 100).frame(height: 30)
+                    Sparkline(values: total.map(\.cpu), color: t.resourceMarks.bar, floor: 100).frame(height: 30)
                 }
                 .accessibilityLabel("One Roof CPU \(ResourceFormat.cpu(s.cpu))")
                 stat("Processes", "\(s.processCount)", tint: nil) {
-                    Text("app, roofd, holders and everything they run").ui(11.5).foregroundStyle(t.text3.color)
+                    Text("app, roofd, holders and everything they run").ui(11.5).foregroundStyle(t.text2.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: 170)
                 if let m = s.mac {
                     stat("This Mac", "\(ResourceFormat.bytes(m.used)) of \(ResourceFormat.bytes(m.total))", tint: pressureColour(m.pressure)) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Meter(fraction: Double(m.used) / Double(max(m.total, 1)), colour: pressureColour(m.pressure) ?? t.accent)
+                            Meter(fraction: Double(m.used) / Double(max(m.total, 1)), colour: pressureColour(m.pressure) ?? t.resourceMarks.bar)
                             Text("Memory \(m.label) · swap \(ResourceFormat.bytes(m.swapUsed))").ui(11.5)
-                                .foregroundStyle((pressureColour(m.pressure) ?? t.text3).color)
+                                .foregroundStyle((pressureColour(m.pressure) ?? t.text2).color)
                         }
                     }
                     .accessibilityLabel("This Mac: \(ResourceFormat.bytes(m.used)) of \(ResourceFormat.bytes(m.total)) used, memory \(m.label), swap \(ResourceFormat.bytes(m.swapUsed))")
@@ -181,8 +181,8 @@ struct ResourcesView: View {
     private func pressureColour(_ p: MacMemory.Pressure) -> RGB? {
         switch p {
         case .normal: return nil
-        case .warn: return t.now
-        case .critical: return t.needsText
+        case .warn: return t.resourceMarks.warn
+        case .critical: return t.resourceMarks.near
         }
     }
 
@@ -219,21 +219,23 @@ struct ResourcesView: View {
                         headroom: Headroom?, holder: UInt64? = nil) -> some View {
         let level = headroom?.level(holder ?? memory) ?? .ok
         return HStack(spacing: 12) {
+            // LAB-2052: the name keeps one line ("One / Roof / app" wrapped at 1280); the note and the bar give way.
             VStack(alignment: .leading, spacing: 2) {
-                Text(name).ui(13, .semibold).foregroundStyle(t.text.color)
-                if let note { Text(note).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1) }
+                Text(name).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1).fixedSize()
+                if let note { Text(note).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail) }
             }
+            .layoutPriority(1)
             Spacer(minLength: 8)
-            Text("pid \(pid)").ui(11, mono: true).foregroundStyle(t.text3.color).frame(width: 74, alignment: .trailing)
+            Text("pid \(pid)").ui(11, mono: true).foregroundStyle(t.text2.color).frame(width: 74, alignment: .trailing)
             Text(started.map { "up " + ResourceFormat.uptime(Date().timeIntervalSince($0)) } ?? "").ui(11.5).foregroundStyle(t.text2.color)
-                .frame(width: 70, alignment: .trailing)
+                .lineLimit(1).frame(width: 60, alignment: .trailing)
             Text(ResourceFormat.cpu(cpu)).ui(12.5, mono: true).foregroundStyle(t.text2.color).frame(width: 58, alignment: .trailing)
             Text(ResourceFormat.bytes(memory)).ui(12.5, .semibold, mono: true).foregroundStyle(memoryColour(level).color)
                 .frame(width: 72, alignment: .trailing)
             Group {
                 if let headroom { HeadroomBar(headroom: headroom, footprint: holder ?? memory) } else { Color.clear }
             }
-            .frame(width: 150)
+            .frame(minWidth: 106, idealWidth: 150, maxWidth: 150)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
         .accessibilityElement(children: .combine)
@@ -244,7 +246,7 @@ struct ResourcesView: View {
     private func header(_ title: String, detail: String?) -> some View {
         HStack(spacing: 8) {
             Text(title).ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-            if let detail { Text(detail).ui(12).foregroundStyle(t.text3.color).lineLimit(1) }
+            if let detail { Text(detail).ui(12).foregroundStyle(t.text2.color).lineLimit(1) }
             Spacer()
         }
         .padding(.horizontal, 14).frame(height: 36)
@@ -253,8 +255,8 @@ struct ResourcesView: View {
     func memoryColour(_ l: Headroom.Level) -> RGB {
         switch l {
         case .ok: return t.text
-        case .warn: return t.now
-        case .nearLimit: return t.needsText
+        case .warn: return t.resourceMarks.warn
+        case .nearLimit: return t.resourceMarks.near
         }
     }
 
@@ -266,7 +268,7 @@ struct ResourcesView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
                     Text(g.name).ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                    Text("\(g.rows.count)").ui(12).foregroundStyle(t.text3.color)
+                    Text("\(g.rows.count)").ui(12).foregroundStyle(t.text2.color)
                     Spacer()
                     Text(ResourceFormat.cpu(g.cpu) + " CPU").ui(12, mono: true).foregroundStyle(t.text2.color)
                     Text(ResourceFormat.bytes(g.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(t.text.color)
@@ -286,11 +288,11 @@ struct ResourcesView: View {
 
     private func sessionRow(_ r: ResourceRow) -> some View {
         let item = model.item(r.id)
+        // LAB-2052: a row without a One Roof session is no longer drawn disabled (dimmed below 4.5:1); it just does nothing.
         return Button { if let item { model.reveal(item) } } label: { sessionRowLabel(r, item) }
             .buttonStyle(.plain)
-            .hoverHighlight()
+            .hoverHighlight(over: t.surface)   // LAB-2052: a hover you can see
             .padding(.horizontal, 4)
-            .disabled(item == nil)
             .help(item == nil ? "Running in roofd without a One Roof row" : "Show \(r.name)")
             .accessibilityElement(children: .combine)
             .accessibilityLabel(rowLabel(r, item))
@@ -300,7 +302,7 @@ struct ResourcesView: View {
     private func rowLabel(_ r: ResourceRow, _ item: BoardItem?) -> String {
         let u = r.usage
         var s = r.name
-        if let item { s += ", " + StatusPalette.label(item.status) }
+        if let st = item?.status ?? SelfTestMacFixture.sessionStatus(r.id) { s += ", " + StatusPalette.label(st) }
         s += ", memory \(ResourceFormat.bytes(u.footprint)), CPU \(ResourceFormat.cpu(u.cpu))"
         if u.holderPid != nil { s += ", holder \(ResourceFormat.bytes(u.holderFootprint)) of \(ResourceFormat.bytes(u.headroom.limitBytes))" }
         return s
@@ -315,23 +317,26 @@ struct ResourcesView: View {
     private func sessionRowLabel(_ r: ResourceRow, _ item: BoardItem?) -> some View {
         let u = r.usage
         let points: [Double] = res.history.points(u.runtimeId).map { Double($0.footprint) }
-        let lineColour: RGB = u.level == .ok ? t.accent : memoryColour(u.level)
+        let lineColour: RGB = u.level == .ok ? t.resourceMarks.bar : memoryColour(u.level)
         let n = u.procs.count
-        let sub = "\(n) process\(n == 1 ? "" : "es")" + (item == nil ? " · not a One Roof row" : "")
+        let sub = "\(n) process\(n == 1 ? "" : "es")" + (item == nil && SelfTestMacFixture.sessionStatus(r.id) == nil ? " · not a One Roof row" : "")
         return HStack(spacing: 10) {
             badge(item)
             VStack(alignment: .leading, spacing: 1) {
                 Text(r.name).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                Text(sub).ui(11).foregroundStyle(t.text3.color).lineLimit(1)
+                Text(sub).ui(11).foregroundStyle(t.text2.color).lineLimit(1)
             }
-            .frame(minWidth: 120, alignment: .leading)
-            if let item { StatusPill(status: item.status) }
+            .frame(minWidth: 90, alignment: .leading)
+            .layoutPriority(1)
+            if let item { StatusPill(status: item.status, strongEdge: true) }
+            else if let s = SelfTestMacFixture.sessionStatus(r.id) { StatusPill(status: s, strongEdge: true) }   // self-test sessions
             Spacer(minLength: 8)
-            Sparkline(values: points, color: lineColour).frame(width: 96, height: 22)
-            Text(ResourceFormat.cpu(u.cpu)).ui(12.5, mono: true).foregroundStyle(t.text2.color).frame(width: 58, alignment: .trailing)
+            // LAB-2052: the sparkline and the headroom bar give way at 1280 so nothing runs past the card.
+            Sparkline(values: points, color: lineColour).frame(minWidth: 40, idealWidth: 96, maxWidth: 96).frame(height: 22)
+            Text(ResourceFormat.cpu(u.cpu)).ui(12.5, mono: true).foregroundStyle(t.text2.color).frame(width: 50, alignment: .trailing)
             Text(ResourceFormat.bytes(u.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(memoryColour(u.level).color)
-                .frame(width: 72, alignment: .trailing)
-            headroom(u).frame(width: 150, alignment: .leading)
+                .frame(width: 66, alignment: .trailing)
+            headroom(u).frame(minWidth: 106, idealWidth: 150, maxWidth: 150, alignment: .leading)
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
         .contentShape(Rectangle())
@@ -341,7 +346,7 @@ struct ResourcesView: View {
         if u.holderPid != nil {
             HeadroomBar(headroom: u.headroom, footprint: u.holderFootprint, warned: u.memoryWarning)
         } else {
-            Text("holder unknown").ui(11).foregroundStyle(t.text3.color)
+            Text("holder unknown").ui(11).foregroundStyle(t.text2.color)
         }
     }
 }
@@ -372,10 +377,10 @@ struct Sparkline: View {
                         p.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: g.size.height))
                         p.closeSubpath()
                     }
-                    .fill(color.color.opacity(0.14))
-                    Path { p in p.addLines(pts) }.stroke(color.color, style: StrokeStyle(lineWidth: 1.4, lineJoin: .round))
+                    .fill(color.color.opacity(ResourceMarks.sparkFill))   // LAB-2052: was 0.14
+                    Path { p in p.addLines(pts) }.stroke(color.color, style: StrokeStyle(lineWidth: ResourceMarks.sparkLine, lineJoin: .round))   // was 1.4
                 } else if let pt = pts.first {
-                    Circle().fill(color.color).frame(width: 3, height: 3).position(pt)
+                    Circle().fill(color.color).frame(width: 4, height: 4).position(pt)
                 }
             }
         }
@@ -383,7 +388,7 @@ struct Sparkline: View {
     }
 }
 
-/// A thin bar 0…1 (the Mac's memory).
+/// A thin bar 0…1 (the Mac's memory). LAB-2052: 6 pt, on a track you can see (ResourceMarks).
 struct Meter: View {
     @Environment(\.theme) private var t
     let fraction: Double
@@ -391,11 +396,11 @@ struct Meter: View {
     var body: some View {
         GeometryReader { g in
             ZStack(alignment: .leading) {
-                Capsule().fill(t.separator.color)
+                Capsule().fill(t.resourceMarks.track.color)
                 Capsule().fill(colour.color).frame(width: max(3, g.size.width * CGFloat(min(1, max(0, fraction)))))
             }
         }
-        .frame(height: 5)
+        .frame(height: ResourceMarks.barHeight)
         .accessibilityHidden(true)
     }
 }
@@ -409,23 +414,24 @@ struct HeadroomBar: View {
     var warned = false
 
     var body: some View {
+        let m = t.resourceMarks
         let level = max(headroom.level(footprint), warned ? .warn : .ok)
-        let colour: RGB = level == .nearLimit ? t.needsText : level == .warn ? t.now : t.statusRunning
+        let colour: RGB = level == .nearLimit ? m.near : level == .warn ? m.warn : m.bar
         VStack(alignment: .leading, spacing: 3) {
             GeometryReader { g in
-                // The bar is 5 pt, centred in a 9 pt row so the warn tick stands out above and below it without
-                // running into the label underneath.
+                // The bar is 6 pt (LAB-2052, was 5), centred in a 10 pt row so the warn tick stands out above and below
+                // it without running into the label underneath.
                 ZStack(alignment: .leading) {
-                    Capsule().fill(t.separator.color).frame(height: 5)
-                    Capsule().fill(colour.color).frame(width: max(3, g.size.width * CGFloat(headroom.fraction(footprint))), height: 5)
-                    Rectangle().fill(t.text2.color).frame(width: 1.5, height: 9)
+                    Capsule().fill(m.track.color).frame(height: ResourceMarks.barHeight)
+                    Capsule().fill(colour.color).frame(width: max(3, g.size.width * CGFloat(headroom.fraction(footprint))), height: ResourceMarks.barHeight)
+                    Rectangle().fill(m.tick.color).frame(width: 1.5, height: 10)
                         .offset(x: g.size.width * CGFloat(headroom.fraction(headroom.warnBytes)) - 0.75)
                 }
-                .frame(height: 9)
+                .frame(height: 10)
             }
-            .frame(height: 9)
+            .frame(height: 10)
             Text("\(ResourceFormat.bytes(footprint)) of \(ResourceFormat.bytes(headroom.limitBytes))")
-                .ui(10.5, mono: true).foregroundStyle((level == .ok ? t.text3 : colour).color).lineLimit(1)
+                .ui(10.5, mono: true).foregroundStyle((level == .ok ? t.text2 : colour).color).lineLimit(1)
         }
         .accessibilityElement()
         .accessibilityLabel("Holder memory \(ResourceFormat.bytes(footprint)) of the \(ResourceFormat.bytes(headroom.limitBytes)) limit, warning at \(ResourceFormat.bytes(headroom.warnBytes))")
@@ -478,7 +484,7 @@ struct SessionResourcesTab: View {
         }
         VStack(alignment: .leading, spacing: 6) {
             chartLabel("Memory, last 10 minutes", peak: points.map(\.footprint).max().map(ResourceFormat.bytes))
-            Sparkline(values: points.map { Double($0.footprint) }, color: u.level == .ok ? t.accent : colour(u.level)).frame(height: 44)
+            Sparkline(values: points.map { Double($0.footprint) }, color: u.level == .ok ? t.resourceMarks.bar : colour(u.level)).frame(height: 44)
             chartLabel("CPU, last 10 minutes", peak: points.map(\.cpu).max().map { ResourceFormat.cpu($0) })
             Sparkline(values: points.map(\.cpu), color: t.statusRunning, floor: 100).frame(height: 32)
         }
@@ -504,7 +510,7 @@ struct SessionResourcesTab: View {
                 Text("CPU").frame(width: 46, alignment: .trailing)
                 Text("Memory").frame(width: 62, alignment: .trailing)
             }
-            .ui(10.5, .semibold).foregroundStyle(t.text3.color).padding(.vertical, 3)
+            .ui(10.5, .semibold).foregroundStyle(t.text2.color).padding(.vertical, 3)
             .accessibilityHidden(true)
             Hairline()
             ForEach(u.procs) { p in
@@ -513,7 +519,7 @@ struct SessionResourcesTab: View {
                         .lineLimit(1).truncationMode(.middle)
                         .padding(.leading, CGFloat(min(p.depth, 6)) * 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("\(p.pid)").ui(11, mono: true).foregroundStyle(t.text3.color).frame(width: 52, alignment: .trailing)
+                    Text("\(p.pid)").ui(11, mono: true).foregroundStyle(t.text2.color).frame(width: 52, alignment: .trailing)
                     Text(ResourceFormat.cpu(p.cpu)).ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 46, alignment: .trailing)
                     Text(ResourceFormat.bytes(p.footprint)).ui(11.5, .semibold, mono: true)
                         .foregroundStyle((p.role == .holder ? colour(u.headroom.level(p.footprint)) : t.text).color)
@@ -532,9 +538,9 @@ struct SessionResourcesTab: View {
 
     private func chartLabel(_ s: String, peak: String?) -> some View {
         HStack {
-            Text(s).ui(11.5).foregroundStyle(t.text3.color)
+            Text(s).ui(11.5).foregroundStyle(t.text2.color)
             Spacer()
-            if let peak { Text("peak \(peak)").ui(11, mono: true).foregroundStyle(t.text3.color) }
+            if let peak { Text("peak \(peak)").ui(11, mono: true).foregroundStyle(t.text2.color) }
         }
     }
 }

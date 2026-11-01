@@ -11,7 +11,7 @@ final class ThemeV2Tests: XCTestCase {
             for (bgName, bg) in [("window", k.window), ("sidebar", k.sidebar), ("surface", k.surface)] {
                 XCTAssertGreaterThanOrEqual(RGB.contrast(k.text, bg), 7, "\(t) text/\(bgName)")
                 XCTAssertGreaterThanOrEqual(RGB.contrast(k.text2, bg), 4.5, "\(t) text2/\(bgName)")
-                XCTAssertGreaterThanOrEqual(RGB.contrast(k.text3, bg), 3, "\(t) text3/\(bgName)")
+                XCTAssertGreaterThanOrEqual(RGB.contrast(k.text3, bg), 4.5, "\(t) text3/\(bgName) (LAB-2071: meta text is read)")
             }
             XCTAssertGreaterThanOrEqual(RGB.contrast(k.accentText, k.window), 4.5, "\(t) accentText")
             XCTAssertGreaterThanOrEqual(RGB.contrast(k.now, k.surface), 4.5, "\(t) now on surface")
@@ -97,7 +97,37 @@ final class ThemeV2Tests: XCTestCase {
         XCTAssertEqual(RGB(rgba: 0x0A84FF33).alpha, 0x33 / 255, accuracy: 0.001)
         XCTAssertEqual(RGB(0x000000, alpha: 0.5).over(RGB(0xFFFFFF)).hex, 0x808080)
     }
+
+    /// LAB-2045 · History: every kind's word on its row fill ≥ 4.5:1 (an error on its tinted fill, your answer on the
+    /// selection fill, the rest on the session card), and every bar ≥ 3:1 against the card, in all three themes.
+    /// LAB-2048 · the Action log's answer glyph colours on its card and on a hovered (selection) row.
+    func test_LAB2045_historyKindColoursOnTheirFillsAndBars() {
+        for t in [ThemeName.daylight, .graphite, .midnight] {
+            let k = t.tokens
+            for kind in ScrollEntry.Kind.allCases {
+                let st = kind.style
+                let fill = st.treatment == .errorFill ? k.historyErrorFill : k.card
+                XCTAssertGreaterThanOrEqual(RGB.contrast(st.colour.rgb(k), fill), 4.5, "\(t) \(kind) word on its fill")
+                XCTAssertGreaterThanOrEqual(RGB.contrast(k.text, fill), 4.5, "\(t) \(kind) body text on its fill")
+                XCTAssertGreaterThanOrEqual(RGB.contrast(k.text2, fill), 4.5, "\(t) \(kind) date on its fill")
+                switch st.treatment {
+                case .bar(let c): XCTAssertGreaterThanOrEqual(RGB.contrast(c.bar(k), k.card), 3, "\(t) \(kind) bar vs card")
+                case .errorFill: XCTAssertGreaterThanOrEqual(RGB.contrast(k.needsText, k.card), 3, "\(t) error bar vs card")
+                default: break
+                }
+            }
+            let sel = k.selection.over(k.card)
+            XCTAssertGreaterThanOrEqual(RGB.contrast(k.text, sel), 4.5, "\(t) You row text on selection")
+            XCTAssertGreaterThanOrEqual(RGB.contrast(k.text2, sel), 4.5, "\(t) You row date on selection")
+            for a in ActionLogAnswer.allCases {
+                XCTAssertGreaterThanOrEqual(RGB.contrast(a.colour.rgb(k), k.card), 4.5, "\(t) action log \(a) on card")
+                XCTAssertGreaterThanOrEqual(RGB.contrast(a.colour.rgb(k), k.rowHover), 4.5, "\(t) action log \(a) on a hovered row")
+            }
+            XCTAssertGreaterThanOrEqual(RGB.contrast(k.separatorStrong, k.window), 3, "\(t) card edge vs window")
+        }
+    }
 }
+
 
 final class PanelThemesV2Tests: XCTestCase {
     func testDefaults() {
@@ -132,5 +162,65 @@ final class PanelThemesV2Tests: XCTestCase {
         XCTAssertEqual(chosen.forAppearance(systemDark: true, follow: false), chosen)
         XCTAssertEqual(chosen.forAppearance(systemDark: true, follow: true),
                        PanelThemes(sidebar: .midnight, files: .graphite, terminal: .midnight, plan: .midnight, centre: .midnight))
+    }
+}
+
+/// LAB-2071: the shared contrast pass. Meta text (text3) is read, so it gets body contrast on every page, card and row
+/// background; strong edges (card and control borders) reach the 3:1 that UI parts need; hairlines stay visible.
+final class ContrastPassTests: XCTestCase {
+    func test_LAB2071_metaTextEdgesAndHairlines() {
+        for t in ThemeName.panelChoices {
+            let k = t.tokens
+            for (bn, bg) in [("window", k.window), ("toolbar", k.toolbar), ("sidebar", k.sidebar), ("surface", k.surface), ("surface2", k.surface2)] {
+                XCTAssertGreaterThanOrEqual(RGB.contrast(k.text3, bg), 4.5, "\(t) text3/\(bn)")
+                XCTAssertGreaterThanOrEqual(RGB.contrast(k.text2, bg), 4.5, "\(t) text2/\(bn)")
+            }
+            for (bn, bg) in [("window", k.window), ("sidebar", k.sidebar), ("surface", k.surface), ("surface2", k.surface2)] {
+                XCTAssertGreaterThanOrEqual(RGB.contrast(k.separatorStrong, bg), 3, "\(t) strong edge/\(bn)")
+            }
+            XCTAssertGreaterThanOrEqual(RGB.contrast(k.separator, k.surface), 1.35, "\(t) hairline/surface")
+        }
+    }
+}
+
+/// LAB-2039 · LAB-2049: the places say what they hold.
+final class PlaceNamesTests: XCTestCase {
+    func test_LAB2039_LAB2049_placeTitles() {
+        XCTAssertEqual(Place.machine.title, "Resources")
+        XCTAssertEqual(Place.work.title, "Projects")
+        XCTAssertFalse(Place.allCases.map(\.title).contains("Machine"))
+        XCTAssertFalse(Place.allCases.map(\.title).contains("Work"))
+    }
+}
+
+/// LAB-2039 · LAB-2049 · LAB-2072: shortcuts the owner set under the old place names keep working.
+final class PlaceRenameShortcutTests: XCTestCase {
+    func test_LAB2039_machineShortcutReachesResources() {
+        XCTAssertEqual(MenuRenames.carry(["Machine": "⌘J"])["Resources"], "⌘J")
+    }
+    func test_LAB2049_workShortcutReachesProjects() {
+        XCTAssertEqual(MenuRenames.carry(["Work": "⌘J"])["Projects"], "⌘J")
+        XCTAssertEqual(MenuRenames.carry(["Work: Projects and Roadmap": "⌘J"])["Projects"], "⌘J", "through the chain")
+    }
+    func test_LAB2072_evalsShortcutReachesDraftTitle() {
+        XCTAssertEqual(MenuRenames.carry(["Evals": "⌘J"])[EvalsDraft.menuTitle], "⌘J")
+    }
+}
+
+/// QA M4: an agent's status line is never shown as a finished turn's message.
+final class StatusLineTests: XCTestCase {
+    func test_statusLineIsChrome() {
+        XCTAssertTrue(TerminalText.isStatusLine("[Claude1] you@example.edu · Max 20x · 7d 9%"))
+        XCTAssertTrue(TerminalText.isChrome("  [C2] me@host · Pro · 5h 24%"))
+        XCTAssertFalse(TerminalText.isStatusLine("I've filed three bugs · all in Backlog"))
+        XCTAssertFalse(TerminalText.isStatusLine("[note] tests pass · 100% of them run"), "a sentence, not a status line: has words after")
+    }
+}
+
+/// Final QA: the Learn note never repeats the same range or lists fewer ranges than it names.
+final class LearnRangesPhraseTests: XCTestCase {
+    func test_rangesPhrase() {
+        XCTAssertEqual(EvalLessonExamples.rangesPhrase(["34–100 %", "34–100 %", "34–100 %"]), "each one's range is 34–100 %")
+        XCTAssertEqual(EvalLessonExamples.rangesPhrase(["34–100 %", "12–60 %", "34–100 %"]), "their ranges are 34–100 % and 12–60 %")
     }
 }

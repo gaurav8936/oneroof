@@ -60,7 +60,7 @@ final class StoreV2Tests: XCTestCase {
 
     func testFeedNewestFirstAndPrune() throws {
         let store = try SessionStore(path: path)
-        let old = FeedEvent(at: now.addingTimeInterval(-8 * 86_400), sessionId: "s", kind: .done, text: "old")
+        let old = FeedEvent(at: now.addingTimeInterval(-31 * 86_400), sessionId: "s", kind: .done, text: "old")   // LAB-2046: 30 days
         let mid = FeedEvent(at: now.addingTimeInterval(-3600), sessionId: "s", kind: .finding, text: "mid", chapter: 2)
         let new = FeedEvent(at: now, sessionId: "s", kind: .error, text: "new")
         [old, mid, new].forEach(store.append)

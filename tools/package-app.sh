@@ -66,7 +66,7 @@ APP="$STAGE/src/app/build/One Roof.app"
 fi
 # LAB-1257 · the skill-linking script, One Roof's own routing rules and the deck's catalog (it carries the Learn bands).
 # 1.9.2 (LAB-1274): no course is required (or packaged) any more.
-for need in agentic_engineering agentic_engineering/scripts/sync-skills.sh agentic_engineering/deck/content/catalog.json agentic_engineering/learn/learn-manifest.json agentic_engineering/learn/ggae.js agent-routing/routing.json agent-routing/roles.json evals/roof_eval.py evals/requirements.txt evals/starter.json THIRD-PARTY-NOTICES.md licenses/Qwen3-LICENSE.txt MacOS/OneRoof MacOS/roofd Library/LaunchAgents/io.github.gaurav8936.oneroof.roofd.plist; do
+for need in agentic_engineering agentic_engineering/scripts/sync-skills.sh agentic_engineering/deck/content/catalog.json agentic_engineering/learn/learn-manifest.json agentic_engineering/learn/ggae.js agent-routing/routing.json agent-routing/roles.json evals/roof_eval.py evals/requirements.txt evals/starter.json evals/evalset.py evals/judge.py evals/published_scores.py evals/score_sources.json evals/anatomy.json evals/lessons.json evals/published-scores.loop.yaml evals/agent_runner.py evals/lmeval_adapter.py evals/xray.py THIRD-PARTY-NOTICES.md licenses/Qwen3-LICENSE.txt MacOS/OneRoof MacOS/roofd Library/LaunchAgents/io.github.gaurav8936.oneroof.roofd.plist; do
   [ -e "$APP/Contents/Resources/$need" ] || [ -e "$APP/Contents/$need" ] || { echo "package-app: $need missing from the bundle" >&2; exit 1; }
 done
 grep -q '"bands"' "$APP/Contents/Resources/agentic_engineering/deck/content/catalog.json" || { echo "package-app: the deck catalog has no Learn bands (deck repository main predates LAB-1257)" >&2; exit 1; }

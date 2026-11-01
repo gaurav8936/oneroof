@@ -20,7 +20,7 @@ extension AppModel {
                                   repoPath: i.session.repoPath, launchDirectory: i.session.launchDirectory, ticket: i.session.ticket,
                                   launchedAt: i.session.launchedAt, lastActive: lastActiveDate(i), added: st?.added, removed: st?.removed, plan: plan,
                                   visible: inView.contains(i.id),
-                                  question: lastSnapshotSessions[i.liveAgent ?? ""]?.question)
+                                  question: lastSnapshotSessions[i.liveAgent ?? ""]?.question, isLoop: SessionScope.isLoop(i.session))
         }
         engines.modelAllowed = settings.captionsModel
         engines.tick(live)
@@ -76,22 +76,44 @@ extension AppModel {
     var openDecisions: [Decision] {
         // LAB-1827: a finished turn waits while its session is Ready or Idle (looking at it does not dismiss it).
         // LAB-1933: a loop round's asks reach you through its loop, not Needs you.
-        SessionScope.openDecisions(decisions) { item($0) }
+        let real = SessionScope.openDecisions(decisions) { item($0) }
+        guard !selfTestDecisions.isEmpty else { return real }
+        return (real + selfTestDecisions.filter(\.isOpen)).sorted { $0.askedAt < $1.askedAt }   // LAB-2042 self-test
     }
     /// Open prompts plus plans waiting for approval (S03 list, toolbar count, Dock badge).
     var openDecisionCount: Int { openDecisions.count + objectives.filter { $0.status == .review && $0.plan != nil }.count }
-    /// LAB-1933 · the Needs you badge everywhere (rail, icon row, menu bar, Dock): manual sessions only.
+    /// LAB-1933 · the Inbox badge everywhere (rail, icon row, menu bar, Dock): manual sessions only.
     var needsYouBadge: Int {
         SessionScope.needsYouCount(openAsks: openDecisions.count, plansWaiting: objectives.filter { $0.status == .review && $0.plan != nil }.count, items: items,
                                    loopItems: loopInbox.count)   // LAB-1866 · LAB-1919: loop items, never sessions
     }
 
     func answer(_ d: Decision, _ a: Answer, reply: String? = nil, choice: DecisionChoice? = nil) {
+        if answerSelfTest(d, choice.map { c in d.isMenu ? a : (c.meaning == .reply ? a : c.meaning) } ?? a,
+                          reply: choice.map { c in c.freeText ? reply ?? c.label : c.label } ?? reply, chosen: choice?.label) { return }
         engines.answer(d, a, reply: reply, choice: choice, pane: item(d.sessionId)?.paneId)
     }
 
-    /// LAB-1827: a finished turn leaves Needs you without closing the session.
-    func setAside(_ d: Decision) { engines.setAside(d) }
+    /// LAB-1827: a finished turn leaves the Inbox without closing the session.
+    func setAside(_ d: Decision) {
+        if answerSelfTest(d, .reply, reply: "set aside") { return }
+        engines.setAside(d)
+    }
+
+    /// LAB-2042: true when an answer can reach the session (it has a pane); the Inbox shows "Couldn't reach" otherwise.
+    func canReach(_ d: Decision) -> Bool {
+        selfTestDecisions.contains { $0.id == d.id } ? !SelfTestInbox.offline : item(d.sessionId)?.paneId != nil
+    }
+
+    /// The self-test's seeded asks are answered here (they have no pane), as the engine records a real answer.
+    private func answerSelfTest(_ d: Decision, _ a: Answer, reply: String?, chosen: String? = nil) -> Bool {
+        guard let i = selfTestDecisions.firstIndex(where: { $0.id == d.id }) else { return false }
+        selfTestDecisions[i].chosen = chosen ?? selfTestDecisions[i].chosen
+        selfTestDecisions[i].answer = a
+        selfTestDecisions[i].answeredAt = Date()
+        selfTestDecisions[i].replyText = reply
+        return true
+    }
 
     /// Dock badge = open decisions across all windows, else sessions that need you.
     /// LAB-1328: set only when the label changes (it ran after every poll; each set redraws the Dock tile).
