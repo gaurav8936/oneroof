@@ -23,7 +23,7 @@ public enum ActionLogAnswer: String, Codable, CaseIterable, Sendable {
     public static func of(_ d: Decision) -> ActionLogAnswer? {
         guard let a = d.answer else { return nil }
         let reply = d.replyText?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if reply == "answered in the terminal" { return .answeredInTerminal }
+        if TerminalReply.isTerminal(reply) { return .answeredInTerminal }
         if reply == "set aside" { return .setAside }
         if d.chosen != nil || (d.isMenu && a == .reply) { return .choseOption }
         switch a {

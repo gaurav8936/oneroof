@@ -319,6 +319,10 @@ enum SelfTestScript {
                 m.selectedId = it.id; log(out, "  selected \(it.session.name)")
             } else { log(out, "  nothing blocked") }
         case "demo": SelfTest.seedDemo(m); delay = 1
+        case "inboxseed":   // LAB-2110: the Inbox's demo asks in a script run (SelfTestInbox.seed; needs `demo` first)
+            SelfTestInbox.seed(m, count: Int(arg) ?? 7); delay = 1
+        case "historyseed":   // LAB-2107: History's demo moments in a script run (SelfTestHistory.seed)
+            SelfTestHistory.seed(m, extra: Int(arg) ?? 0); NotificationCenter.default.post(name: .historyChanged, object: nil); delay = 1
         case "scroll":   // LAB-1831 · LAB-2044: History's feed as the page shows it (newest first) → <name>.scroll.json
             let q = app.main.win.historyQuery
             let entries = HistoryLoader.load(m, query: q)

@@ -1,5 +1,45 @@
 # Changelog
 
+## 2.0.1 — Walkthrough fixes: smooth History, a cleaner Inbox, performance budgets on every place (1 Nov 2026)
+
+- **History scrolls smoothly** (LAB-2105). A hard fling deep into History froze for up to 1.1 s; now the longest pause
+  is under 30 ms, and History opens in about 80 ms instead of 650. Only the lines on screen are built, dates are
+  formatted once, sorting and filtering run in the background, and new moments wait until you stop scrolling.
+- **Every place has a performance budget** (LAB-2115). The release gate now opens every place, flings its list down
+  and back and opens it again on a copy of a real profile; a place that is slower than its budget stops the release.
+- **The Inbox shows only what is current** (LAB-2110, LAB-2082). Two tabs: **Inbox** and **Decided** (what you
+  answered, newest first, 50 at a time, searchable, each with Open conversation). The Action log is gone: View ›
+  Decided (⇧⌘I) opens Decided, and the always-allow rules moved to Settings › Permissions.
+- **Tell sessions apart at a glance** (LAB-2109, LAB-2107). Each Inbox block has a coloured session card: its name,
+  what it is about, agent and account, window, folder and age. Each session keeps one colour everywhere: its Inbox
+  card and block edge, its Decided rows and its History card, where every row also names its session.
+- **Critical asks stand out** (LAB-2112). When an agent is blocked until you act (a permission prompt, a menu, a plan,
+  a stopped loop, a halted run), its block gets a bold red border and "Needs your decision" and sorts first; the rail
+  badge turns red only then. A finished turn that only keeps the conversation going stays calm.
+- **History shows what you answered** (LAB-2106). A reply you typed in the agent's own terminal is recorded in your
+  words, and every History card and answer has Open conversation ↗ (a closed session shows its moments in History).
+- **No more screen furniture as moments** (LAB-2108). Claude Code's subagent panel, "esc to interrupt", "Back to
+  bottom" and repeated Finished or Done lines no longer appear in History or the Inbox.
+- **History moved to the bottom of the rail** (LAB-2114), below Evals; it keeps ⌃⌘9.
+- **Projects** (LAB-2101, LAB-2103, LAB-2102). A completed project opens with its done tickets shown, and Show done is
+  always there. Projects re-reads Linear when it opens, every 5 minutes while visible and on ↻, and says when it last
+  did. A new **Settings › Linear** pane connects and tests your key, shows the recommended setup and lets you map your
+  own state and label names; nothing from a tracker is ever bundled with the app.
+- **Loops** (LAB-2099, LAB-2100). A loop's journal links open the report. Loops that need setup (fleet sweep, site
+  prober, visual diff, cost watch, security audit) say "not configured" instead of pass, with what is missing.
+
+- **Home is a morning front page** (LAB-2098). Built from your own data: what needs you, the lead finding and side
+  stories, what to decide now, and an overnight river of sessions, loops, releases and asks. All windows and Subagents
+  are one switch away, unchanged. It opens faster than the old Home (about 60 ms).
+- **Evals says where its data comes from** (LAB-2117). Every benchmark shows its source and licence; gated Hugging Face
+  sets (HLE, GAIA, LiveCodeBench Pro, XSTest) stay locked until you sign in with your own account in Settings › Evals
+  and accept their terms. One Roof never ships a dataset or a token. Evals is still a draft.
+- **Evals › How to** (LAB-2113): a first tab that walks through what Evals is for and how to use each part.
+- **AI voices are labelled** (LAB-2116). Every narrated player says "Narration: AI-generated voice (OpenAI
+  text-to-speech)".
+- **Papers** (LAB-2059): the timeline from the Learn hub now keeps an even month axis with a sticky ruler, zooms and
+  scrolls, and has a Full view.
+
 ## 2.0.0 — The owner's review: Inbox, History, Projects, Resources, Loops and a redesigned Evals (draft) (1 Nov 2026)
 
 - **Evals is a draft, coming soon** (LAB-2072). The Evals place carries a Draft tag on the rail, "Evals · Draft" in the

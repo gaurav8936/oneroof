@@ -231,7 +231,7 @@ struct SetupView: View {
     private func start() {
         let key = linearKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !key.isEmpty {
-            do { try LinearClient.saveKey(key); model.linear = LinearClient() }
+            do { try LinearClient.saveKey(key); model.reconnectLinear() }
             catch { self.error = "Could not save the Linear key: \(error)"; return }
         }
         var s = model.settings

@@ -37,7 +37,9 @@ extension AppDelegate {
         if let s = view.items.first(where: { $0.title == "Sessions" }) { s.action = #selector(v2OpenSessions(_:)); s.target = self }
         // LAB-2047 · LAB-2044: View › Action Log (no default key; the owner can set one) and History (⌃⌘9) under Inbox.
         if let inbox = view.items.firstIndex(where: { $0.title == "Inbox" }) {
-            let log = NSMenuItem(title: "Action Log", action: #selector(v2OpenActionLog(_:)), keyEquivalent: "")
+            // LAB-2110: the Action log became the Inbox's Decided tab (⇧⌘I; Rules are in Settings › Permissions).
+            let log = NSMenuItem(title: "Decided", action: #selector(v2OpenActionLog(_:)), keyEquivalent: "I")
+            log.keyEquivalentModifierMask = [.command, .shift]
             log.target = self
             let history = NSMenuItem(title: "History", action: #selector(v2OpenHistory(_:)), keyEquivalent: "9")
             history.keyEquivalentModifierMask = [.command, .control]

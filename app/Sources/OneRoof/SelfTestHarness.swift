@@ -19,6 +19,9 @@ import OneRoofCore
 ///   hitch start · hitch stop <label>   frame timing on the main thread (display link) and terminal size changes in between
 ///   resizegesture <from> <to> <ms> the window's width from <from> to <to> pt, one step per display frame, over <ms>
 ///   windowsize <w> <h>             the window's frame size
+///   scrollgesture <pt> <ms>        LAB-2115: the place's main list scrolled by <pt> (negative = up), one step per
+///                                  display frame, over <ms> — a fast trackpad fling, as History's jerk (LAB-2105) showed
+///   scrolltop                      LAB-2115: that list back to its top
 ///   barcheck [label]               LAB-1932: CHECK the toolbar title crosses no window button or toolbar item;
 ///                                  LAB-1938: and the right-hand group sits on one band colour
 ///   barsweep [widths…]             LAB-1932: barcheck in every place × rail open/folded × Focus step × width
@@ -166,6 +169,31 @@ enum SelfTestHarness {
                 w.setFrame(f, display: true)
                 if k >= frames { t.invalidate(); probe?.markGestureEnd(); log("  resized \(Int(v[0]))→\(Int(v[1])) in \(frames) steps"); done(0.1) }
             }
+        case "scrollgesture":   // LAB-2115 · LAB-2105
+            let v = parts.compactMap { Double($0) }
+            guard v.count == 2, let sv = mainScrollView(app.main.window?.contentView) else { log("  no scroll view to scroll"); done(0.1); return true }
+            let frames = max(2, Int(v[1] / 1000 * 120)), step = CGFloat(v[0]) / CGFloat(frames)
+            var k = 0
+            probe?.markGestureStart()
+            Timer.scheduledTimer(withTimeInterval: 1.0 / 120, repeats: true) { t in
+                k += 1
+                let clip = sv.contentView, maxY = max(0, (sv.documentView?.frame.height ?? 0) - clip.bounds.height)
+                var o = clip.bounds.origin
+                // A flipped document (SwiftUI's) grows downward; an unflipped one scrolls the other way.
+                o.y = min(maxY, max(0, o.y + ((sv.documentView?.isFlipped ?? true) ? step : -step)))
+                clip.scroll(to: o); sv.reflectScrolledClipView(clip)
+                if k >= frames {
+                    t.invalidate(); probe?.markGestureEnd()
+                    log("  scrolled \(Int(v[0])) pt in \(frames) steps (at \(Int(clip.bounds.origin.y)) of \(Int(maxY)))"); done(0.1)
+                }
+            }
+        case "scrolltop":   // LAB-2115
+            if let sv = mainScrollView(app.main.window?.contentView) {
+                let clip = sv.contentView
+                clip.scroll(to: NSPoint(x: 0, y: (sv.documentView?.isFlipped ?? true) ? 0 : max(0, (sv.documentView?.frame.height ?? 0) - clip.bounds.height)))
+                sv.reflectScrolledClipView(clip)
+            }
+            done(0.5)
         case "gesturemark":
             probe?.markGestureStart(); probe?.markGestureEnd()
             done(0.01)
@@ -186,6 +214,23 @@ enum SelfTestHarness {
             return false
         }
         return true
+    }
+
+    /// LAB-2115: the place's main list — the widest scroll view taller than its window (a vertical scroller, not the rail,
+    /// a chip strip or a terminal), ties broken by the larger visible area.
+    static func mainScrollView(_ root: NSView?) -> NSScrollView? {
+        guard let root else { return nil }
+        var best: NSScrollView?, bestArea: CGFloat = 0
+        func walk(_ v: NSView) {
+            if let sv = v as? NSScrollView, !v.isHiddenOrHasHiddenAncestor, let doc = sv.documentView,
+               doc.frame.height > sv.contentView.bounds.height + 40, sv.frame.width > 300 {
+                let a = sv.frame.width * sv.frame.height
+                if a > bestArea { best = sv; bestArea = a }
+            }
+            v.subviews.forEach(walk)
+        }
+        walk(root)
+        return best
     }
 
     /// LAB-1932 · one toolbar check: `CHECK PASS|FAIL toolbar clear <label>` with what the title crossed, if anything.

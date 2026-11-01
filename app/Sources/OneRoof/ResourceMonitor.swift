@@ -32,6 +32,7 @@ final class ResourceMonitor: ObservableObject {
 
     func start(model: AppModel) {
         self.model = model
+        ScrollActivity.start()
         tick()
         timer = Timer.scheduledTimer(withTimeInterval: ResourceHistory.interval, repeats: true) { [weak self] _ in self?.tick() }
         timer?.tolerance = 0.3
@@ -60,13 +61,29 @@ final class ResourceMonitor: ObservableObject {
                 DispatchQueue.global(qos: .utility).async { LocalModel.shared.stop() }
             }
             DispatchQueue.main.async {
-                if self.viewers > 0 { self.objectWillChange.send() }
                 let snap = self.withFixtureSessions(snap)   // LAB-2052 self-test sessions (none outside a self-test)
-                self.snapshot = snap
                 self.history.record(snap)
-                if wantsMac { self.mac = SelfTestMacFixture.breakdown ?? mac }   // LAB-853 self-test data
+                // LAB-2115: a sample that lands while a list is scrolling waits until the scroll stops (Resources'
+                // rebuild was the dropped frames in a fast fling); the newest one is shown then.
+                self.publish { if wantsMac { self.mac = SelfTestMacFixture.breakdown ?? mac }; self.snapshot = snap }
             }
         }
+    }
+
+    private var pending: (() -> Void)?
+
+    private func publish(_ apply: @escaping () -> Void) {
+        let waiting = pending != nil
+        pending = apply
+        if waiting { return }
+        func flush() {
+            if let wait = ScrollActivity.wait() { DispatchQueue.main.asyncAfter(deadline: .now() + wait) { flush() }; return }
+            guard let apply = pending else { return }
+            pending = nil
+            if viewers > 0 { objectWillChange.send() }
+            apply()
+        }
+        flush()
     }
 
     /// A Resources page appeared or went away: the whole-Mac sample runs while at least one is showing.
@@ -142,5 +159,27 @@ struct WatchesResources: ViewModifier {
     let res: ResourceMonitor
     func body(content: Content) -> some View {
         content.onAppear { res.watch(true) }.onDisappear { res.watch(false) }
+    }
+}
+
+/// LAB-2115: when a list last scrolled (any clip view moving in any window), so periodic updates can hold off until the
+/// scroll has stopped instead of rebuilding a page under a fling.
+enum ScrollActivity {   // main thread only
+    nonisolated(unsafe) private static var last: CFTimeInterval = 0
+    nonisolated(unsafe) private static var observer: NSObjectProtocol?
+    /// How long a scroll counts as still going after the last movement.
+    static let quiet: CFTimeInterval = 0.25
+
+    static func start() {
+        guard observer == nil else { return }
+        observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: nil, queue: nil) { n in
+            if n.object is NSClipView { last = CACurrentMediaTime() }
+        }
+    }
+
+    /// nil when nothing is scrolling; otherwise how long to wait before checking again.
+    static func wait() -> CFTimeInterval? {
+        let since = CACurrentMediaTime() - last
+        return since < quiet ? quiet - since + 0.01 : nil
     }
 }

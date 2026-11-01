@@ -89,7 +89,7 @@ public final class LinearClient: @unchecked Sendable {
         case noKey, http(Int, String), api(String)
         public var description: String {
             switch self {
-            case .noKey: return "Linear is not connected: set LINEAR_API_KEY or save a key to ~/.config/oneroof/linear-api-key (One Roof › Setup…)"
+            case .noKey: return "Linear is not connected: connect it in Settings › Linear (the key is saved to ~/.config/oneroof/linear-api-key), or set LINEAR_API_KEY"
             case .http(let c, let b): return "Linear HTTP \(c): \(b.prefix(200))"
             case .api(let m): return "Linear: \(m.prefix(300))"
             }
@@ -111,10 +111,29 @@ public final class LinearClient: @unchecked Sendable {
         return nil
     }
 
-    public init(key: String? = LinearClient.findKey()) { self.key = key }
+    /// LAB-2102: how this workspace's state and label names map to One Roof's (Settings › Linear).
+    public let mapping: LinearMapping
+
+    public init(key: String? = LinearClient.findKey(), mapping: LinearMapping = .standard) { self.key = key; self.mapping = mapping }
 
     public convenience init(keyPath: String) {
         self.init(key: (try? String(contentsOfFile: keyPath, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// The same connection with another mapping (a new client, so a fetch already running keeps its own).
+    public func with(mapping: LinearMapping) -> LinearClient {
+        let c = LinearClient(key: key, mapping: mapping)
+        c.transport = transport
+        return c
+    }
+
+    /// LAB-2102 · Settings › Linear › Test connection: who the key belongs to, the workspace, and how many teams it sees.
+    public func testConnection() throws -> (user: String, workspace: String, teams: Int) {
+        let d = try gql("query { viewer { name } organization { name } teams(first: 100) { nodes { id } } }")
+        let user = (d["viewer"] as? [String: Any])?["name"] as? String ?? "?"
+        let org = (d["organization"] as? [String: Any])?["name"] as? String ?? "?"
+        let n = ((d["teams"] as? [String: Any])?["nodes"] as? [Any])?.count ?? 0
+        return (user, org, n)
     }
 
     /// Save `key` to `path` (folder created, file mode 0600).
@@ -210,12 +229,12 @@ public final class LinearClient: @unchecked Sendable {
         var after: String?
         repeat {
             let d = try gql("""
-            query($after: String) { projects(first: 50, after: $after) {
+            query($after: String, $review: String!) { projects(first: 50, after: $after) {
               pageInfo { hasNextPage endCursor }
               nodes { id name state status { name type } url teams(first: 1) { nodes { key } } projectMilestones(first: 20) { nodes { id name sortOrder } }
-                working: issues(first: 1, filter: { state: { type: { eq: "started" }, name: { neqIgnoreCase: "In Review" } } }) { nodes { id } }
-                reviewing: issues(first: 1, filter: { state: { name: { eqIgnoreCase: "In Review" } } }) { nodes { id } } } } }
-            """, after.map { ["after": $0] } ?? [:])
+                working: issues(first: 1, filter: { state: { type: { eq: "started" }, name: { neqIgnoreCase: $review } } }) { nodes { id } }
+                reviewing: issues(first: 1, filter: { state: { name: { eqIgnoreCase: $review } } }) { nodes { id } } } } }
+            """, after.map { ["after": $0, "review": mapping.reviewState] } ?? ["review": mapping.reviewState])
             let p = d["projects"] as? [String: Any] ?? [:]
             for n in p["nodes"] as? [[String: Any]] ?? [] {
                 let ms = ((n["projectMilestones"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []).map {
@@ -280,7 +299,7 @@ public final class LinearClient: @unchecked Sendable {
             let st = n["state"] as? [String: Any] ?? [:]
             let ms = n["projectMilestone"] as? [String: Any]
             let labels = ((n["labels"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
-            let type = labels.lazy.compactMap(WorkKind.fromLabel).first?.rawValue
+            let type = labels.lazy.compactMap(self.mapping.kind(fromLabel:)).first?.rawValue
             return LinearIssue(id: id, identifier: n["identifier"] as? String ?? "", title: n["title"] as? String ?? "",
                                description: n["description"] as? String ?? "", state: st["name"] as? String ?? "",
                                stateType: st["type"] as? String ?? "", type: type, milestoneId: ms?["id"] as? String,
@@ -347,7 +366,7 @@ public final class LinearClient: @unchecked Sendable {
         ]
         if let workstream { input["projectId"] = workstream.id }
         if let milestone { input["projectMilestoneId"] = milestone }
-        if let kind = WorkKind(rawValue: type), let l = kind.labelNames.lazy.compactMap({ team.labels[$0] }).first { input["labelIds"] = [l] }
+        if let kind = WorkKind(rawValue: type), let l = mapping.labelNames(kind).lazy.compactMap({ team.labels[$0] }).first { input["labelIds"] = [l] }
         if let backlog = team.states.first(where: { $0.type == "backlog" }) { input["stateId"] = backlog.id }
         let d = try gql("""
         mutation($i: IssueCreateInput!) { issueCreate(input: $i) { issue { id identifier title url state { name type } } } }
@@ -359,9 +378,11 @@ public final class LinearClient: @unchecked Sendable {
                            type: type, milestoneId: milestone, milestone: nil, url: n["url"] as? String ?? "")
     }
 
-    /// Move a ticket to the team state with this exact name ("In Review", "Done", …).
+    /// Move a ticket to a state by One Roof's name ("In Review", "Done", …), through the mapping (LAB-2102: the team's
+    /// own name, then the same name in any case, then the state of that type); any other name must match exactly.
     public func setState(issue: String, team: LinearTeam, named name: String) throws {
-        guard let s = team.states.first(where: { $0.name == name }) else { throw Failure.api("no state \(name) in \(team.key)") }
+        let found = mapping.resolveState(name, in: team.states) ?? team.states.first(where: { $0.name == name }).map { ($0.id, $0.name) }
+        guard let s = found else { throw Failure.api("no state \(mapping.stateName(name)) in \(team.key) (Settings › Linear maps state names)") }
         _ = try gql("mutation($id: String!, $s: String!) { issueUpdate(id: $id, input: { stateId: $s }) { success } }", ["id": issue, "s": s.id])
     }
 
@@ -380,7 +401,7 @@ public final class LinearClient: @unchecked Sendable {
         let labels = ((n["labels"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
         let i = LinearIssue(id: id, identifier: n["identifier"] as? String ?? key, title: n["title"] as? String ?? "",
                             description: n["description"] as? String ?? "", state: st["name"] as? String ?? "",
-                            stateType: st["type"] as? String ?? "", type: labels.lazy.compactMap(WorkKind.fromLabel).first?.rawValue,
+                            stateType: st["type"] as? String ?? "", type: labels.lazy.compactMap(mapping.kind(fromLabel:)).first?.rawValue,
                             milestoneId: nil, milestone: nil, url: n["url"] as? String ?? "")
         let project = ((n["project"] as? [String: Any])?["name"] as? String).flatMap { Workspace.projectCode(name: $0) }
         return (i, (n["team"] as? [String: Any])?["key"] as? String ?? "", project)
