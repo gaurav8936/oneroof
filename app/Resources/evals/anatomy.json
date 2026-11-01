@@ -1,0 +1,337 @@
+{
+ "about": "LAB-2063 (HP EV-3, G2): what each Start-here benchmark is made of, reviewed by hand against the installed inspect_evals 0.27 sources and the benchmark's paper. `roof eval anatomy` reads the rest from the benchmark's own files and leaves out what it cannot read. Also holds each benchmark's marking sentence and lesson line for Explore › Questions (LAB-2064; {target} is the question's reference answer). Keys are inspect_evals folders.",
+ "reviewed": "2026-11-01",
+ "benchmarks": {
+  "mmlu_pro": {
+   "maker": "TIGER-Lab, University of Waterloo",
+   "year": 2024,
+   "made_of": "Exam questions in 14 subjects",
+   "answer_short": "10 options",
+   "answer_format": "One letter, A to J",
+   "graded_by": "code",
+   "chance": "10 %",
+   "dataset": "TIGER-Lab/MMLU-Pro",
+   "split": "test",
+   "marking": "Code reads the letter after ANSWER: and compares it with {target}. No model is involved.",
+   "lesson": "Ten options, not four: guessing gets 10 %, so 40 % is far above chance.",
+   "watch_out": [
+    "Scores from other frameworks often use a different prompt or few-shot examples."
+   ]
+  },
+  "gpqa": {
+   "maker": "Rein et al., New York University",
+   "year": 2023,
+   "made_of": "Graduate science questions",
+   "answer_short": "4 options",
+   "answer_format": "One letter, A to D",
+   "graded_by": "code",
+   "chance": "25 %",
+   "split": "Diamond",
+   "marking": "Code reads the letter after ANSWER: and compares it with {target}. No model is involved.",
+   "lesson": "198 questions: one more right answer moves the score half a point, and the 95 % range is wide.",
+   "watch_out": [
+    "Experts in the field reach about 70 % (the paper); recent models score higher."
+   ]
+  },
+  "hle": {
+   "maker": "Center for AI Safety & Scale AI",
+   "year": 2025,
+   "made_of": "Expert questions",
+   "answer_short": "short answer",
+   "answer_format": "Short or letter",
+   "graded_by": "judge",
+   "chance": "≈ 0 %",
+   "questions_note": "text-only",
+   "dataset": "cais/hle",
+   "gated": true,
+   "terms_url": "https://huggingface.co/datasets/cais/hle",
+   "split": "test",
+   "marking": "A grader model reads the final answer and the reference ({target}) and says whether they mean the same. Same meaning in different words still counts.",
+   "lesson": "When every model scores near the floor, the 95 % range matters more than the ranking.",
+   "watch_out": [
+    "The judge is a second model, so it costs extra and can be wrong.",
+    "The questions are public now, so a model trained after release may have seen them."
+   ],
+   "steps": [
+    {
+     "title": "Prompt",
+     "body": "System asks for an explanation, then Answer: and a confidence."
+    },
+    {
+     "title": "Model answers",
+     "body": "Explanation, then Answer: and Confidence: lines."
+    },
+    {
+     "title": "Judge compares",
+     "body": "A grader model checks the final answer against the reference. Same meaning in different words still counts."
+    },
+    {
+     "title": "Two numbers",
+     "body": "Accuracy, plus calibration error: is a 70 % confidence right 70 % of the time?"
+    }
+   ]
+  },
+  "simpleqa": {
+   "maker": "OpenAI",
+   "year": 2024,
+   "made_of": "Short facts",
+   "answer_short": "short answer",
+   "answer_format": "A short fact",
+   "graded_by": "judge",
+   "chance": "≈ 0 %",
+   "marking": "A grader model compares the answer with {target}: correct, incorrect, or not attempted.",
+   "lesson": "Saying 'I don't know' is not attempted, which is better than a wrong answer.",
+   "watch_out": [
+    "Abstaining is allowed: compare correct and attempted-correct, not just one number."
+   ]
+  },
+  "truthfulqa": {
+   "maker": "Lin, Hilton & Evans (Oxford, OpenAI)",
+   "year": 2021,
+   "made_of": "Questions built on misconceptions",
+   "answer_short": "multiple choice",
+   "answer_format": "One option",
+   "graded_by": "code",
+   "dataset": "truthfulqa/truthful_qa",
+   "marking": "Code compares the chosen option with {target}. No model is involved.",
+   "lesson": "The popular answer is the wrong one here: bigger models used to score lower.",
+   "watch_out": [
+    "The number of options changes from question to question, so chance varies."
+   ]
+  },
+  "gsm8k": {
+   "maker": "OpenAI (Cobbe et al.)",
+   "year": 2021,
+   "made_of": "Grade-school word problems",
+   "answer_short": "a number",
+   "answer_format": "A number",
+   "graded_by": "code",
+   "chance": "≈ 0 %",
+   "few_shot": 10,
+   "dataset": "openai/gsm8k",
+   "split": "test",
+   "marking": "Code reads the number after ANSWER: and compares it with {target}. No model is involved.",
+   "lesson": "A right answer in the wrong format is wrong here: no ANSWER line scores zero.",
+   "watch_out": [
+    "Most frontier models are above 90 %: GSM8K now separates small models, not big ones."
+   ]
+  },
+  "math": {
+   "maker": "Hendrycks et al., UC Berkeley",
+   "year": 2021,
+   "made_of": "Competition maths",
+   "answer_short": "an expression",
+   "answer_format": "A maths expression",
+   "graded_by": "judge",
+   "chance": "≈ 0 %",
+   "dataset": "DigitalLearningGmbH/MATH-lighteval",
+   "marking": "The answer is checked for being the same expression as {target}, by code and by a grader model.",
+   "lesson": "1/2 and 0.5 are the same answer: equivalence, not string match.",
+   "watch_out": [
+    "Saturated for frontier models (above 95 %)."
+   ]
+  },
+  "aime2025": {
+   "maker": "MAA (American Invitational Mathematics Examination)",
+   "year": 2025,
+   "made_of": "Olympiad problems",
+   "answer_short": "an integer",
+   "answer_format": "An integer, 0 to 999",
+   "graded_by": "code",
+   "chance": "≈ 0 %",
+   "dataset": "math-ai/aime25",
+   "marking": "Code compares the final integer with {target}. No model is involved.",
+   "lesson": "30 problems: one more right answer moves the score 3.3 points.",
+   "watch_out": [
+    "Only 30 questions: run several attempts each to narrow the range."
+   ]
+  },
+  "arc": {
+   "maker": "Allen Institute for AI",
+   "year": 2018,
+   "made_of": "Grade-school science",
+   "answer_short": "4 options",
+   "answer_format": "One letter",
+   "graded_by": "code",
+   "chance": "25 %",
+   "dataset": "allenai/ai2_arc",
+   "split": "test",
+   "marking": "Code reads the letter after ANSWER: and compares it with {target}. No model is involved.",
+   "lesson": "An older benchmark most frontier models saturate.",
+   "watch_out": [
+    "Saturated: above 95 % for frontier models."
+   ]
+  },
+  "bbh": {
+   "maker": "Suzgun et al., Google",
+   "year": 2022,
+   "made_of": "23 hard reasoning tasks",
+   "answer_short": "short answer",
+   "answer_format": "Short answer or option",
+   "graded_by": "code",
+   "dataset": "Joschka/big_bench_hard",
+   "marking": "Code compares the final answer with {target}. No model is involved.",
+   "lesson": "Chain of thought on or off changes the score a lot.",
+   "watch_out": [
+    "Each task has its own chance level; the average hides it."
+   ]
+  },
+  "musr": {
+   "maker": "Sprague et al., UT Austin",
+   "year": 2023,
+   "made_of": "Long murder-mystery style puzzles",
+   "answer_short": "multiple choice",
+   "answer_format": "One option",
+   "graded_by": "code",
+   "marking": "Code compares the chosen option with {target}. No model is involved.",
+   "lesson": "Multi-step reasoning over a long text.",
+   "dataset": "TAUR-Lab/MuSR"
+  },
+  "ifeval": {
+   "maker": "Zhou et al., Google",
+   "year": 2023,
+   "made_of": "Prompts with checkable rules",
+   "answer_short": "free text",
+   "answer_format": "Free text",
+   "graded_by": "code",
+   "dataset": "google/IFEval",
+   "marking": "Code checks each rule in the prompt (word counts, format, no commas, …). No model is involved.",
+   "lesson": "Strict and loose scoring: a rule half-followed counts in loose only.",
+   "watch_out": [
+    "Rules are about form, not quality: a useless answer can pass."
+   ]
+  },
+  "humaneval": {
+   "maker": "OpenAI (Chen et al.)",
+   "year": 2021,
+   "made_of": "Python functions from a docstring",
+   "answer_short": "code",
+   "answer_format": "A Python function",
+   "graded_by": "tests",
+   "dataset": "openai/openai_humaneval",
+   "marking": "The function runs against the benchmark's unit tests in a sandbox. No model is involved.",
+   "lesson": "pass@1 is what the model usually does; pass@k what it can do.",
+   "watch_out": [
+    "Saturated for frontier models; the code really runs, so Docker is needed."
+   ]
+  },
+  "mbpp": {
+   "maker": "Austin et al., Google",
+   "year": 2021,
+   "made_of": "Small Python tasks",
+   "answer_short": "code",
+   "answer_format": "A Python function",
+   "graded_by": "tests",
+   "dataset": "google-research-datasets/mbpp",
+   "marking": "The code runs against the task's assert tests in a sandbox. No model is involved.",
+   "lesson": "Compare with HumanEval: the same skill should give a similar ranking."
+  },
+  "bigcodebench": {
+   "maker": "BigCode",
+   "year": 2024,
+   "made_of": "Realistic library-calling tasks",
+   "answer_short": "code",
+   "answer_format": "A Python function",
+   "graded_by": "tests",
+   "marking": "The code runs against the task's tests in a sandbox. No model is involved.",
+   "lesson": "Real libraries make it much harder than HumanEval."
+  },
+  "livecodebench_pro": {
+   "maker": "LiveCodeBench Pro team",
+   "year": 2025,
+   "made_of": "Contest problems after cutoff",
+   "answer_short": "code",
+   "answer_format": "A C++ program",
+   "graded_by": "tests",
+   "dataset": "QAQAQAQAQ/LiveCodeBench-Pro",
+   "gated": true,
+   "terms_url": "https://huggingface.co/datasets/QAQAQAQAQ/LiveCodeBench-Pro",
+   "marking": "The program runs against hidden test cases in a sandbox. No model is involved.",
+   "lesson": "Problems dated after training: memorisation vs skill."
+  },
+  "swe_bench": {
+   "maker": "Jimenez et al., Princeton",
+   "year": 2023,
+   "made_of": "Real GitHub issues",
+   "answer_short": "a patch",
+   "answer_format": "A code patch",
+   "graded_by": "tests",
+   "dataset": "princeton-nlp/SWE-bench_Verified",
+   "marking": "The patch is applied and the repository's own tests run in a sandbox. No model is involved.",
+   "lesson": "The agent around the model matters as much as the model.",
+   "watch_out": [
+    "Each question is a container: slow and heavy on a laptop."
+   ]
+  },
+  "bfcl": {
+   "maker": "Gorilla team, UC Berkeley",
+   "year": 2024,
+   "made_of": "Function-calling requests",
+   "answer_short": "a function call",
+   "answer_format": "A function call",
+   "graded_by": "code",
+   "marking": "Code checks the call: function name, arguments and their types. No model is involved.",
+   "lesson": "Exactly right or wrong: a call with one bad argument fails."
+  },
+  "tau2": {
+   "maker": "Sierra",
+   "year": 2025,
+   "made_of": "Customer-service conversations",
+   "answer_short": "actions",
+   "answer_format": "Tool calls in a conversation",
+   "graded_by": "code",
+   "marking": "Code checks the final state of the simulated database and the policy steps.",
+   "lesson": "A simulated customer talks back: the run uses a second model as the customer.",
+   "watch_out": [
+    "The simulated customer is a model too, so it costs extra and varies."
+   ]
+  },
+  "gaia": {
+   "maker": "Meta, Hugging Face",
+   "year": 2023,
+   "made_of": "Multi-step assistant tasks",
+   "answer_short": "one exact answer",
+   "answer_format": "A short exact answer",
+   "graded_by": "code",
+   "dataset": "gaia-benchmark/GAIA",
+   "gated": true,
+   "terms_url": "https://huggingface.co/datasets/gaia-benchmark/GAIA",
+   "marking": "Code compares the final answer with {target} after normalising it. No model is involved.",
+   "lesson": "One exact answer at the end of many steps: the web and files along the way."
+  },
+  "niah": {
+   "year": 2024,
+   "made_of": "A fact hidden in long text",
+   "answer_short": "short answer",
+   "answer_format": "The hidden fact",
+   "graded_by": "judge",
+   "marking": "A grader model checks whether the answer gives the hidden fact.",
+   "lesson": "Score by where the needle sits and how long the haystack is, not one number."
+  },
+  "xstest": {
+   "maker": "Röttger et al.",
+   "year": 2023,
+   "made_of": "Safe prompts that sound unsafe",
+   "answer_short": "free text",
+   "answer_format": "Free text",
+   "graded_by": "judge",
+   "judge": "openai/gpt-4o (default)",
+   "dataset": "walledai/XSTest",
+   "gated": true,
+   "terms_url": "https://huggingface.co/datasets/walledai/XSTest",
+   "marking": "A grader model says whether the answer complied, refused, or partly refused.",
+   "lesson": "Over-refusal: refusing a safe question is a failure too."
+  },
+  "strong_reject": {
+   "maker": "Souly et al.",
+   "year": 2024,
+   "made_of": "Harmful requests",
+   "answer_short": "free text",
+   "answer_format": "Free text",
+   "graded_by": "judge",
+   "judge": "openai/gpt-4o (default)",
+   "marking": "A grader model rates how much the answer helps with the harmful request.",
+   "lesson": "Under-refusal: the other side of XSTest."
+  }
+ }
+}

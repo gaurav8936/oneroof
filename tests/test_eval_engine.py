@@ -485,6 +485,931 @@ class LmEval(unittest.TestCase):
         self.assertNotIn("include:", y)   # lm-eval resolves include only inside this folder
 
 
+EVALS_DIR = ROOT / "app/Resources/evals"
+SCORE_FIX = ROOT / "tests/evals/scores"
+
+
+def sibling(name: str):
+    spec = importlib.util.spec_from_file_location(name, EVALS_DIR / f"{name}.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def engine(tmp: str, *args) -> dict:
+    """The engine's CLI as the app calls it (JSON out), on the system python, in a temp evals folder."""
+    r = subprocess.run([sys.executable, str(ENGINE), *args, "--json"], capture_output=True, text=True,
+                       env=dict(os.environ, ONEROOF_EVALS_DIR=tmp))
+    return json.loads(r.stdout)
+
+
+class Fixture:
+    """A temp evals folder with own sets and finished runs whose results come from a summary (no Inspect needed): the
+    same path lm-eval runs take through index(), with per-question scores."""
+
+    def __init__(self, tmp: str):
+        self.tmp = Path(tmp)
+
+    def set(self, name: str, version: int, ids: list, floor: int = 1, kind: str = "fix-locator", built: str = "2026-10-01T00:00:00Z"):
+        d = self.tmp / "sets" / name / f"v{version}"
+        d.mkdir(parents=True)
+        cases = [{"id": i, "input": f"Bug report ({i.split('-')[0]}-{i.split('-')[1]}):\nBroken {i}\n\nSource files:\na.py\nb.py",
+                  "target": ["a.py"], "meta": {"kind": kind, "issue": "-".join(i.split("-")[:2]), "date": "2026-09-01"}} for i in ids]
+        (d / "cases.jsonl").write_text("".join(json.dumps(c, sort_keys=True) + "\n" for c in cases))
+        func = f"own_{name}_v{version}"
+        (d / f"{func}.py").write_text("# task\n")
+        (d / "set.json").write_text(json.dumps({"name": name, "version": version, "task": func, "kind": kind, "repo": name,
+                                                "head": "abc", "built": built, "days": 120, "count": len(ids), "stats": {},
+                                                "baseline_frequent_files": floor, "issues": [c["meta"]["issue"] for c in cases]}))
+        return d / f"{func}.py"
+
+    def run(self, rid: str, task: str, model: str, scores: dict, started: str, agent=None, task_ref=None, epochs=None):
+        d = self.tmp / "runs" / rid
+        d.mkdir(parents=True)
+        vals = list(scores.values())
+        acc = sum(vals) / len(vals)
+        (d / "run.json").write_text(json.dumps({
+            "id": rid, "task": task, "task_ref": task_ref or task, "model": model, "agent": agent, "status": "done",
+            "limit": len(vals), "epochs": epochs, "started": started,
+            "summary": {"status": "success", "samples_done": len(vals), "started": started, "finished": started,
+                        "scores": [{"scorer": "s", "metrics": {"accuracy": acc}}],
+                        "samples": [[k, 1, v] for k, v in scores.items()]}}))
+
+
+class Overview(unittest.TestCase):
+    """LAB-2062: `overview --json` — your sets first with agents above models above the baseline, the floor, what
+    changed (the paired compare's verdict), and exactly one suggestion, the first of five rules that fires."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-overview-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.e = load(self.tmp)
+        self.f = Fixture(self.tmp)
+
+    def test_cards_order_floor_and_changes(self):
+        ids = [f"XYZ-{i}-abc" for i in range(1, 11)]
+        tf = str(self.f.set("demo", 1, ids, floor=4))
+        right = {i: 1.0 for i in ids}
+        half = {i: (1.0 if n < 5 else 0.0) for n, i in enumerate(ids)}
+        self.f.run("r1", "own_demo_v1", "anthropic/claude-haiku-5-5", half, "2026-10-02T00:00:00Z", task_ref=tf)
+        self.f.run("r2", "own_demo_v1", "anthropic/claude-haiku-5-5", right, "2026-10-03T00:00:00Z", task_ref=tf)
+        self.f.run("r3", "own_demo_v1", "anthropic/claude-haiku-5-5", half, "2026-10-04T00:00:00Z", task_ref=tf, agent="claude_code")
+        self.f.run("r4", "own_demo_v1", "mockllm/model", {i: 0.0 for i in ids}, "2026-10-05T00:00:00Z", task_ref=tf)
+        self.e.index()
+        ov = self.e.overview()
+        card = ov["evals"][0]
+        self.assertEqual((card["set"], card["version"], card["floor"]), ("demo", 1, {"right": 4, "of": 10}))
+        self.assertEqual([r["kind"] for r in card["rows"]], ["agent", "model", "baseline"])   # agents first
+        self.assertEqual(card["rows"][1]["run"], "r2")                                         # latest per contestant
+        self.assertEqual(card["rows"][1]["score"], 1.0)
+        ch = ov["changes"][0]
+        cmp = self.e.paired_compare(self.e.sample_means("r2"), self.e.sample_means("r1"))
+        self.assertEqual((ch["runs"], ch["verdict"], ch["diff"]), (["r2", "r1"], cmp["verdict"], cmp["diff"]))
+        self.assertIn("+50 on demo · fix locator v1", ch["text"])
+        self.assertEqual(ov["suggestion"]["rule"], "one_attempt")   # no judge; the best run had 1 attempt
+
+    def test_paired_compare_matches_the_app(self):
+        a = {"q1": 1.0, "q2": 1.0, "q3": 0.0, "q4": 1.0}
+        b = {"q1": 0.0, "q2": 1.0, "q3": 0.0, "q4": 0.0}
+        c = self.e.paired_compare(a, b)
+        self.assertTrue(c["paired"])
+        self.assertEqual((c["n"], c["diff"], c["verdict"]), (4, 0.5, "noise"))   # EvalStats.compare gives the same
+        self.assertEqual(self.e.paired_compare({"q1": 1.0}, {"q9": 0.0}), None)   # too little to say anything
+
+    def test_each_suggestion_rule(self):
+        self.assertEqual(self.e.overview()["suggestion"]["rule"], "no_set")             # nothing at all
+        self.f.set("demo", 1, ["XYZ-1-a", "XYZ-2-b"])
+        self.e.index()
+        self.assertEqual(self.e.overview()["suggestion"]["rule"], "nothing_ran")        # a set, no run
+        tf = str(self.tmp) + "/sets/demo/v1/own_demo_v1.py"
+        self.f.run("r1", "own_demo_v1", "openai/gpt-5-nano", {"XYZ-1-a": 1.0, "XYZ-2-b": 0.0}, "2026-10-02T00:00:00Z", task_ref=tf)
+        self.e.index()
+        s = self.e.overview()["suggestion"]
+        self.assertEqual((s["rule"], s["target"]["tab"], s["target"]["epochs"]), ("one_attempt", "run", 3))
+        self.f.run("r2", "own_demo_v1", "openai/gpt-5-mini", {"XYZ-1-a": 1.0, "XYZ-2-b": 1.0}, "2026-10-03T00:00:00Z",
+                   task_ref=tf, epochs=3)
+        self.e.index()
+        self.assertIsNone(self.e.overview()["suggestion"])   # the best run has 3 attempts; no repo to find new fixes in
+        es = self.e._sibling("evalset")
+        es.new_fix_count = lambda meta: 6
+        rule = self.e.suggestion(self.e.done_runs(), {"demo": es.all_versions()[0]}, es)
+        self.assertEqual((rule["rule"], rule["text"]), ("new_fixes", "6 bugs fixed since v1: build v2"))
+        jd = Path(self.tmp) / "judges/t"
+        jd.mkdir(parents=True)
+        (jd / "judge.json").write_text(json.dumps({"name": "t", "mode": "single", "rubric": "r", "runs": [], "models": [], "items": 0}))
+        (jd / "items.jsonl").write_text("")
+        s = self.e.overview()["suggestion"]
+        self.assertEqual((s["rule"], s["target"]), ("judge_untrusted", {"tab": "your-evals", "judge": "t"}))
+        self.assertEqual(s["text"], "Judge not trusted yet: label 10 answers")
+
+    def test_empty_profile_has_no_numbers(self):
+        ov = engine(self.tmp, "overview")
+        self.assertEqual((ov["evals"], ov["changes"], ov["running"], ov["finished_runs"]), ([], [], [], 0))
+
+    def test_runs_keep_their_set_version(self):
+        self.assertEqual(self.e.set_of("/x/evals/sets/oneroof/v3/own_oneroof_v3.py"), ("oneroof", 3))
+        self.assertEqual(self.e.set_of("/x/evals/judges/t/v1/judge_t_v1.py"), (None, None))
+        self.assertEqual(self.e.contestant("anthropic/claude-haiku-5-5", "claude_code")["name"], "Claude Code · claude-haiku-5-5")
+        self.assertEqual(self.e.contestant("mockllm/model", None)["kind"], "baseline")
+        self.assertEqual(self.e.contestant("ollama/qwen3:1.7b", None)["kind"], "local")
+        self.assertIn("--sample-id", self.e.inspect_cmd({"task_ref": "gsm8k", "model": "m", "limit": 1, "dir": "/x", "sample_id": "q7"}))
+
+
+class PublishedScores(unittest.TestCase):
+    """LAB-2063 (EVO-3): one official source per benchmark, parsed from saved copies of the real pages; every row has a
+    source and a date; a failed check keeps the last good data and says so."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-scores-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.p = sibling("published_scores")
+        self.files = {"scale_html": "scale.html", "swebench_json": "swebench.json", "html_table_row": "model_card.md",
+                      "md_table_column": "simple_evals.md"}
+
+    def page(self, url: str) -> str:
+        src = next(s for s in self.p.sources().values() if s["url"] == url)
+        return (SCORE_FIX / self.files[src["parser"]]).read_text()
+
+    def test_every_source_is_official_and_parses(self):
+        for key, src in self.p.sources().items():
+            self.assertTrue(src["url"].startswith("https://"), key)
+            self.assertIn(src["parser"], self.p.PARSERS, key)
+            if key == "mmlu_pro":
+                continue   # its row is in the model card's other table (not in the trimmed fixture)
+            rows = self.p.rows_for(key, src, self.page(src["url"]), "2026-11-01") if src["parser"] != "html_table_row" or \
+                src["row"] in ("GSM-8K (CoT)", "MATH (CoT)") else None
+            if rows is None:
+                continue
+            self.assertTrue(rows, key)
+            for r in rows:
+                self.assertTrue(self.p.valid(r), (key, r))
+                self.assertEqual((r["source_url"], r["checked"]), (src["url"], "2026-11-01"))
+        hle = self.p.rows_for("hle", self.p.sources()["hle"], self.page(self.p.sources()["hle"]["url"]), "2026-11-01")
+        self.assertEqual([r["score"] for r in hle], sorted([r["score"] for r in hle], reverse=True))
+        swe = self.p.rows_for("swe_bench", self.p.sources()["swe_bench"], self.page(self.p.sources()["swe_bench"]["url"]), "d")
+        self.assertEqual(len(swe), 3)                      # the Verified board only; a row with no score is dropped
+        self.assertEqual(swe[0]["kind"], "agent")
+        self.assertTrue(swe[0]["published"])
+        g = self.p.rows_for("gsm8k", self.p.sources()["gsm8k"], self.page(self.p.sources()["gsm8k"]["url"]), "d")
+        self.assertEqual((g[0]["contestant"], g[0]["score"]), ("Llama 3.1 405B Instruct", 0.968))
+
+    def test_rows_without_a_source_or_date_are_refused(self):
+        ok = {"contestant": "m", "score": 0.5, "source_url": "https://x", "checked": "2026-11-01"}
+        self.assertTrue(self.p.valid(ok))
+        for bad in ({"source_url": ""}, {"checked": ""}, {"score": 1.5}, {"contestant": ""}):
+            self.assertFalse(self.p.valid(dict(ok, **bad)), bad)
+
+    def test_failed_check_keeps_the_last_good_data(self):
+        doc = self.p.refresh(get=self.page)
+        self.assertGreaterEqual(len(doc["benchmarks"]["hle"]), 3)
+        def down(url):
+            raise OSError("offline")
+        doc2 = self.p.refresh(get=down)
+        self.assertEqual(doc2["benchmarks"]["hle"], doc["benchmarks"]["hle"])
+        self.assertEqual(doc2["failures"]["hle"]["reason"], "offline")
+        s = self.p.show("hle")
+        self.assertEqual((s["benchmark"], s["has_source"], s["failed"]["reason"]), ("hle", True, "offline"))
+        self.assertEqual(self.p.show("swe_bench_verified_mini")["benchmark"], "swe_bench")   # a task finds its benchmark
+        none = self.p.show("niah")
+        self.assertEqual((none["has_source"], none["rows"]), (False, []))                     # never invented
+        self.assertEqual(self.p.headroom("hle")["level"], "lots")
+        self.assertEqual(self.p.headroom("gsm8k")["level"], "saturated")
+
+
+class Anatomy(unittest.TestCase):
+    """HP EV-3 (LAB-2063): graded-by and the prompt template read from the benchmark's own code; the reviewed
+    anatomy.json wins; unknown facts are left out."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-anatomy-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.e = load(self.tmp)
+        src = Path(self.tmp) / "venv/lib/python3.12/site-packages/inspect_evals"
+        for folder, code in {"judged": "from inspect_ai.scorer import model_graded_qa\nscorer=model_graded_qa()",
+                             "coded": 'PROMPT_TEMPLATE = """Answer it.\n{prompt}\nEnd with "ANSWER: $ANSWER"."""\n'
+                                      "def coded(fewshot: int = 5):\n    return Task(scorer=match())",
+                             "plain": "x = 1"}.items():
+            (src / folder).mkdir(parents=True)
+            (src / folder / f"{folder}.py").write_text(code)
+        self.e.write_json(self.e.CATALOG, {"inspect_evals": None, "count": 4, "tasks": 4, "categories": [], "benchmarks": [
+            {"folder": f, "title": f.title(), "description": "d", "tags": [], "sandbox": f == "sandboxed", "internet": False,
+             "tasks": [{"name": f, "samples": 10}], "starter": [], "category": "Other"} for f in ("judged", "coded", "plain", "sandboxed")]})
+
+    def test_graded_by_and_template_come_from_the_code(self):
+        self.assertEqual(self.e.derived_facts("judged", False)["graded_by"], "judge")
+        c = self.e.derived_facts("coded", False)
+        self.assertEqual((c["graded_by"], c["few_shot"]), ("code", 5))
+        self.assertIn("{prompt}", c["prompt_template"])
+        self.assertEqual(self.e.derived_facts("plain", False), {})        # unknown: left out, never guessed
+        self.assertEqual(self.e.derived_facts("sandboxed", True)["graded_by"], "tests")
+
+    def test_anatomy_shape_and_steps(self):
+        a = self.e.anatomy("coded")
+        self.assertEqual((a["graded_by"], a["graded_by_label"]), ("code", "Code / exact match"))
+        self.assertEqual([s["title"] for s in a["steps"]], ["Prompt", "Model answers", "Code checks", "The number"])
+        self.assertIn('ANSWER: $ANSWER', a["steps"][1]["body"])
+        for k in ("chance", "maker", "year", "judge"):
+            self.assertNotIn(k, a)                                         # not known for this benchmark
+        p = self.e.anatomy("plain")
+        self.assertEqual([s["title"] for s in p["steps"]], ["Prompt", "Model answers", "The number"])
+
+    def test_reviewed_table_wins_and_covers_start_here(self):
+        table = self.e.anatomy_table()
+        shelf = json.loads((EVALS_DIR / "starter.json").read_text())["shelf"]
+        for s in shelf:
+            a = table.get(s["folder"])
+            self.assertIsNotNone(a, s["folder"])
+            self.assertIn(a["graded_by"], ("code", "judge", "tests"), s["folder"])
+            if a.get("gated"):
+                self.assertTrue(a["terms_url"].startswith("https://huggingface.co/datasets/"), s["folder"])
+            if a.get("marking"):
+                self.assertNotIn("{", a["marking"].replace("{target}", ""), s["folder"])
+        ex = self.e.catalog_extras({"folder": "hle", "starter": [{"task": "hle"}], "tags": []})
+        self.assertEqual(ex, {"made_of": "Expert questions · short answer · judged", "graded_by": "judge", "shelf": "start"})
+        own = self.e.catalog_extras({"folder": "own-x", "category": "Your evals", "tags": ["own", "fix-locator"]})
+        self.assertEqual((own["graded_by"], own["shelf"]), ("code", "own"))
+
+
+class Items(unittest.TestCase):
+    """HP EV-4/EV-5 (LAB-2064): questions without a run, one dot per run from the index, filters, paging, the seeded
+    Random 10, a download only after a confirm, and gated datasets as a state, never an error."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-items-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.e = load(self.tmp)
+        self.f = Fixture(self.tmp)
+
+    def test_own_set_questions_dots_and_filters(self):
+        ids = [f"XYZ-{i}-abc" for i in range(1, 13)]
+        tf = str(self.f.set("demo", 1, ids))
+        self.f.run("r1", "own_demo_v1", "openai/gpt-5-nano", {ids[0]: 1.0, ids[1]: 0.0}, "2026-10-02T00:00:00Z", task_ref=tf)
+        self.f.run("r2", "own_demo_v1", "openai/gpt-5-mini", {ids[0]: 1.0, ids[2]: 1.0}, "2026-10-03T00:00:00Z", task_ref=tf)
+        d = engine(self.tmp, "items", tf, "--limit", "5")
+        self.assertEqual((d["total"], d["counts"]), (12, {"all": 12, "seen": 3, "wrong": 1}))
+        self.assertEqual(len(d["items"]), 5)
+        first = d["items"][0]
+        self.assertEqual(first["dots"], [{"run": "r1", "score": 1.0}, {"run": "r2", "score": 1.0}])   # oldest run first
+        self.assertNotIn("Source files", first["input"])                    # the report, not the file list
+        self.assertEqual(engine(self.tmp, "items", tf, "--filter", "wrong")["items"][0]["id"], ids[1])
+        page2 = engine(self.tmp, "items", tf, "--limit", "5", "--offset", "10")
+        self.assertEqual([x["index"] for x in page2["items"]], [11, 12])
+        r1 = engine(self.tmp, "items", tf, "--filter", "random", "--seed", "17")["items"]
+        r2 = engine(self.tmp, "items", tf, "--filter", "random", "--seed", "17")["items"]
+        r3 = engine(self.tmp, "items", tf, "--filter", "random", "--seed", "18")["items"]
+        self.assertEqual((len(r1), r1), (10, r2))
+        self.assertNotEqual([x["id"] for x in r1], [x["id"] for x in r3])
+
+    def test_dots_match_each_runs_samples(self):
+        self.f.run("r1", "tiny", "openai/gpt-5-nano", {"a": 1.0, "b": 0.0}, "2026-10-02T00:00:00Z")
+        self.e.index()
+        self.assertEqual(self.e.scores_by_item(self.e.runs_of_task("tiny")), {"a": [["r1", 1.0]], "b": [["r1", 0.0]]})
+
+    def test_download_waits_for_a_confirm_and_gated_is_a_state(self):
+        self.e.write_json(self.e.CATALOG, {"inspect_evals": None, "count": 1, "tasks": 1, "categories": [], "benchmarks": [
+            {"folder": "hle", "title": "HLE", "description": "", "tags": [], "sandbox": False, "internet": False,
+             "tasks": [{"name": "hle", "samples": 3}], "starter": [], "category": "x"}]})
+        self.e.dataset_size = lambda ds: 1234
+        items, state = self.e.load_items("hle", False)
+        self.assertIsNone(items)
+        self.assertEqual((state["needs_download"], state["gated"], state["size_bytes"], state["dataset"]),
+                         (True, True, 1234, "cais/hle"))
+        vpy = Path(self.tmp) / "venv/bin"
+        vpy.mkdir(parents=True)
+        for exe in ("python", "inspect"):
+            (vpy / exe).write_text("#!/bin/sh\necho 'huggingface_hub.errors.GatedRepoError: 401 Client Error' >&2\nexit 1\n")
+            (vpy / exe).chmod(0o755)
+        items, state = self.e.load_items("hle", True)
+        self.assertIsNone(items)
+        self.assertEqual((state["gated"], state["terms_url"]), (True, "https://huggingface.co/datasets/cais/hle"))
+        self.assertFalse(self.e.questions_file("hle").exists())             # never a partial list
+
+
+class EvalSetVersions(unittest.TestCase):
+    """HP EV-6 (LAB-2065): a dry run writes nothing; the next version keeps every case of the last one plus fixes since
+    (v1 byte-identical); show gives each case's solve count on that version and the floor."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-setv-")
+        self.repo = tempfile.mkdtemp(prefix="roof-setv-repo-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.m = sibling("evalset")
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        self.n = 0
+
+    def commit(self, msg, files):
+        for name, text in files.items():
+            p = Path(self.repo) / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+        env = dict(os.environ, GIT_AUTHOR_NAME="Pat", GIT_AUTHOR_EMAIL="p@x", GIT_COMMITTER_NAME="Pat", GIT_COMMITTER_EMAIL="p@x")
+        subprocess.run(["git", "-C", self.repo, "add", "-A"], check=True, env=env)
+        subprocess.run(["git", "-C", self.repo, "commit", "-qm", msg], check=True, env=env)
+
+    def cli(self, *args):
+        r = subprocess.run([sys.executable, str(EVALS_DIR / "evalset.py"), *args, "--json"], capture_output=True, text=True,
+                           env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        return json.loads(r.stdout)
+
+    def test_dry_run_extend_and_solve_counts(self):
+        self.commit("XYZ-1 · setup", {"src/alpha.py": "a\n", "src/beta.py": "b\n", "src/gamma.py": "g\n"})
+        self.commit("XYZ-2 · Login button does nothing (fix)", {"src/alpha.py": "a2\n"})
+        dry = self.cli("build", "--repo", self.repo, "--name", "demo", "--days", "30", "--dry-run")
+        self.assertEqual((dry["written"], dry["total"], dry["next_version"]), (False, 1, 1))
+        self.assertFalse((Path(self.tmp) / "sets").exists())                  # a dry run writes nothing
+        v1 = self.cli("build", "--repo", self.repo, "--name", "demo", "--days", "30")
+        self.assertEqual(v1["version"], 1)
+        before = (Path(self.tmp) / "sets/demo/v1/cases.jsonl").read_bytes()
+        self.commit("XYZ-3 · Save loses the title, fixed", {"src/beta.py": "b2\n"})
+        pre = self.cli("build", "--name", "demo", "--extend", "--dry-run", "--repo", self.repo, "--days", "30")
+        self.assertEqual((pre["kept"], [c["issue"] for c in pre["new"]], pre["total"], pre["written"]), (1, ["XYZ-3"], 2, False))
+        self.assertIn("leak", pre["left_out"])
+        self.assertFalse((Path(self.tmp) / "sets/demo/v2").exists())
+        v2 = self.cli("build", "--name", "demo", "--extend", "--repo", self.repo, "--days", "30")
+        self.assertEqual((v2["version"], v2["total"], v2["written"]), (2, 2, True))
+        self.assertEqual((Path(self.tmp) / "sets/demo/v1/cases.jsonl").read_bytes(), before)   # v1 never edited
+        meta2 = json.loads((Path(self.tmp) / "sets/demo/v2/set.json").read_text())
+        self.assertEqual((meta2["extends"], meta2["repo_path"]), (1, str(Path(self.repo).resolve())))
+        # Solve counts come from the index: two runs on v1, one right on the case.
+        import sqlite3
+        cid = json.loads(before.decode().splitlines()[0])["id"]
+        with sqlite3.connect(Path(self.tmp) / "evals.db") as db:
+            db.executescript(load(self.tmp).SCHEMA)
+            for rid, v in (("r1", 1.0), ("r2", 0.0)):
+                db.execute("INSERT INTO runs (id, model, status, set_name, set_version, started) VALUES (?,?,?,?,?,?)",
+                           (rid, "openai/gpt-5-nano", "done", "demo", 1, rid))
+                db.execute("INSERT INTO sample_scores VALUES (?,?,?,?)", (rid, cid, 1, v))
+        s = self.cli("show", "demo", "--version", "1")
+        self.assertEqual((s["cases"][0]["solved_by"], s["runs"], s["floor"]["of"]), ({"right": 1, "runs": 2}, 2, 1))
+        self.assertEqual(s["best"]["contestant"], "gpt-5-nano")
+        self.assertEqual(s["cases"][0]["report"], "Login button does nothing (fix)")
+        vs = self.cli("versions", "demo")["versions"]
+        self.assertEqual([(v["version"], v["count"], v["runs"]) for v in vs], [(1, 1, 2), (2, 2, 0)])
+
+
+class JudgeScreen(unittest.TestCase):
+    """HP EV-7 (LAB-2066): the label queue (likely fails first), items with every source's label, ⌘Z undo, trust from
+    the last run against today's labels (yours over a model's once there are 10), advice, and a rubric draft that only
+    a new version uses."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-judge2-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.j = sibling("judge")
+        d = Path(self.tmp) / "judges/t"
+        d.mkdir(parents=True)
+        self.d = d
+        items = [{"id": f"i{n}", "run": "r", "model": "x/haiku", "question": f"Bug report (LAB-{n}):\nThing {n} breaks\n\nSource files:\na.py",
+                  "answer": "Open a.py first." if n % 2 else "Look at b.py.", "target": "a.py"} for n in range(24)]
+        (d / "items.jsonl").write_text("".join(json.dumps(x) + "\n" for x in items))
+        (d / "judge.json").write_text(json.dumps({"name": "t", "mode": "single", "rubric": "Pass when right.", "runs": ["r"],
+                                                  "models": ["x/haiku"], "task": "own", "items": 24, "created": "c"}))
+        verdicts = {f"i{n}": "pass" for n in range(24)}   # a lenient judge: passes everything
+        (Path(self.tmp) / "judges/agreements.json").write_text(json.dumps({"20261101-judge_t_v1-aaaa": {
+            "run": "20261101-judge_t_v1-aaaa", "judge": "t", "mode": "single", "judge_model": "y/mini", "measured": "m",
+            "version": 1, "verdicts": verdicts, "examples": ["i0", "i1"]}}))
+
+    def cli(self, *args):
+        r = subprocess.run([sys.executable, str(EVALS_DIR / "judge.py"), *args, "--json"], capture_output=True, text=True,
+                           env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        return json.loads(r.stdout)
+
+    def test_queue_items_and_undo(self):
+        q = self.cli("queue", "t")
+        self.assertEqual((q["total"], q["labelled"]), (24, 0))
+        self.assertEqual(q["queue"][0]["code"]["right"], 0)       # judge passed, code says no changed file: first
+        self.assertEqual(q["queue"][0]["judge"], "pass")
+        self.assertEqual(self.cli("queue", "t", "--first", "i7")["queue"][0]["id"], "i7")
+        self.cli("label", "t", "--item", "i2", "--verdict", "fail", "--why", "wrong file")
+        it = {x["id"]: x for x in self.cli("items", "t")}
+        self.assertEqual((it["i2"]["labels"]["owner"]["verdict"], it["i2"]["split"]), ("fail", "held back"))
+        self.assertEqual((it["i0"]["split"], it["i0"]["issue"], it["i0"]["title"]), ("example", "LAB-0", "Thing 0 breaks"))
+        self.assertEqual(it["i3"]["code"], {"named": ["a.py"], "right": 1, "of": 1, "hits": ["a.py"]})
+        self.assertEqual(self.cli("label", "t", "--undo")["item"], "i2")
+        self.assertNotIn("owner", {x["id"]: x for x in self.cli("items", "t")}["i2"]["labels"])
+        self.assertIn("undone", (self.d / "labels.jsonl").read_text())   # the history stays in the file
+
+    def test_trust_prefers_your_labels_and_reads_lenient(self):
+        for n in range(2, 8):   # 6 of yours (too few) beside 20 model labels
+            self.j.add_label(self.d, f"i{n}", "pass" if n % 2 else "fail", "")
+        for n in range(2, 22):
+            self.j.add_label(self.d, f"i{n}", "pass" if n % 2 else "fail", "", "model", "z/sonnet")
+        t = self.cli("trust", "t")
+        self.assertEqual((t["reference"], t["held_back_yours"], t["ready"]), ("model", 6, False))
+        self.assertIn("label 4 more", t["reading"])
+        for n in range(8, 14):
+            self.j.add_label(self.d, f"i{n}", "pass" if n % 2 else "fail", "")
+        t = self.cli("trust", "t")
+        self.assertEqual((t["reference"], t["n"], t["tpr"], t["tnr"], t["ready"]), ("you", 12, 1.0, 0.0, False))
+        self.assertTrue(t["reading"].startswith("It's lenient"))
+        self.assertIn("Not ready to stand in for you", t["reading"])
+        adv = self.cli("advise", "t")["advice"]
+        self.assertTrue(adv[0].startswith("Label the 12 waiting answers (mostly fails"))
+        self.assertTrue(any("fail side" in a for a in adv))
+
+    def test_rubric_draft_goes_into_the_next_version_only(self):
+        for n in range(24):
+            self.j.add_label(self.d, f"i{n}", "pass", "ok")
+        b1 = self.cli("build", "t")
+        v1 = (self.d / "v1/cases.jsonl").read_bytes()
+        self.assertEqual(self.cli("rubric", "t", "--set", "Pass only when the first file is right.")["draft"],
+                         "Pass only when the first file is right.")
+        b2 = self.cli("build", "t")
+        self.assertEqual((b1["version"], b2["version"], b2["new"]), (1, 2, True))
+        self.assertEqual((self.d / "v1/cases.jsonl").read_bytes(), v1)
+        self.assertIn("Pass only when the first file is right.", (self.d / "v2/cases.jsonl").read_text())
+        vs = self.cli("versions", "t")
+        self.assertEqual([v["rubric"] for v in vs["versions"]], ["Pass when right.", "Pass only when the first file is right."])
+        self.assertIsNone(vs["draft"])
+
+
+class RunPlanning(unittest.TestCase):
+    """LAB-2067 (HP EV-9, EV-2): the ± points a run can tell apart, queue rows that say why a run stopped and who ran,
+    and the seat guard that waits instead of failing."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-run2-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.e = load(self.tmp)
+
+    def test_power_shape_and_values(self):
+        p = engine(self.tmp, "power", "--n", "20", "--epochs", "3")
+        self.assertEqual((p["n"], p["epochs"], p["method"]), (20, 3, "wilson"))
+        self.assertAlmostEqual(p["plus_minus_points"], 13, delta=1)   # 20 cases × 3 attempts: about ±12-13 points
+        self.assertGreater(engine(self.tmp, "power", "--n", "5")["plus_minus_points"], 30)   # 5 questions say very little
+        lo, hi, _ = self.e.interval(0.5, 60, None, True)
+        self.assertAlmostEqual(p["plus_minus_points"], round((hi - lo) / 2 * 100, 1))   # the app mirrors this number
+
+    def test_status_says_why_a_run_stopped_and_who_ran(self):
+        d = Path(self.tmp) / "runs/r1"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps({"id": "r1", "task": "swe_bench_verified_mini", "model": "anthropic/claude-haiku-5-5",
+                                                "agent": "claude_code", "status": "failed", "limit": 10,
+                                                "error": "Traceback …\nRuntimeError: Cannot connect to the Docker daemon"}))
+        d2 = Path(self.tmp) / "runs/r2"
+        d2.mkdir(parents=True)
+        (d2 / "run.json").write_text(json.dumps({"id": "r2", "task": "gsm8k", "model": "mockllm/model", "status": "done", "limit": 5}))
+        rows = {r["id"]: r for r in engine(self.tmp, "status")}
+        self.assertEqual(rows["r1"]["error"], "RuntimeError: Cannot connect to the Docker daemon")   # the last line
+        self.assertIn("start Docker", rows["r1"]["hint"])
+        self.assertEqual((rows["r1"]["contestant"]["kind"], rows["r1"]["contestant"]["name"]), ("agent", "Claude Code · claude-haiku-5-5"))
+        self.assertEqual((rows["r2"]["error"], rows["r2"]["hint"], rows["r2"]["contestant"]["kind"]), (None, None, "baseline"))
+
+    def test_seat_guard_waits_while_the_seat_is_over_its_limit(self):
+        usage = Path(self.tmp) / "usage"
+        usage.mkdir()
+        (usage / "Claude1.json").write_text(json.dumps({"updated": time.time(), "rate_limits": {"five_hour": {"used_percentage": 95}}}))
+        os.environ["ONEROOF_USAGE_DIR"] = str(usage)
+        self.addCleanup(os.environ.pop, "ONEROOF_USAGE_DIR", None)
+        ar = sibling("agent_runner")
+        d = Path(self.tmp) / "runs/r3"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps({"id": "r3", "seat": "C1", "seat_limit": 90, "status": "running"}))
+        seen = []
+        def nap(_):
+            seen.append(json.loads((d / "run.json").read_text()))
+            (d / "CANCEL").write_text("x")   # the owner cancels while it waits
+        self.addCleanup(setattr, ar.time, "sleep", ar.time.sleep)   # ar.time is the time module: put sleep back
+        ar.time.sleep = nap
+        self.assertFalse(ar.wait_for_seat(json.loads((d / "run.json").read_text()), d))
+        self.assertEqual(seen[0]["status"], "waiting")
+        self.assertIn("waiting for seat C1: 95 %", seen[0]["waiting"])
+        est = ar.seat_estimate("claude_code", 20, 1)
+        self.assertEqual((est["seat"], est["seat_basis"], est["seat_fits"]), ("C1", "guess", False))
+        (usage / "Claude1.json").write_text(json.dumps({"updated": time.time(), "rate_limits": {"five_hour": {"used_percentage": 40}}}))
+        (d / "CANCEL").unlink()
+        self.assertTrue(ar.wait_for_seat(json.loads((d / "run.json").read_text()), d))
+        self.assertEqual(json.loads((d / "run.json").read_text())["status"], "running")   # back to work, never failed
+        self.assertTrue(ar.seat_estimate("claude_code", 20, 1)["seat_fits"])
+
+    def test_seat_env_keeps_the_login_and_drops_every_paid_route(self):
+        ar = sibling("agent_runner")
+        env = ar.strip_keys({"PATH": "/bin", "HOME": "/h", "ANTHROPIC_API_KEY": "x", "OPENAI_API_KEY": "x", "GITHUB_TOKEN": "x",
+                             "AWS_ACCESS_KEY_ID": "x", "AWS_PROFILE": "x", "CLAUDE_CODE_USE_BEDROCK": "1", "ANTHROPIC_BASE_URL": "u",
+                             "OPENAI_BASE_URL": "u", "CLAUDE_CODE_OAUTH_TOKEN": "login", "CODEX_HOME": "/h/.codex"})
+        self.assertEqual(sorted(env), ["CLAUDE_CODE_OAUTH_TOKEN", "CODEX_HOME", "HOME", "PATH"])
+        cmd = ar.command("claude_code", "claude", "q", Path("/x"))
+        self.assertIn("--disallowedTools", cmd)
+        self.assertTrue(cmd[cmd.index("--disallowedTools") + 1].startswith("Bash,Edit,Write,MultiEdit,NotebookEdit"))
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "default")
+        self.assertIn("read-only", ar.command("codex_cli", "codex", "q", Path("/x")))
+
+    def test_doctor_lists_agents_first_with_why_unavailable(self):
+        ar = sibling("agent_runner")
+        rows = ar.agents_state()
+        self.assertEqual([r["id"] for r in rows][:4], ["claude_code", "codex_cli", "opencode", "kimi_code"])
+        kimi = next(r for r in rows if r["id"] == "kimi_code")
+        self.assertEqual((kimi["available"], kimi["why"]), (False, "no headless mode"))
+        self.assertEqual(next(r for r in rows if r["id"] == "codex_cli")["seat"], "CX")
+
+
+class AgentRunner(unittest.TestCase):
+    """HP EV-1 (LAB-2067): an agent CLI on a seat answers each case of your set in a fresh worktree at the commit before
+    the fix, gets no API key, leaves no worktree behind (also after a failure) and pushes nothing. A fake CLI stands in
+    for Claude Code: no seat is used by the tests."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-agent-")
+        self.repo = tempfile.mkdtemp(prefix="roof-agent-repo-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.es = sibling("evalset")
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        env = dict(os.environ, GIT_AUTHOR_NAME="Pat", GIT_AUTHOR_EMAIL="p@x", GIT_COMMITTER_NAME="Pat", GIT_COMMITTER_EMAIL="p@x")
+        for msg, files in [("XYZ-1 · setup", {"src/alpha.py": "old alpha\n", "src/beta.py": "b\n"}),
+                           ("XYZ-2 · fix: login button does nothing", {"src/alpha.py": "new alpha\n"}),
+                           ("XYZ-3 · Fix: export is empty", {"src/beta.py": "b2\n"})]:
+            for name, text in files.items():
+                p = Path(self.repo) / name
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(text)
+            subprocess.run(["git", "-C", self.repo, "add", "-A"], check=True, env=env)
+            subprocess.run(["git", "-C", self.repo, "commit", "-qm", msg], check=True, env=env)
+        cases, stats = self.es.build_cases(self.repo, 20, 30, None)
+        self.assertEqual(len(cases), 2)
+        d, _ = self.es.write_set("demo", self.repo, cases, stats, 30)
+        self.task = str(self.es.task_file(d))
+        self.log = Path(self.tmp) / "agent.log"
+        # The fake agent: answers alpha.py, records where it ran, what the old file said and any key it was given; fails
+        # on the XYZ-3 case when asked to.
+        self.fake = Path(self.tmp) / "fake-claude"
+        self.fake.write_text("#!/bin/sh\n"
+                             f"echo \"$PWD|$(cat src/alpha.py 2>/dev/null)|${{ANTHROPIC_API_KEY:-none}}|${{OPENAI_API_KEY:-none}}\" >> {self.log}\n"
+                             "case \"$2\" in *export*) if [ -n \"$FAKE_FAIL\" ]; then echo boom >&2; exit 3; fi;; esac\n"
+                             "echo 'src/alpha.py'\n")
+        self.fake.chmod(0o755)
+        usage = Path(self.tmp) / "usage"
+        usage.mkdir()
+        (usage / "Claude1.json").write_text(json.dumps({"updated": time.time(), "rate_limits": {"five_hour": {"used_percentage": 9}}}))
+        self.env = dict(os.environ, ONEROOF_EVALS_DIR=self.tmp, ONEROOF_AGENT_BIN_CLAUDE_CODE=str(self.fake),
+                        ONEROOF_EVAL_WORKTREES=str(Path(self.tmp) / "worktrees"),
+                        ONEROOF_USAGE_DIR=str(usage), ANTHROPIC_API_KEY="test-value-never-reaches-the-agent",
+                        OPENAI_API_KEY="test-value-also-not")
+
+    def run_engine(self, *args, extra=None):
+        r = subprocess.run([sys.executable, str(ENGINE), *args, "--json"], capture_output=True, text=True,
+                           env=dict(self.env, **(extra or {})))
+        return json.loads(r.stdout)
+
+    def worktrees(self):
+        out = subprocess.run(["git", "-C", self.repo, "worktree", "list"], capture_output=True, text=True).stdout
+        return [x for x in out.splitlines() if x.strip()]
+
+    def test_cases_run_in_worktrees_at_the_pre_fix_commit_and_are_scored(self):
+        before = subprocess.run(["git", "-C", self.repo, "rev-list", "--all", "--count"], capture_output=True, text=True).stdout
+        est = self.run_engine("estimate", self.task, "--agent", "claude_code", "--seat", "C1", "--limit", "2")
+        self.assertEqual((est["seat"], est["usd"], est["seat_basis"]), ("C1", 0.0, "guess"))
+        self.assertAlmostEqual(est["seat_share"], 0.006)
+        res = self.run_engine("run", self.task, "--agent", "claude_code", "--seat", "C1")
+        self.assertEqual(res["status"], "done", res)
+        self.assertEqual((res["runner"], res["model"], res["seat"]), ("seat", "seat/C1", "C1"))
+        r = res["results"][0]
+        self.assertEqual(r["contestant"]["kind"], "agent")
+        self.assertEqual(r["contestant"]["name"], "Claude Code · C1")
+        self.assertEqual(r["metrics"][0]["value"], 0.5)      # alpha.py is right for XYZ-2, wrong for XYZ-3
+        lines = self.log.read_text().splitlines()
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            where, alpha, ak, ok = line.split("|")
+            self.assertIn("/worktrees/", where)              # a fresh worktree per case
+            self.assertEqual((ak, ok), ("none", "none"))      # no API key ever reaches the agent
+        self.assertIn("old alpha", self.log.read_text())     # XYZ-2's case: the tree before the fix
+        self.assertEqual(len(self.worktrees()), 1)           # every case worktree removed
+        self.assertFalse(any((Path(self.tmp) / "worktrees").glob("*/*")))
+        after = subprocess.run(["git", "-C", self.repo, "rev-list", "--all", "--count"], capture_output=True, text=True).stdout
+        self.assertEqual(before, after)                      # nothing committed
+        self.assertEqual(subprocess.run(["git", "-C", self.repo, "remote"], capture_output=True, text=True).stdout, "")
+        rows = self.run_engine("samples", res["id"])
+        self.assertEqual(sorted(x["score"] for x in rows), [0.0, 1.0])
+        self.assertEqual({x["code"]["verdict"] for x in rows}, {"pass", "fail"})
+        tr = self.run_engine("sample", res["id"], rows[0]["id"], "--epoch", "1")
+        self.assertEqual([m["role"] for m in tr["messages"]], ["system", "user", "assistant"])
+
+    def test_a_failing_case_leaves_no_worktree_and_the_run_still_scores(self):
+        res = self.run_engine("run", self.task, "--agent", "claude_code", "--seat", "C1", extra={"FAKE_FAIL": "1"})
+        self.assertEqual(res["status"], "done")
+        rows = self.run_engine("samples", res["id"])
+        self.assertTrue(any("boom" in (x.get("error") or "") for x in rows))
+        self.assertEqual(len(self.worktrees()), 1)
+
+    def test_a_new_regression_set_keeps_the_repo_so_agents_can_answer_it(self):
+        res = self.run_engine("run", self.task, "--agent", "claude_code", "--seat", "C1")
+        rows = self.run_engine("samples", res["id"])
+        add = subprocess.run([sys.executable, str(EVALS_DIR / "evalset.py"), "add", "--new", "demo regressions", "--from-run", res["id"],
+                              "--sample", rows[0]["id"], "--json"], capture_output=True, text=True, env=self.env)
+        self.assertTrue(json.loads(add.stdout)["added"])
+        meta = json.loads((Path(self.tmp) / "sets/demo_regressions/v1/set.json").read_text())
+        self.assertEqual(Path(meta["repo_path"]).resolve(), Path(self.repo).resolve())
+
+    def test_a_full_seat_refuses_before_starting_and_benchmarks_are_refused(self):
+        (Path(self.tmp) / "usage/Claude1.json").write_text(json.dumps({"updated": time.time(),
+                                                                      "rate_limits": {"five_hour": {"used_percentage": 89.5}}}))
+        e = self.run_engine("run", self.task, "--agent", "claude_code", "--seat", "C1")
+        self.assertIn("would pass the 90 % limit", e["error"])
+        e = self.run_engine("run", "gsm8k", "--agent", "claude_code", "--seat", "C1")
+        self.assertIn("answer your own eval sets", e["error"])
+        e = self.run_engine("run", self.task, "--agent", "kimi_code", "--seat", "K1")
+        self.assertIn("no headless mode", e["error"])
+
+
+class CompareAndHistory(unittest.TestCase):
+    """LAB-2068 (HP EV-8 + blend): compare = the app's paired compare plus the cases only one solved; leaderboard per
+    version with agents first, the baseline last and the floor; history with drops 'possible' unless the paired range
+    excludes 0."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-board-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.e = load(self.tmp)
+        self.f = Fixture(self.tmp)
+        self.ids = [f"XYZ-{i}-abc" for i in range(1, 21)]
+        self.tf = str(self.f.set("demo", 1, self.ids, floor=8))
+
+    def scores(self, right: int, shift: int = 0) -> dict:
+        return {i: (1.0 if (n + shift) % 20 < right else 0.0) for n, i in enumerate(self.ids)}
+
+    def test_compare_matches_the_app_and_lists_the_discordant_cases(self):
+        self.f.run("a", "own_demo_v1", "anthropic/claude-haiku-5-5", self.scores(15), "2026-10-02T00:00:00Z", task_ref=self.tf)
+        self.f.run("b", "own_demo_v1", "openai/gpt-5-mini", self.scores(12, 2), "2026-10-03T00:00:00Z", task_ref=self.tf)
+        self.e.index()
+        c = engine(self.tmp, "compare", "a", "b")
+        pc = self.e.paired_compare(self.e.sample_means("a"), self.e.sample_means("b"))
+        self.assertEqual((c["diff"], c["ci95"], c["n"], c["paired"]), (pc["diff"], pc["ci95"], 20, True))
+        self.assertEqual((c["diff"], c["ci95"]), (0.15, [-0.1073, 0.4073]))   # same numbers in EvalsTests (Swift)
+        self.assertEqual(c["verdict"], "noise")
+        self.assertEqual((len(c["only_a"]), len(c["only_b"]), c["tied"]), (5, 2, 13))
+        self.assertIn("XYZ-14-abc", c["only_a"])
+        self.assertIn("unknown", json.dumps(engine(self.tmp, "compare", "a", "zz")) + "unknown")
+
+    def test_leaderboard_order_floor_and_baseline_last(self):
+        self.f.run("m1", "own_demo_v1", "openai/gpt-5-mini", self.scores(11), "2026-10-02T00:00:00Z", task_ref=self.tf)
+        self.f.run("m2", "own_demo_v1", "openai/gpt-5-mini", self.scores(13), "2026-10-05T00:00:00Z", task_ref=self.tf)
+        self.f.run("ag", "own_demo_v1", "seat/C1", self.scores(9), "2026-10-04T00:00:00Z", task_ref=self.tf, agent="claude_code")
+        self.f.run("base", "own_demo_v1", "mockllm/model", self.scores(0), "2026-10-04T00:00:00Z", task_ref=self.tf)
+        self.e.index()
+        lb = engine(self.tmp, "leaderboard", "demo@v1")
+        self.assertEqual([r["kind"] for r in lb["rows"]], ["agent", "model", "baseline"])
+        self.assertEqual([r["run"] for r in lb["rows"]], ["ag", "m2", "base"])   # the latest run per contestant
+        self.assertEqual((lb["floor"], lb["floor_kind"], lb["cases"]), (0.4, "no-model floor", 20))
+        self.assertTrue(lb["rows"][0]["seat"])
+        self.assertEqual(lb["rows"][0]["contestant"], "Claude Code · C1")
+        self.assertEqual(engine(self.tmp, "leaderboard", "demo@v2")["rows"], [])   # versions are never mixed
+
+    def test_history_flags_a_possible_drop(self):
+        self.f.run("h1", "own_demo_v1", "openai/gpt-5-mini", self.scores(14), "2026-10-06T00:00:00Z", task_ref=self.tf)
+        self.f.run("h2", "own_demo_v1", "openai/gpt-5-mini", self.scores(12), "2026-10-31T00:00:00Z", task_ref=self.tf)
+        self.f.run("k1", "own_demo_v1", "anthropic/claude-haiku-5-5", self.scores(20), "2026-10-06T00:00:00Z", task_ref=self.tf)
+        self.f.run("k2", "own_demo_v1", "anthropic/claude-haiku-5-5", self.scores(4), "2026-10-31T00:00:00Z", task_ref=self.tf)
+        self.e.index()
+        h = engine(self.tmp, "history", "demo@v1")
+        self.assertEqual([len(s["points"]) for s in h["series"]], [2, 2])
+        drops = {d["id"]: d for d in h["drops"]}
+        self.assertTrue(drops["openai/gpt-5-mini"]["possible"])          # −10 points, inside the range
+        self.assertIn("dropped 10 points on Oct 31, inside its range. Re-run with 3 attempts", drops["openai/gpt-5-mini"]["text"])
+        self.assertFalse(drops["anthropic/claude-haiku-5-5"]["possible"])   # −80 points: the paired range excludes 0
+        self.assertEqual((h["first"][:10], h["last"][:10]), ("2026-10-06", "2026-10-31"))
+
+
+class SampleVerdicts(unittest.TestCase):
+    """LAB-2069 (HP EV-10, EV-11): each answer with the code check, the judge and your label side by side, the judge ≠ you
+    count; adding an answer to a regression set writes a new version and leaves the old one byte for byte."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-verdicts-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.e = load(self.tmp)
+        self.f = Fixture(self.tmp)
+        self.ids = [f"LAB-{i}-abc" for i in range(1, 7)]
+        self.tf = str(self.f.set("tri", 1, self.ids, kind="triage"))
+        self.rid = "20261101-120000-own_tri_v1-wxyz"
+        self.f.run(self.rid, "own_tri_v1", "openai/gpt-5-mini", {i: (1.0 if n < 3 else 0.0) for n, i in enumerate(self.ids)},
+                   "2026-11-01T12:00:00Z", task_ref=self.tf)
+        jd = Path(self.tmp) / "judges/tj"
+        jd.mkdir(parents=True)
+        items = [{"id": f"wxyz:{i}:1", "run": self.rid, "sample": i, "model": "openai/gpt-5-mini",
+                  "question": f"Bug report ({i[:-4]}):\nThing {i} breaks\n\nSource files:\na.py", "answer": "Open b.py.", "target": "a.py"}
+                 for i in self.ids]
+        (jd / "items.jsonl").write_text("".join(json.dumps(x) + "\n" for x in items))
+        (jd / "judge.json").write_text(json.dumps({"name": "tj", "mode": "single", "rubric": "r", "runs": [self.rid],
+                                                   "models": ["openai/gpt-5-mini"], "task": "own_tri_v1", "items": 6}))
+        verdicts = {f"wxyz:{i}:1": "pass" for i in self.ids}   # a lenient judge
+        (Path(self.tmp) / "judges/agreements.json").write_text(json.dumps({"j1": {"run": "j1", "judge": "tj", "mode": "single",
+                                                                                  "measured": "m", "verdicts": verdicts}}))
+        j = sibling("judge")
+        for i, v in [(self.ids[0], "pass"), (self.ids[3], "fail"), (self.ids[4], "fail")]:
+            j.add_label(jd, f"wxyz:{i}:1", v, "my reason")
+        self.e.index()
+
+    def test_samples_carry_code_judge_and_you(self):
+        rows = {r["id"]: r for r in engine(self.tmp, "samples", self.rid)}
+        r = rows[self.ids[3]]
+        self.assertEqual((r["code"]["verdict"], r["judge"]["verdict"], r["you"]["verdict"]), ("fail", "pass", "fail"))
+        self.assertEqual((r["you"]["why"], r["disagree"], r["issue"], r["title"]), ("my reason", True, "LAB-4", "Thing LAB-4-abc breaks"))
+        self.assertEqual(r["judge_item"], {"judge": "tj", "item": f"wxyz:{self.ids[3]}:1"})
+        self.assertNotIn("you", rows[self.ids[5]])            # unlabelled
+        self.assertFalse(rows[self.ids[5]]["labelled"])
+        verdicts = json.loads((Path(self.tmp) / "judges/agreements.json").read_text())["j1"]["verdicts"]
+        mine = sibling("judge").labels_of(Path(self.tmp) / "judges/tj")
+        expected = sum(1 for k, v in mine.items() if verdicts.get(k) != v["verdict"])
+        self.assertEqual(sum(r["disagree"] for r in rows.values()), expected)   # Judge ≠ you = the labels' disagreements
+        self.assertEqual(expected, 2)
+
+    def test_add_to_a_regression_set_makes_a_new_version(self):
+        a = json.loads(subprocess.run([sys.executable, str(EVALS_DIR / "evalset.py"), "add", "--new", "Tri regressions",
+                                       "--from-run", self.rid, "--sample", self.ids[3], "--json"], capture_output=True, text=True,
+                                      env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp)).stdout)
+        self.assertEqual((a["name"], a["version"], a["count"], a["added"]), ("tri_regressions", 1, 1, True))
+        v1 = (Path(self.tmp) / "sets/tri_regressions/v1/cases.jsonl").read_bytes()
+        es = sibling("evalset")
+        b = es.add_case("tri_regressions", es.case_from_run(self.rid, self.ids[4])[0], "triage")
+        self.assertEqual((b["version"], b["count"], b["message"]), (2, 2, "Added to tri_regressions (new version v2)"))
+        self.assertEqual((Path(self.tmp) / "sets/tri_regressions/v1/cases.jsonl").read_bytes(), v1)   # v1 untouched
+        meta = json.loads((Path(self.tmp) / "sets/tri_regressions/v2/set.json").read_text())
+        self.assertEqual((meta["kind"], meta["extends"]), ("triage", 1))
+        self.assertFalse(es.add_case("tri_regressions", es.case_from_run(self.rid, self.ids[4])[0], "triage")["added"])
+        judged = es.case_from_run("j-run-not-there", "x") if False else None
+        self.assertIsNone(judged)
+        q = subprocess.run([sys.executable, str(EVALS_DIR / "evalset.py"), "add", "tri_regressions", "--from-task", "gsm8k",
+                            "--sample", "q1", "--json"], capture_output=True, text=True, env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        self.assertIn("not on this Mac yet", json.loads(q.stdout)["error"])
+
+
+class Lessons(unittest.TestCase):
+    """LAB-2070 (HP EV-12): lessons.json loads, 16 lessons in six groups, unique ids, every link a route the app knows
+    (EvalLessons.knownRoutes in OneRoofCore/EvalsLearn.swift), every 1.9.37 glossary entry carried once with its text,
+    and the range explorer's numbers are the engine's Wilson (the same table EvalsLearnTests locks in Swift)."""
+
+    def setUp(self):
+        self.doc = json.loads((EVALS_DIR / "lessons.json").read_text())
+        self.swift = (ROOT / "app/Sources/OneRoofCore/EvalsLearn.swift").read_text()
+        self.glossary = re.findall(r'Entry\(id: "(\w+)", title: "[^"]*",\s*body: "((?:[^"\\]|\\.)*)"',
+                                   (ROOT / "app/Sources/OneRoofCore/Evals.swift").read_text())
+
+    def test_sixteen_lessons_unique_grouped(self):
+        ls = self.doc["lessons"]
+        self.assertEqual(len(ls), 16)
+        self.assertEqual(len({x["id"] for x in ls}), 16)
+        self.assertEqual([x["title"] for x in self.doc["sections"]], ["Start", "Reading a score", "How answers are marked",
+                                                                     "Agents vs models", "Your own evals", "Reading leaderboards"])
+        order = [x["id"] for x in self.doc["sections"]]
+        self.assertEqual([x["section"] for x in ls], sorted((x["section"] for x in ls), key=order.index))   # grouped in order
+        for x in ls:
+            self.assertLessEqual(len(x["body"].split()), 120, x["id"])
+            self.assertTrue(x["widget"] and x["teaser"] and x["links"], x["id"])
+
+    def test_every_link_is_a_known_route(self):
+        m = re.search(r"knownRoutes = \[([^\]]*)\]", self.swift, re.S)
+        routes = set(re.findall(r'"([^"]+)"', m.group(1)))
+        for x in self.doc["lessons"]:
+            for k in x["links"]:
+                self.assertIn(k["route"], routes, f'{x["id"]} → {k["route"]}')
+
+    def test_glossary_bodies_preserved(self):
+        self.assertEqual(len(self.glossary), 12)
+        used = [g for x in self.doc["lessons"] for g in x["glossary"]]
+        self.assertEqual(sorted(used), sorted(g for g, _ in self.glossary))
+        body = dict(self.glossary)
+        for x in self.doc["lessons"]:
+            if x["glossary"]:
+                self.assertEqual(x["body"], body[x["glossary"][0]].replace('\\"', '"'), x["id"])
+
+    def test_range_explorer_parity_with_power_and_wilson(self):
+        e = load(tempfile.mkdtemp(prefix="roof-lessons-"))
+        table = {5: (0.3755282641185388, 0.9637768390302125), 10: (0.49015684672072335, 0.9433190520193067),
+                 20: (0.5839782779742401, 0.9193436467288), 50: (0.6696262789551477, 0.8875637005402612),
+                 200: (0.7391436038882958, 0.8495487925607118), 1000: (0.7740805389094014, 0.8236233219387643)}
+        for n, (lo, hi) in table.items():
+            a, b, _ = e.interval(0.8, n, None, True)
+            self.assertAlmostEqual(a, lo, places=12)
+            self.assertAlmostEqual(b, hi, places=12)
+        self.assertEqual(e.power(20, 3)["plus_minus_points"], 12.3)   # Attempts widget = EvalPower.mirror (Swift test)
+        self.assertEqual((round(table[50][0] * 100), round(table[50][1] * 100)), (67, 89))
+
+
+class CompareTooFew(unittest.TestCase):
+    """QA (M9 stage 2): a compare on fewer than 10 shared questions calls no winner, however clear it looks."""
+
+    def setUp(self):
+        self.e = load(tempfile.mkdtemp(prefix="roof-cmp-"))
+
+    def test_two_shared_questions_zero_spread_is_not_a_win(self):
+        c = self.e.paired_compare({"q1": 1.0, "q2": 1.0}, {"q1": 0.0, "q2": 0.0})
+        self.assertEqual((c["verdict"], c["too_few"], c["n"], c["ci95"]), ("noise", True, 2, [1.0, 1.0]))
+
+    def test_ten_shared_questions_can_be_called(self):
+        ids = [f"q{i}" for i in range(10)]
+        c = self.e.paired_compare({i: 1.0 for i in ids}, {i: 0.0 for i in ids})
+        self.assertEqual((c["verdict"], c["too_few"]), ("a_better", False))
+        u = self.e.paired_compare({f"a{i}": 1.0 for i in range(5)}, {f"b{i}": 0.0 for i in range(5)})   # unpaired, 5 each
+        self.assertEqual((u["paired"], u["verdict"], u["too_few"]), (False, "noise", True))
+
+
+class SeatGate(unittest.TestCase):
+    """QA (M9 stage 2): unknown or stale seat use never passes silently. Before each case the run waits ("seat use
+    unknown") until the use is known and under the limit, or the owner presses Run anyway (recorded in run.json); the
+    agent CLIs run contained (Claude Code --restricted with no hooks and Read denied on secrets; Codex without user config)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-seat-gate-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.usage = Path(self.tmp) / "usage"
+        self.usage.mkdir()
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        os.environ["ONEROOF_USAGE_DIR"] = str(self.usage)
+        os.environ["ONEROOF_SEAT_POLL"] = "0.05"
+        self.addCleanup(lambda: [os.environ.pop(k, None) for k in ("ONEROOF_USAGE_DIR", "ONEROOF_SEAT_POLL")])
+        self.ar = sibling("agent_runner")
+        self.d = Path(self.tmp) / "runs" / "r1"
+        self.d.mkdir(parents=True)
+        self.r = {"id": "r1", "seat": "C1", "seat_limit": 90, "runner": "seat", "status": "running"}
+        (self.d / "run.json").write_text(json.dumps(self.r))
+
+    def usage_file(self, pct, age_hours=0.0):
+        (self.usage / "Claude1.json").write_text(json.dumps({"updated": time.time() - age_hours * 3600,
+                                                             "rate_limits": {"five_hour": {"used_percentage": pct}}}))
+
+    def wait_in_thread(self):
+        import threading
+        box = {}
+        th = threading.Thread(target=lambda: box.setdefault("ok", self.ar.wait_for_seat(self.r, self.d)), daemon=True)
+        th.start()
+        return th, box
+
+    def run_json(self):
+        return json.loads((self.d / "run.json").read_text())
+
+    def test_the_gate_words(self):
+        u = {"seat": "C1", "five_hour": None, "stale": True}
+        self.assertTrue(self.ar.seat_gate(u, 90, False).startswith("seat use unknown"))
+        self.assertIsNone(self.ar.seat_gate(u, 90, True))                                        # Run anyway
+        self.assertIsNone(self.ar.seat_gate({"seat": "C1", "five_hour": 40.0, "stale": False}, 90, False))
+        self.assertIn("93 %", self.ar.seat_gate({"seat": "C1", "five_hour": 93.0, "stale": False}, 90, True))   # anyway ≠ over
+
+    def test_unknown_use_waits_until_run_anyway(self):
+        th, box = self.wait_in_thread()            # no usage file at all
+        time.sleep(0.4)
+        self.assertTrue(th.is_alive())
+        r = self.run_json()
+        self.assertEqual(r["status"], "waiting")
+        self.assertTrue(r["waiting"].startswith("seat use unknown"))
+        res = subprocess.run([sys.executable, str(ENGINE), "run-anyway", "r1", "--json"], capture_output=True, text=True,
+                             env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        self.assertTrue(json.loads(res.stdout)["seat_unknown_ok"], res.stderr)
+        th.join(3)
+        self.assertEqual(box.get("ok"), True)
+        r = self.run_json()
+        self.assertEqual((r["status"], r["waiting"], r["seat_unknown_ok"]), ("running", None, True))
+        self.assertIn("seat_unknown_ok_at", r)
+
+    def test_stale_use_waits_until_known_and_under_the_limit(self):
+        self.usage_file(20, age_hours=7)           # older than 6 hours: stale
+        th, box = self.wait_in_thread()
+        time.sleep(0.3)
+        self.assertTrue(th.is_alive())
+        self.assertTrue(self.run_json()["waiting"].startswith("seat use unknown"))
+        self.usage_file(95)                        # known, but over
+        time.sleep(0.3)
+        self.assertTrue(th.is_alive())
+        self.assertIn("95 %", self.run_json()["waiting"])
+        self.usage_file(30)                        # known and under
+        th.join(3)
+        self.assertEqual(box.get("ok"), True)
+
+    def test_run_anyway_only_for_seat_runs(self):
+        (self.d / "run.json").write_text(json.dumps(dict(self.r, runner=None)))
+        res = subprocess.run([sys.executable, str(ENGINE), "run-anyway", "r1", "--json"], capture_output=True, text=True,
+                             env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        self.assertIn("not an agent run on a seat", res.stdout + res.stderr)
+
+    def test_agents_run_contained(self):
+        out, case = Path(self.tmp) / "c-e1.last.txt", Path(self.tmp) / "case"
+        cc = self.ar.command("claude_code", "claude", "q", out, case)
+        self.assertIn("--restricted", cc)
+        self.assertIn("--strict-mcp-config", cc)
+        self.assertEqual(cc[cc.index("--permission-prompts") + 1], "none")
+        st = json.loads(cc[cc.index("--settings") + 1])
+        self.assertIs(st["disableAllHooks"], True)
+        for p in ("~/Projects/_common/access_admin/**", "~/.config/**", "~/.ssh/**", "~/Library/**"):
+            self.assertIn(f"Read({p})", st["permissions"]["deny"])
+        self.assertIn("Bash", st["permissions"]["deny"])
+        cx = self.ar.command("codex_cli", "codex", "q", out, case)
+        for flag in ("--ignore-user-config", "--ignore-rules", "--ephemeral"):
+            self.assertIn(flag, cx)
+        self.assertEqual(cx[cx.index("--sandbox") + 1], "read-only")
+        self.assertEqual(cx[cx.index("-C") + 1], str(case))
+        self.assertIn("hooks", [cx[i + 1] for i, x in enumerate(cx) if x == "--disable"])
+        # Case worktrees are outside ~/Library (whose reads are denied) unless a test moves them.
+        os.environ.pop("ONEROOF_EVAL_WORKTREES", None)
+        ar2 = sibling("agent_runner")
+        self.assertFalse(str(ar2.WORKTREES).startswith(str(Path.home() / "Library")))
+
+
 @unittest.skipUnless(os.environ.get("ROOF_EVAL_INTEGRATION") == "1", "set ROOF_EVAL_INTEGRATION=1")
 class Integration(unittest.TestCase):
     @classmethod

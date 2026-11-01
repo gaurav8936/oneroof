@@ -61,6 +61,7 @@ final class ResourceMonitor: ObservableObject {
             }
             DispatchQueue.main.async {
                 if self.viewers > 0 { self.objectWillChange.send() }
+                let snap = self.withFixtureSessions(snap)   // LAB-2052 self-test sessions (none outside a self-test)
                 self.snapshot = snap
                 self.history.record(snap)
                 if wantsMac { self.mac = SelfTestMacFixture.breakdown ?? mac }   // LAB-853 self-test data
@@ -98,8 +99,28 @@ final class ResourceMonitor: ObservableObject {
         }
     }
 
-    /// Show the result of a quit soon, not at the next 3 s tick.
-    private func soon() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.tick() } }
+    /// LAB-2052 · with ONEROOF_SELFTEST_MACFIXTURE, three running sessions (SelfTestMacFixture) join the sample; the first
+    /// time, ten minutes of their history are filled in so the sparklines have a line to draw.
+    private var fixtureTick = 0
+    private func withFixtureSessions(_ snap: ResourceSnapshot) -> ResourceSnapshot {
+        guard SelfTestMacFixture.mode != nil else { return snap }
+        let n = ResourceHistory.capacity
+        if fixtureTick == 0 {
+            for k in 0..<(n - 1) {
+                var past = snap
+                past.at = snap.at.addingTimeInterval(-ResourceHistory.interval * Double(n - 1 - k))
+                past.sessions.merge(SelfTestMacFixture.sessions(at: k)) { a, _ in a }
+                history.record(past)
+            }
+        }
+        var out = snap
+        out.sessions.merge(SelfTestMacFixture.sessions(at: n - 1 + fixtureTick)) { a, _ in a }
+        fixtureTick += 1
+        return out
+    }
+
+    /// Show the result of a quit soon, not at the next 3 s tick (LAB-2054: also after a tab or window is closed).
+    func soon() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.tick() } }
 
     /// At launch: a local model (llama-server on One Roof's port) that no process owns any more was left by a
     /// force-quit or crash; it keeps its memory and grows (8.4 GB on 10-22). One Roof starts a fresh one when needed.

@@ -14,6 +14,7 @@ extension Place {
         switch self {
         case .home: return .overview
         case .needsYou: return .decisions
+        case .history: return .history   // LAB-2044
         case .sessions: return .workspace
         case .work: return .work
         case .machine: return .resources
@@ -37,6 +38,7 @@ extension CentreView {
         case .loops: return .loops
         case .learn: return .learn
         case .evals: return .evals
+        case .history: return .history   // LAB-2044
         case .subagents, .objective, .editor, .review: return nil
         }
     }
@@ -52,7 +54,7 @@ enum V2Counts {
     }
 }
 
-/// The 66 pt place rail (steps 0 and 2): icon + label per place, Needs you badged, Look at the foot; at step 2 the
+/// The 66 pt place rail (steps 0 and 2): icon + label per place, the Inbox badged, Look at the foot; at step 2 the
 /// seat bars sit above Look instead of a dock.
 struct V2Rail: View {
     @Environment(\.theme) private var t
@@ -70,17 +72,17 @@ struct V2Rail: View {
             StepReader(step: win.step) { s in   // LAB-1736: only this part follows the step
                 if s.focusStep == .wide { V2RailSeats(model: model) { controller.v2OpenSettings(tab: 2) }.padding(.bottom, 6) }
             }
-            Button { controller.v2ShowLooks() } label: {
+            Button { controller.v2OpenSettings(tab: 0) } label: {   // LAB-2040: Settings, not only the look
                 VStack(spacing: 3) {
-                    Image(systemName: "circle.lefthalf.filled").font(.system(size: 19, weight: .medium))
+                    Image(systemName: "gearshape").font(.system(size: 19, weight: .medium))
                         .foregroundStyle(t.accentText.color).frame(height: 22)   // LAB-2002: as the places above
-                    Text("Look").ui(10.5)
+                    Text("Settings").ui(10.5)
                 }
                 .foregroundStyle(t.text2.color).frame(minWidth: 54, maxWidth: .infinity, minHeight: 44, maxHeight: 44).padding(.horizontal, 5).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Look: one preset sets every panel at once (Settings › Appearance)")
-            .accessibilityLabel("Look")
+            .help("Settings: agents, seats, appearance and looks, notifications, shortcuts (⌘,)")
+            .accessibilityLabel("Settings")
         }
         .padding(.top, 8).padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -118,7 +120,7 @@ struct V2PlaceButton: View {
             VStack(spacing: 3) {
                 // LAB-2002: bigger icons in the accent text colour so they read at a glance; the label keeps its size and
                 // grey, and the frames below are unchanged, so the rail and the toolbar row keep their widths.
-                Image(systemName: place.symbol).font(.system(size: labelled ? 19 : 15, weight: selected ? .semibold : .medium))
+                Image(systemName: place.symbol(count: badge)).font(.system(size: labelled ? 19 : 15, weight: selected ? .semibold : .medium))
                     .foregroundStyle(t.accentText.color)
                     .frame(height: labelled ? 22 : 18)
                     .overlay(alignment: .topTrailing) {
@@ -131,6 +133,17 @@ struct V2PlaceButton: View {
                     }
                 if labelled { Text(place.title).ui(10.5, selected ? .semibold : .regular).lineLimit(1).minimumScaleFactor(0.8) }
             }
+            .overlay(alignment: .top) {
+                // LAB-2072: Evals is a draft until its redesign ships: a one-line tag above the icon's right shoulder.
+                if place == .evals && EvalsDraft.isDraft {
+                    Text(EvalsDraft.tag.uppercased()).ui(labelled ? 7.5 : 6.5, .bold).foregroundStyle(t.onAccent.color)
+                        .lineLimit(1).fixedSize()
+                        .padding(.horizontal, 3).padding(.vertical, 1)
+                        .background(Capsule().fill(t.statusColor(.needsYou).color))
+                        .offset(x: labelled ? 16 : 10, y: labelled ? -5 : -7)
+                        .accessibilityHidden(true)
+                }
+            }
             .foregroundStyle(selected ? t.text.color : t.text2.color)
             .frame(minWidth: labelled ? 56 : 26, maxWidth: labelled ? .infinity : 26, minHeight: labelled ? 44 : 24, maxHeight: labelled ? 44 : 24)
             .padding(.horizontal, labelled ? 5 : 0)   // LAB-1829: a wider rail gives the label room
@@ -141,8 +154,8 @@ struct V2PlaceButton: View {
         }
         .buttonStyle(.plain)
         // The icon row sits in the toolbar, where only an AppKit tooltip shows (LAB-1236); the rail is in the window.
-        .modifier(PlaceHelp(text: place.title + " (⌃⌘\(place.controlKey))", inToolbar: !labelled))
-        .accessibilityLabel(place.title + (badge > 0 ? ", \(badge) waiting" : "") + (selected ? ", selected" : ""))
+        .modifier(PlaceHelp(text: place.title + (place == .evals && EvalsDraft.isDraft ? " · " + EvalsDraft.banner : "") + " (⌃⌘\(place.controlKey))", inToolbar: !labelled))
+        .accessibilityLabel(place.title + (place == .evals && EvalsDraft.isDraft ? ", " + EvalsDraft.banner : "") + (badge > 0 ? ", \(badge) waiting" : "") + (selected ? ", selected" : ""))
     }
 }
 
@@ -204,7 +217,7 @@ enum V2Seats {
     }
 }
 
-/// The full dock (step 0, 50 pt across the window): seats · roofd · foundations · Mac load · Needs you · Tonight.
+/// The full dock (step 0, 50 pt across the window): seats · roofd · foundations · Mac load · Inbox · Tonight.
 /// Every part opens where its details are (LAB-1085).
 struct V2Dock: View {
     @Environment(\.theme) private var t
@@ -244,7 +257,7 @@ extension V2Dock {
                 }
                 .buttonStyle(.plain).help("This Mac: One Roof's memory and CPU (Machine)")
             }
-            V2DockPill(title: "Needs you", count: V2Counts.needsYou(model), urgent: true) { controller.v2Open(.needsYou) }
+            V2DockPill(title: "Inbox", count: V2Counts.needsYou(model), urgent: true) { controller.v2Open(.needsYou) }
             V2DockPill(title: "Tonight", count: V2Counts.tonight(model), urgent: false) { controller.v2Open(.loops) }
         }
     }
@@ -334,7 +347,7 @@ struct V2DockLine: View {
             }
             if needs > 0 {
                 Button { controller.v2Open(.needsYou) } label: {
-                    Text("· Needs you \(needs)").ui(11, .semibold).foregroundStyle(t.needsText.color).fixedSize()
+                    Text("· Inbox \(needs)").ui(11, .semibold).foregroundStyle(t.needsText.color).fixedSize()
                 }
                 .buttonStyle(.plain)
             }
@@ -382,25 +395,32 @@ struct V2RailSeats: View {
         let usage = V2Seats.usage(model)
         let marks = V2Seats.marks(model)
         Button(action: open) {
-            VStack(spacing: 3) {
+            VStack(spacing: 6) {
+                // LAB-2041: each seat as large as a place icon (20 pt agent mark, like the dock), its use in words and a
+                // bar thick enough to read, spaced apart; a seat with no feed is dimmed but still readable.
                 ForEach(marks, id: \.self) { m in
-                    HStack(spacing: 3) {
-                        Text(m.mono).font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(usage[m] == nil ? t.text3.color : t.text2.color)
-                            .frame(width: 14, alignment: .leading)
-                        GeometryReader { g in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(t.separator.color)
-                                Capsule().fill(m.fill.color).frame(width: g.size.width * CGFloat(min(100, max(0, usage[m]?.worst ?? 0))) / 100)
+                    HStack(spacing: 5) {
+                        AgentBadge(m, size: 22)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(usage[m]?.worst.map { "\(Int($0))%" } ?? "off").ui(10.5, .semibold)
+                                .foregroundStyle(usage[m] == nil ? t.text3.color : t.text.color).lineLimit(1).fixedSize()
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(t.separatorStrong.color.opacity(0.45))
+                                    Capsule().fill(m.fill.color).frame(width: g.size.width * CGFloat(min(100, max(0, usage[m]?.worst ?? 0))) / 100)
+                                }
                             }
+                            .frame(height: 5)
                         }
-                        .frame(width: 30, height: 3)
+                        .frame(width: 30)
                     }
-                    .frame(height: 9)
+                    .opacity(usage[m] == nil ? 0.7 : 1)
+                    .help(V2SeatChip.help(m, usage[m]))
+                    .frame(height: 24)
                 }
-                Text("seats").ui(9.5).foregroundStyle(hover ? t.text2.color : t.text3.color)
+                Text("seats").ui(10.5).foregroundStyle(hover ? t.text.color : t.text2.color)
             }
-            .padding(.vertical, 5).frame(width: 54)
+            .padding(.vertical, 6).frame(width: 60)
             .contentShape(Rectangle())
         }
         .buttonStyle(RailSeatsStyle(hover: hover))

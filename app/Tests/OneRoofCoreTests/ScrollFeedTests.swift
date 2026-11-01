@@ -61,13 +61,32 @@ final class ScrollFeedTests: XCTestCase {
         XCTAssertEqual(ScrollFeed.answerText(ask(live, at: t0, answered: .reply, reply: "answered in the terminal")), "Answered in its terminal")
     }
 
-    func test_LAB1831_scrollIsALayoutPageBesideWall() {
-        XCTAssertEqual(SessionLayout.allCases, [.single, .grid, .wall, .scroll])
-        XCTAssertEqual(V2Layout.page(for: .scroll), "Scroll")
+    /// LAB-2044: Scroll left the Single · Grid · Wall switch (it is the History place); a saved "scroll" opens as Single.
+    func test_LAB2044_scrollLeftTheLayoutSwitchAndASavedScrollOpensSingle() {
+        XCTAssertEqual(SessionLayout.allCases, [.single, .grid, .wall], "the switch reads Single · Grid · Wall")
+        XCTAssertEqual(SessionLayout(stored: "scroll"), .single, "a window saved with layout scroll opens as Single")
+        XCTAssertEqual(SessionLayout(stored: "grid"), .grid)
+        XCTAssertNil(SessionLayout(stored: "nonsense"))
+        XCTAssertNil(SessionLayout(rawValue: "scroll"))
         XCTAssertEqual(V2Layout.page(for: .wall), "All windows")
         XCTAssertNil(V2Layout.page(for: .grid))
-        XCTAssertEqual(V2Layout.layout(forPage: "Scroll"), .scroll)
+        XCTAssertNil(V2Layout.page(for: .single))
+        XCTAssertNil(V2Layout.layout(forPage: "Scroll"), "no Scroll page any more")
         XCTAssertNil(V2Layout.layout(forPage: "Settings"))
-        XCTAssertTrue(V2Layout.showsLayoutControl(inSessions: true, page: "Scroll"), "Single goes back from Scroll")
+        XCTAssertFalse(V2Layout.showsLayoutControl(inSessions: true, page: "Scroll"))
+    }
+
+    /// LAB-2044: the feed in both orders (History shows newest first; the oldest-first order stays for tests).
+    func test_LAB2044_feedNewestFirstIsTheOldestFirstReversed() {
+        let a = row("A"), b = row("B")
+        let rows = [a.id: a, b.id: b]
+        let t0 = Date(timeIntervalSince1970: 3_000_000)
+        let feed = (0..<5).map { FeedEvent(at: t0.addingTimeInterval(Double($0) * 10), sessionId: $0 % 2 == 0 ? a.id : b.id, kind: .finding, text: "f\($0)") }
+        let old = ScrollFeed.entries(feed: feed, chapters: [:], decisions: []) { rows[$0] }
+        let new = ScrollFeed.entries(feed: feed, chapters: [:], decisions: [], item: { rows[$0] }, order: .newestFirst)
+        XCTAssertEqual(new.map(\.text), ["f4", "f3", "f2", "f1", "f0"], "newest on top")
+        XCTAssertEqual(new, old.reversed())
+        XCTAssertEqual(ScrollFeed.entries(feed: feed, chapters: [:], decisions: [], item: { rows[$0] }, limit: 2, order: .newestFirst).map(\.text), ["f4", "f3"],
+                       "the limit keeps the newest")
     }
 }

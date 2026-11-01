@@ -1,0 +1,397 @@
+{
+ "about": "LAB-2070 (HP EV-12): the Learn lessons, in order. App help, not Agentic Engineering content. Bodies that have a glossary entry keep its text (EvalGlossary in OneRoofCore/Evals.swift); 'more' is one extra paragraph; 'links' are the places in Evals where the lesson's number shows up (routes in EvalLessons.knownRoutes); 'widget' is the Try it kind.",
+ "sections": [
+  {
+   "id": "start",
+   "title": "Start"
+  },
+  {
+   "id": "score",
+   "title": "Reading a score"
+  },
+  {
+   "id": "marked",
+   "title": "How answers are marked"
+  },
+  {
+   "id": "agents",
+   "title": "Agents vs models"
+  },
+  {
+   "id": "own",
+   "title": "Your own evals"
+  },
+  {
+   "id": "leaderboards",
+   "title": "Reading leaderboards"
+  }
+ ],
+ "lessons": [
+  {
+   "id": "first-eval",
+   "section": "start",
+   "title": "Your first eval, free",
+   "body": "An eval is three things: a fixed set of questions, a way to ask them, and a way to mark the answers. The cheapest way to see all three is a run that costs nothing. One Roof has a free stand-in model. It always gives the same wrong answer, so it scores 0 %. That is the point: you see every step without paying. Then you run the same five questions on a real, cheap model and compare the two runs.",
+   "example": "Five GSM8K questions on the stand-in: 0 right, and the 95 % range still goes up to 43 %.",
+   "glossary": [],
+   "widget": "firstEval",
+   "teaser": "Run five questions for free, read the score, open one answer.",
+   "links": [
+    {
+     "label": "Run: the cost shows before anything starts",
+     "route": "run"
+    },
+    {
+     "label": "Results: the score and its range",
+     "route": "results"
+    },
+    {
+     "label": "One run, question by question",
+     "route": "results/run"
+    }
+   ]
+  },
+  {
+   "id": "accuracy-chance",
+   "section": "score",
+   "title": "Accuracy and chance",
+   "body": "The share of questions answered correctly. It means little without knowing chance level: four-option multiple choice gives 25 % by guessing, MMLU-Pro's ten options give 10 %.",
+   "example": "43 right out of 50 → 0.86.",
+   "glossary": [
+    "accuracy",
+    "chance"
+   ],
+   "widget": "chance",
+   "teaser": "What guessing alone would score.",
+   "links": [
+    {
+     "label": "Explore › Anatomy: the Chance tile",
+     "route": "explore/anatomy"
+    },
+    {
+     "label": "Results: the dashed floor on every bar",
+     "route": "results"
+    },
+    {
+     "label": "Overview: each eval's floor",
+     "route": "overview"
+    }
+   ]
+  },
+  {
+   "id": "range",
+   "section": "score",
+   "title": "The 95 % range",
+   "body": "Running the same model on a different set of questions would give a different score. The range shows where the true score probably lies. Few questions → wide range. One Roof uses the Wilson range for proportions: it stays honest at 0 % and 100 %.",
+   "example": "0 right out of 5 still allows up to 43 %; 80 % on 1,000 questions is about ±2.5 points.",
+   "glossary": [
+    "interval"
+   ],
+   "widget": "range",
+   "teaser": "Where the true score probably is.",
+   "links": [
+    {
+     "label": "Results: the bar behind every score",
+     "route": "results"
+    },
+    {
+     "label": "Run: what this run can tell you",
+     "route": "run"
+    },
+    {
+     "label": "Overview: the 95 % range column",
+     "route": "overview"
+    },
+    {
+     "label": "One run: the score at the top",
+     "route": "results/run"
+    }
+   ]
+  },
+  {
+   "id": "stderr",
+   "section": "score",
+   "title": "Standard error",
+   "body": "How much the score would move between repeated samples of questions. The 95 % range is roughly the score ± 2 standard errors.",
+   "example": "Accuracy 0.70 with stderr 0.03 → about 0.64 to 0.76.",
+   "glossary": [
+    "stderr"
+   ],
+   "widget": "stderr",
+   "teaser": "How much the score moves from sample to sample.",
+   "links": [
+    {
+     "label": "One run: every metric with its range",
+     "route": "results/run"
+    },
+    {
+     "label": "Results › All × all: each cell",
+     "route": "results/all-by-all"
+    }
+   ]
+  },
+  {
+   "id": "compare",
+   "section": "score",
+   "title": "Is the difference real?",
+   "body": "Two scores whose ranges overlap may be noise. When both models answered the same questions, compare them question by question (paired): it removes the questions' own difficulty and finds smaller real differences.",
+   "example": "A 0.82 vs B 0.78 on 50 shared questions: the paired range of the difference −0.03 to +0.11 includes 0 → not distinguishable.",
+   "glossary": [
+    "compare"
+   ],
+   "widget": "compare",
+   "teaser": "Paired comparison on shared questions.",
+   "links": [
+    {
+     "label": "Results › Compare: the verdict in words",
+     "route": "results/compare"
+    },
+    {
+     "label": "Overview: what changed",
+     "route": "overview"
+    }
+   ]
+  },
+  {
+   "id": "passk",
+   "section": "score",
+   "title": "pass@1 and pass@k",
+   "body": "For code, the program is run against tests. pass@1: the first attempt passes. pass@k: at least one of k attempts passes. pass@k is always higher; it measures what the model can do, pass@1 what it will usually do.",
+   "example": "MBPP answers each question 5 times by default to estimate pass@k.",
+   "glossary": [
+    "passk"
+   ],
+   "widget": "passk",
+   "teaser": "One try, or the best of several.",
+   "links": [
+    {
+     "label": "One run: pass@k metrics",
+     "route": "results/run"
+    },
+    {
+     "label": "Run: attempts per question",
+     "route": "run"
+    }
+   ],
+   "more": "pass@k here assumes each attempt succeeds on its own, at the same rate. Real attempts on one question are alike, so the true gain from more attempts is usually smaller."
+  },
+  {
+   "id": "attempts",
+   "section": "score",
+   "title": "Attempts per question",
+   "body": "Running each question several times shows how stable the model is, and makes the score's range narrower. It multiplies cost by the number of attempts.",
+   "example": "50 questions × 3 attempts = 150 calls.",
+   "glossary": [
+    "epochs"
+   ],
+   "widget": "attempts",
+   "teaser": "More attempts, narrower range, higher cost.",
+   "links": [
+    {
+     "label": "Run: what this run can tell you",
+     "route": "run"
+    },
+    {
+     "label": "Results › Over time: Re-run ×3",
+     "route": "results"
+    }
+   ],
+   "more": "Repeats narrow the range less than new questions would: a model tends to give the same question the same answer. The Run note counts every attempt as if it were a new question, so it shows the most repeats can do."
+  },
+  {
+   "id": "exact-match",
+   "section": "marked",
+   "title": "Exact match and parsing",
+   "body": "Many benchmarks mark an answer by reading one thing out of the reply and comparing it with the expected answer. GSM8K asks for a last line like \"ANSWER: 72\". Inspect then takes the last number in the reply, removes $ signs and thousands commas, and compares it with the expected number. A right answer in the wrong place is marked wrong. So a low score can be a parsing problem, not a reasoning problem. Open a few wrong answers before you trust the number.",
+   "example": "\"72 clips (48 + 24)\" is marked wrong: the last number in it is 24.",
+   "glossary": [],
+   "widget": "exactMatch",
+   "teaser": "Read the reply, take one thing out, compare.",
+   "links": [
+    {
+     "label": "Explore › Questions: how it's marked",
+     "route": "explore/questions"
+    },
+    {
+     "label": "One run: answer, expected and the marking",
+     "route": "results/run"
+    }
+   ]
+  },
+  {
+   "id": "judges",
+   "section": "marked",
+   "title": "Model judges and their limits",
+   "body": "Some benchmarks (SimpleQA, StrongREJECT) use a second model to grade answers. That grader has its own errors and biases, and costs money too. Check it against a person's labels before trusting it.",
+   "example": "StrongREJECT asks a grader model how harmful and how specific each answer is.",
+   "glossary": [
+    "judge"
+   ],
+   "widget": "judge",
+   "teaser": "A grader with its own errors.",
+   "links": [
+    {
+     "label": "Your evals › Judge: how far to trust it",
+     "route": "your-evals/judge"
+    },
+    {
+     "label": "Results: the judge badge on a judged eval",
+     "route": "results"
+    }
+   ],
+   "more": "A judge's errors do not cancel out. If it passes bad answers, every score it gives is too high; if it fails good ones, too low. A judge can also favour long answers, the first of two answers, or answers from its own model family."
+  },
+  {
+   "id": "labels",
+   "section": "marked",
+   "title": "Your labels as ground truth",
+   "body": "To know how far to trust a judge, you mark some answers yourself. Your marks are the ground truth. Some become the judge's worked examples. The rest are held back, and the judge is measured only on those: how often it agrees with you, how often it passes the answers you passed (true positive rate), and how often it fails the ones you failed (true negative rate). Under 10 labels the agreement is shown, marked too few. Labels made by a model are named as that model's labels: useful, but not ground truth.",
+   "example": "17 of 20 labels agree: 85 %, but the 95 % range is 64–95 %.",
+   "glossary": [],
+   "widget": "labels",
+   "teaser": "Your marks are what the judge is measured against.",
+   "links": [
+    {
+     "label": "Your evals › Judge: label, agreement",
+     "route": "your-evals/judge"
+    },
+    {
+     "label": "One run: the code, judge and you columns",
+     "route": "results/run"
+    }
+   ]
+  },
+  {
+   "id": "harness",
+   "section": "agents",
+   "title": "What the harness adds",
+   "body": "The same model scores differently with a different prompt, answer format, number of examples shown, or agent around it. Compare only runs made the same way; One Roof records the benchmark version and engine version with every run.",
+   "example": "Claude Code on Sonnet and Sonnet alone are two different things to measure on SWE-bench.",
+   "glossary": [
+    "harness",
+    "frameworks"
+   ],
+   "widget": "harness",
+   "teaser": "Same model, different wrapper, different score.",
+   "links": [
+    {
+     "label": "Results › All × all: agents and models side by side",
+     "route": "results/all-by-all"
+    },
+    {
+     "label": "Run: agents first, then models",
+     "route": "run"
+    }
+   ]
+  },
+  {
+   "id": "cost",
+   "section": "agents",
+   "title": "Cost per solved task",
+   "body": "Dollars spent divided by the number of correct answers. A cheaper model that gets fewer right can still be the better buy, or the worse one.",
+   "example": "$0.40 for 40 right → 1 cent per correct answer.",
+   "glossary": [
+    "cost"
+   ],
+   "widget": "cost",
+   "teaser": "Dollars for each answer marked right.",
+   "links": [
+    {
+     "label": "Results: the $ / right column",
+     "route": "results"
+    },
+    {
+     "label": "Run: the cost before you start",
+     "route": "run"
+    },
+    {
+     "label": "Overview: cost and $ / right",
+     "route": "overview"
+    }
+   ],
+   "more": "For an agent, count every attempt, retry and tool call, then divide by the tasks it solved. An agent on your plan's seat shows \"seat\": the plan pays, not each token."
+  },
+  {
+   "id": "golden-sets",
+   "section": "own",
+   "title": "Golden sets from repo history",
+   "body": "A golden set is a fixed list of tasks with known right answers. One Roof builds one from a repo's own history. It takes real bug fixes: the bug report, and the source files as they were just before the fix. The model names up to three files it would change. Code marks it right when one of them is a file the real fix changed. A report that already names a changed file is left out, as too easy. The floor is what you get with no model: naming the files changed most often.",
+   "example": "20 fixes from the last 120 days, each a question whose answer is in the commit.",
+   "glossary": [],
+   "widget": "golden",
+   "teaser": "Your own work, turned into questions with known answers.",
+   "links": [
+    {
+     "label": "Your evals: sets, cases and the floor",
+     "route": "your-evals"
+    },
+    {
+     "label": "Results: your set's leaderboard",
+     "route": "results"
+    }
+   ]
+  },
+  {
+   "id": "frozen",
+   "section": "own",
+   "title": "Why versions are frozen",
+   "body": "A set's version never changes once it is built. If the questions moved, scores from last month and this month would measure different things, and a rise could just be easier questions. So a new build that finds different tasks writes a new version, v2, and v1 stays exactly as it was, with its results. Compare runs only within one version. To add a question, add it to the next version.",
+   "example": "oneroof v1: 20 cases, frozen. Build v2 adds the fixes since; v1's runs keep their meaning.",
+   "glossary": [],
+   "widget": "frozen",
+   "teaser": "Same questions, so scores over time mean something.",
+   "links": [
+    {
+     "label": "Your evals: versions and Build v2",
+     "route": "your-evals"
+    },
+    {
+     "label": "Results › Over time: one version's history",
+     "route": "results"
+    }
+   ]
+  },
+  {
+   "id": "saturation",
+   "section": "leaderboards",
+   "title": "Saturation and headroom",
+   "body": "A benchmark is saturated when the best models score near its top. The real top is often below 100 %: some questions have wrong or unclear answers. Then the gaps between strong models are smaller than the 95 % range, and the benchmark can no longer tell them apart. Headroom is how far the best published score is from 100 %. Explore shows it for each benchmark, with the source and the date. To compare strong models, pick a benchmark with headroom.",
+   "example": "Best published score 92 % on a 500-question benchmark: 8 points of room, and each score is about ±2.4 points.",
+   "glossary": [],
+   "widget": "saturation",
+   "teaser": "When a benchmark has no room left.",
+   "links": [
+    {
+     "label": "Explore › Anatomy: the Headroom tile",
+     "route": "explore/anatomy"
+    },
+    {
+     "label": "Explore › Scores: published scores, source and date",
+     "route": "explore/scores"
+    }
+   ]
+  },
+  {
+   "id": "contamination",
+   "section": "leaderboards",
+   "title": "Contamination",
+   "body": "If a benchmark's questions were in the model's training data, the score measures memory, not skill. Newer, date-sliced benchmarks (LiveCodeBench) and private test sets reduce it.",
+   "example": "A model scoring far higher on an old benchmark than on a fresh one of the same kind is a warning sign.",
+   "glossary": [
+    "contamination"
+   ],
+   "widget": "contamination",
+   "teaser": "When the model has seen the questions.",
+   "links": [
+    {
+     "label": "Explore › Scores: published scores, source and date",
+     "route": "explore/scores"
+    },
+    {
+     "label": "Explore › Anatomy: what it's made of",
+     "route": "explore/anatomy"
+    }
+   ]
+  }
+ ]
+}

@@ -396,7 +396,7 @@ final class TerminalAreaController: NSViewController {
             update()
             scroll.contentView.scroll(to: .zero)
             scroll.reflectScrolledClipView(scroll.contentView)
-        case .single, .wall, .scroll:
+        case .single, .wall:
             guard let s = singleTree else { return }
             singleTree = nil
             tree = s.tree; focusedPane = s.focused

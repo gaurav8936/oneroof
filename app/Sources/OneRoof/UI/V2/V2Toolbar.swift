@@ -126,7 +126,7 @@ private struct V2TitleShiftModifier: ViewModifier {
     }
 }
 
-/// "Agentic engineering repo  Claude1 · LAB-AGENTIC", or the place's name ("Home", "Needs you  oldest first").
+/// "Agentic engineering repo  Claude1 · LAB-AGENTIC", or the place's name ("Home", "Inbox  newest first").
 struct V2TitleView: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -165,13 +165,13 @@ struct V2TitleView: View {
             let who = item.account ?? item.session.agent.rawValue.capitalized
             let ticket = item.session.ticket
             return (item.session.name, [who, ticket].compactMap { $0 }.joined(separator: " · "))
-        case .needsYou: return ("Needs you", "oldest first")
+        case .needsYou: return ("Inbox", "newest first")   // LAB-2042 · LAB-2043 (owner 11-01: newest at the top)
         default: return (win.place.title, nil)
         }
     }
 }
 
-/// Single · Grid · Wall · Scroll (⌃⌥⌘1-4).
+/// Single · Grid · Wall (⌃⌥⌘1-3). LAB-2044: Scroll left the switch; it is the History place (⌃⌘9).
 struct V2LayoutControl: View {
     @Environment(\.theme) private var t
     @ObservedObject var win: WindowState
@@ -181,7 +181,6 @@ struct V2LayoutControl: View {
         case .single: return "Single (⌃⌥⌘1)"
         case .grid: return "Grid: every live session, two across (scrolls) (⌃⌥⌘2)"
         case .wall: return "Wall: every window's live sessions (⌃⌥⌘3)"
-        case .scroll: return "Scroll: every session's important moments in one feed, newest at the bottom (⌃⌥⌘4)"
         }
     }
 

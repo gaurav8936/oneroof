@@ -36,7 +36,11 @@ import OneRoofCore
 ///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
 ///   needspick decided [i]          (LAB-1939: show the i-th decided ask, newest first)
 ///   demo                           (the demo sessions, into this run's store)
-///   layout <single|grid|wall|scroll> · scroll <name>   (LAB-1831: the layout; the Scroll feed → <name>.scroll.json)
+///   layout <single|grid|wall> · scroll <name>   (LAB-1831: the layout; LAB-2044: `layout scroll` opens History; the
+///                                  History feed, newest first → <name>.scroll.json with its "order" and "query")
+///   history <filter…>              (LAB-2046: History with filters, e.g. `history kind=errors date=7d session=Docs text=build
+///                                  order=oldest`; `history clear`)
+///   actionlog decisions|rules [filter…] · actionlog open <i>   (LAB-2048: the Action log tab, filtered; open the i-th row)
 ///   themes <daylight|graphite|midnight|look>   (LAB-1939: every panel in that theme, or a look's themes)
 ///   loopround <loop id> <name>     (LAB-1933: a loop round's stored session, tagged loop:<id>, as roofd makes it)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
@@ -71,7 +75,12 @@ enum SelfTestScript {
             ["name": i.session.name, "status": i.status.rawValue, "agent": i.session.agent.rawValue, "live": i.liveAgent ?? "",
              "window": m.window(m.workspaceId(of: i))?.name ?? ""]
         }
-        let meta: [String: Any] = ["at": Date().timeIntervalSince1970, "open": open, "badge": max(m.openDecisionCount, m.items.filter { $0.status == .needsYou }.count),   // V2Counts.needsYou
+        // LAB-2042: the Inbox's blocks, top to bottom (kind, session, how many more asks the session has).
+        let blocks = m.inboxLayout.all.map { b -> [String: Any] in
+            ["id": b.id, "kind": b.kind.rawValue, "session": b.sessionId.flatMap { m.item($0)?.session.name } ?? "", "more": b.more,
+             "options": b.decision.map { Inbox.buttons($0).map(\.title) } ?? []]
+        }
+        let meta: [String: Any] = ["at": Date().timeIntervalSince1970, "open": open, "inbox": blocks, "inboxBadge": m.needsYouBadge, "badge": max(m.openDecisionCount, m.items.filter { $0.status == .needsYou }.count),   // V2Counts.needsYou
                                    "decisionsAll": m.decisions.count, "rows": rows]
         if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: URL(fileURLWithPath: path))
@@ -287,15 +296,21 @@ enum SelfTestScript {
         case "activate":   // LAB-1591: make an open window (by name) the active one, so the next plan lands in it
             if let w = m.windows.first(where: { $0.name == arg }) { m.activeWindowId = w.id } else { log(out, "  no window \(arg)") }
         case "place":   // LAB-1592: open a place in the active window (home, needsYou, sessions, work, machine, loops, learn)
-            if let p = Place(rawValue: arg) { app.main.v2Open(p) } else { log(out, "  bad place") }
+            if let p = Place(rawValue: arg == "inbox" ? "needsYou" : arg) { app.main.v2Open(p) } else { log(out, "  bad place") }   // LAB-2043: `place inbox` too
             delay = 1
         case "needs":   // LAB-1592: what Needs you holds now → <name>.needs.json (the simulator compares it with what was asked)
             SelfTestScript.writeNeeds(m, to: out + "-" + arg + ".needs.json")
-        case "needspick":   // LAB-1907: show Needs you's i-th open entry (0 = oldest), as a click in its list does
+        case "inboxattach":   // LAB-2042: attach an image to the focused Inbox block's reply box, as ⌘V or a drop does
+            NotificationCenter.default.post(name: .inboxSelfTest, object: ["attach": arg])
+            delay = 1
+        case "needspick":   // LAB-1907 · LAB-2042: focus the Inbox's i-th block (0 = the top one, newest), as a click does
             let open = m.openDecisions
+            let blocks = m.inboxLayout.all
             if arg.hasPrefix("decided") {   // LAB-1939: `needspick decided [i]`: the i-th decided ask (0 = newest), as a click does
                 let done = ScrollFeed.decided(m.decisions) { m.item($0) }, i = Int(arg.dropFirst(7).trimmingCharacters(in: .whitespaces)) ?? 0
                 if i < done.count { m.needsPick = done[i].id.uuidString; log(out, "  decided \(i): \(done[i].headline)") } else { log(out, "  no decided entry \(i)") }
+            } else if m.settings.ui2, let i = Int(arg), i < blocks.count {
+                m.needsPick = blocks[i].id; log(out, "  block \(i): \(blocks[i].decision?.headline ?? blocks[i].kind.tag)")
             } else if let i = Int(arg), i < open.count { m.needsPick = open[i].id.uuidString; log(out, "  needs \(i): \(open[i].headline)") }
             else { log(out, "  no needs entry \(arg)") }
             delay = 1
@@ -304,21 +319,33 @@ enum SelfTestScript {
                 m.selectedId = it.id; log(out, "  selected \(it.session.name)")
             } else { log(out, "  nothing blocked") }
         case "demo": SelfTest.seedDemo(m); delay = 1
-        case "scroll":   // LAB-1831: the Scroll feed as the page shows it → <name>.scroll.json
-            let feed = EngineState.shared.feed.map { e in
-                FeedEvent(id: UUID(uuidString: e.id) ?? UUID(), at: e.at, sessionId: e.sessionId, kind: e.feedKind, text: e.text)
-            }
-            let entries = ScrollFeed.entries(feed: feed, chapters: EngineState.shared.chapters, decisions: m.decisions) { m.item($0) }
+        case "scroll":   // LAB-1831 · LAB-2044: History's feed as the page shows it (newest first) → <name>.scroll.json
+            let q = app.main.win.historyQuery
+            let entries = HistoryLoader.load(m, query: q)
+            let sessions = HistoryLoader.sessions(m)
             let rows = entries.map { e -> [String: Any] in
-                ["session": m.item(e.sessionId)?.session.name ?? e.sessionId, "kind": e.kind.rawValue, "at": e.at.timeIntervalSince1970,
+                ["session": sessions[e.sessionId]?.name ?? e.sessionId, "kind": e.kind.rawValue, "at": e.at.timeIntervalSince1970,
                  "text": e.text, "open": e.open, "answer": e.answer ?? ""]
             }
             let decided = ScrollFeed.decided(m.decisions) { m.item($0) }.count
-            if let d = try? JSONSerialization.data(withJSONObject: ["entries": rows, "decided": decided], options: [.prettyPrinted, .sortedKeys]) {
+            let query: [String: Any] = ["text": q.text, "sessions": q.sessions.sorted(), "agents": q.agents.map(\.rawValue).sorted(),
+                                        "kinds": q.kinds.map(\.rawValue).sorted(), "range": q.range.title, "order": q.order.rawValue]
+            if let d = try? JSONSerialization.data(withJSONObject: ["entries": rows, "decided": decided, "order": q.order.rawValue, "query": query],
+                                                   options: [.prettyPrinted, .sortedKeys]) {
                 try? d.write(to: URL(fileURLWithPath: out + "-" + arg + ".scroll.json"))
             }
-        case "layout":   // LAB-1831: `layout single|grid|wall|scroll` in the active window, as the toolbar control does
-            if let l = SessionLayout(rawValue: arg) { app.main.win.layout = l } else { log(out, "  bad layout") }
+        case "layout":   // LAB-1831: `layout single|grid|wall` in the active window, as the toolbar control does
+            if arg == "scroll" {   // LAB-2044: Scroll is the History place now
+                log(out, "  Scroll is History now (LAB-2044)"); app.main.v2Open(.history)
+            } else if let l = SessionLayout(rawValue: arg) { app.main.win.layout = l } else { log(out, "  bad layout") }
+            delay = 1.5
+        case "history":   // LAB-2046: `history kind=errors date=7d session=<name> agent=claude text=<words> order=oldest` · `history clear`
+            app.main.v2Open(.history)
+            app.main.win.historyQuery = SelfTestHistory.query(arg, base: app.main.win.historyQuery, model: m)
+            log(out, "  history query: \(app.main.win.historyQuery)")
+            delay = 1.5
+        case "actionlog":   // LAB-2048: `actionlog decisions|rules [filter…]` · `actionlog open <i>`
+            SelfTestHistory.actionLog(arg, app: app, log: { log(out, $0) })
             delay = 1.5
         case "themes":   // LAB-1939: `themes <daylight|graphite|midnight|look>`: every panel in that theme, as Look does
             if let t = Look.selfTestThemes(arg) { m.chosenThemes = t } else { log(out, "  bad theme") }

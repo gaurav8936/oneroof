@@ -16,7 +16,6 @@ struct V2PageHost: View {
             case "Help": V2HelpPage(model: model, controller: controller)
             case "Release notes": V2ReleaseNotesPage(model: model, controller: controller)
             case "All windows": V2WallPage(model: model, win: win, controller: controller)
-            case "Scroll": V2ScrollPage(model: model, win: win, controller: controller)   // LAB-1831
             default: Color.clear
             }
         }

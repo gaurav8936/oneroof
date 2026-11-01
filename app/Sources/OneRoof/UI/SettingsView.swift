@@ -91,6 +91,8 @@ struct SettingsView: View {
                 Text("roofd starts Tonight, Nightly and repeating sessions on time, with One Roof open or closed. Off, they run only while One Roof is open. Nothing is merged or committed on its own.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Menu-bar extra", isOn: $model.settings.menuBarExtra)
+                Toggle("Redesigned Evals (Overview · Your evals · Explore · Run · Results · Learn)", isOn: $model.settings.evalsRedesign)
+                    .help("Off: the 1.9.37 Evals (Catalog · Runs · Results · Learn). LAB-2061.")
             }
             Section("Layout · 1.x") {
                 LabeledContent("Classic layout") {
@@ -366,6 +368,7 @@ struct SettingsView: View {
             Text("roofd starts Tonight, Nightly and repeating sessions on time, with One Roof open or closed. Off, they run only while One Roof is open. Nothing is merged or committed on its own.")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Menu-bar extra", isOn: $model.settings.menuBarExtra)
+            Toggle("Redesigned Evals (Overview · Your evals · Explore · Run · Results · Learn)", isOn: $model.settings.evalsRedesign)
         }
         .formStyle(.grouped)
     }

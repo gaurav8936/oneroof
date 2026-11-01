@@ -54,22 +54,24 @@ public struct Decision: Codable, Equatable, Identifiable, Sendable {
     public var answer: Answer?
     public var replyText: String?
     /// LAB-1607: a question's own answer choices (Claude's AskUserQuestion menu); the card offers these instead of
-    /// Allow once / Deny. Nil for a permission prompt. Not stored (open decisions live in memory).
+    /// Allow once / Deny. Nil for a permission prompt. Stored since 2.0.0 (LAB-2048: the action log shows them).
     public var choices: [DecisionChoice]?
     /// LAB-1907: the prompt as the agent draws it (question and its options, bottom of its screen), for Needs you,
-    /// which has no terminal. Not stored.
+    /// which has no terminal. Stored since 2.0.0 (LAB-2048).
     public var screen: [String]?
+    /// LAB-2048: the label of the option you picked (nil: no option, or an ask from before 2.0.0).
+    public var chosen: String?
 
     public init(id: UUID = UUID(), sessionId: String, agent: AgentKind, kind: DecisionKind, command: String? = nil, path: String? = nil,
                 planId: UUID? = nil, why: String, whySource: CaptionSource = .heuristic, whyMissing: Bool = false, touches: String,
                 risk: Risk, ifNo: String, where_: String = "", history: DecisionHistory = DecisionHistory(), pattern: String,
                 repo: String, askedAt: Date = Date(), answeredAt: Date? = nil, answer: Answer? = nil, replyText: String? = nil,
-                choices: [DecisionChoice]? = nil, screen: [String]? = nil) {
+                choices: [DecisionChoice]? = nil, screen: [String]? = nil, chosen: String? = nil) {
         self.id = id; self.sessionId = sessionId; self.agent = agent; self.kind = kind; self.command = command; self.path = path
         self.planId = planId; self.why = why; self.whySource = whySource; self.whyMissing = whyMissing; self.touches = touches
         self.risk = risk; self.ifNo = ifNo; self.where_ = where_; self.history = history; self.pattern = pattern; self.repo = repo
         self.askedAt = askedAt; self.answeredAt = answeredAt; self.answer = answer; self.replyText = replyText
-        self.choices = choices; self.screen = screen
+        self.choices = choices; self.screen = screen; self.chosen = chosen
     }
 
     public var isOpen: Bool { answer == nil }
@@ -85,6 +87,15 @@ public struct Decision: Codable, Equatable, Identifiable, Sendable {
     /// LAB-1607 / LAB-1825: a menu (a question with its own numbered answers, a sign-in menu), not a permission ask:
     /// no risk, no Allow / Deny.
     public var isMenu: Bool { pattern.hasPrefix("ask:") && choices?.isEmpty == false }
+
+    /// What the card says: the engine's title, or the agent's own question when the prompt was not recognised.
+    /// (Moved from the app for the Inbox, LAB-2042.)
+    public var headline: String {
+        if isQuestion { return "\(agent.displayName) asked: " + pattern.dropFirst(Decision.questionPrefix.count) }
+        if isFinished { return "\(agent.displayName) finished · waiting for you" }
+        if pattern.hasPrefix("ask:") { return "\(agent.displayName) is asking: " + pattern.dropFirst(4) }
+        return title
+    }
 
     /// "Claude wants to run swift test".
     public var title: String {

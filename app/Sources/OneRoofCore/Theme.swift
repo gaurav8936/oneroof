@@ -368,8 +368,8 @@ public extension ThemeName {
         case .daylight:
             return ThemeTokens(
                 name: self, window: RGB(0xFFFFFF), toolbar: RGB(0xF6F7FA), sidebar: RGB(0xF0F1F6), surface: RGB(0xFFFFFF),
-                surface2: RGB(0xF2F2F7), control: RGB(0xE6E8EF), separator: RGB(0xE3E4EA), separatorStrong: RGB(0xC7C8D0),
-                text: RGB(0x1C1C1E), text2: RGB(0x5E5E66), text3: RGB(0x86868B),
+                surface2: RGB(0xF2F2F7), control: RGB(0xE6E8EF), separator: RGB(0xD4D5DD), separatorStrong: RGB(0x868791),   // LAB-2071: edges you can see
+                text: RGB(0x1C1C1E), text2: RGB(0x4A4A52), text3: RGB(0x5F5F66),   // LAB-2071: meta text reads at 4.5:1
                 selection: RGB(0xDCE8FF), accent: RGB(0x0A84FF), accentText: RGB(0x0066CC), onAccent: RGB(0xFFFFFF),
                 now: RGB(0x8A5A00),
                 diffAddFill: RGB(0xE9F8EE), diffDelFill: RGB(0xFDECEC), diffAddText: RGB(0x1F7A3D), diffDelText: RGB(0xD70015),
@@ -381,8 +381,8 @@ public extension ThemeName {
         case .graphite:
             return ThemeTokens(
                 name: self, window: RGB(0x2C2C2E), toolbar: RGB(0x323236), sidebar: RGB(0x262628), surface: RGB(0x3A3A3C),
-                surface2: RGB(0x323236), control: RGB(0x48484A), separator: RGB(0x48484A), separatorStrong: RGB(0x636366),
-                text: RGB(0xF2F2F7), text2: RGB(0xAEAEB2), text3: RGB(0x98989D),
+                surface2: RGB(0x323236), control: RGB(0x48484A), separator: RGB(0x56565A), separatorStrong: RGB(0x8A8A90),   // LAB-2071
+                text: RGB(0xF2F2F7), text2: RGB(0xC7C7CC), text3: RGB(0xB0B0B5),
                 selection: RGB(rgba: 0x0A84FF33), accent: RGB(0x0A84FF), accentText: RGB(0x64D2FF), onAccent: RGB(0xFFFFFF),
                 now: RGB(0xFFD60A),
                 diffAddFill: RGB(rgba: 0x30D15824), diffDelFill: RGB(rgba: 0xFF453A24), diffAddText: RGB(0x4CD964), diffDelText: RGB(0xFFA39D),
@@ -394,8 +394,8 @@ public extension ThemeName {
         case .midnight:
             return ThemeTokens(
                 name: self, window: RGB(0x161618), toolbar: RGB(0x1C1C1E), sidebar: RGB(0x121214), surface: RGB(0x1C1C1E),
-                surface2: RGB(0x2C2C2E), control: RGB(0x2C2C2E), separator: RGB(0x2A2A2D), separatorStrong: RGB(0x3A3A3C),
-                text: RGB(0xE5E5EA), text2: RGB(0xAEAEB2), text3: RGB(0x8E8E93),
+                surface2: RGB(0x2C2C2E), control: RGB(0x2C2C2E), separator: RGB(0x38383C), separatorStrong: RGB(0x76767C),   // LAB-2071
+                text: RGB(0xE5E5EA), text2: RGB(0xBCBCC1), text3: RGB(0x9E9EA3),
                 selection: RGB(rgba: 0x0A84FF33), accent: RGB(0x0A84FF), accentText: RGB(0x64D2FF), onAccent: RGB(0xFFFFFF),
                 now: RGB(0xFFD60A),
                 diffAddFill: RGB(rgba: 0x30D15824), diffDelFill: RGB(rgba: 0xFF453A24), diffAddText: RGB(0x30D158), diffDelText: RGB(0xFF6961),
@@ -416,16 +416,16 @@ public extension ThemeName {
             return t
         case .mint:
             return pastelTheme(window: 0xF3FAF6, toolbar: 0xEEF7F2, sidebar: 0xEBF6F0, surface: 0xFBFEFC, surface2: 0xE8F4ED,
-                               control: 0xD9ECE1, separator: 0xD7E9DE, separatorStrong: 0xB4CEBF, selection: 0xCDEBDB)
+                               control: 0xD9ECE1, separator: 0xC3D9CB, separatorStrong: 0x6F907C, selection: 0xCDEBDB)
         case .sky:
             return pastelTheme(window: 0xF3F7FE, toolbar: 0xEEF3FC, sidebar: 0xEBF1FC, surface: 0xFBFCFF, surface2: 0xE7EEFA,
-                               control: 0xD8E3F6, separator: 0xD6E0F2, separatorStrong: 0xB3C3DF, selection: 0xD2E2FF)
+                               control: 0xD8E3F6, separator: 0xC2CEE6, separatorStrong: 0x7086AC, selection: 0xD2E2FF)
         case .lavender:
             return pastelTheme(window: 0xF8F5FE, toolbar: 0xF3EFFC, sidebar: 0xF4F0FC, surface: 0xFDFCFF, surface2: 0xEEE8F9,
-                               control: 0xE2D9F4, separator: 0xDED6F0, separatorStrong: 0xC2B6DC, selection: 0xE3D6FA)
+                               control: 0xE2D9F4, separator: 0xCFC4E6, separatorStrong: 0x8676A8, selection: 0xE3D6FA)
         case .peach:
             return pastelTheme(window: 0xFFF8F1, toolbar: 0xFCF3EA, sidebar: 0xFCF1E6, surface: 0xFFFDFA, surface2: 0xF9EEE3,
-                               control: 0xF0E0CF, separator: 0xEDDFCF, separatorStrong: 0xD6C1AA, selection: 0xFBE2C8)
+                               control: 0xF0E0CF, separator: 0xE0CDB8, separatorStrong: 0x987B5C, selection: 0xFBE2C8)
         }
     }
 
@@ -438,7 +438,7 @@ public extension ThemeName {
         t.window = RGB(window); t.toolbar = RGB(toolbar); t.sidebar = RGB(sidebar); t.surface = RGB(surface)
         t.surface2 = RGB(surface2); t.control = RGB(control); t.separator = RGB(separator)
         t.separatorStrong = RGB(separatorStrong); t.selection = RGB(selection)
-        t.text3 = RGB(0x7A7A80)   // Daylight's #86868B, a step darker so it keeps 3:1 on the tinted sidebar
+        // LAB-2071: Daylight's text2/text3 already read at 4.5:1 on these tints, so the pastels keep them.
         t.terminal.background = RGB(surface); t.terminal.paneHeader = RGB(toolbar); t.terminal.summaryStrip = RGB(sidebar)
         return t
     }
