@@ -120,6 +120,12 @@ def main(deck: str, out: str) -> int:
                 rel = deck_path(v["url"])
                 if not rel or not os.path.isfile(os.path.join(deck, rel)):
                     missing.append(f'{v["slug"]} ({rel or v["url"]})')
+                # LAB-1967: a card's deep dive must be in the deck too, or it would play from the web (or not at all offline).
+                deep = v.get("deep")
+                if isinstance(deep, dict) and deep.get("url"):
+                    drel = deck_path(deep["url"])
+                    if not drel or not os.path.isfile(os.path.join(deck, drel)):
+                        missing.append(f'{v["slug"]} deep dive ({drel or deep["url"]})')
             for k, x in v.items():
                 walk(x, k)
         elif isinstance(v, list):

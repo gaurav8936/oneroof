@@ -44,9 +44,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var learnFolders: [String]
     /// LAB-1621 · Learn: a card played to its end counts down three seconds and opens the next card, playing. On by default.
     public var learnAutoAdvance: Bool
-    /// LAB-1837 · Learn: the classic native screens instead of the shared Agentic Engineering page (the one copy every site
-    /// shows, saved in the app at build). Off by default (1.9.32); kept for one release as the way back.
-    public var learnClassic: Bool
     /// The on-device router model (.gguf); "" = `LocalModel.defaultModelPath`.
     public var localModelPath: String
     /// The first-run setup window has been completed (or skipped by a settings migration).
@@ -107,6 +104,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var permissionFlags: [String: String]
     /// LAB-1935: one-time moves of the permission defaults already applied (1 = Antigravity to Full, 10-31).
     public var permissionDefaultsVersion: Int
+    /// LAB-1998: agents (AgentMark raw values) the owner took out of the bottom bar in Settings › Seats & accounts.
+    /// Every agent that is set up on this Mac shows there unless it is listed here.
+    public var dockHidden: [String]
+    /// LAB-1999: accounts the owner added in Settings › Seats & accounts (and renamed ones). With none, the list is
+    /// the first account of every agent plus Claude2 when ~/.claude-2 exists (`agentAccounts()`), as before.
+    public var accounts: [AgentAccount]
+    /// LAB-1999: account ids the owner removed from One Roof (their folders stay on disk).
+    public var removedAccounts: [String]
     /// The look, or nil when the panels were customised one by one.
     public var look: Look? {
         get { Look(rawValue: lookName) }
@@ -123,6 +128,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         permissionModes = [:]
         permissionFlags = [:]
         permissionDefaultsVersion = 1
+        dockHidden = []
+        accounts = []
+        removedAccounts = []
         stepReview = false
         alwaysShowComposer = false
         terminalApprovalCard = false
@@ -151,7 +159,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         projectsPath = ""
         learnFolders = []
         learnAutoAdvance = true
-        learnClassic = false
         localModelPath = ""
         setupDone = false
     }
@@ -219,6 +226,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         reviewOtherFamily = try c.decodeIfPresent(Bool.self, forKey: .reviewOtherFamily) ?? true
         permissionModes = (try? c.decodeIfPresent([String: PermissionMode].self, forKey: .permissionModes)) ?? [:]
         permissionFlags = (try? c.decodeIfPresent([String: String].self, forKey: .permissionFlags)) ?? [:]
+        dockHidden = (try? c.decodeIfPresent([String].self, forKey: .dockHidden)) ?? []
+        accounts = (try? c.decodeIfPresent([AgentAccount].self, forKey: .accounts)) ?? []
+        removedAccounts = (try? c.decodeIfPresent([String].self, forKey: .removedAccounts)) ?? []
         permissionDefaultsVersion = (try? c.decodeIfPresent(Int.self, forKey: .permissionDefaultsVersion)) ?? 0
         // LAB-1935 (owner 10-31): Antigravity moves to Full once, even where Auto was saved; a later choice stays.
         if permissionDefaultsVersion < 1 {
@@ -228,7 +238,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders
         learnAutoAdvance = try c.decodeIfPresent(Bool.self, forKey: .learnAutoAdvance) ?? fresh.learnAutoAdvance
-        learnClassic = try c.decodeIfPresent(Bool.self, forKey: .learnClassic) ?? fresh.learnClassic
+        // LAB-1894 · `learnClassic` (Settings › Learn › classic screens, 1.9.32–1.9.34) is gone with the classic screens: a saved
+        // value is ignored and no longer written.
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath
         setupDone = try c.decodeIfPresent(Bool.self, forKey: .setupDone) ?? fresh.setupDone
     }

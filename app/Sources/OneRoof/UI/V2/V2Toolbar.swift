@@ -55,10 +55,11 @@ final class V2ToolbarDelegate: NSObject, NSToolbarDelegate {
             host.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
         // LAB-1932: any item that moves or changes width (the icon row appearing, the player, a » change) re-fences
-        // the title at once, so it can never be left drawing over a neighbour.
+        // the title at once, so it can never be left drawing over a neighbour; LAB-1938: and repaints the band under
+        // the right-hand group.
         host.postsFrameChangedNotifications = true
         observers.append(NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: host, queue: .main) { [weak controller] _ in
-            MainActor.assumeIsolated { controller?.v2PlaceTitle() }
+            MainActor.assumeIsolated { controller?.v2PaintBand(fit: false) }   // LAB-1938: the band follows the group too
         })
         item.view = host
         item.isBordered = false

@@ -139,8 +139,16 @@ struct LoopsView: View {
                 Text(e).ui(12.5).foregroundStyle(t.needsText.color).textSelection(.enabled)
             }
             if gallery {
-                LoopGalleryView(board: board, openLoop: { id in gallery = false; selected = id },
-                                startFrom: { l in editing = LoopDraft.duplicate(from: l) })
+                // LAB-1951: the gallery scrolls in its own view, opened at its top. It was a plain stack taller than the
+                // page, so the page drew it centred: it opened past its own header and first kinds, with no way up.
+                ScrollView {
+                    LoopGalleryView(board: board, openLoop: { id in gallery = false; selected = id },
+                                    startFrom: { l in editing = LoopDraft.duplicate(from: l) })
+                        .padding(.bottom, 8)
+                }
+                .defaultScrollAnchor(.top)
+                .id("loop-gallery")
+                .accessibilityLabel("Loop gallery")
             } else if v2 {
                 // v2 (A9, C5.1): the loops beside Tonight; a loop opens as its own page with ‹ Loops back.
                 if let s = selected, board.loops.contains(where: { $0.id == s }) {
@@ -532,8 +540,9 @@ struct LoopDetail: View {
             HStack(spacing: 8) {
                 Text(r.kind == .stop ? "■" : r.kind == .check ? "check" : "#\(r.n)").ui(12.5, .semibold, mono: true)
                     .foregroundStyle(t.text.color).frame(width: 46, alignment: .leading)
-                Text(r.ended.formatted(date: .abbreviated, time: .shortened)).ui(12, mono: true).foregroundStyle(t.text2.color)
-                    .frame(width: 150, alignment: .leading)
+                // LAB-1951: "Oct 31, 3:23 AM" on one line (with the year it wrapped in the 150 pt column).
+                Text(r.ended.formatted(.dateTime.month(.abbreviated).day().hour().minute())).ui(12, mono: true).foregroundStyle(t.text2.color)
+                    .lineLimit(1).frame(width: 150, alignment: .leading)
                 if r.kind == .stop {
                     Text(r.note ?? "Run ended").ui(12.5).foregroundStyle(t.text.color).lineLimit(isOpen ? nil : 1)
                 } else {
@@ -655,7 +664,7 @@ struct LoopEditor: View {
                         .disabled(!draft.isNew)
                     }
                     if !draft.isNew {
-                        Text("The repo is fixed once a loop exists (its worktree lives there).").ui(11.5).foregroundStyle(t.text3.color)
+                        Text("The repo is fixed once a loop exists (its worktree lives there).").ui(11.5).foregroundStyle(t.text2.color)
                     }
                     field("Agent") {
                         HStack(spacing: 8) {
@@ -747,7 +756,7 @@ struct LoopEditor: View {
                             GrowingTextArea(text: l.roundPrompt, placeholder: "Extra instructions for every round (optional)", storageKey: "roundPrompt",
                                             minHeight: 110, label: "Round prompt")
                             Text("Every round already gets the goal, the check, its worktree and branch, the last check's output and what was tried; it is told never to push, merge or deploy.")
-                                .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                                .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     Toggle("Pinned (top of the list)", isOn: l.pinned).ui(13).foregroundStyle(t.text.color)
@@ -800,7 +809,7 @@ struct LoopEditor: View {
                 RoofButton(drafting ? "Drafting…" : "Draft it", .primary) { draftIt() }
                     .disabled(drafting || describe.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Text("An agent drafts the goal, check, trigger and limits; you check them below and preview the first run before saving.")
-                    .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                    .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(draftNotes, id: \.self) { n in Text("· " + n).ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true) }
         }
@@ -850,7 +859,7 @@ struct LoopEditor: View {
             Stepper(every == 0 ? "Next round right after the check" : "Wait \(Schedule.every(every)) between rounds",
                     value: Binding(get: { every }, set: { draft.loop.trigger = .untilDone(everyMinutes: max($0, 0)) }), in: 0...240, step: 5)
                 .ui(13).foregroundStyle(t.text.color)
-            Text("Starts when you press Run now; rounds go on until the check passes or a limit is hit.").ui(11.5).foregroundStyle(t.text3.color)
+            Text("Starts when you press Run now; rounds go on until the check passes or a limit is hit.").ui(11.5).foregroundStyle(t.text2.color)
         case .at(let h, let m):
             HStack(spacing: 8) {
                 Text("Every night at").ui(13).foregroundStyle(t.text.color)
@@ -859,7 +868,7 @@ struct LoopEditor: View {
                     draft.loop.trigger = .at(hour: x / 60, minute: x % 60)
                 }), in: -15...1455, step: 15).ui(13).foregroundStyle(t.text.color)
             }
-            Text("Runs only while this Mac is awake (missed nights are skipped). Pause stops it until Resume.").ui(11.5).foregroundStyle(t.text3.color)
+            Text("Runs only while this Mac is awake (missed nights are skipped). Pause stops it until Resume.").ui(11.5).foregroundStyle(t.text2.color)
         case .whenQuiet(let q, let f, let to):
             Stepper("After \(Schedule.every(q)) with no session of yours working or waiting on you",
                     value: Binding(get: { q }, set: { draft.loop.trigger = .whenQuiet(quietMinutes: max($0, 5), fromHour: f, toHour: to) }),
@@ -876,13 +885,13 @@ struct LoopEditor: View {
                 .ui(13).foregroundStyle(t.text.color)
             }
             Text("Starts once your own sessions have been quiet that long, at most once " + (f != nil ? "a night" : "a day") + ". A session you start during the run does not stop it. The card shows Waiting for quiet.")
-                .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
         case .onEvent(let e):
             FieldMenu(title: e, expand: false) {
                 ForEach(LoopTrigger.knownEvents, id: \.self) { ev in Button(ev) { draft.loop.trigger = .onEvent(ev) } }
             }
             Text("Starts once per event: `ae loops fire \(e)` records it (a webhook receiver or a git hook calls it), and roofd starts the loop within 30 s.")
-                .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+                .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -899,7 +908,7 @@ struct LoopEditor: View {
         VStack(alignment: .leading, spacing: 5) {
             MicroLabel(label)
             c()
-            if let help { Text(help).ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true) }   // LAB-1920
+            if let help { Text(help).ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true) }   // LAB-1920
         }
     }
 

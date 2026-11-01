@@ -21,6 +21,7 @@ import OneRoofCore
 ///   strayfiles · togglefiles · panels   (LAB-1306: show the classic Files panel, send its × action, log panels)
 ///   dragdivider <i> <x>            (LAB-1556: drag split divider i to window x with real mouse events)
 ///   focusstep <0-3>                (LAB-1302: the window's Focus step, as ⌥⌘F steps it)
+///   theme <name>                   (LAB-1999: every panel and the centre in one theme, e.g. graphite)
 ///   resumeall [max]                (LAB-1583: Resume every catalog row that offers it, one by one → <out>-resume.tsv)
 ///   catalogsearch <q> [!]          (LAB-1585: rank sessions for <q>; " !" widens with the model → log)
 ///   railsessions                   (LAB-1576: a click on Sessions in the rail)
@@ -33,8 +34,10 @@ import OneRoofCore
 ///   place <place>                  (LAB-1592: home · needsYou · sessions · work · machine · loops · learn)
 ///   pick <i>                       (LAB-1839: press the oldest open decision's i-th own option)
 ///   needspick <i> · selectblocked  (LAB-1907: show Needs you's i-th entry; select a session waiting at a prompt)
+///   needspick decided [i]          (LAB-1939: show the i-th decided ask, newest first)
 ///   demo                           (the demo sessions, into this run's store)
 ///   layout <single|grid|wall|scroll> · scroll <name>   (LAB-1831: the layout; the Scroll feed → <name>.scroll.json)
+///   themes <daylight|graphite|midnight|look>   (LAB-1939: every panel in that theme, or a look's themes)
 ///   loopround <loop id> <name>     (LAB-1933: a loop round's stored session, tagged loop:<id>, as roofd makes it)
 ///   needs <name>                   (LAB-1592: Needs you's open asks, badge and every session's status → <name>.needs.json)
 enum SelfTestScript {
@@ -167,6 +170,9 @@ enum SelfTestScript {
         case "roof": RoofWindowController.show(.repo((arg as NSString).expandingTildeInPath), model: m); delay = 3
         case "centre": if let v = CentreView(rawValue: arg) { m.show(v) }
         case "settingspane": if let pane = Int(arg) { app.main.v2ShowSettings(pane: pane) }; delay = 1
+        case "theme":   // LAB-1999: one theme on every panel and the centre (daylight · graphite · midnight), for captures
+            if let th = ThemeName(stored: arg) { m.chosenThemes = PanelThemes(sidebar: th, files: th, terminal: th, plan: th, centre: th) }
+            delay = 1
         case "menu": SelfTest.invokeMenu(arg)
         case "answer":
             // LAB-1827: finished turns wait in Needs you too; answer the oldest ask, not a finished turn.
@@ -180,7 +186,7 @@ enum SelfTestScript {
         case "group": if let g = Grouping(rawValue: arg) { m.grouping = g } else { log(out, "  bad grouping") }
         case "chip": if let c = StatusChip(rawValue: arg) { app.main.win.statusFilter = c == .all ? nil : c }
         case "newsession":   // `newsession [agent]`: the sheet opens with that agent picked (LAB-1826: `newsession gemini`)
-            NewSessionSheet.selfTestMark = AgentMark(rawValue: arg)
+            NewSessionSheet.selfTestMark = SeatMark(rawValue: arg)
             app.main.newSession(); delay = 2
         case "keys":
             // Type into whatever has focus in the key window or its sheet (e.g. the New work sheet's text field).
@@ -287,7 +293,10 @@ enum SelfTestScript {
             SelfTestScript.writeNeeds(m, to: out + "-" + arg + ".needs.json")
         case "needspick":   // LAB-1907: show Needs you's i-th open entry (0 = oldest), as a click in its list does
             let open = m.openDecisions
-            if let i = Int(arg), i < open.count { m.needsPick = open[i].id.uuidString; log(out, "  needs \(i): \(open[i].headline)") }
+            if arg.hasPrefix("decided") {   // LAB-1939: `needspick decided [i]`: the i-th decided ask (0 = newest), as a click does
+                let done = ScrollFeed.decided(m.decisions) { m.item($0) }, i = Int(arg.dropFirst(7).trimmingCharacters(in: .whitespaces)) ?? 0
+                if i < done.count { m.needsPick = done[i].id.uuidString; log(out, "  decided \(i): \(done[i].headline)") } else { log(out, "  no decided entry \(i)") }
+            } else if let i = Int(arg), i < open.count { m.needsPick = open[i].id.uuidString; log(out, "  needs \(i): \(open[i].headline)") }
             else { log(out, "  no needs entry \(arg)") }
             delay = 1
         case "selectblocked":   // LAB-1907: select a session waiting at a prompt (its terminal must show no card over it)
@@ -311,6 +320,9 @@ enum SelfTestScript {
         case "layout":   // LAB-1831: `layout single|grid|wall|scroll` in the active window, as the toolbar control does
             if let l = SessionLayout(rawValue: arg) { app.main.win.layout = l } else { log(out, "  bad layout") }
             delay = 1.5
+        case "themes":   // LAB-1939: `themes <daylight|graphite|midnight|look>`: every panel in that theme, as Look does
+            if let t = Look.selfTestThemes(arg) { m.chosenThemes = t } else { log(out, "  bad theme") }
+            delay = 1
         case "loopround":   // LAB-1933: `loopround <loop id> <name>`: a stored round session as roofd's loop engine tags it
             let p = arg.split(separator: " ", maxSplits: 1).map(String.init)
             if p.count == 2 { m.save(Session(name: p[1], agent: .claude, repoPath: Workspace.projectsRoot, tags: ["loop:" + p[0]], startInRepo: true)) }

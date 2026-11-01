@@ -314,18 +314,34 @@ extension MainWindowController {
         v2ApplyLayout(animated: false)
     }
 
-    /// The toolbar band takes the colour of the column under each part of it.
+    /// The toolbar band takes the colour of the column under each part of it, except under the right-hand group, which
+    /// sits on the centre's colour only (LAB-1938, `V2Layout.bandSegments`).
     func v2PaintBand(fit: Bool = true) {
+        let segs = v2BandSegments()
+        backdropRef.setSegments(segs.map { (CGFloat($0.0), $0.1) })
+        if fit { v2FitToolbar() } else { v2PlaceTitle() }
+        v2NudgeTrafficLights()
+    }
+
+    /// LAB-1938 · the band as it would be painted now (window points), for the paint and the `barcheck` guard.
+    func v2BandSegments() -> [(Double, RGB)] {
         let t = model.themes
-        var segs: [(CGFloat, RGB)] = []
+        var cols: [(Double, RGB)] = []
         let views = splitView.subviews
         let colours: [RGB] = [t.sidebar.tokens.control, t.sidebar.tokens.sidebar, t.files.tokens.sidebar, t.centre.tokens.window, t.plan.tokens.surface]
         for (i, v) in views.enumerated() where i < colours.count && !v.isHidden && v.frame.width > 0.5 {
-            segs.append((v.frame.maxX, colours[i]))
+            cols.append((Double(v.frame.maxX), colours[i]))
         }
-        backdropRef.setSegments(segs)
-        if fit { v2FitToolbar() } else { v2PlaceTitle() }
-        v2NudgeTrafficLights()
+        return V2Layout.bandSegments(columns: cols, group: v2RightGroupSpan, groupColour: t.centre.tokens.window,
+                                     windowWidth: Double(window?.frame.width ?? 0))
+    }
+
+    /// LAB-1938 · the right-hand group (player, Single · Grid · Wall · Scroll, Focus step, + New) as laid out now.
+    var v2RightGroupSpan: V2Layout.BarSpan? {
+        let ids: Set<String> = ["extras", "layout", "step", "new"]
+        let spans = v2BarSpans(excludingTitle: true).filter { ids.contains($0.name) }
+        guard let lo = spans.map(\.minX).min(), let hi = spans.map(\.maxX).max() else { return nil }
+        return V2Layout.BarSpan("group", lo, hi)
     }
 
     /// LAB-1620 · the window's close, minimise and zoom buttons sit inside the rail's colour (66 pt): at macOS's own

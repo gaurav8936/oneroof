@@ -68,8 +68,10 @@ launch() {   # launch <run dir> <scenario file> [VAR=value …] → pid
   # No scenario file (learn): the self-test's own PLACE / PLAYCARD settings drive it; a script would override them.
   local script=()
   if [ -n "$s" ]; then sed "s|@DIR@|$WORKDIR|g" "$s" > "$d/script.txt"; script=(ONEROOF_SELFTEST_SCRIPT="$d/script.txt"); fi
+  # LAB-2001: a scratch shared folder (live loops copied), never the live loops.
+  local shared="${ONEROOF_TEST_SHARED:-$d/shared}"; bash "$APPDIR/scripts/test/scratch-shared.sh" "$shared" >/dev/null
   env ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED="$PROFILE/defaults.plist" ONEROOF_STORE="$d/store.sqlite" \
-      ONEROOF_SELFTEST_DEMO=0 ONEROOF_SELFTEST_UI2=1 ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" \
+      ONEROOF_SHARED="$shared" ONEROOF_SELFTEST_DEMO=0 ONEROOF_SELFTEST_UI2=1 ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" \
       ${script[@]+"${script[@]}"} ONEROOF_SELFTEST_OUT="$d/st" "$@" "$BIN" > "$d/app-stdout.txt" 2>&1 &
   echo $!
 }

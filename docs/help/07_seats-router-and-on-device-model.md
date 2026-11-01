@@ -1,6 +1,6 @@
 # One Roof help: seats, the router and the on-device model
 
-**Status:** LIVE · **Date:** 2026-10-19
+**Status:** LIVE · **Date:** 2026-10-19 · accounts per agent 2026-10-31 (LAB-1999)
 
 > **One line:** One Roof shows how full each seat is, suggests an agent by One Roof's routing rules plus each seat's remaining capacity, can use a small on-device model to sort a task into a kind, and moves a step to another agent when its seat runs out.
 
@@ -10,19 +10,41 @@ Choosing an agent should take one click and always say why. The rules live in on
 
 ## Seats
 
-A seat is one subscription an agent runs on.
+A seat is one subscription an agent runs on: one agent on one account.
 
 - **Claude1** is your default Claude config (`~/.claude`).
-- **Claude2** appears only if you have a second Claude config at `~/.claude-2`. Sessions on it run with `CLAUDE_CONFIG_DIR` set to that folder.
-- **Codex, Kimi, Gemini CLI and Antigravity:** one seat each, when installed. Gemini CLI and Antigravity are both Google.
+- **Claude2** appears if you have a second Claude config at `~/.claude-2`, or once you add it. Sessions on it run with `CLAUDE_CONFIG_DIR` set to that folder.
+- **Codex, Gemini CLI and Kimi** start with one account each (Codex1, Gemini1, Kimi1), and you can add more. **Antigravity, OpenCode and Goose** have one account each. Gemini CLI and Antigravity are both Google.
+
+### Adding an account
+
+Settings › Seats & accounts › **Accounts** lists every agent's accounts: its number and name, its folder, and whether it is signed in (as far as a look at that folder tells; One Roof does not ask the agent).
+
+1. Press **+ Add account** next to the agent. One Roof says which folder it will use and asks first; nothing is made until you confirm.
+2. Confirm. One Roof creates the folder and lists the account (Codex2, Gemini2, Claude3 …).
+3. Sign in once, in Terminal, with the command One Roof shows (**Copy** puts it on the clipboard). **Sign in…** on the account's row shows it again later.
+
+| Agent | Account 1 | Added accounts | Sign-in command (example) |
+|---|---|---|---|
+| Claude | `~/.claude` | `~/.claude-N` (`CLAUDE_CONFIG_DIR`) | `CLAUDE_CONFIG_DIR=~/.claude-3 claude`, then sign in when it asks |
+| Codex | `~/.codex` | `~/.codex-N` (`CODEX_HOME`) | `CODEX_HOME=~/.codex-2 codex login` |
+| Gemini CLI | your home folder | `~/.gemini-home-N` (`GEMINI_CLI_HOME`; Gemini makes `.gemini` inside it) | `GEMINI_CLI_HOME=~/.gemini-home-2 gemini` |
+| Kimi | `~/.kimi-code` | `~/.kimi-code-N` (`KIMI_CODE_HOME`) | `KIMI_CODE_HOME=~/.kimi-code-2 kimi`, then `/login` |
+
+Antigravity and Goose have no setting that moves their sign-in, and OpenCode's `OPENCODE_CONFIG_DIR` moves its settings but not its sign-in, so their **+ Add account** is off (its help says why).
+
+Every added account is a seat of its own: a card in New session, a choice in Settings › Agents › Account, and a chip in the bottom bar (badges `X2` for Codex2, `G3` for Gemini3, `K2` for Kimi2, `C3` for Claude3, in the agent's colour; the first accounts keep C1, C2, CX, GM, KM). Sessions, Tonight and loops start on the account's folder whether One Roof is open or not. The first account of every agent starts with no variable set, as before.
+
+- **Rename…** gives an account your own name (shown in Settings, New session and the bottom bar's help); sessions keep its id, such as Codex2. An empty name puts the id back.
+- **Remove…** takes an account out of One Roof. Its folder and sign-in stay on this Mac; nothing is deleted. Add it again to use it. The first account of an agent can't be removed.
 
 | Seat | Where the numbers come from | Shown |
 |---|---|---|
 | Claude1, Claude2 | Optional: a Claude Code status line that writes usage files (see below). Otherwise the gauges stay empty. | seat bars in the sidebar, agent cards in New session, and Seats on the Overview, with reset times |
-| Codex | Codex's own session logs in `~/.codex/sessions/` | the same places |
+| Codex, Codex2 … | each account's own session logs (`~/.codex/sessions/`, `~/.codex-2/sessions/` …) | the same places |
 | Kimi, Gemini, Antigravity | they publish no usage | the Overview counts their sessions instead |
 
-**Claude usage files.** Claude Code passes its rate-limit figures to your status line command. If your status line also writes them to `~/Library/Application Support/One Roof/usage/Claude1.json` (and `Claude2.json` for the second seat), One Roof shows them. Each file holds the status line's `rate_limits` object (`five_hour` and `seven_day`, each with `used_percentage` and `resets_at`) and an `updated` time in seconds. Numbers older than 6 hours are ignored by the router.
+**Claude usage files.** Claude Code passes its rate-limit figures to your status line command. If your status line also writes them to `~/Library/Application Support/One Roof/usage/Claude1.json` (and `Claude2.json`, `Claude3.json` … for the other accounts), One Roof shows them. Each file holds the status line's `rate_limits` object (`five_hour` and `seven_day`, each with `used_percentage` and `resets_at`) and an `updated` time in seconds. Numbers older than 6 hours are ignored by the router.
 
 ## How a choice is made
 

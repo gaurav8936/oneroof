@@ -33,7 +33,7 @@ struct SettingsView: View {
         case 3: Form { notifications }.formStyle(.grouped)
         case 4: v2Model
         case 5: v2Foundations
-        case 6: Form { learnClassicRow; autoAdvanceRow; aeRow; learnFoldersRow }.formStyle(.grouped)
+        case 6: Form { autoAdvanceRow; aeRow; learnFoldersRow }.formStyle(.grouped)
         case 7: ShortcutsSettings(model: model)
         case 9: permissions
         default: v2Updates
@@ -374,12 +374,35 @@ struct SettingsView: View {
         Form {
             Text("Defaults used when you plan a session. You can change them for each session.")
                 .font(.caption).foregroundStyle(.secondary)
+            AccountsSettings(model: model)   // LAB-1999: more accounts per agent
+            // LAB-1998: the bottom bar shows every agent set up on this Mac; switch one off to take it out.
+            Section("Bottom bar") {
+                let shown = model.dockFacts.map { DockSeats.setUp($0, usageSeats: Set(model.seats.map(\.seat))) } ?? model.dockMarks
+                ForEach(shown, id: \.self) { m in
+                    Toggle(isOn: Binding(
+                        get: { !model.settings.dockHidden.contains(m.rawValue) },
+                        set: { on in
+                            model.settings.dockHidden.removeAll { $0 == m.rawValue }
+                            if !on { model.settings.dockHidden.append(m.rawValue) }
+                        })) {
+                        HStack(spacing: 8) {
+                            AgentBadge(m, size: 18)
+                            Text(m.isFirst && m != .claude2 ? m.agent.displayName
+                                 : m == .claude2 && AgentAccounts.label(of: "Claude2", agent: .claude) == "Claude2" ? "Claude (second account)"
+                                 : AgentAccounts.label(of: m.accountID, agent: m.agent))
+                        }
+                    }
+                    .accessibilityLabel("Show \(m.mono) in the bottom bar")
+                }
+                Text("Agents appear here once they are set up: installed, signed in, or (OpenCode, Goose) with a hosted connection. Each account added above is a seat of its own.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             HostedSettingsView(model: model)
             ForEach(AgentKind.allCases.filter { $0.isAgent && !$0.isHosted }) { agent in
                 Section(agent.displayName) {
                     if !AccountResolver.choices(for: agent).isEmpty {
                         Picker("Account", selection: binding(agent, \.account)) {
-                            ForEach(AccountResolver.choices(for: agent), id: \.self) { Text($0).tag(Optional($0)) }
+                            ForEach(AccountResolver.choices(for: agent), id: \.self) { Text(AgentAccounts.label(of: $0, agent: agent)).tag(Optional($0)) }
                         }
                     } else if agent == .codex {
                         LabeledContent("Account") { Text("One seat (~/.codex)").foregroundStyle(.secondary) }
@@ -494,19 +517,6 @@ struct SettingsView: View {
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         panel.message = message
         return panel.runModal() == .OK ? panel.url?.path : nil
-    }
-
-    /// LAB-1837 · the way back to the native Learn screens for this release; off = the shared Agentic Engineering page.
-    private var learnClassicRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle("Learn: classic screens", isOn: $model.settings.learnClassic)
-            Text("Off: Learn shows the shared Agentic Engineering page, the same one every site shows, saved in this version of One Roof so it works offline. On: the earlier native screens.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if !model.settings.learnClassic, model.learnShared == nil {
-                Text("This build has no saved shared page, so Learn shows the classic screens.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 
     /// LAB-1621 · a card played to its end rolls over to the next one after a three-second countdown.

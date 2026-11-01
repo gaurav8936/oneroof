@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import WebKit
 import OneRoofCore
@@ -6,7 +7,9 @@ import OneRoofCore
 // LAB-1835 · Learn as the shared Agentic Engineering page (the `ggae` embed every site shows), from the copy saved in the app at
 // build. A web view loads `oneroof-learn://hub/index.html`; `LearnSchemeHandler` answers every request from the saved files and
 // the bundled deck (`LearnShared.respond`), so Learn needs no network. LAB-1836: the page's bridge posts to `LearnSharedController`,
-// which runs One Roof's own actions (Play in One Roof, Use in a session ▾, Show in Finder, open in the browser).
+// which runs One Roof's own actions (Play in One Roof, Use in a session ▾, Show in Finder, open in the browser). LAB-1893: the
+// page also asks the app (`/app/…`, LearnSharedApp: posts, a post's text, the deck on disk, the search ranking) and hears from
+// it (`oneroofLearnEmit`: the player's state, "posts changed"), so it does what the native screens did.
 
 /// Answers `oneroof-learn://` requests from the saved page and the deck, off the main thread.
 final class LearnSchemeHandler: NSObject, WKURLSchemeHandler {
@@ -16,14 +19,22 @@ final class LearnSchemeHandler: NSObject, WKURLSchemeHandler {
     private var stopped = Set<ObjectIdentifier>()
     private let lock = NSLock()
 
-    init(_ loc: LearnShared.Location) { self.loc = loc }
+    /// LAB-1893 · what the app knows, kept current by the controller (read off the main thread).
+    private var appState: LearnSharedApp
+    var app: LearnSharedApp {
+        get { lock.lock(); defer { lock.unlock() }; return appState }
+        set { lock.lock(); appState = newValue; lock.unlock() }
+    }
+
+    init(_ loc: LearnShared.Location) { self.loc = loc; appState = LearnSharedApp(deck: nil, deckRoot: loc.deck) }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let url = task.request.url else { task.didFailWithError(URLError(.badURL)); return }
         let range = task.request.value(forHTTPHeaderField: "Range")
         let id = ObjectIdentifier(task)
+        let app = app
         queue.async { [loc] in
-            let r = LearnShared.respond(path: url.path, range: range, at: loc)
+            let r = app.respond(path: url.path, query: url.query) ?? LearnShared.respond(path: url.path, range: range, at: loc)
             DispatchQueue.main.async {
                 guard !self.take(id) else { return }
                 let resp = HTTPURLResponse(url: url, statusCode: r.status, httpVersion: "HTTP/1.1", headerFields: r.allHeaders)!
@@ -49,8 +60,16 @@ final class LearnSchemeHandler: NSObject, WKURLSchemeHandler {
 @MainActor
 final class LearnSharedController: ObservableObject {
     weak var web: WKWebView?
-    weak var model: AppModel?
+    weak var model: AppModel? { didSet { if model !== oldValue { observe() } } }
     var loc: LearnShared.Location?
+    /// LAB-1893 · the scheme handler that answers the page's `/app/…` questions.
+    weak var scheme: LearnSchemeHandler? { didSet { if posts == nil && model != nil { loadPosts() } else { pushApp() } } }
+    private var posts: [LearnPost]?
+    private var watching = Set<AnyCancellable>()
+    private var lastPlayer = ""
+    private var lastPlayerAt = Date.distantPast
+    private var wasPlaying = false
+    private var kickers: [String: [String]] = [:]
     @Published var toast = ""
     /// Set once the embed mounted (the page posted `mounted`).
     @Published private(set) var mounted = false
@@ -60,6 +79,8 @@ final class LearnSharedController: ObservableObject {
     /// The page's current screen (`#ae/…`), and the last one any Learn view showed (Learn reopens there).
     private(set) var hash = ""
     static var lastHash: String?
+    /// The Learn view showing now (self-tests reach the page through it).
+    static weak var current: LearnSharedController?
     private var themeKey = ""
     private var pendingHash: String?
     private var pendingSearch: String?
@@ -81,7 +102,7 @@ final class LearnSharedController: ObservableObject {
     func theme(_ t: ThemeTokens, scale: Double) {
         guard let web else { return }
         web.pageZoom = scale
-        let opts = LearnShared.mountOptions(t, autoAdvance: model?.settings.learnAutoAdvance)
+        let opts = LearnShared.mountOptions(t, autoAdvance: autoAdvance)
         guard opts != themeKey, mounted else { return }
         themeKey = opts
         web.evaluateJavaScript("oneroofLearnMount(\(opts))", completionHandler: nil)
@@ -99,48 +120,172 @@ final class LearnSharedController: ObservableObject {
 
     /// A message from the host page or a card frame.
     func receive(_ body: Any) {
-        guard let m = body as? [String: Any], let type = m["type"] as? String else { return }
-        switch type {
-        case "ready":
+        guard let msg = LearnBridgeMessage.parse(body) else { return }
+        switch msg {
+        case .ready:
             guard let model, let web else { return }
-            let opts = LearnShared.mountOptions(model.themes.centre.tokens, autoAdvance: model.settings.learnAutoAdvance)
+            let opts = LearnShared.mountOptions(model.themes.centre.tokens, autoAdvance: autoAdvance)
             themeKey = opts
             web.evaluateJavaScript("oneroofLearnMount(\(opts))", completionHandler: nil)
-        case "mounted":
+        case .mounted:
             mounted = true; error = nil
+            pushApp()
+            selfTest()
             if let h = pendingHash { pendingHash = nil; go(h) }
             if let q = pendingSearch { pendingSearch = nil; search(q) }
-        case "hash":
-            hash = m["hash"] as? String ?? ""
+        case .hash(let h):
+            hash = h
             if hash.hasPrefix("#ae/") { Self.lastHash = hash }
-        case "error": error = m["message"] as? String ?? "the page could not load"
-        case "net":
-            let u = m["url"] as? String ?? ""
+        case .error(let e): error = e
+        case .net(let u):
             network.append(u)
             #if DEBUG
             NSLog("Learn (shared page): network request %@", u)
             #endif
-        case "mediaPlay":
+        case .mediaPlay:
             if model?.player.playing == true { model?.player.pause() }    // audio never doubles
-        case "play": play(m["slug"] as? String ?? "", queue: m["queue"] as? [String] ?? [])
-        case "useInSession": sessions(m["slug"] as? String ?? "")
-        case "openFolder": openFolder(m["path"] as? String ?? "")
-        case "openExternal": openExternal(m["url"] as? String ?? "")
-        default: break
+        case .play(let slug, let queue, let scene): play(slug, queue: queue, scene: scene ?? -1)
+        case .useInSession(let slug): sessions(slug)
+        case .openFolder(let p): openFolder(p)
+        case .openExternal(let u): openExternal(u)
+        case .subscribed: emitPlayer(force: true)
+        case .toggle: toggle()
+        case .rate:
+            guard let p = model?.player else { return }
+            p.rate = LearnShared.nextRate(after: p.rate, in: CoursePlayer.rates)
+            emitPlayer(force: true)
+        case .refreshPosts: LearnBlogFeed.shared.refresh(force: true)
+        case .terminal(let p): terminal(p)
         }
     }
 
     // MARK: Bridge actions (LAB-1836)
 
     /// Play in One Roof: One Roof's player (keeps playing while you work), then `queue`, else the rest of the card's band.
-    func play(_ slug: String, queue: [String]) {
+    /// `scene` ≥ 0 (LAB-1893, Transcript › Play from here): from that scene.
+    func play(_ slug: String, queue: [String], scene: Int = -1) {
         guard let model, let deck = model.learnDeck, deck.cards[slug] != nil else { return }
-        let audio = LearnAudio(deck: deck, player: model.player, nav: LearnNav(spec: "radio"))
+        let audio = LearnAudio(deck: deck, player: model.player, flash: { [weak self] in self?.flash($0) })
         pauseMedia()
         let rest = queue.isEmpty ? audio.bandFrom(slug) : queue
         let tracks = CourseAudio.tracks(page: deck.htmlPath(slug))
         guard !tracks.isEmpty else { flash("\(deck.cards[slug]?.title ?? slug) has no narration in this build"); return }
-        audio.toggle(slug, then: rest)
+        if scene >= 0 { audio.play(slug, scene: scene, then: rest) } else { audio.toggle(slug, then: rest) }
+    }
+
+    /// Radio's ▶ / ❚❚, a playing card's header and play buttons: pause or resume One Roof's player.
+    func toggle() {
+        guard let p = model?.player, p.pageId != nil else { return }
+        if !p.playing { pauseMedia() }
+        p.toggle()
+    }
+
+    /// By folder › Open in Terminal: a new terminal session in that deck folder (One Roof's native panel did the same).
+    func terminal(_ rel: String) {
+        guard let loc, let model else { return }
+        guard let full = LearnShared.folderInDeck(rel, deck: loc.deck) else { flash("Not a folder of this build's deck: \(rel)"); return }
+        model.newTerminal(in: full)
+        model.learnMode = false
+    }
+
+    // MARK: What the app knows (LAB-1893)
+
+    /// Watch the player (its state goes to the page) and the posts (the hub's refresh, Settings › Learn folders).
+    private func observe() {
+        watching.removeAll()
+        guard let model else { return }
+        model.player.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in self?.emitPlayer() }.store(in: &watching)
+        model.player.clock.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in self?.emitPlayer() }.store(in: &watching)
+        LearnBlogFeed.shared.$revision.dropFirst().receive(on: RunLoop.main).sink { [weak self] _ in self?.loadPosts() }.store(in: &watching)
+        LearnBlogFeed.shared.$state.dropFirst().receive(on: RunLoop.main).sink { [weak self] _ in self?.pushApp(); self?.emit(["type": "posts"]) }.store(in: &watching)
+        loadPosts()
+        LearnBlogFeed.shared.refresh()
+    }
+
+    /// The posts Learn shows (the hub's cache + Settings › Learn folders), read off the main thread; the page is told.
+    func loadPosts() {
+        guard let model, let loc else { return }
+        let folders = model.settings.learnFolders, saved = loc.learn + "/posts.json"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let found = LearnSharedApp.posts(folders: folders, hubCache: BlogHub.cacheDir, saved: saved)
+            DispatchQueue.main.async { [weak self] in
+                self?.posts = found
+                self?.pushApp()
+                self?.emit(["type": "posts"])
+            }
+        }
+    }
+
+    /// The scheme handler's snapshot: the deck, the posts and Writing's source line.
+    private func pushApp() {
+        guard let scheme, let loc else { return }
+        let feed: LearnSharedApp.Feed
+        switch LearnBlogFeed.shared.state {
+        case .idle, .loading: feed = .loading
+        case .reached: feed = .reached
+        case .offline(let why): feed = .offline(why)
+        }
+        let note = posts.map { LearnSharedApp.postsNote($0, feed: feed, savedAt: Self.when(LearnBlogFeed.shared.savedAt), blog: BlogHub.name) } ?? ""
+        let offline: Bool = { if case .offline = feed { return true }; return false }()
+        scheme.app = LearnSharedApp(deck: model?.learnDeck, deckRoot: loc.deck, posts: posts, postsNote: note, postsOffline: offline)
+    }
+
+    /// "10:42" today, else "24 Oct 2026, 10:42"; "earlier" when the copy was never saved.
+    static func when(_ d: Date?) -> String {
+        guard let d else { return "earlier" }
+        return Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : d.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    /// The player's state to the page: at once when what is loaded, playing or the scene changes; the time at most once a second.
+    func emitPlayer(force: Bool = false) {
+        guard let model, mounted else { return }
+        let p = model.player
+        let deck = model.learnDeck
+        let slug = p.pageId.flatMap { deck?.slug(forPage: $0) }
+        if p.playing && !wasPlaying { pauseMedia() }      // One Roof's player starting pauses the page (audio never doubles)
+        wasPlaying = p.playing
+        let kicker = slug.flatMap { k -> String? in
+            if kickers[k] == nil, let deck { kickers[k] = DeckSpec.scenes(path: deck.specPath(k), fallback: deck.cards[k]).map(\.kicker) }
+            return kickers[k].flatMap { $0.indices.contains(p.index) ? $0[p.index] : nil }
+        }
+        let key = "\(slug ?? "")|\(p.playing)|\(p.index)|\(p.tracks.count)|\(p.rate)"
+        guard force || key != lastPlayer || (p.playing && Date().timeIntervalSince(lastPlayerAt) >= 1) else { return }
+        lastPlayer = key; lastPlayerAt = Date()
+        let np = LearnSharedApp.nowPlaying(slug: slug, playing: p.playing, index: p.index, count: p.tracks.count, clipElapsed: p.clock.elapsed,
+                                           total: slug.flatMap { deck?.cards[$0]?.estSeconds } ?? 0, rate: p.rate, kicker: kicker)
+        emit(["type": "player", "np": np])
+    }
+
+    /// ONEROOF_SELFTEST_LEARNJS=<s>@<js>[;;<s>@<js>…]: scripts run in the page that long after it first mounted (captures of
+    /// a selected folder row, a typed search …). Once per run.
+    /// LAB-1894: plus LEARNMODE's steps and the card page hooks (CARDENDED, PAGECLICK, PAGEJS), from LearnSharedSelfTest.
+    private func selfTest() {
+        let env = ProcessInfo.processInfo.environment
+        guard SelfTest.isActive, !Self.selfTestRan else { return }
+        Self.selfTestRan = true
+        var steps = Self.selfTestSteps
+        for one in (env["ONEROOF_SELFTEST_LEARNJS"] ?? "").components(separatedBy: ";;") {
+            guard let at = one.firstIndex(of: "@") else { continue }
+            steps.append(.init(Double(one[..<at]) ?? 1, String(one[one.index(after: at)...])))
+        }
+        steps += LearnSharedSelfTest.cardPageScripts(env).map { .init(0, $0) }
+        for st in steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + st.after) { [weak self] in self?.web?.evaluateJavaScript(st.js, completionHandler: nil) }
+        }
+    }
+    private static var selfTestRan = false
+    /// LEARNMODE's scripts (SelfTest sets them before Learn opens).
+    static var selfTestSteps: [LearnSharedSelfTest.Step] = []
+    /// Settings › Learn › Auto-advance, or off for a self-test with ONEROOF_SELFTEST_AUTOADVANCE=0.
+    var autoAdvance: Bool? {
+        guard let model else { return nil }
+        return model.settings.learnAutoAdvance && ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_AUTOADVANCE"] != "0"
+    }
+
+    /// An event for the page's bridge subscribers (`oneroofLearnEmit`).
+    private func emit(_ e: [String: Any]) {
+        guard mounted, let web, let d = try? JSONSerialization.data(withJSONObject: e) else { return }
+        web.evaluateJavaScript("window.oneroofLearnEmit && window.oneroofLearnEmit(\(String(decoding: d, as: UTF8.self)))", completionHandler: nil)
     }
 
     /// Use in a session ▾: the live agent sessions, as the classic card header lists them; the one picked gets /<slug>.
@@ -213,12 +358,16 @@ struct LearnSharedWeb: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let cfg = WKWebViewConfiguration()
-        cfg.setURLSchemeHandler(LearnSchemeHandler(loc), forURLScheme: LearnShared.scheme)
+        let scheme = LearnSchemeHandler(loc)
+        cfg.setURLSchemeHandler(scheme, forURLScheme: LearnShared.scheme)
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.defaultWebpagePreferences.allowsContentJavaScript = true
         if SelfTest.isActive { cfg.websiteDataStore = .nonPersistent() }   // tests never read or write the owner's page storage
         let ucc = cfg.userContentController
         ucc.addUserScript(WKUserScript(source: LearnShared.frameScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        if SelfTest.isActive, let st = LearnSharedSelfTest.startScript(ProcessInfo.processInfo.environment) {
+            ucc.addUserScript(WKUserScript(source: st, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         ucc.add(LearnSharedMessages(controller), name: LearnShared.handler)
         let w = WKWebView(frame: .zero, configuration: cfg)
         w.navigationDelegate = context.coordinator
@@ -227,6 +376,7 @@ struct LearnSharedWeb: NSViewRepresentable {
         w.setAccessibilityLabel("Learn")
         controller.web = w
         controller.loc = loc
+        controller.scheme = scheme
         w.load(URLRequest(url: LearnShared.pageURL(hash: initialHash)))
         return w
     }

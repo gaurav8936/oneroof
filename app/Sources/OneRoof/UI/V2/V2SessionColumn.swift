@@ -341,7 +341,7 @@ struct V2AvatarColumn: View {
         ScrollView {
             VStack(spacing: 8) {
                 ForEach(shown) { i in
-                    let mark = AgentMark(agent: i.session.agent, account: i.account)
+                    let mark = SeatMark(agent: i.session.agent, account: i.account ?? i.session.account)
                     Button { win.selectedId = i.id; controller.v2Open(.sessions) } label: {
                         AgentBadge(mark, size: 30, status: i.status, ring: t.sidebar)
                             .padding(3)

@@ -19,7 +19,8 @@ import OneRoofCore
 ///   hitch start · hitch stop <label>   frame timing on the main thread (display link) and terminal size changes in between
 ///   resizegesture <from> <to> <ms> the window's width from <from> to <to> pt, one step per display frame, over <ms>
 ///   windowsize <w> <h>             the window's frame size
-///   barcheck [label]               LAB-1932: CHECK the toolbar title crosses no window button or toolbar item
+///   barcheck [label]               LAB-1932: CHECK the toolbar title crosses no window button or toolbar item;
+///                                  LAB-1938: and the right-hand group sits on one band colour
 ///   barsweep [widths…]             LAB-1932: barcheck in every place × rail open/folded × Focus step × width
 enum SelfTestHarness {
     nonisolated(unsafe) static var searchHits = -1
@@ -195,8 +196,14 @@ enum SelfTestHarness {
         let span = c.v2TitleDrawnSpan.map { "\(Int($0.minX))…\(Int($0.maxX))" } ?? "hidden"
         let items = c.v2BarSpans(excludingTitle: true).map { "\($0.name) \(Int($0.minX))…\(Int($0.maxX))" }.joined(separator: ", ")
         log("  CHECK \(hits.isEmpty ? "PASS" : "FAIL") toolbar clear \(label) (title \(span); crosses \(hits.isEmpty ? "nothing" : hits.joined(separator: "+")); items \(items))")
-        if !hits.isEmpty && snapOnFail { SelfTest.snapshot(app: app, to: out + "-barfail-" + label.replacingOccurrences(of: " ", with: "_")) }
-        return hits.isEmpty
+        // LAB-1938: the right-hand group sits on one band colour.
+        let group = c.v2RightGroupSpan
+        let under = group.map { V2Layout.bandColours(under: $0, segments: c.v2BandSegments()) } ?? []
+        let oneBand = under.count <= 1
+        log("  CHECK \(oneBand ? "PASS" : "FAIL") toolbar group one band \(label) (group \(group.map { "\(Int($0.minX))…\(Int($0.maxX))" } ?? "none"); \(under.count) colour\(under.count == 1 ? "" : "s"))")
+        let ok = hits.isEmpty && oneBand
+        if !ok && snapOnFail { SelfTest.snapshot(app: app, to: out + "-barfail-" + label.replacingOccurrences(of: " ", with: "_")) }
+        return ok
     }
 
     /// The sweep's cases, run one after another with time to lay out between them.

@@ -144,8 +144,9 @@ public struct ThemeTokens: Sendable {
     public var background: RGB { window }
     public var secondaryText: RGB { text2 }
     public var border: RGB { separator }
-    /// Needs-you text on this theme (the only red in the UI).
-    public var needsText: RGB { isDark ? RGB(0xFF6961) : RGB(0xC4261D) }
+    /// Needs-you text on this theme (the only red in the UI). LAB-1951: Graphite's cards (surface #3A3A3C) are lighter
+    /// than Midnight's, so its red is raised to its terminal's bright red (#FF8A82, 4.98:1 there; #FF6961 was 4.02:1).
+    public var needsText: RGB { name == .graphite ? RGB(0xFF8A82) : isDark ? RGB(0xFF6961) : RGB(0xC4261D) }
 
     // MARK: Syntax (S07 §1.5)
 

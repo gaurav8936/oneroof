@@ -73,7 +73,16 @@ public enum Usage {
         return nil
     }
 
-    public static func all() -> [SeatUsage] { claude() + [codex()].compactMap { $0 } }
+    /// Every seat with a usage feed: each Claude account's status-line file, each Codex account's session logs
+    /// (LAB-1999: Codex2 from ~/.codex-2, named "Codex2").
+    public static func all(home: String = NSHomeDirectory()) -> [SeatUsage] {
+        let codexes = AgentAccounts.accounts(for: .codex, home: home).compactMap { a -> SeatUsage? in
+            guard var u = codex(home: a.folder(home: home)) else { return nil }
+            u.seat = a.number == 1 ? "Codex" : a.id
+            return u
+        }
+        return claude(accounts: AccountResolver.claudeAccounts(home: home)) + codexes
+    }
 }
 
 /// Routing rules: One Roof's own `agent-routing/routing.json` (app Resources), or yours in ~/.config/oneroof/agent-routing/ (see AEFolder).

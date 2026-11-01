@@ -44,6 +44,16 @@ public enum Look: String, CaseIterable, Identifiable, Codable, Sendable {
     /// The look that matches saved per-panel themes, or nil when the owner customised them.
     public static func matching(_ t: PanelThemes) -> Look? { allCases.first { $0.panelThemes == t } }
     public static let storageKey = "look.v2"
+
+    /// LAB-1951 · ONEROOF_SELFTEST_LOOK=<look | theme>: the panel themes a self-test starts with. A look's name
+    /// (skyStudio, midnight, …) gives its themes; a theme's name (daylight · graphite · midnight, or the v0.1
+    /// light · dim · dark) puts every panel in that theme. Before 1.9.35 the variable only set Settings' look name and
+    /// the panels kept the saved (or, on a fresh profile, default) themes, so LOOK=midnight changed nothing.
+    public static func selfTestThemes(_ value: String) -> PanelThemes? {
+        if let l = Look(rawValue: value) { return l.panelThemes }
+        guard let t = ThemeName(stored: value.lowercased()) else { return nil }
+        return PanelThemes(sidebar: t, files: t, terminal: t, plan: t, centre: t)
+    }
 }
 
 /// The Focus ladder (shared/FOCUS_LADDER.md). Stored per window.
