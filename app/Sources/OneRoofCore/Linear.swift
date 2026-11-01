@@ -572,7 +572,8 @@ public enum Trackers {
         let fm = FileManager.default
         let name = "_MASTER-TRACKER.html"
         var out = [projects + "/" + name]
-        for d in ((try? fm.contentsOfDirectory(atPath: projects)) ?? []).sorted() where !d.hasPrefix(".") {
+        for d in (Workspace.isHome(projects) ? [] : (try? fm.contentsOfDirectory(atPath: projects)) ?? []).sorted()
+        where !d.hasPrefix(".") {   // LAB-2167: never into the home folder's Desktop, Documents…
             out.append(projects + "/" + d + "/" + name)
         }
         out.append(shared + "/" + name)
@@ -600,7 +601,8 @@ public enum Trackers {
         // Older ids live in workstreams/<id>, project codes in projects/<code> (LAB-235).
         let kinds = ["workstreams", "projects"]
         for k in kinds where fm.fileExists(atPath: "\(sharedDir)/docs/\(k)/\(id)") { return "\(sharedDir)/docs/\(k)/\(id)" }
-        let domains = ((try? fm.contentsOfDirectory(atPath: root)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+        let domains = Workspace.isHome(root) ? []   // LAB-2167
+            : ((try? fm.contentsOfDirectory(atPath: root)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
         func repos(_ d: String) -> [String] {
             ((try? fm.contentsOfDirectory(atPath: root + "/" + d)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
         }

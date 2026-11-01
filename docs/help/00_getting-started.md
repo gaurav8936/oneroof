@@ -26,7 +26,7 @@ On a fresh install One Roof opens a setup window in three steps: agents, folders
 
 | Step | What to choose |
 |---|---|
-| Projects folder | The folder that holds your repos. It starts as `~/Projects` when that folder exists. Agents start here; choose a folder that holds only your code, not your home folder. |
+| Projects folder | The folder that holds your repos. It starts as `~/Projects` when that folder exists; otherwise Setup asks you to choose one or create `~/Projects`. Agents start here. |
 | Shared folder | Where your rules, handoffs and gotchas live. The default is `_common` inside your projects folder. **Create it** makes the folder for you. You can skip this step. |
 | Agentic engineering | Bundled with the app: the narrated Agentic Engineering deck with every skill and the hooks, plus One Roof's routing rules. Nothing to choose. |
 | Agents detected | Which of `claude`, `codex`, `kimi`, `gemini` and `agy` are installed, and whether each is signed in. Nothing to do here except notice what is missing. |
