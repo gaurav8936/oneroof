@@ -210,7 +210,7 @@ final class PlaceRenameShortcutTests: XCTestCase {
 /// QA M4: an agent's status line is never shown as a finished turn's message.
 final class StatusLineTests: XCTestCase {
     func test_statusLineIsChrome() {
-        XCTAssertTrue(TerminalText.isStatusLine("[Claude1] you@example.edu · Max 20x · 7d 9%"))
+        XCTAssertTrue(TerminalText.isStatusLine("[Claude1] someone · Max 20x · 7d 9%"))
         XCTAssertTrue(TerminalText.isChrome("  [C2] me@host · Pro · 5h 24%"))
         XCTAssertFalse(TerminalText.isStatusLine("I've filed three bugs · all in Backlog"))
         XCTAssertFalse(TerminalText.isStatusLine("[note] tests pass · 100% of them run"), "a sentence, not a status line: has words after")
