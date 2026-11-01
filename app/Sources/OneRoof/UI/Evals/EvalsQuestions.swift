@@ -21,6 +21,9 @@ struct EvalsQuestionsPage: View {
     @State private var detailError: String?
     @State private var adding = false
     @FocusState private var listFocused: Bool
+    @ObservedObject private var hf = HFAccount.shared
+    /// LAB-2117: the data source, and the lock until the user's own Hugging Face sign-in + accepted terms.
+    private var source: EvalDataSource? { EvalSources.source(folder: bench?.folder ?? benchmark, dataset: info?.dataset, gated: info?.gated ?? false) }
 
     enum EvalsItemsState: Equatable { case loading, confirm, gated, downloading, failed(String), ready }
 
@@ -35,6 +38,10 @@ struct EvalsQuestionsPage: View {
                 }))
             }
             if EvalsDraft.isDraft { EvalsDraftBanner().padding(.horizontal, 20).padding(.top, 10) }
+            if let s = source { EvalsSourceLine(source: s).padding(.horizontal, 20).padding(.top, 8) }
+            if let s = source, hf.status(s).locked {
+                EvalsLockCard(name: bench?.name ?? task, source: s, status: hf.status(s)).padding(24)
+            } else {
             switch page {
             case .ready: split
             case .loading: note("Reading the questions…")
@@ -49,8 +56,10 @@ struct EvalsQuestionsPage: View {
                 RoofButton("Try again") { load(download: true) }
             }.padding(24)
             }
+            }
         }
-        .onAppear { load(download: false) }
+        .onAppear { if !(source.map { hf.status($0).locked } ?? false) { load(download: false) } }
+        .onChange(of: hf.accepted) { _, _ in if !(source.map { hf.status($0).locked } ?? false) { load(download: false) } }
     }
 
     private var meta: String {
@@ -90,7 +99,7 @@ struct EvalsQuestionsPage: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("\(bench?.name ?? task) is gated on Hugging Face").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
-                Text("Sign in to Hugging Face and accept the dataset's terms to see questions. Then add a Hugging Face token: roof eval providers set hf --key-file PATH. The questions stay on this Mac.")
+                Text("Hugging Face refused the download: accept the dataset's terms on Hugging Face with the account you signed in with (Settings › Evals), then check again. The questions stay on this Mac.")
                     .ui(TypeScale.body).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     if let u = info?.termsUrl.flatMap(URL.init(string:)) { Link("Open terms ↗", destination: u).font(.system(size: TypeScale.small, weight: .semibold)) }

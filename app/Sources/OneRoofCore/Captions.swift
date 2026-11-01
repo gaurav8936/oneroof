@@ -466,7 +466,19 @@ public enum TerminalText {
     public static func isChrome(_ s: String) -> Bool {
         guard let f = s.unicodeScalars.first else { return true }
         if "╭╰─━┌└╮╯".unicodeScalars.contains(f), s.unicodeScalars.allSatisfy({ "╭╰─━┌└╮╯┐┘ ".unicodeScalars.contains($0) }) { return true }
-        return s.contains("? for shortcuts") || s.hasPrefix("esc to interrupt") || s.contains("⏵⏵") || isStatusLine(s)
+        return s.contains("? for shortcuts") || s.hasPrefix("esc to interrupt") || s.contains("⏵⏵") || isStatusLine(s) || isFurniture(s)
+    }
+
+    /// LAB-2108: the agent CLI's moving screen furniture, never a message or a moment: the subagent panel ("main ○
+    /// general-purpose  Reviewing … 4m 46s · ↓ 292.4k tokens"), "Working (10s • esc to interrupt)", "New activity · ↓
+    /// Back to bottom · esc", tree branches ("⎿ …").
+    public static func isFurniture(_ s: String) -> Bool {
+        let t = unboxed(s)
+        if t.isEmpty { return false }
+        if t.contains("esc to interrupt") || t.contains("Back to bottom") || t.hasPrefix("⎿") { return true }
+        if t.range(of: #"·\s*[↓↑]\s*[\d.,]+\s*[kKmM]?\s*tokens\s*\)?\s*$"#, options: .regularExpression) != nil { return true }
+        if t.range(of: #"^\S+\s+[○◯●◉]\s+[\w-]+"#, options: .regularExpression) != nil, t.contains("tokens") || t.contains("general-purpose") { return true }
+        return false
     }
 
     /// QA M4: an agent's own status line ("[Claude1] you@host · Max 20x · 7d 9%"): a bracketed seat, " · " parts and a

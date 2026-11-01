@@ -9,19 +9,20 @@ import Foundation
 
 /// The six tabs, in the owner's order (LAB-2061): Overview opens first; HP's Build is named Your evals.
 public enum EvalsTabV2: String, CaseIterable, Identifiable, Sendable {
-    case overview, yourEvals, explore, run, results, learn
+    case howTo, overview, yourEvals, explore, run, results, learn   // LAB-2113: How to first
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .overview: return "Overview"; case .yourEvals: return "Your evals"; case .explore: return "Explore"
+        case .howTo: return "How to"; case .overview: return "Overview"; case .yourEvals: return "Your evals"; case .explore: return "Explore"
         case .run: return "Run"; case .results: return "Results"; case .learn: return "Learn"
         }
     }
-    /// ⌃⌥1…⌃⌥6 (HP's ⌘1…5 and ⌥⌘1…9 are taken by group-by and workspaces, KeymapV2).
+    /// ⌃⌥1…⌃⌥7 (How to is 1 since LAB-2113; HP's ⌘1…5 and ⌥⌘1…9 are taken by group-by and workspaces, KeymapV2).
     public var keyDigit: Character { Character(String((Self.allCases.firstIndex(of: self) ?? 0) + 1)) }
     /// ONEROOF_SELFTEST_EVALS_TAB values: each tab's name, plus the drill-downs (question, scores, judge).
     public static func selfTest(_ v: String) -> (tab: EvalsTabV2, drill: String?)? {
         switch v.lowercased() {
+        case "how-to", "howto": return (.howTo, nil)
         case "overview": return (.overview, nil)
         case "your-evals", "build", "yourevals": return (.yourEvals, nil)
         case "judge": return (.yourEvals, "judge")

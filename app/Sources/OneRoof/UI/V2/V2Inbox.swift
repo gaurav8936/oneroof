@@ -71,12 +71,10 @@ struct V2InboxPage: View {
     @ObservedObject var win: WindowState
 
     @State private var focused: String?
-    @State private var decidedOpen = false
     @State private var details: Set<UUID> = []
     @State private var showAll: Set<UUID> = []
     @State private var failed: [String: String] = [:]
     @State private var undoRule: Decision?
-    @State private var actionLogHover = false
     /// A block that just left (answered here or in its terminal): shown folded for 1.5 s, where it was.
     struct Ghost: Equatable { var block: InboxBlock; var index: Int; var line: String }
     @State private var ghosts: [String: Ghost] = [:]
@@ -84,15 +82,24 @@ struct V2InboxPage: View {
     @State private var newAbove = 0
     @FocusState private var keys: Bool
 
-    private static let blockWidth: CGFloat = 980
+    private static let blockWidth: CGFloat = 1180
+    /// LAB-2109: the session card left of each block.
+    static let cardWidth: CGFloat = 200
 
     var body: some View {
+        // LAB-2110: two tabs — Inbox (only what waits on you now) and Decided (the one paged record). The Action log is
+        // gone: its Decisions are Decided, its Rules are in Settings › Permissions.
         Group {
-            // LAB-2047 · LAB-2048: the Action log opens over the Inbox (header button, View › Action Log, Search).
-            if win.actionLog != nil { V2ActionLogPage(model: model, win: win) { win.actionLog = nil } }
-            else { page }
+            if win.inboxTab == .decided {
+                VStack(spacing: 0) {
+                    header(count: model.needsYouBadge, quiet: 0)
+                    V2DecidedList(model: model, win: win)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(t.window.color)
+            } else { page }
         }
-        .onDisappear { win.actionLog = nil }
+        .onDisappear { win.inboxTab = .inbox }
     }
 
     // MARK: Page
@@ -117,7 +124,6 @@ struct V2InboxPage: View {
                             MicroLabel("Loops · Today · \(layout.loops.count)").padding(.top, asks.isEmpty ? 0 : 8).padding(.leading, 2)
                             ForEach(layout.loops) { b in row(b, ghost: nil) }
                         }
-                        if !decided.isEmpty { decidedSection(decided) }
                         Color.clear.frame(height: 24)
                     }
                     .frame(maxWidth: Self.blockWidth, alignment: .leading)
@@ -159,7 +165,7 @@ struct V2InboxPage: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .inboxSelfTest)) { n in
             if let p = (n.object as? [String: Any])?["attach"] as? String, let id = focused ?? layout.all.first?.id { drafts.attach(id, [p]) }
-            if (n.object as? [String: Any])?["decided"] as? Bool == true { decidedOpen = true }
+            if (n.object as? [String: Any])?["decided"] as? Bool == true { win.inboxTab = .decided }
             if let b = current(layout) {
                 if let text = (n.object as? [String: Any])?["reply"] as? String { drafts.text[b.id] = text; sendBox(b) }
                 if let k = (n.object as? [String: Any])?["press"] as? Int, let d = b.decision,
@@ -201,7 +207,7 @@ struct V2InboxPage: View {
                 }
             }
             Spacer()
-            actionLogButton.padding(.top, 4)
+            tabBar.padding(.top, 4)
         }
         .frame(maxWidth: Self.blockWidth)
         .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 14)
@@ -210,44 +216,41 @@ struct V2InboxPage: View {
         .overlay(alignment: .bottom) { Hairline() }
     }
 
-    /// LAB-2047: the Action log entry point, pinned in the header (it never scrolls away): "Action log · 555 decided
-    /// today · 74 rules ›" in a capsule. The lead and the decided count open Decisions; "74 rules" opens Rules. Under
-    /// 1100 pt of window only "Action log ›" stays.
-    private var actionLogButton: some View {
-        let n = model.inboxDecidedToday, r = model.decisionRuleCount
-        return ViewThatFits(in: .horizontal) {
-            actionLogCapsule(ActionLog.entry(decidedToday: n, rules: r), n: n, r: r)
-            actionLogCapsule(ActionLog.entry(decidedToday: n, rules: r, compact: true), n: n, r: r)
+    /// LAB-2110: the place's tabs, pinned in the header: Inbox (the count waiting) · Decided (today's count). ⇧⌘I opens
+    /// Decided from anywhere (View › Decided); ⌘⌥← / ⌘⌥→ switch tabs here.
+    private var tabBar: some View {
+        let n = model.needsYouBadge, today = model.inboxDecidedToday
+        return HStack(spacing: 2) {
+            tabButton(n > 0 ? "Inbox · \(n)" : "Inbox", .inbox, help: "Only what waits on you now")
+            tabButton(Decided.tabTitle(today: today), .decided, help: "What you decided, newest first (⇧⌘I)")
         }
+        .padding(2)
+        .background(Capsule().fill(t.card.color))
+        .overlay(Capsule().strokeBorder(t.separatorStrong.color))
+        .background(tabKeys)
+        .fixedSize()
     }
 
-    private func actionLogCapsule(_ e: (lead: String, decided: String, rules: String), n: Int, r: Int) -> some View {
-        HStack(spacing: 0) {
-            Button { win.openActionLog(.decisions) } label: {
-                HStack(spacing: 0) {
-                    Text(e.lead).ui(12.5, .semibold).foregroundStyle(t.accentText.color)
-                    if !e.decided.isEmpty { Text(" · " + e.decided + " · ").ui(12.5).foregroundStyle(t.text2.color) }
-                }
-                .padding(.leading, 12).padding(.trailing, e.rules.isEmpty ? 12 : 0).padding(.vertical, 6).contentShape(Rectangle())
-            }
-            .buttonStyle(InboxCapsuleStyle(fill: t.selection))
-            .help(ActionLog.entryTooltip)
-            .accessibilityLabel(ActionLog.entryAccessibility(decidedToday: n, rules: r))
-            if !e.rules.isEmpty {
-                Button { win.openActionLog(.rules) } label: {
-                    Text(e.rules).ui(12.5).foregroundStyle(t.text2.color)
-                        .padding(.trailing, 12).padding(.vertical, 6).contentShape(Rectangle())
-                }
-                .buttonStyle(InboxCapsuleStyle(fill: t.selection))
-                .help("The always-allow rules One Roof notes (Action log › Rules)")
-                .accessibilityLabel(ActionLog.rulesAccessibility(rules: r))
-            }
+    private func tabButton(_ title: String, _ tab: InboxTab, help: String) -> some View {
+        let on = win.inboxTab == tab
+        return Button { win.inboxTab = tab } label: {
+            Text(title).ui(12.5, on ? .semibold : .regular).foregroundStyle(on ? t.accentText.color : t.text2.color)
+                .padding(.horizontal, 12).frame(height: 26)
+                .background(Capsule().fill(on ? t.selection.color : .clear))
+                .contentShape(Capsule())
         }
-        .background(Capsule().fill(actionLogHover ? t.selection.color.opacity(0.5) : .clear))
-        .overlay(Capsule().strokeBorder(t.separatorStrong.color))
-        .clipShape(Capsule())
-        .onHover { actionLogHover = $0 }
-        .fixedSize()
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
+    }
+
+    private var tabKeys: some View {
+        ZStack {
+            Button("") { win.inboxTab = .inbox }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            Button("") { win.inboxTab = .decided }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+        }
+        .buttonStyle(.plain).frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
     }
 
     // MARK: States
@@ -261,12 +264,15 @@ struct V2InboxPage: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Text("Nothing waiting.").ui(20, .semibold).foregroundStyle(t.text.color)
-            Text("When an agent asks you something, it shows up here, ready to answer.").ui(13.5).foregroundStyle(t.text2.color)
+        let working = model.sessionItems.filter { $0.liveAgent != nil }.count
+        return VStack(spacing: 8) {
+            Text("Nothing waits on you.").ui(20, .semibold).foregroundStyle(t.text.color)
+            Text(working == 0 ? "When an agent asks you something, it shows up here, ready to answer."
+                 : "\(working) session\(working == 1 ? "" : "s") working. When one asks you something, it shows up here.")
+                .ui(13.5).foregroundStyle(t.text2.color)
             HStack(spacing: 0) {
                 Text("\(model.inboxDecidedToday) decided today · ").ui(12).foregroundStyle(t.text3.color)
-                Button { win.openActionLog(.decisions) } label: { Text("Action log ›").ui(12).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
+                Button { win.inboxTab = .decided } label: { Text("Decided ›").ui(12).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity).padding(.top, 120)
@@ -275,9 +281,17 @@ struct V2InboxPage: View {
     // MARK: Blocks
 
     @ViewBuilder private func row(_ b: InboxBlock, ghost: Ghost?) -> some View {
-        InboxBlockFrame(focused: focused == b.id && ghost == nil, edge: t.separatorStrong, ring: t.accent, scale: scale) {
+        let critical = ghost == nil && InboxUrgency.of(b) == .critical
+        let hue = b.sessionId.map { SessionHue(sessionId: $0, on: t) }
+        HStack(alignment: .top, spacing: 10) {
+            V2InboxSessionCard(model: model, block: b, hue: hue, loopTitle: loopInbox.items.first { $0.id == b.loopItemId }?.loopTitle)
+                .frame(width: Self.cardWidth)
+            // LAB-2112: a critical ask (the agent is blocked until you act) gets a bold red border; LAB-2109: the others
+            // carry their session's colour on the edge.
+            InboxBlockFrame(focused: focused == b.id && ghost == nil, edge: critical ? t.needsText : (hue?.ink ?? t.separatorStrong),
+                            ring: t.accent, scale: scale, lineWidth: critical ? 3 : 1.5) {
             VStack(alignment: .leading, spacing: 0) {
-                strip(b)
+                strip(b, critical: critical)
                 VStack(alignment: .leading, spacing: 12) {
                     if let g = ghost {
                         Text(g.line).ui(13, .semibold).foregroundStyle(Self.mt.text.color)
@@ -286,6 +300,7 @@ struct V2InboxPage: View {
                     }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 14)
+            }
             }
         }
         .id(b.id)
@@ -322,7 +337,7 @@ struct V2InboxPage: View {
     }
 
     /// The 32 pt header strip: badge, name, context, kind tag · age, Open session ↗ ⌘↩.
-    private func strip(_ b: InboxBlock) -> some View {
+    private func strip(_ b: InboxBlock, critical: Bool = false) -> some View {
         let m = Self.mt
         return HStack(spacing: 8) {
             switch b.kind {
@@ -346,6 +361,12 @@ struct V2InboxPage: View {
             Text(b.kind.tag).ui(11, .semibold).foregroundStyle(tagColor(b).color).lineLimit(1).fixedSize()
                 .padding(.horizontal, 7).frame(height: 18)
                 .background(Capsule().fill(m.surface.color))
+            if critical {   // LAB-2112
+                Text("Needs your decision").ui(11, .bold).foregroundStyle(m.needsText.color).lineLimit(1).fixedSize()
+                    .padding(.horizontal, 7).frame(height: 18)
+                    .overlay(Capsule().strokeBorder(m.needsText.color))
+                    .accessibilityLabel("Critical: needs your decision")
+            }
             Spacer(minLength: 8)
             if let more = Inbox.moreLine(b.more) { Text(more).ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize() }
             Text(Inbox.age(b.at)).ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize()
@@ -564,48 +585,6 @@ struct V2InboxPage: View {
         }
     }
 
-    // MARK: Decided
-
-    @ViewBuilder private func decidedSection(_ decided: [Decision]) -> some View {
-        Button { withAnimation(Motion.fast) { decidedOpen.toggle() } } label: {
-            Text("DECIDED · \(decided.count) " + (decidedOpen ? "▾" : "▸")).ui(TypeScale.micro, .semibold).tracking(0.66).foregroundStyle(t.text3.color)
-        }
-        .buttonStyle(.plain).padding(.top, 8).padding(.leading, 2)
-        .accessibilityLabel("Decided, \(decided.count)" + (decidedOpen ? ", expanded" : ", collapsed"))
-        if decidedOpen {
-            ForEach(decided, id: \.id) { d in decidedBlock(d) }
-        }
-    }
-
-    private func decidedBlock(_ d: Decision) -> some View {
-        let m = Self.mt
-        let item = model.item(d.sessionId)
-        let id = "decided-" + d.id.uuidString
-        return InboxBlockFrame(focused: focused == id, edge: t.separatorStrong, ring: t.accent, scale: scale) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if let item { AgentBadge(item: item, size: 18, status: false).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 4 } }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item?.session.name ?? "Session").ui(12.5, .semibold).foregroundStyle(m.text.color).lineLimit(1)
-                    Text(ScrollFeed.askText(d)).ui(12, mono: true).foregroundStyle(m.terminal.foreground.color).lineLimit(2).textSelection(.enabled)
-                    if !d.isQuestion && !d.isFinished && !d.why.isEmpty && !d.whyMissing {   // its reason, as the old detail showed
-                        Text(d.why).ui(12).foregroundStyle(m.text2.color).lineLimit(2).textSelection(.enabled)
-                    }
-                    Text(Inbox.answeredLine(d)).ui(11.5, .semibold).foregroundStyle(m.text2.color).lineLimit(1)
-                }
-                Spacer()
-                Text(Inbox.age(d.answeredAt ?? d.askedAt)).ui(11).foregroundStyle(m.text2.color)
-                    .help("Asked " + d.askedAt.formatted(date: .abbreviated, time: .shortened))
-                if let item {
-                    Button { model.reveal(item) } label: { Text("Open session ↗").ui(12).foregroundStyle(m.accentText.color) }.buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-        }
-        .id(id)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Decided: \(ScrollFeed.askText(d)), \(ScrollFeed.answerText(d) ?? "")")
-    }
-
     // MARK: Ghosts, new blocks, picks
 
     private struct Shown { var block: InboxBlock; var ghost: Ghost? }
@@ -654,7 +633,7 @@ struct V2InboxPage: View {
     private func pick(_ id: String?, layout: InboxLayout, decided: [Decision]) {
         guard let id else { return }
         if let b = Inbox.block(for: id, in: layout.all) { focused = b.id }
-        else if decided.contains(where: { $0.id.uuidString == id }) { decidedOpen = true; focused = "decided-" + id }
+        else if decided.contains(where: { $0.id.uuidString == id }) { win.inboxTab = .decided }   // LAB-2110: Decided is a tab
     }
 
     private func current(_ layout: InboxLayout) -> InboxBlock? { layout.all.first { $0.id == focused } ?? layout.all.first }
@@ -821,6 +800,7 @@ struct InboxBlockFrame<Content: View>: View {
     let edge: RGB
     let ring: RGB
     let scale: Double
+    var lineWidth: CGFloat = 1
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -828,7 +808,7 @@ struct InboxBlockFrame<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(V2InboxPage.mt.terminal.background.color))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(edge.color, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(edge.color, lineWidth: lineWidth))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(focused ? ring.color : .clear, lineWidth: 2).padding(-3))
             .themed(.midnight, scale: scale)
     }

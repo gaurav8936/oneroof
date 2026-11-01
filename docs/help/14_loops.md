@@ -57,7 +57,9 @@ Loops never act on their own. What a run produces (commits on its branch, a stag
 
 A loop that stopped at a limit, or whose round asks something, is in the Inbox too, as a loop item (never a session): **Run again**, **Open loop**, **Mark seen**. Loop items count in the Inbox badge.
 
-On the Loops page each loop's card lists its **Outcomes** (approve or reject from the row), and the Outcomes card under **Activity** opens a loop. What the old **Gallery** showed (every kind, what it produces, where its output goes, a real sample) is now in **Kinds**, a family's page and the loop's card (Output in its facts, samples under Outcomes).
+On the Loops page each loop's card lists its **Outcomes** (approve or reject from the row), and the Outcomes card under **Activity** opens a loop. A **report** outcome (a run report in the kit's journal, `journal:runs/YYYY/MM/<run>.md`) opens in One Roof's document viewer when you click its file name; the folder button (or right-click › **Show in Finder**) shows it in Finder. The journal is the kit's `journal.root` (in `ae.config.yaml`), else `<shared folder>/journal`; when a report is not on this Mac, Finder opens at its folder.
+
+**Not configured.** Some kit loops check nothing until you tell them what to check: Fleet sweep (a fast gate per repo), Live site prober (sites), Visual diff (pages) need `commands` under `loops › settings › <loop>` in the kit's config; Cost watch needs a price table (`usd_per_mtok`) and `limits`; Security audit needs `osv-scanner` installed. Switched on without that, such a loop used to report *pass* every night; now its card says **not configured** (in red) and its page lists what is missing, the settings to copy (**Copy settings**) and **Open config** (the kit's config in the viewer). One Roof never edits the kit's config or installs anything; the next run after you add the settings checks for real. What the old **Gallery** showed (every kind, what it produces, where its output goes, a real sample) is now in **Kinds**, a family's page and the loop's card (Output in its facts, samples under Outcomes).
 
 ## Your ae loops
 

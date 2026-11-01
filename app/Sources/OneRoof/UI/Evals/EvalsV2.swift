@@ -3,7 +3,7 @@ import SwiftUI
 import OneRoofCore
 
 /// LAB-2061 · the Evals place, redesigned (Claude Design "Evals v1.0" handover, blended with the owner's Overview):
-/// Overview · Your evals · Explore · Run · Results · Learn. Behind `Settings.evalsRedesign` (on in 2.0.0); off shows the
+/// How to (LAB-2113) · Overview · Your evals · Explore · Run · Results · Learn. Behind `Settings.evalsRedesign` (on in 2.0.0); off shows the
 /// 1.9.37 Evals. Stage 1 (M9): the shell, Overview, Explore and Your evals; Run, Results and Learn show today's run
 /// sheet + queue, results and lessons until stage 2/3 replaces them, so nothing is lost at any commit.
 struct EvalsPlace: View {
@@ -108,6 +108,8 @@ struct EvalsViewV2: View {
             board.start()
             board.refreshOwn()
             board.refreshOverview()
+            // LAB-2113: the first visit to Evals opens How to; later visits open Overview.
+            if !Prefs.viewState.bool(forKey: EvalsHowTo.seenKey) { Prefs.viewState.set(true, forKey: EvalsHowTo.seenKey); nav.tab = .howTo }
             selfTest()
         }
         .onDisappear { board.stop() }
@@ -141,7 +143,9 @@ struct EvalsViewV2: View {
         } content: {
             VStack(alignment: .leading, spacing: 12) {
                 lines
-                if let d = board.doctor, !d.engine.ready {
+                if nav.tab == .howTo {
+                    tab   // LAB-2113: How to reads without the engine (a new user starts here)
+                } else if let d = board.doctor, !d.engine.ready {
                     EvalsSetupCard(doctor: d, board: board)
                 } else if board.doctor == nil {
                     Text("Checking the eval engine…").ui(TypeScale.body).foregroundStyle(t.text2.color)
@@ -163,6 +167,7 @@ struct EvalsViewV2: View {
 
     @ViewBuilder private var tab: some View {
         switch nav.tab {
+        case .howTo: EvalsHowToTab(nav: nav, model: model)   // LAB-2113
         case .overview: EvalsOverviewTab(board: board, nav: nav)
         case .yourEvals: EvalsYourEvalsTab(board: board, nav: nav)
         case .explore: EvalsExploreTab(board: board, nav: nav)

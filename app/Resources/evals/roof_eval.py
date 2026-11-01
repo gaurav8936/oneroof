@@ -734,6 +734,9 @@ def cmd_run(argv):
             f"roof eval providers set {o['where']} --key-file PATH"), 6, o["json"])
     env = run_env(model)  # refuses early when the key is missing
     entry = catalog_entry(task)
+    lock = hf_locked((entry or {}).get("folder") or task_name(task)) if not task.endswith(".py") else None
+    if lock:
+        die(lock, 6, o["json"])
     if entry and entry.get("extra") and entry["extra"].replace("_", "-") not in installed_extras():
         install_extras([entry["extra"]])
     attempts = epochs or default_epochs(task)
@@ -2248,6 +2251,25 @@ def cmd_anatomy(argv):
 # Questions (HP EV-4/EV-5, LAB-2064): a benchmark's real questions on this Mac, browsed without running it.
 QUESTIONS = EVALS / "questions"
 GATED_ERR = re.compile(r"gated (dataset|repo)|GatedRepoError|must be authenticated|401 Client Error|403 Client Error", re.I)
+# LAB-2117: gated Hugging Face sets stay locked until the user signs in with their OWN account and accepts the terms.
+# One Roof passes HF_TOKEN (from the user's sign-in in Settings › Evals) and ONEROOF_HF_ACCEPTED (the accepted folders);
+# from a terminal, the user's own HF_TOKEN or `providers set hf` key file is the sign-in. No token, no download, no run.
+GATED_FOLDERS = {"hle", "gaia", "livecodebench_pro", "xstest"}
+
+
+def hf_locked(folder: str) -> str | None:
+    """Why a gated benchmark may not be browsed, downloaded or run here, or None when it may (or is not gated)."""
+    a = anatomy_table().get(folder, {})
+    if folder not in GATED_FOLDERS and not a.get("gated"):
+        return None
+    if not (os.environ.get("HF_TOKEN") or read_key("hf")):
+        return (f"{folder} is gated on Hugging Face: accept the dataset's terms on Hugging Face with your own account, then "
+                "sign in (One Roof: Settings › Evals › Hugging Face account; terminal: HF_TOKEN or providers set hf)")
+    acc = os.environ.get("ONEROOF_HF_ACCEPTED")
+    if acc is not None and folder not in {x for x in acc.split(",") if x}:
+        return f"{folder} is gated on Hugging Face: accept its terms there, then tick it in Settings › Evals"
+    return None
+
 
 _ITEMS_CODE = r"""
 import json, sys, inspect_evals._registry as r
@@ -2334,12 +2356,14 @@ def load_items(task: str, download: bool) -> tuple:
     if own is not None:
         return own, None
     qf = questions_file(task)
-    if qf.exists():
-        return [json.loads(x) for x in qf.read_text().splitlines() if x.strip()], None
     entry = catalog_entry(task) or {"folder": task_name(task)}
     a = anatomy_table().get(entry["folder"], {})
     gated = {"gated": True, "dataset": a.get("dataset"), "terms_url": a.get("terms_url") or
              (f"https://huggingface.co/datasets/{a['dataset']}" if a.get("dataset") else None)}
+    if hf_locked(entry["folder"]):
+        return None, gated | {"locked": True}
+    if qf.exists():
+        return [json.loads(x) for x in qf.read_text().splitlines() if x.strip()], None
     if not download:
         ran = any(r.get("task") == task_name(task) for r in results_for())
         return None, {"needs_download": True, "dataset": a.get("dataset"), "gated": bool(a.get("gated")),

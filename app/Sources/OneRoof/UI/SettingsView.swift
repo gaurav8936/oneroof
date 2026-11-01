@@ -23,7 +23,11 @@ struct SettingsView: View {
 
     /// The panes (B1.x, LAB-1084 order): every 0.5 setting is in one of them. Permissions (LAB-1600) is added last so
     /// the self-test pane numbers stay the same.
-    static let v2Panes = ["General", "Appearance", "Seats & accounts", "Notifications", "On-device model", "Foundations", "Learn", "Shortcuts", "Updates", "Permissions"]
+    static let v2Panes = ["General", "Appearance", "Seats & accounts", "Notifications", "On-device model", "Foundations", "Learn", "Shortcuts", "Updates", "Permissions", "Linear", "Evals"]
+    /// LAB-2102: Settings › Linear (added last, so the other pane numbers stay the same).
+    static let linearPane = 10
+    /// LAB-2117: Settings › Evals (after Linear).
+    static let evalsPane = 11
 
     @ViewBuilder private func v2Content(_ p: Int) -> some View {
         switch p {
@@ -36,6 +40,8 @@ struct SettingsView: View {
         case 6: Form { autoAdvanceRow; aeRow; learnFoldersRow }.formStyle(.grouped)
         case 7: ShortcutsSettings(model: model)
         case 9: permissions
+        case 10: LinearSettings(model: model)
+        case 11: EvalsSettingsPane()   // LAB-2117
         default: v2Updates
         }
     }
@@ -460,6 +466,7 @@ struct SettingsView: View {
                     Text(m.meaning(for: agent)).font(.caption).foregroundStyle(.secondary)
                 }
             }
+            PermissionRulesSection(model: model)   // LAB-2110: moved here from the Action log
         }
         .formStyle(.grouped)
     }

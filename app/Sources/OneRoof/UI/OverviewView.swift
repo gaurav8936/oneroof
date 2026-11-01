@@ -2,15 +2,41 @@ import AppKit
 import SwiftUI
 import OneRoofCore
 
-/// Overview (⇧⌘L / ⌃↑, replaces Launchpad): every workspace window as a card with its sessions, and a rail with
-/// the FYI feed, objectives, workstreams in play and the foundations. Covers all windows (one store, one roofd).
+/// Home (⌃⌘1, ⇧⌘L / ⌃↑). LAB-2098: opens on the morning front page (HomeFrontPageView); "All windows" is today's
+/// Overview, every feature kept. The wrapper observes nothing heavy, so the front page doesn't redraw with the model.
 struct OverviewView: View {
+    let model: AppModel
+    @ObservedObject var win: WindowState
+    @AppStorage("home.mode", store: Prefs.viewState) private var stored = "front"
+    @State private var override = OverviewView.selfTestMode
+
+    /// ONEROOF_SELFTEST_HOME=front|windows; an Overview rail self-test (ONEROOF_SELFTEST_RAILTAB) shows All windows.
+    static var selfTestMode: String? {
+        let env = ProcessInfo.processInfo.environment
+        if let m = env["ONEROOF_SELFTEST_HOME"] { return m }
+        return env["ONEROOF_SELFTEST_RAILTAB"] != nil ? "windows" : nil
+    }
+
+    var body: some View {
+        let mode = Binding(get: { override ?? stored }, set: { override = nil; stored = $0 })
+        if mode.wrappedValue == "windows" {
+            OverviewWindowsView(model: model, win: win, mode: mode)
+        } else {
+            HomeFrontPageView(model: model, win: win, mode: mode)
+        }
+    }
+}
+
+/// Overview · All windows (⇧⌘L / ⌃↑, replaces Launchpad): every workspace window as a card with its sessions, and a rail
+/// with the FYI feed, objectives, workstreams in play and the foundations. Covers all windows (one store, one roofd).
+struct OverviewWindowsView: View {
     /// LAB-1338: captions, feed, chapters and subagents redraw this view (they left AppModel).
     @ObservedObject var engineState = EngineState.shared
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
+    @Binding var mode: String
     @Environment(\.theme) private var t
-    @State private var rail = OverviewView.initialRail
+    @State private var rail = OverviewWindowsView.initialRail
     @State private var sibling: CentreView = .overview
     /// LAB-591: the rail (feed) is as wide as the owner drags it.
     @AppStorage("overview.railWidth", store: Prefs.defaults) private var railWidth: Double = 330
@@ -26,8 +52,8 @@ struct OverviewView: View {
             RoofButton("+ New work item") { NotificationCenter.default.post(name: .newWorkItem, object: nil); model.show(.work, in: win) }
             if v2 { RoofButton("+ New objective") { NotificationCenter.default.post(name: .newObjective, object: nil) } }   // A5
             // LAB-593: Board and Decisions are top-level tabs (and ⌘ shortcuts) already; only Subagents lives here.
-            Segmented(options: [(CentreView.overview, "Overview"), (.subagents, "Subagents")],
-                      selection: Binding(get: { .overview }, set: { model.show($0, in: win) }))
+            // LAB-2098: Front page · All windows · Subagents.
+            HomeModePicker(mode: $mode, model: model, win: win)
         } content: {
             HStack(alignment: .top, spacing: 0) {
                 ScrollView {

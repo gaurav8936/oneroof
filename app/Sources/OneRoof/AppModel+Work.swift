@@ -3,6 +3,22 @@ import OneRoofCore
 
 /// Work: workstreams and tickets from Linear, the intake filter, and sessions planned from tickets.
 extension AppModel {
+    /// LAB-2102: use a new Linear mapping now (Projects re-reads with it); saved to its file unless in a self-test.
+    func applyLinearMapping(_ m: LinearMapping, save: Bool = !SelfTest.isActive) throws {
+        if save { try m.save() }
+        linearMapping = m
+        linear = linear.with(mapping: m)
+        loadWorkstreams(force: true)
+    }
+
+    /// LAB-2102: a key saved in Settings › Linear or Setup: connect with it now, keeping the mapping.
+    func reconnectLinear() {
+        linear = LinearClient(mapping: linearMapping)
+        linearError = nil
+        workstreamsFetchedAt = nil
+        if linear.hasKey { loadWorkstreams(force: true) }
+    }
+
     /// The projects from Linear: fetched when not loaded yet, when `force`, or when the copy is older than `maxAge`
     /// seconds (LAB-1255: 1.9.2 fetched them once, so a renamed or new project never showed until relaunch; issues have
     /// had this since LAB-546). Also refreshed when a window comes to the front and when the New session sheet opens.
@@ -184,8 +200,8 @@ extension AppModel {
             DispatchQueue.main.async {
                 for (pid, list) in self.issues {
                     if let i = list.firstIndex(where: { $0.id == id }) {
-                        self.issues[pid]?[i].state = state
-                        self.issues[pid]?[i].stateType = ["Done": "completed", "Canceled": "canceled", "Backlog": "backlog", "Todo": "unstarted"][state] ?? "started"
+                        self.issues[pid]?[i].state = self.linear.mapping.stateName(state)   // LAB-2102: the team's own name
+                        self.issues[pid]?[i].stateType = LinearMapping.stateType[self.linear.mapping.canonical(forTeamState: state) ?? state] ?? "started"
                     }
                 }
                 if let err { self.lastError = err }

@@ -98,9 +98,10 @@ final class AppModel: ObservableObject {
     @Published var issues: [String: [LinearIssue]] = [:]     // project id → tickets
     /// When each project's issues last came from Linear, and the projects being fetched now (LAB-546: the list was
     /// fetched once and never again, so issues created after that never showed).
-    var issuesFetchedAt: [String: Date] = [:]
+    /// LAB-2103: published, so the Projects page can say "updated N min ago".
+    @Published var issuesFetchedAt: [String: Date] = [:]
     /// When the project list was last fetched from Linear (LAB-1255).
-    var workstreamsFetchedAt: Date?
+    @Published var workstreamsFetchedAt: Date?
     @Published var issuesLoading: Set<String> = []
     /// A commit-watch scan is running (LAB-474), so ticks never overlap.
     var commitWatchBusy = false
@@ -109,7 +110,9 @@ final class AppModel: ObservableObject {
     @Published var linearError: String?
     @Published var linearLoading = false
     /// Re-created when a key is saved (Setup…), so Linear connects without a restart.
-    var linear = LinearClient()
+    var linear = LinearClient(mapping: LinearMapping.load())
+    /// LAB-2102: Settings › Linear's mapping (state and label names, hidden teams); published so Projects redraws.
+    @Published var linearMapping: LinearMapping = LinearMapping.load()
     var teams: [String: LinearTeam] = [:]
     /// Linear teams for the pickers (LAB-237).
     @Published var linearTeams: [LinearTeamRef] = []
@@ -1183,6 +1186,8 @@ final class AppModel: ObservableObject {
 extension Notification.Name {
     static let openFoundations = Notification.Name("oneroof.openFoundations")
     static let openSetup = Notification.Name("oneroof.openSetup")
+    /// LAB-2102: Settings › Linear (Projects' Connect Linear…).
+    static let openLinearSettings = Notification.Name("oneroof.openLinearSettings")
     static let newWorkItem = Notification.Name("oneroof.newWorkItem")
     static let projectsFind = Notification.Name("oneroof.projectsFind")   // LAB-2050: ⌘F in Projects focuses its filter
     static let newObjective = Notification.Name("oneroof.newObjective")

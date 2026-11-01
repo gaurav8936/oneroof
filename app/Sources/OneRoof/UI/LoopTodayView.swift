@@ -186,8 +186,22 @@ struct LoopOutcomeLine: View {
                 Button { Self.open(outcome, loopId: outcome.loop, model: model, win: win) } label: {
                     Text(Self.linkLabel(outcome)! + " ↗").ui(11.5, mono: true).foregroundStyle(t.accentText.color).lineLimit(1)
                 }
-                .buttonStyle(.plain).help(outcome.link)
+                .buttonStyle(.plain).help(Self.isReport(outcome) ? "Open the run report in One Roof (right-click: Show in Finder) · \(outcome.link)" : outcome.link)
                 .accessibilityLabel("Open " + (Self.linkLabel(outcome) ?? "link"))
+                .contextMenu {
+                    if Self.isReport(outcome) {
+                        Button("Open Report") { Self.open(outcome, loopId: outcome.loop, model: model, win: win) }
+                        Button("Show in Finder") { Self.showInFinder(outcome) }
+                    }
+                }
+                if Self.isReport(outcome) {
+                    // LAB-2099: Show in Finder, one click (the fallback when the viewer is not what you want).
+                    Button { Self.showInFinder(outcome) } label: {
+                        Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(t.text2.color)
+                    }
+                    .buttonStyle(.plain).help("Show the report in Finder")
+                    .accessibilityLabel("Show the report in Finder")
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -199,6 +213,7 @@ struct LoopOutcomeLine: View {
         case .branch(let b): return b
         case .url(let u): return u.contains("/pull/") ? "PR " + (u.split(separator: "/").last.map(String.init) ?? "") : "link"
         case .file(let f): return (f as NSString).lastPathComponent
+        case .journal(let j): return (j as NSString).lastPathComponent
         case .key(let k): return k
         case .none: return nil
         }
@@ -216,8 +231,45 @@ struct LoopOutcomeLine: View {
             } else { model.openLoop(loopId, in: win) }
         case .url(let u): if let url = URL(string: u) { NSWorkspace.shared.open(url) }
         case .file(let f): model.openInViewer((f as NSString).expandingTildeInPath)
+        case .journal:
+            // LAB-2099: the run report in the document viewer; when it is not on this Mac, Finder at its folder.
+            resolve(o) { path, exists in
+                if let path, exists { model.openInViewer(path) } else { reveal(path) }
+            }
         case .key, .none: model.openLoop(loopId, in: win)
         }
+    }
+
+    /// A report the viewer can open: a journal link or a file.
+    static func isReport(_ o: LoopLedger.Outcome) -> Bool {
+        switch o.target { case .journal, .file: return true; default: return false }
+    }
+
+    /// The outcome's file on disk (journal root from the kit's config), found off the main thread; calls back on main.
+    static func resolve(_ o: LoopLedger.Outcome, _ done: @escaping (String?, Bool) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let path: String?
+            switch o.target {
+            case .journal(let rel):
+                let cfg = AEConfig.find().flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+                path = AEConfig.resolveJournal(rel, roots: AEConfig.journalRoots(config: cfg))
+            case .file(let f): path = (f as NSString).expandingTildeInPath
+            default: path = nil
+            }
+            let exists = path.map { FileManager.default.fileExists(atPath: $0) } ?? false
+            DispatchQueue.main.async { done(path, exists) }
+        }
+    }
+
+    static func showInFinder(_ o: LoopLedger.Outcome) { resolve(o) { path, _ in reveal(path) } }
+
+    /// Finder with the file selected, or the nearest folder of it that exists.
+    static func reveal(_ path: String?) {
+        guard var p = path else { NSSound.beep(); return }
+        let fm = FileManager.default
+        if fm.fileExists(atPath: p) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)]); return }
+        while !fm.fileExists(atPath: p), p != "/" { p = (p as NSString).deletingLastPathComponent }
+        NSWorkspace.shared.open(URL(fileURLWithPath: p))
     }
 }
 

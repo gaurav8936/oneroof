@@ -6,6 +6,11 @@
 
 > **Draft · coming soon.** Evals is being redesigned. What you see may change, and results are for trying out only. The Evals place shows a Draft tag and this banner on every tab until the redesign ships.
 
+
+## How to (first tab)
+
+Eight short scenes: what Evals is for (compare models on public benchmarks, test your own agents on your own work, build and keep your own sets and judges), a first eval in two minutes, reading a result, comparing two runs, building a set from a repository, judges, agents on seats versus models via API, and where each thing lives. Each scene has a button that opens the tab it talks about, and the scenes you have read are remembered. When the bundled deck carries the narrated How to card, **Play** reads it in One Roof's player (Narration: AI-generated voice (OpenAI text-to-speech).); until then the tab says **Narration coming**. The first time you open Evals it starts here; later it opens on Overview.
+
 ## Open it
 
 The Evals place (⌃⌘8 in the One Roof 1 window), or the command palette: **Evals**. The first time, choose **Install**: One Roof installs the eval engine (Inspect AI and its benchmark collection, MIT) into its own folder with `uv`. Nothing is added to the app itself. If `uv` is missing, install it once with `brew install uv`.
@@ -40,7 +45,7 @@ A benchmark's page: who made it and when, a summary, **Run this…**, and four t
 
 ### Questions
 
-A benchmark's own questions, without running anything. The first time, One Roof asks before it downloads the dataset, with its size; the questions stay on this Mac. Gated datasets (Humanity's Last Exam, LiveCodeBench Pro, GAIA, XSTest) show the terms step first: accept the terms on Hugging Face while signed in, add a token with `roof eval providers set hf --key-file PATH`, then **Check again**.
+A benchmark's own questions, without running anything. The first time, One Roof asks before it downloads the dataset, with its size; the questions stay on this Mac. Gated datasets (Humanity's Last Exam, LiveCodeBench Pro, GAIA, XSTest) are **locked** until you unlock them with your own Hugging Face account: accept the dataset's terms on Hugging Face, sign in under **Settings › Evals › Hugging Face account** (your token stays in the Keychain), then tick the set there. Until then there is no run, no question browsing and no download.
 
 - Chips: **All**, **Seen in your runs**, **Any run got wrong**, **Random 10** (seeded; press again, or R, for another ten). One dot per run that saw a question: green right, red wrong.
 - A question: the text, the reference answer and the worked solution when the dataset has one; **what the model sees** (the prompt exactly as a run sent it, or the template, with the number of worked examples); **how it's marked** in plain words, with its lesson; **how your runs answered**, each with "transcript ›".
@@ -152,7 +157,9 @@ roof eval providers set anthropic --key-file ~/path/to/anthropic.key
 
 Providers: anthropic, openai, google, openrouter, fireworks, together, mistral, grok, groq, deepseek. A key already in your shell environment also works.
 
-Some datasets are gated on Hugging Face (Humanity's Last Exam, LiveCodeBench Pro, GAIA, XSTest): sign in once (`hf auth login`) and press **Agree and access** on each dataset's page. A failed run says which step is missing.
+Some datasets are gated on Hugging Face (Humanity's Last Exam, LiveCodeBench Pro, GAIA, XSTest): press **Agree and access** on each dataset's page with your own account, then sign in under **Settings › Evals** and tick the set. One Roof never ships these datasets, never pre-downloads them and never uses a token cached by another tool; from a terminal, `HF_TOKEN` or `roof eval providers set hf --key-file PATH` is your sign-in. A failed run says which step is missing.
+
+Every benchmark shows where its data comes from (a Hugging Face dataset or the maker's site, with a link) and its licence. Data is downloaded to this Mac on first use; One Roof does not ship it.
 
 ## From the command line
 

@@ -38,7 +38,8 @@ final class HistoryQueryTests: XCTestCase {
     // MARK: LAB-2044 the place
 
     func test_LAB2044_historyIsAPlaceUnderTheInboxWithCtrlCmd9() {
-        XCTAssertEqual(Array(Place.allCases.prefix(3)), [.home, .needsYou, .history], "History sits right under the Inbox")
+        // LAB-2114: History moved to the bottom of the rail (was right under the Inbox); its key stays ⌃⌘9.
+        XCTAssertEqual(Place.allCases, [.home, .needsYou, .sessions, .work, .machine, .loops, .learn, .evals, .history])
         XCTAssertEqual(Place.history.title, "History")
         XCTAssertEqual(Place.history.symbol, "clock.arrow.circlepath")
         XCTAssertEqual(Place.history.controlKey, "9")
@@ -176,6 +177,28 @@ final class HistoryQueryTests: XCTestCase {
         XCTAssertEqual(days[0].groups.map(\.sessionId), ["a"], "a run of one session's moments is one card")
         XCTAssertEqual(days[0].groups[0].entries.map(\.id), ["7", "1", "2"])
         XCTAssertEqual(days[1].groups.map(\.sessionId), ["b"])
+    }
+
+    func test_LAB2105_linesOpenAndCloseEachCard() {
+        let r = HistoryQuery().apply(sample, session: { self.sessions[$0] }, now: now, calendar: cal)
+        let days = HistoryPaging.days(r, calendar: cal), lines = HistoryPaging.rows(days)
+        XCTAssertEqual(lines.count, days.count)
+        for (d, l) in zip(days, lines) {
+            XCTAssertEqual(l.rows.count, d.groups.reduce(0) { $0 + 1 + $1.entries.count }, "one line per card header and per moment")
+            XCTAssertEqual(l.rows.filter(\.closesCard).count, d.groups.count, "every card is closed once")
+            XCTAssertEqual(l.rows.filter(\.closesDay).count, 1)
+            XCTAssertTrue(l.rows.last?.closesDay ?? false)
+            XCTAssertTrue(l.rows.first?.firstInDay ?? false)
+            if case .head = l.rows.first?.part {} else { XCTFail("a day starts with a card header") }
+        }
+        XCTAssertEqual(lines[0].rows.dropFirst().map(\.id), ["7", "1", "2"], "moments keep their ids (scroll targets)")
+    }
+
+    func test_LAB2105_stampsMatchAfterCaching() {
+        let d = Date(timeIntervalSince1970: 1_761_980_000), en = Locale(identifier: "en_GB"), utc = TimeZone(identifier: "UTC")!
+        let first = HistoryFormat.stamp(d, locale: en, timeZone: utc)
+        XCTAssertEqual(HistoryFormat.stamp(d, locale: en, timeZone: utc), first)
+        XCTAssertNotEqual(HistoryFormat.stamp(d, locale: en, timeZone: TimeZone(identifier: "Asia/Kolkata")!), first, "the time zone is part of the cache key")
     }
 
     // MARK: LAB-2046 handover signals
