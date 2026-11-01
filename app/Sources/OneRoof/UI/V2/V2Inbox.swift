@@ -282,7 +282,7 @@ struct V2InboxPage: View {
 
     @ViewBuilder private func row(_ b: InboxBlock, ghost: Ghost?) -> some View {
         let critical = ghost == nil && InboxUrgency.of(b) == .critical
-        let hue = b.sessionId.map { SessionHue(sessionId: $0, on: t) }
+        let hue = b.sessionId.map { SessionHue.cached(sessionId: $0, on: t) }
         HStack(alignment: .top, spacing: 10) {
             V2InboxSessionCard(model: model, block: b, hue: hue, loopTitle: loopInbox.items.first { $0.id == b.loopItemId }?.loopTitle)
                 .frame(width: Self.cardWidth)

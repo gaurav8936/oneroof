@@ -237,7 +237,7 @@ struct V2DecidedList: View {
     }
 
     private func row(_ r: ActionLogRow) -> some View {
-        let d = r.decision, item = model.item(d.sessionId), hue = SessionHue(sessionId: d.sessionId, on: t)
+        let d = r.decision, item = model.item(d.sessionId), hue = SessionHue.cached(sessionId: d.sessionId, on: t)
         let name = item?.session.name ?? r.sessionName.map(HistoryFormat.closedName) ?? HistoryFormat.closedName("Session")
         let critical = InboxUrgency.of(d) == .critical
         return HStack(alignment: .top, spacing: 10) {
