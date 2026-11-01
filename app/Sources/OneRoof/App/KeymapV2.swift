@@ -69,7 +69,7 @@ enum KeymapV2 {
     static let places: [Place: Key] = [
         .home: Key("1", [.control, .command]), .needsYou: Key("2", [.control, .command]), .sessions: Key("3", [.control, .command]),
         .work: Key("4", [.control, .command]), .machine: Key("5", [.control, .command]), .loops: Key("6", [.control, .command]),
-        .learn: Key("7", [.control, .command])]
+        .learn: Key("7", [.control, .command]), .evals: Key("8", [.control, .command])]
     static let layouts: [Key] = (1...4).map { Key("\($0)", [.control, .option, .command]) }  // Single, Grid, Wall, Scroll
     static let focusBack = Key("f", [.shift, .option, .command])
     static let dockToggle = Key("j", [.control, .command])

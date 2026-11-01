@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.9.36 — Evals: run any model on any benchmark, read every score with its range; coding agents on SWE-bench; the agent X-ray (31 Oct 2026)
+
+- **Evals place** (⌃⌘8, LAB-EVALS). One Roof installs the eval engine (Inspect AI, MIT) into its own folder with one
+  button, then lists every benchmark it knows (129) with a "Start here" shelf of 24 that each teach something: what a
+  benchmark measures, its size, what it needs (Docker, internet, a Hugging Face sign-in) and what 50 questions cost on
+  a few models.
+- **Run sheet with the cost before you start.** Pick tasks and models, questions, attempts and temperature; each run
+  shows its estimate (the model, the benchmark's grader model, and cloud sandbox time) and cannot start over its cap.
+  Runs queue in the background and keep going when One Roof closes; cancel keeps what finished, resume picks up.
+- **Results you can trust.** A model × benchmark grid where every score carries its 95 % range (dashed when there are
+  fewer than 30 questions), "Compare two runs" that says when a difference is only noise, every question with the
+  answer, the expected answer and the full transcript, cost per correct answer, and CSV/JSON export.
+- **Learn evals.** A free guided first run and plain explanations of accuracy, ranges, pass@k, contamination, a model
+  as the grader, the harness and chance level, beside the numbers they explain. Help: Evals.
+- **Where code runs.** Benchmarks that execute code run on this Mac's Docker, or in a cloud sandbox (Daytona or Modal)
+  with nothing installed here.
+- **Coding agents as the subject.** Claude Code, Codex, Gemini CLI, Kimi, OpenCode or Antigravity can be the agent
+  under test on SWE-bench and other agent benchmarks, so "Claude Code on Haiku" and "Haiku alone" are separate,
+  comparable runs. First result: Claude Code on Haiku 5.5 solved a SWE-bench Verified task for $0.024.
+- **Agent X-ray** (`roof eval xray`). How much of each agent's code survives (churn, reverts, fix-ups), how often it
+  needed you (asks per session, wait for your answer), and what its work would cost on the API. Every agent session
+  now carries ONEROOF_AGENT, so a commit hook can sign each agent's commits.
+- Keys stay yours: One Roof stores only the path of a key file you chose, never the key, and hides key fragments in
+  errors.
+
 ## 1.9.35 — Every session knows what the others are doing; Learn grows (new people, deep dives, papers); more accounts per agent (31 Oct 2026)
 
 - **Cross-session memory** (LAB-1971). When you start a session while other work is running, the agent gets a short

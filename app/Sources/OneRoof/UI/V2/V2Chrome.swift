@@ -19,6 +19,7 @@ extension Place {
         case .machine: return .resources
         case .loops: return .loops
         case .learn: return .learn
+        case .evals: return .evals
         }
     }
 }
@@ -35,6 +36,7 @@ extension CentreView {
         case .resources: return .machine
         case .loops: return .loops
         case .learn: return .learn
+        case .evals: return .evals
         case .subagents, .objective, .editor, .review: return nil
         }
     }

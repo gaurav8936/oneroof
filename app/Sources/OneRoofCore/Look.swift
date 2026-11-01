@@ -80,17 +80,18 @@ public enum FocusStep: Int, CaseIterable, Codable, Sendable, Comparable {
 
 /// Places (shared/NAVIGATION.md).
 public enum Place: String, CaseIterable, Identifiable, Codable, Sendable {
-    case home, needsYou, sessions, work, machine, loops, learn
+    case home, needsYou, sessions, work, machine, loops, learn, evals   // evals: LAB-EVALS
     public var id: String { rawValue }
     public var title: String {
         switch self { case .home: return "Home"; case .needsYou: return "Needs you"; case .sessions: return "Sessions"; case .work: return "Work"
-        case .machine: return "Machine"; case .loops: return "Loops"; case .learn: return "Learn" }
+        case .machine: return "Machine"; case .loops: return "Loops"; case .learn: return "Learn"; case .evals: return "Evals" }
     }
     public var symbol: String {
         switch self { case .home: return "house"; case .needsYou: return "exclamationmark.bubble"; case .sessions: return "rectangle.stack"
-        case .work: return "square.grid.2x2"; case .machine: return "gauge"; case .loops: return "arrow.triangle.2.circlepath"; case .learn: return "graduationcap" }
+        case .work: return "square.grid.2x2"; case .machine: return "gauge"; case .loops: return "arrow.triangle.2.circlepath"; case .learn: return "graduationcap"
+        case .evals: return "chart.bar.xaxis" }
     }
-    /// Digit for the ⌃⌘1–⌃⌘7 place keys (KeymapV2.places). ⌘1–⌘6 stay Group by; ⌥⌘1–9 stay Workspaces.
+    /// Digit for the ⌃⌘1–⌃⌘8 place keys (KeymapV2.places). ⌘1–⌘6 stay Group by; ⌥⌘1–9 stay Workspaces.
     public var controlKey: Character { Character(String((Place.allCases.firstIndex(of: self) ?? 0) + 1)) }
     /// Step a place opens at.
     public var defaultStep: FocusStep { self == .sessions ? .sessions : .full }
