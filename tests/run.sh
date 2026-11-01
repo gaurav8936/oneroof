@@ -139,6 +139,10 @@ check "memory kept" test -d "$MEM"
 echo "== fanout (roof swarm: parallel tasks in worktrees)"
 bash "$ROOT/tests/test_fanout.sh" > "$SANDBOX/fanout.log" 2>&1; check "fanout: parallel tasks in worktrees, claims, timeout, retry, clean merge" test $? -eq 0
 
+echo "== eval engine (roof eval: unit tests, offline)"
+python3 "$ROOT/tests/test_eval_engine.py" > "$SANDBOX/evals.log" 2>&1; check "eval engine: intervals, prices, caps, key handling, redaction, starter shelf" test $? -eq 0
+"$ROOF" eval help > "$SANDBOX/eval-help.log" 2>&1; check "roof eval help lists the commands" grep -q "estimate <task>" "$SANDBOX/eval-help.log"
+
 echo ""
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -1,0 +1,30 @@
+{
+  "about": "LAB-EVALS: the 'start here' shelf in Evals › Catalog. Each entry is an inspect_evals task (folder = its package folder, for eval.yaml). 'teaches' is the eval lesson the benchmark is picked for. The Catalog shows every installed benchmark; these come first.",
+  "categories": ["Knowledge", "Hard frontier", "Factuality", "Math", "Reasoning", "Instruction following", "Code (functions)", "Code (live)", "Software engineering", "Tool use", "General agents", "Long context", "Safety"],
+  "shelf": [
+    {"task": "mmlu_pro", "folder": "mmlu_pro", "category": "Knowledge", "teaches": "Multiple choice with 10 options: chance is 10 %, not 25 %."},
+    {"task": "gpqa_diamond", "folder": "gpqa", "category": "Knowledge", "teaches": "198 questions only: watch how wide the interval is."},
+    {"task": "hle", "folder": "hle", "category": "Hard frontier", "teaches": "Near-floor scores: why new benchmarks keep being made."},
+    {"task": "simpleqa", "folder": "simpleqa", "category": "Factuality", "teaches": "A model grades the answers; 'not attempted' is better than wrong."},
+    {"task": "truthfulqa", "folder": "truthfulqa", "category": "Factuality", "teaches": "Questions built to catch popular misconceptions."},
+    {"task": "gsm8k", "folder": "gsm8k", "category": "Math", "teaches": "Exact-match parsing: a right answer in the wrong format scores zero."},
+    {"task": "math", "folder": "math", "category": "Math", "teaches": "Equivalence checking of math expressions, not string match."},
+    {"task": "aime2025", "folder": "aime2025", "category": "Math", "teaches": "30 problems: one more right answer moves the score 3.3 points."},
+    {"task": "arc_challenge", "folder": "arc", "category": "Reasoning", "teaches": "An older benchmark most frontier models saturate."},
+    {"task": "bbh", "folder": "bbh", "category": "Reasoning", "teaches": "Chain of thought on vs off changes the score a lot."},
+    {"task": "musr", "folder": "musr", "category": "Reasoning", "teaches": "Long narrative puzzles: multi-step reasoning over text."},
+    {"task": "ifeval", "folder": "ifeval", "category": "Instruction following", "teaches": "Rule-based checks; strict vs loose scoring."},
+    {"task": "humaneval", "folder": "humaneval", "category": "Code (functions)", "teaches": "pass@1 vs pass@k; the code really runs (sandbox)."},
+    {"task": "mbpp", "folder": "mbpp", "category": "Code (functions)", "teaches": "Small Python tasks; compare with HumanEval for consistency."},
+    {"task": "bigcodebench", "folder": "bigcodebench", "category": "Code (functions)", "teaches": "Realistic library calls; harder than HumanEval."},
+    {"task": "livecodebench_pro", "folder": "livecodebench_pro", "category": "Code (live)", "teaches": "Problems dated after training: memorisation vs skill."},
+    {"task": "swe_bench_verified_mini", "folder": "swe_bench", "category": "Software engineering", "teaches": "Agent harness vs model; Docker; cost per solved issue.", "milestone": "M6"},
+    {"task": "bfcl", "folder": "bfcl", "category": "Tool use", "teaches": "Is the function call exactly right: name, arguments, types."},
+    {"task": "tau2_airline", "folder": "tau2", "category": "Tool use", "teaches": "Multi-turn with a simulated customer; policy following."},
+    {"task": "tau2_retail", "folder": "tau2", "category": "Tool use", "teaches": "Same harness, another domain: does skill transfer?"},
+    {"task": "gaia_level1", "folder": "gaia", "category": "General agents", "teaches": "Multi-step tasks with web and files; one exact answer."},
+    {"task": "niah", "folder": "niah", "category": "Long context", "teaches": "Needle in a haystack: score by position and length."},
+    {"task": "xstest", "folder": "xstest", "category": "Safety", "teaches": "Over-refusal: safe prompts that sound unsafe."},
+    {"task": "strong_reject", "folder": "strong_reject", "category": "Safety", "teaches": "Under-refusal: harmful prompts; the other side of XSTest."}
+  ]
+}

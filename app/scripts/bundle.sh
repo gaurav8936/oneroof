@@ -48,6 +48,9 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 # ~/.config/oneroof/agent-routing/).
 rsync -a --delete --exclude '.DS_Store' ../agentic_engineering/ "$APP/Contents/Resources/agentic_engineering/"
 rsync -a --delete --exclude '.DS_Store' Resources/agent-routing/ "$APP/Contents/Resources/agent-routing/"
+# The eval engine (LAB-EVALS): a Python launcher + pinned requirements; `roof eval setup` installs Inspect beside the
+# app's data, never into the bundle.
+rsync -a --delete --exclude '.DS_Store' --exclude '__pycache__' Resources/evals/ "$APP/Contents/Resources/evals/"
 # LAB-768 · plus the whole Agentic Engineering deck (every skill, narrated card, track page and its audio, and the hooks)
 # as published: the deck repository (ONEROOF_AE_DECK_REPO, a git checkout) at origin/main, into agentic_engineering/deck.
 # ONEROOF_AE_DECK_REF overrides the ref for local test builds only (e.g. a commit not yet on main); releases use origin/main

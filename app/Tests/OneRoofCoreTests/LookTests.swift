@@ -70,7 +70,7 @@ final class LookTests: XCTestCase {
         for p in [Place.home, .needsYou, .work, .machine, .loops] { XCTAssertEqual(p.defaultStep, .full, "\(p)") }
         XCTAssertEqual(SessionLayout.grid.defaultStep, .wide)
         XCTAssertEqual(SessionLayout.wall.defaultStep, .wide)
-        XCTAssertEqual(Place.allCases.map(\.controlKey), ["1", "2", "3", "4", "5", "6", "7"])
+        XCTAssertEqual(Place.allCases.map(\.controlKey), ["1", "2", "3", "4", "5", "6", "7", "8"])
         XCTAssertEqual(Place.home.symbol, "house")
         XCTAssertEqual(Place.learn.symbol, "graduationcap")
     }

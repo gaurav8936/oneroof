@@ -373,6 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Subagents", "Trace of every subagent (⇧⌘A)", "point.3.connected.trianglepath.dotted", "View") { m.centre = .subagents }
         add("Loops", "Work that repeats until a check passes, or every night", "arrow.triangle.2.circlepath", "View") { m.centre = .loops }
         add("Session catalog", "Every session ever run, by repo; resume any of them", "books.vertical", "View") { m.centre = .catalog }
+        add("Evals", "Run any model on any benchmark; scores with their 95 % range (LAB-EVALS)", "chart.bar.xaxis", "View") { m.centre = .evals }
         add("New loop", "Goal, check, agent, limits; test the check first", "plus.arrow.triangle.2.circlepath", "Action") {
             m.centre = .loops
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { NotificationCenter.default.post(name: .newLoop, object: nil) }
