@@ -13,20 +13,24 @@ import Foundation
 /// LAB-1935 (owner 10-31, "auto was not sufficient"): Full = the CLI's own never-ask flag, checked against `--help`
 /// 10-31: Claude `--dangerously-skip-permissions` · Codex `--dangerously-bypass-approvals-and-sandbox` · Kimi `--auto`
 /// (Never Ask) · Gemini `--approval-mode yolo` (its Auto already never asks) · Antigravity `--dangerously-skip-permissions`.
-/// Antigravity starts in Full; every other agent in Auto. Each mode's flags can be replaced per agent in Settings.
+/// LAB-2169 (owner 11-01, public release): a NEW profile starts every agent in Manual. A profile from before 2.0.3 keeps
+/// what it had (Auto, Antigravity Full), written into it once (`AppSettings.permissionDefaultsVersion` 2). Each mode's
+/// flags can be replaced per agent in Settings.
 /// Loops and objective steps keep their own auto behaviour (`AgentKind.autoApproveArgs`).
 public enum PermissionMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case manual, plan, auto, full
 
     public var id: String { rawValue }
 
-    /// The mode every agent starts in until the owner picks another.
-    public static let defaultMode: PermissionMode = .auto
+    /// The mode every agent of a new profile starts in until the user picks another (LAB-2169: Manual).
+    public static let defaultMode: PermissionMode = .manual
 
-    /// The mode `agent` starts in until the owner picks another (LAB-1935: Antigravity in Full, owner 10-31).
-    public static func defaultMode(for agent: AgentKind) -> PermissionMode {
-        agent == .agy ? .full : defaultMode
-    }
+    /// The mode `agent` starts in until the user picks another.
+    public static func defaultMode(for agent: AgentKind) -> PermissionMode { defaultMode }
+
+    /// The defaults before 2.0.3 (LAB-1600 Auto, LAB-1935 Antigravity Full): written into an older profile once, so the
+    /// owner's sessions keep starting the way they did.
+    public static func previousDefault(for agent: AgentKind) -> PermissionMode { agent == .agy ? .full : .auto }
 
     /// Short name shown on sessions and in pickers.
     public var label: String {
