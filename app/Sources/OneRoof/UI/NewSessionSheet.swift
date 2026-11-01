@@ -130,7 +130,7 @@ struct NewSessionSheet: View {
                     ForEach(marks, id: \.self) { agentCard($0) }
                 }
                 if agent(mark).isHosted {
-                    Text("Choose a saved connection; start at ~/Projects or in any repository. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
+                    Text("Choose a saved connection; start at \(Workspace.projectsLabel) or in any repository. Hosted sessions use Manual approvals and the connection's exact model and ceilings; timed and recurring starts are disabled.")
                         .ui(12).foregroundStyle(t.text2.color)
                 }
                 if mark.mark == .gemini { geminiKeyBanner }
@@ -741,11 +741,11 @@ struct NewSessionSheet: View {
 
     /// "~/Projects · one memory ✓", or the repo folder with the blog rule's warning.
     private var startIn: some View {
-        FieldMenu(title: startInRepo ? "Repo folder ⚠" : "~/Projects · one memory ✓", tint: startInRepo ? t.now : t.statusDone) {
-            Button("~/Projects · one memory") { startInRepo = false }
+        FieldMenu(title: startInRepo ? "Repo folder ⚠" : "\(Workspace.projectsLabel) · one memory ✓", tint: startInRepo ? t.now : t.statusDone) {
+            Button("\(Workspace.projectsLabel) · one memory") { startInRepo = false }
             Button("Repo folder (\(Workspace.repoLabel(for: repo)))") { startInRepo = true }.disabled(repo == Workspace.projectsRoot)
         }
-        .help(startInRepo ? "Claude memory will split from ~/Projects" : "Starts in ~/Projects so every agent shares one memory")
+        .help(startInRepo ? "Claude memory will split from \(Workspace.projectsLabel)" : "Starts in \(Workspace.projectsLabel) so every agent shares one memory")
     }
 
     private func box(_ binding: Binding<String>, minHeight: CGFloat, placeholder: String? = nil) -> some View {
