@@ -17,6 +17,19 @@ public struct SessionHue: Equatable, Sendable {
         return p[Int(h % UInt32(p.count))]
     }
 
+    /// LAB-2115: the same hue, worked out once per session × theme × panel and kept (History draws one per line while
+    /// you scroll; working out the contrast fit each time cost frames). Main thread only.
+    nonisolated(unsafe) private static var cache: [String: SessionHue] = [:]
+    public static func cached(sessionId: String, on t: ThemeTokens, panel: RGB? = nil) -> SessionHue {
+        let bg = panel ?? t.window
+        let key = "\(sessionId)|\(t.name.rawValue)|\(t.isDark)|\(bg.hex),\(bg.alpha)"
+        if let h = cache[key] { return h }
+        let h = SessionHue(sessionId: sessionId, on: t, panel: panel)
+        if cache.count > 4000 { cache.removeAll() }
+        cache[key] = h
+        return h
+    }
+
     public init(sessionId: String, on t: ThemeTokens, panel: RGB? = nil) {
         let p = Self.pastel(for: sessionId)
         let bg = panel ?? t.window
