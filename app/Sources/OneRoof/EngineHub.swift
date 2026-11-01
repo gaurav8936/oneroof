@@ -29,6 +29,8 @@ final class EngineHub {
         var visible = false
         /// LAB-1606: the question the agent's turn ended with (it is waiting for your reply, not at a prompt).
         var question: String?
+        /// LAB-2046: a loop round (History leaves its moments out, LAB-1933).
+        var isLoop = false
     }
 
     private let q = DispatchQueue(label: "oneroof.engines", qos: .utility)
@@ -48,6 +50,12 @@ final class EngineHub {
     private var scannedStatus: [String: SessionStatus] = [:]
     private var subagents: [String: [Subagent]] = [:]
     private var lastCaption: [String: Caption] = [:]
+    /// LAB-2046 · History: what was last written to `history_sessions` per session (name, launch), the sessions in the
+    /// last tick, those already recorded closed, and the handover events seen this run (so a tick writes nothing new).
+    private var historyKnown: [String: (name: String, launched: Date?)] = [:]
+    private var historyLive: Set<String> = []
+    private var historyClosed: Set<String> = []
+    private var historySeen: Set<String> = []
     private let modelClient = CaptionModelClient()
     /// LAB-1330: model calls run here, one at a time, never on `q`.
     private let modelQ = DispatchQueue(label: "oneroof.engines.model", qos: .utility)
@@ -98,6 +106,7 @@ final class EngineHub {
 
     private func step(_ live: [Live], now: Date) {
         let ids = Set(live.map(\.id))
+        recordHistory(live, now: now)
         for (id, _) in revisions where !ids.contains(id) { scheduler.remove(id); revisions[id] = nil }
         for id in Set(agentFiles.keys).union(claudeLinks.keys).union(scanSig.keys) where !ids.contains(id) {
             agentFiles[id] = nil; claudeLinks[id] = nil; lastLinkTry[id] = nil; scanSig[id] = nil
@@ -197,6 +206,7 @@ final class EngineHub {
         }
         // File claims from the tool calls in view (S07 claim banner).
         _ = claims.observe(text: t, sessionId: s.id, repo: s.repoPath, step: cap?.step, at: now)
+        if s.agent.isAgent, !s.isLoop { recordHandovers(s, text: t, now: now) }
         // Chapters: steps in the terminal, never a copy of the output.
         if s.agent.isAgent {
             chapters[s.id] = ChapterSplitter.chapters(t, previous: chapters[s.id] ?? [], sessionStarted: s.launchedAt ?? now,
@@ -224,6 +234,57 @@ final class EngineHub {
         return true
     }
 
+    // MARK: History (LAB-2046)
+
+    /// Names kept for History (written when a session starts and when it is renamed), Session started / closed.
+    private func recordHistory(_ live: [Live], now: Date) {
+        guard let store else { return }
+        let ids = Set(live.map(\.id))
+        for s in live {
+            let known = historyKnown[s.id]
+            if known == nil || known?.name != s.name || known?.launched != s.launchedAt {
+                historyKnown[s.id] = (s.name, s.launchedAt)
+                store.saveHistorySession(HistorySession(id: s.id, name: s.name, agent: s.agent, account: s.account, isLoop: s.isLoop,
+                                                        firstAt: s.launchedAt ?? now, lastAt: now))
+                if let at = s.launchedAt, !s.isLoop, known?.launched != at {
+                    let e = HistoryEvent(id: HistorySignals.eventId(s.id, .sessionStarted, "\(at.timeIntervalSince1970)"), at: at, sessionId: s.id,
+                                         kind: .sessionStarted, text: s.agent.displayName + " · " + Workspace.repoLabel(for: s.repoPath))
+                    store.appendHistory(e)
+                    historyClosed.remove(s.id)
+                }
+            }
+            if s.status == .exited, statuses[s.id] != .exited, historyLive.contains(s.id) { closed(s.id, isLoop: s.isLoop, now: now) }
+        }
+        // A session that left the live list (closed, deleted) without exiting first.
+        for id in historyLive where !ids.contains(id) { closed(id, isLoop: false, now: now) }
+        historyLive = ids
+    }
+
+    private func closed(_ id: String, isLoop: Bool, now: Date) {
+        guard !isLoop, !historyClosed.contains(id), let store else { return }
+        historyClosed.insert(id)
+        let launched = historyKnown[id]?.launched.map { "\($0.timeIntervalSince1970)" } ?? ""
+        store.appendHistory(HistoryEvent(id: HistorySignals.eventId(id, .sessionClosed, launched), at: now, sessionId: id, kind: .sessionClosed, text: ""))
+        store.touchHistorySession(id, lastAt: now)
+    }
+
+    /// Handoff written, release started / finished, from the tool calls in the session's terminal text.
+    private func recordHandovers(_ s: Live, text t: String, now: Date) {
+        guard let store else { return }
+        let launch = s.launchedAt.map { "\($0.timeIntervalSince1970)" } ?? ""
+        let found = HistorySignals.scan(t, finished: s.status == .done || s.status == .exited || s.status == .needsYou)
+        func note(_ kind: ScrollEntry.Kind, _ key: String, _ text: String) {
+            let id = HistorySignals.eventId(s.id, kind, launch + "|" + key)
+            guard historySeen.insert(id).inserted else { return }
+            store.appendHistory(HistoryEvent(id: id, at: now, sessionId: s.id, kind: kind, text: text))
+        }
+        for p in found.handoffs { note(.handoffWritten, p, (p as NSString).lastPathComponent) }
+        for r in found.releases {
+            note(.releaseStarted, r.command, r.command)
+            if let ok = r.ok { note(ok ? .releaseFinished : .releaseFailed, r.command, r.command) }
+        }
+    }
+
     // MARK: Decisions (ENGINES §3)
 
     private func buildDecision(_ s: Live, now: Date) {
@@ -235,7 +296,7 @@ final class EngineHub {
             let d = Decision.asked(sessionId: s.id, agent: s.agent, question: q, repo: s.repoPath, now: now)
             decisions.append(d)
             openDecision[s.id] = d.id
-            store?.save(d)
+            store?.save(d, sessionName: s.name)
             return
         }
         prompts[s.id] = DecisionMatcher.match(t, agent: s.agent)
@@ -247,7 +308,7 @@ final class EngineHub {
         if let h = store?.decisionHistory(pattern: d.pattern, repo: d.repo, now: now) { d.history = h }
         decisions.append(d)
         openDecision[s.id] = d.id
-        store?.save(d)
+        store?.save(d, sessionName: s.name)
         if let rule = store?.decisionRules().first(where: { $0.matches(d) }) {
             // An "Always allow" rule the owner set: the decision is still shown (humans stay in the loop), marked.
             d.history.ruleSuggestion = "Matches your rule: always allow \(rule.pattern) in \(rule.repo)"
@@ -260,7 +321,7 @@ final class EngineHub {
         let d = Decision.finished(sessionId: s.id, agent: s.agent, said: DecisionBuilder.lastWords(text(s, lines: 120)), repo: s.repoPath, now: now)
         decisions.append(d)
         openDecision[s.id] = d.id
-        store?.save(d)
+        store?.save(d, sessionName: s.name)
     }
 
     /// LAB-1827: "Nothing more for now": the finished turn leaves Needs you; the session stays open.
@@ -315,8 +376,9 @@ final class EngineHub {
                 self.decisions[i].answer = a
                 self.decisions[i].answeredAt = Date()
                 self.decisions[i].replyText = reply
+                self.decisions[i].chosen = choice?.label
             }
-            self.store?.answer(decision: d.id, a, reply: reply)
+            self.store?.answer(decision: d.id, a, reply: reply, chosen: choice?.label)   // LAB-2048: the option you picked
             if a == .always { self.store?.save(DecisionRule(pattern: d.pattern, repo: d.repo)) }
             self.openDecision[d.sessionId] = nil
             self.publishAll()
@@ -483,11 +545,4 @@ extension Decision {
                  pattern: Decision.questionPrefix + question, repo: Workspace.repoLabel(for: repo), askedAt: now)
     }
 
-    /// What the card says: the engine's title, or the agent's own question when the prompt was not recognised.
-    var headline: String {
-        if isQuestion { return "\(agent.displayName) asked: " + pattern.dropFirst(Decision.questionPrefix.count) }
-        if isFinished { return "\(agent.displayName) finished · waiting for you" }
-        if pattern.hasPrefix("ask:") { return "\(agent.displayName) is asking: " + pattern.dropFirst(4) }
-        return title
-    }
 }

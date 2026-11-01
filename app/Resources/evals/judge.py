@@ -7,6 +7,13 @@
   judge build <name> [--examples 10] [--json]          the judge's task file: your rubric + your first labels
   judge agreement <name> [--run RUN] [--json]          how often the judge agrees with you on labels it never saw
   judge list [--json]   judge show <name> [--json]
+  judge items <name> [--json]       every answer with its labels (yours, code's, a model's) and example / held back
+  judge queue <name> [--first ID] [--json]   answers you have not labelled, likely fails first (judge passed, code failed)
+  judge label <name> --undo [--item ID]        take back your last label (or that item's); the file keeps the history
+  judge trust <name> [--json]       how far to trust it now: the last judge run against your labels as they are today
+  judge advise <name> [--json]      what would help most (rule-based)
+  judge rubric <name> [--set TEXT] [--json]     the rubric; --set saves a draft for the next version (never edits one)
+  judge versions <name> [--json]    every version: rubric, examples, held back, runs, agreement
 
 How it works (the judge-models skill): you grade real answers pass or fail, each with a reason. The first labels become
 the judge's worked examples; the rest are held back. The judge (any model) grades every answer; agreement is measured
@@ -187,6 +194,9 @@ def labels_of(d: Path, source: str = "owner") -> dict[str, dict]:
     for line in p.read_text().splitlines() if p.exists() else []:
         try:
             x = json.loads(line)
+            if x.get("undone"):
+                out.pop(x["item"], None)   # a taken-back label (LAB-2066 ⌘Z): the line before it is gone too
+                continue
             out[x["item"]] = x
         except (ValueError, KeyError):
             continue
@@ -201,13 +211,22 @@ def add_label(d: Path, item: str, verdict: str, why: str, source: str = "owner",
 
 
 def cmd_label(argv):
-    pos, o = args_of(argv, {"--item": "", "--verdict": "", "--why": "", "--json": False})
+    pos, o = args_of(argv, {"--item": "", "--verdict": "", "--why": "", "--undo": False, "--json": False})
     if not pos:
-        die("judge label <name> [--item ID --verdict V --why TEXT]", 2, o["json"])
+        die("judge label <name> [--item ID --verdict V --why TEXT] [--undo]", 2, o["json"])
     d = jdir(pos[0])
     meta = read_json(d / "judge.json")
     allowed = VERDICTS[meta["mode"]]
     items = {x["id"]: x for x in items_of(d)}
+    if o["undo"]:
+        mine = sorted(labels_of(d).values(), key=lambda x: x["at"])
+        target = o["item"] or (mine[-1]["item"] if mine else "")
+        if not target or target not in {x["item"] for x in mine}:
+            die("nothing of yours to take back" + (f" on {o['item']}" if o["item"] else ""), 3, o["json"])
+        with open(d / SOURCES["owner"], "a") as f:
+            f.write(json.dumps({"item": target, "undone": True, "at": now()}) + "\n")
+        print(json.dumps({"item": target, "undone": True}) if o["json"] else f"{target}: label taken back")
+        return
     if o["item"]:
         if o["item"] not in items:
             die(f"no item {o['item']}", 3, o["json"])
@@ -348,6 +367,9 @@ def cmd_build(argv):
         die("judge build <name> [--examples 10]", 2, o["json"])
     name, d = pos[0], jdir(pos[0])
     meta = read_json(d / "judge.json")
+    draft = d / "rubric-draft.txt"
+    if draft.exists() and draft.read_text().strip():   # LAB-2066: an edited rubric goes into the next version only
+        meta["rubric"] = draft.read_text().strip()
     items = {x["id"]: x for x in items_of(d)}
     by_src = {src: labels_of(d, src) for src in SOURCES}
     teach = "owner" if by_src["owner"] else "model"   # worked examples carry a reason: yours first, else the model's
@@ -386,10 +408,16 @@ def cmd_build(argv):
         (vd / f"{func}.py").write_text(TASK_FILE.format(name=name, version=v, mode=meta["mode"], func=func))
         (vd / "build.json").write_text(json.dumps({"version": v, "task": func, "examples": len(examples),
                                                     "examples_from": teach, "held_out": len(held), "built": now(),
+                                                    "rubric": meta["rubric"], "example_items": sorted(ex_ids),
                                                     "label_models": sorted({x.get("by") for x in by_src["model"].values() if x.get("by")})},
                                                    indent=2) + "\n")
     vd = d / f"v{v}"
     tf = vd / (read_json(vd / "build.json")["task"] + ".py")
+    if new and draft.exists():   # the draft is now that version's rubric
+        j = read_json(d / "judge.json")
+        j["rubric"] = meta["rubric"]
+        (d / "judge.json").write_text(json.dumps(j, indent=2) + "\n")
+        draft.unlink()
     res = {"name": name, "version": v, "new": new, "examples": len(examples), "examples_from": teach,
            "held_out": len(held), "questions": len(cases), "task_file": str(tf),
            "labels": {src: len(v) for src, v in by_src.items()}}
@@ -484,6 +512,12 @@ def measure(rid: str) -> dict | None:
     meta = read_json(JUDGES / j[0] / "judge.json")
     build = read_json(j[1] / "build.json", {}) or {}
     res = agreement_for(rid, doc, meta, doc["model"], build.get("label_models"))
+    res["version"] = int(j[1].name[1:])
+    if meta["mode"] == "single":   # each answer's verdict, so the app re-measures against new labels with no new run
+        res["verdicts"] = {(s["metadata"] or {}).get("item", s["id"]): ("pass" if "pass" in (s["answer"] or "").lower() else "fail")
+                           for s in doc["samples"]}
+        res["examples"] = sorted({(s["metadata"] or {}).get("item", s["id"]) for s in doc["samples"]
+                                  if (s["metadata"] or {}).get("split") == "example"})
     allr = read_json(AGREEMENTS, {}) or {}
     allr[rid] = res
     JUDGES.mkdir(parents=True, exist_ok=True)
@@ -682,7 +716,220 @@ def cmd_autolabel(argv):
     print(f"next: roof eval judge build {name}")
 
 
-COMMANDS = {"autolabel": cmd_autolabel, "new": cmd_new, "label": cmd_label, "build": cmd_build, "agreement": cmd_agreement, "list": cmd_list,
+# ── the app's judge screen (LAB-2066, HP EV-7) ───────────────────────────────────────────────────────────────────
+def code_detail(answer: str, target: str) -> dict:
+    """The code check in words: which of the first three named files the fix changed ('files named: 1 of 2 right')."""
+    changed = [t for t in target.splitlines() if t.strip()]
+    names = []
+    for m in NAMED.findall((answer or "").replace("`", " ")):
+        n = m.lstrip("./")
+        if n not in names:
+            names.append(n)
+    right = [n for n in names[:3] if any(f == n or f.endswith("/" + n) for f in changed)]
+    return {"named": names[:3], "right": len(right), "of": len(changed), "hits": right}
+
+
+def last_run(name: str) -> dict | None:
+    """The newest measured run of this judge (agreements.json), measured from its log once if needed."""
+    runs = [v for v in (read_json(AGREEMENTS, {}) or {}).values() if v.get("judge") == name]
+    best = max(runs, key=lambda x: x["run"]) if runs else None
+    cands = sorted(p.name for p in RUNS.glob(f"*-judge_{name}_v*") if latest_log(p.name)) if RUNS.is_dir() else []
+    if cands and (best is None or cands[-1] > best["run"] or "verdicts" not in best):
+        try:
+            return measure(cands[-1])
+        except (Exception, SystemExit):
+            return best
+    return best
+
+
+def split_of(item: str, run: dict | None, owner: dict) -> str:
+    if run and item in set(run.get("examples") or []):
+        return "example"
+    return "held back" if item in owner else "unlabelled"
+
+
+def report_of(question: str) -> tuple[str, str]:
+    """('LAB-1931', 'Rail badge count stale after quit\n…'): your sets' questions start 'Bug report (KEY):'."""
+    q = question.split("\n\nSource files:\n", 1)[0]
+    m = re.match(r"Bug report \(([A-Z][A-Z0-9]+-\d+)\):\n", q)
+    return (m.group(1), q[m.end():].strip()) if m else ("", q.strip())
+
+
+def item_rows(d: Path, run: dict | None = None) -> list[dict]:
+    meta = read_json(d / "judge.json")
+    labs = {src: labels_of(d, src) for src in SOURCES}
+    rows = []
+    for x in items_of(d):
+        key, report = report_of(x.get("question", ""))
+        r = {"id": x["id"], "issue": key, "title": report.split("\n", 1)[0][:160], "report": short(report, 3000),
+             "model": x.get("model"), "run": x.get("run"), "answer": x.get("answer") or "", "target": x.get("target") or "",
+             "labels": {s: {"verdict": v[x["id"]]["verdict"], "why": v[x["id"]].get("why", ""), "by": v[x["id"]].get("by")}
+                        for s, v in labs.items() if x["id"] in v},
+             "split": split_of(x["id"], run, labs["owner"]),
+             "judge": (run or {}).get("verdicts", {}).get(x["id"])}
+        if meta["mode"] == "single" and x.get("target"):
+            r["code"] = code_detail(x.get("answer") or "", x["target"])
+        else:
+            r.pop("target") if meta["mode"] != "single" else None
+        if meta["mode"] == "pairwise":
+            r.update(a=x.get("a"), b=x.get("b"))
+        rows.append(r)
+    return rows
+
+
+def cmd_items(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if not pos:
+        die("judge items <name>", 2, o["json"])
+    d = jdir(pos[0])
+    rows = item_rows(d, last_run(pos[0]))
+    print(json.dumps(rows) if o["json"] else "\n".join(f"{r['id']:<24} {r['split']:<10} {r['title'][:70]}" for r in rows))
+
+
+def queue_order(rows: list[dict], first: str = "") -> list[dict]:
+    """Unlabelled by you; likely fails first (the judge passed it but code says no changed file was named), then the
+    rest where code failed, then the others (HP EV-7). `first` (from one run's 'Label for the judge') goes on top."""
+    todo = [r for r in rows if "owner" not in r["labels"]]
+    def rank(r):
+        code_fail = (r.get("code") or {}).get("right", 1) == 0 if r.get("code") else False
+        return (0 if r["id"] == first else 1, 0 if (r.get("judge") == "pass" and code_fail) else 1 if code_fail else 2)
+    return sorted(todo, key=rank)
+
+
+def cmd_queue(argv):
+    pos, o = args_of(argv, {"--first": "", "--json": False})
+    if not pos:
+        die("judge queue <name> [--first ID]", 2, o["json"])
+    d = jdir(pos[0])
+    rows = item_rows(d, last_run(pos[0]))
+    q = queue_order(rows, o["first"])
+    print(json.dumps({"total": len(rows), "labelled": sum("owner" in r["labels"] for r in rows), "queue": q}) if o["json"]
+          else "\n".join(f"{r['id']:<24} judge={r.get('judge') or '-':<5} {r['title'][:70]}" for r in q))
+
+
+def trust(name: str) -> dict:
+    """How far to trust the judge now: its last run's verdicts against your labels as they are today (no new run).
+    Your labels on its examples are left out; everything else you labelled is held back from it."""
+    d = jdir(name)
+    meta = read_json(d / "judge.json")
+    run = last_run(name)
+    labs = {src: labels_of(d, src) for src in SOURCES}
+    owner = labs["owner"]
+    examples = set((run or {}).get("examples") or [])
+    res = {"name": name, "mode": meta["mode"], "items": len(items_of(d)), "labelled": len(owner),
+           "to_label": len(items_of(d)) - len(owner), "examples": len(examples), "run": (run or {}).get("run"),
+           "judge_model": (run or {}).get("judge_model"), "version": (run or {}).get("version"), "min_held": MIN_HELD_OUT}
+    if not run or "verdicts" not in run:
+        res.update(n=0, agreement=None, tpr=None, tnr=None, ready=False, reference="you",
+                   reading="The judge has not run yet: build it, then run it to measure it.")
+        return res
+    v = run["verdicts"]
+    by = {}
+    for src in ("owner", "model"):
+        pairs = [(v[i], x["verdict"]) for i, x in labs[src].items() if i in v and i not in examples]
+        if pairs:
+            by[src] = full_metrics(pairs)
+    own = by.get("owner", {"n": 0})
+    ref = "owner" if own["n"] >= MIN_HELD_OUT or "model" not in by else "model"
+    head = by.get(ref, {"n": 0})
+    res.update(by_source=by, reference="you" if ref == "owner" else "model", n=head["n"], agreement=head.get("agreement"),
+               tpr=head.get("tpr"), tnr=head.get("tnr"), label_pass=head.get("label_pass", 0), label_fail=head.get("label_fail", 0),
+               held_back_yours=own["n"], judged_pass_rate=rate(sum(x == "pass" for x in v.values()), len(v)))
+    if run.get("self_preference"):
+        res["self_preference"] = run["self_preference"]
+    rates = [x for x in (res["tpr"], res["tnr"]) if x is not None]
+    res["ready"] = ref == "owner" and own["n"] >= MIN_HELD_OUT and bool(rates) and min(rates) >= 0.7
+    tnr, tpr = res["tnr"], res["tpr"]
+    who = "you" if ref == "owner" else "the model's labels"
+    if res["n"] == 0:
+        res["reading"] = "No labels held back from it yet: label answers to measure it."
+    elif tnr is not None and tnr < 0.7 and (tpr is None or tnr <= tpr):
+        res["reading"] = (f"It's lenient: it passes {round((1 - tnr) * 100)} % of the answers {who} failed, so judged scores "
+                          "read high.")
+    elif tpr is not None and tpr < 0.7:
+        res["reading"] = f"It's strict: it fails {round((1 - tpr) * 100)} % of the answers {who} passed, so judged scores read low."
+    else:
+        res["reading"] = f"It agrees with {who} on {round((res['agreement'] or 0) * 100)} % of the held-back answers."
+    if own["n"] < MIN_HELD_OUT:
+        res["reading"] += f" Too few of your labels to trust: label {MIN_HELD_OUT - own['n']} more."
+    elif not res["ready"]:
+        res["reading"] += " Not ready to stand in for you."
+    return res
+
+
+def cmd_trust(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if not pos:
+        die("judge trust <name>", 2, o["json"])
+    t = trust(pos[0])
+    print(json.dumps(t) if o["json"] else t["reading"])
+
+
+def advise(name: str) -> list[str]:
+    """What would help, in order: label where it is weakest, tighten the rubric where it disagrees, rebuild."""
+    t = trust(name)
+    d = jdir(name)
+    out = []
+    if t["to_label"]:
+        tnr, tpr = t.get("tnr"), t.get("tpr")
+        weak = ("" if tnr is None or tpr is None else
+                "mostly fails, where it's weakest" if tnr < tpr else "mostly passes, where it's weakest")
+        out.append(f"Label the {t['to_label']} waiting answers" + (f" ({weak})" if weak else "") + ".")
+    if t.get("tnr") is not None and t["tnr"] < 0.7:
+        out.append("Tighten the rubric's fail side: say what a vague or wrong-file answer looks like.")
+    if t.get("tpr") is not None and t["tpr"] < 0.7:
+        out.append("Loosen the rubric's pass side: say which partly right answers still pass.")
+    vs = [p for p in d.glob("v*") if p.name[1:].isdigit()]
+    if t["labelled"] >= MIN_HELD_OUT:
+        out.append(f"Then rebuild it as v{len(vs) + 1} so your labels become its examples.")
+    if t.get("self_preference"):
+        out.append("Use a judge model that wrote none of the answers.")
+    return out or ["Nothing pressing: it agrees with you well enough to stand in."]
+
+
+def cmd_advise(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if not pos:
+        die("judge advise <name>", 2, o["json"])
+    a = advise(pos[0])
+    print(json.dumps({"advice": a}) if o["json"] else "\n".join(a))
+
+
+def cmd_rubric(argv):
+    pos, o = args_of(argv, {"--set": "", "--json": False})
+    if not pos:
+        die("judge rubric <name> [--set TEXT]", 2, o["json"])
+    d = jdir(pos[0])
+    if o["set"].strip():
+        (d / "rubric-draft.txt").write_text(o["set"].strip() + "\n")
+    draft = (d / "rubric-draft.txt").read_text().strip() if (d / "rubric-draft.txt").exists() else None
+    res = {"current": read_json(d / "judge.json")["rubric"], "draft": draft}
+    print(json.dumps(res) if o["json"] else f"current: {res['current']}\ndraft: {res['draft'] or '(none)'}")
+
+
+def cmd_versions(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if not pos:
+        die("judge versions <name>", 2, o["json"])
+    d = jdir(pos[0])
+    meta = read_json(d / "judge.json")
+    agr = [v for v in (read_json(AGREEMENTS, {}) or {}).values() if v.get("judge") == pos[0]]
+    rows = []
+    for vd in sorted((p for p in d.glob("v*") if p.name[1:].isdigit()), key=lambda p: int(p.name[1:])):
+        b = read_json(vd / "build.json", {}) or {}
+        v = int(vd.name[1:])
+        mine = [a for a in agr if a.get("version") == v or a["run"].find(f"judge_{pos[0]}_v{v}") >= 0]
+        last = max(mine, key=lambda a: a["run"]) if mine else None
+        rows.append({"version": v, "built": b.get("built"), "rubric": b.get("rubric") or (meta["rubric"] if v == 1 else None),
+                     "examples": b.get("examples"), "examples_from": b.get("examples_from"), "held_out": b.get("held_out"),
+                     "runs": len(mine), "agreement": (last or {}).get("agreement"), "reference": (last or {}).get("reference")})
+    draft = d / "rubric-draft.txt"
+    print(json.dumps({"name": pos[0], "versions": rows, "draft": draft.read_text().strip() if draft.exists() else None})
+          if o["json"] else "\n".join(f"v{r['version']} · {r['examples']} examples · {r['held_out']} held back · {r['runs']} runs" for r in rows))
+
+
+COMMANDS = {"items": cmd_items, "queue": cmd_queue, "trust": cmd_trust, "advise": cmd_advise, "rubric": cmd_rubric,
+            "versions": cmd_versions, "autolabel": cmd_autolabel, "new": cmd_new, "label": cmd_label, "build": cmd_build, "agreement": cmd_agreement, "list": cmd_list,
             "show": cmd_show}
 
 if __name__ == "__main__":

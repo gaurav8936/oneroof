@@ -57,30 +57,34 @@ struct LoopNeedDetail: View {
     @ObservedObject var inbox = LoopInboxState.shared
     let item: LoopInbox.Item
     var win: WindowState?
+    /// LAB-2042: inside an Inbox block (no scroll view of its own; the block's header strip names the loop).
+    var embedded = false
     @State private var reason = ""
     @State private var dismissing = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    MicroLabel(LoopNeedRow.tag(item))
-                    Text(item.headline).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
-                    Text("Loop " + item.loopTitle).ui(13).foregroundStyle(t.text2.color)
-                }
-                switch item.kind {
-                case .failed, .asks: loopPart
-                case .staged: stagedPart
-                }
-                if let r = inbox.lastResult[item.id] {
-                    Text(r).ui(12.5).foregroundStyle(t.text.color).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.card.color))
-                        .accessibilityLabel("Result: " + r)
-                }
+        if embedded { content } else {
+            ScrollView { content.padding(24).frame(maxWidth: 760, alignment: .leading) }
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: embedded ? 12 : 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                if !embedded { MicroLabel(LoopNeedRow.tag(item)) }
+                Text(item.headline).ui(embedded ? 15 : TypeScale.title, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+                if !embedded { Text("Loop " + item.loopTitle).ui(13).foregroundStyle(t.text2.color) }
             }
-            .padding(24)
-            .frame(maxWidth: 760, alignment: .leading)
+            switch item.kind {
+            case .failed, .asks: loopPart
+            case .staged: stagedPart
+            }
+            if let r = inbox.lastResult[item.id] {
+                Text(r).ui(12.5).foregroundStyle(t.text.color).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.card.color))
+                    .accessibilityLabel("Result: " + r)
+            }
         }
     }
 
@@ -101,7 +105,7 @@ struct LoopNeedDetail: View {
                 }
             }
             Text(item.kind == .failed
-                 ? "Run again starts a new run (the check first). Mark seen takes it out of Needs you until the loop fails again."
+                 ? "Run again starts a new run (the check first). Mark seen takes it out of the Inbox until the loop fails again."
                  : "A loop round's terminal is not in your session list: it opens here and from its loop's Runs.")
                 .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
         }
@@ -297,11 +301,11 @@ struct LoopGalleryView: View {
     }
 
     private func kindCard(_ k: LoopKinds.Kind, _ loops: [Loop]) -> some View {
-        Card(padding: 14) {
+        LoopCard(padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(k.title).ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
-                    Text("\(loops.count) loop\(loops.count == 1 ? "" : "s")").ui(11.5, mono: true).foregroundStyle(t.text3.color)
+                    Text("\(loops.count) loop\(loops.count == 1 ? "" : "s")").ui(12).foregroundStyle(t.text2.color)
                     Spacer()
                 }
                 Text(k.purpose).ui(13).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
@@ -321,8 +325,8 @@ struct LoopGalleryView: View {
             HStack(spacing: 6) {
                 Button { openLoop(l.id) } label: { Text(l.displayTitle).ui(13, .semibold).foregroundStyle(t.accentText.color) }
                     .buttonStyle(.plain).accessibilityLabel("Open loop \(l.displayTitle)")
-                Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text3.color)
-                Text(l.externalSchedule ?? l.trigger.label).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+                Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text2.color)
+                Text(l.externalSchedule ?? l.trigger.label).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                 Spacer()
                 if l.origin == .builtIn { RoofButton("Start from this", .plain) { startFrom(l) } }
             }
@@ -334,10 +338,10 @@ struct LoopGalleryView: View {
                 } else if let r = run {
                     Text("Last run (\(r.result), \(String(r.started.prefix(10)))): " + (r.summary.isEmpty ? "no summary" : r.summary))
                 } else {
-                    Text("No run yet: a sample shows here after its first run.")
+                    Text("Never run")   // LAB-2056: was a mono "No run yet: a sample shows here after its first run."
                 }
             }
-            .ui(11.5, mono: true).foregroundStyle(t.text2.color).lineLimit(2).textSelection(.enabled)
+            .ui(12).foregroundStyle(t.text2.color).lineLimit(2).textSelection(.enabled)
         }
         .padding(.vertical, 4)
     }

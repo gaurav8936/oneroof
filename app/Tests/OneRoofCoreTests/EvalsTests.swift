@@ -249,3 +249,14 @@ final class EvalsTests: XCTestCase {
         XCTAssertTrue(EvalEngine.dataDir.hasSuffix("evals"))
     }
 }
+
+/// LAB-2072: Evals carries one set of draft words everywhere until its redesign ships.
+final class EvalsDraftTests: XCTestCase {
+    func test_LAB2072_draftWordsAgree() {
+        XCTAssertTrue(EvalsDraft.isDraft)
+        XCTAssertTrue(EvalsDraft.menuTitle.hasPrefix("Evals"))
+        XCTAssertTrue(EvalsDraft.menuTitle.contains(EvalsDraft.tag))
+        XCTAssertTrue(EvalsDraft.banner.lowercased().contains("coming soon"))
+        XCTAssertFalse(EvalsDraft.detail.isEmpty)
+    }
+}

@@ -32,7 +32,7 @@ struct LoopRunsView: View {
         if !shown.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    MicroLabel("Runs")
+                    LoopLabel("Runs")
                     Spacer()
                     Text("\(live.count) running · \(all.count) rounds").ui(11.5, mono: true).foregroundStyle(t.text2.color)
                 }
@@ -40,6 +40,7 @@ struct LoopRunsView: View {
             }
             .padding(12)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(t.card.color))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(LoopLook.cardEdge(t.name).color, lineWidth: 1))   // LAB-2056
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Loop runs")
         }
@@ -50,7 +51,7 @@ struct LoopRunsView: View {
             AgentBadge(item: i, size: 18, status: true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(i.session.name).ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                Text(loop + " · " + i.status.rawValue).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+                Text(loop + " · " + i.status.rawValue).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
             }
             Spacer()
             RoofButton("Open ↗", .plain) { model.reveal(i) }

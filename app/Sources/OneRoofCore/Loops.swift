@@ -103,7 +103,7 @@ public enum LoopState: String, Codable, CaseIterable, Sendable {
         case .needsYou: return "Needs you"
         case .done: return "Done"
         case .failed: return "Stopped at a limit"
-        case .stopped: return "Not running"
+        case .stopped: return "Off"   // LAB-2056: a plain Off chip (was "Not running", struck through)
         }
     }
 

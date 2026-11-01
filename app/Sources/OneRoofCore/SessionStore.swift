@@ -26,6 +26,7 @@ public final class SessionStore: @unchecked Sendable {
         try exec("CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, json TEXT NOT NULL, updated REAL NOT NULL)")
         try exec("CREATE TABLE IF NOT EXISTS objectives (id TEXT PRIMARY KEY, json TEXT NOT NULL, updated REAL NOT NULL)")
         try migrate()
+        try ensureHistorySchema()
     }
 
     deinit { sqlite3_close(db) }

@@ -195,7 +195,7 @@ extension SessionStore {
         return Dictionary(rows, uniquingKeysWith: { a, _ in a })
     }
 
-    // MARK: Feed (7 days)
+    // MARK: Feed (30 days, LAB-2046; was 7)
 
     public func append(_ e: FeedEvent) {
         run("INSERT OR IGNORE INTO feed(id,at,session_id,kind,text,chapter) VALUES(?,?,?,?,?,?)",
@@ -212,44 +212,70 @@ extension SessionStore {
         }
     }
 
-    /// Drops feed events older than `days` (7 by default).
-    public func pruneFeed(now: Date = Date(), days: Int = 7) {
-        run("DELETE FROM feed WHERE at < ?", [.real(now.addingTimeInterval(-Double(days) * 86_400).timeIntervalSince1970)])
+    /// Drops feed events and History's handover events older than `days` (30 by default, LAB-2046; was 7).
+    /// Decisions are kept: the action log is the record (LAB-2048, agent decision 2026-11-01).
+    public func pruneFeed(now: Date = Date(), days: Int = HistoryFeed.retentionDays) {
+        let cut = now.addingTimeInterval(-Double(days) * 86_400).timeIntervalSince1970
+        run("DELETE FROM feed WHERE at < ?", [.real(cut)])
+        run("DELETE FROM history_events WHERE at < ?", [.real(cut)])
     }
 
     // MARK: Decisions
 
-    public func save(_ d: Decision) {
+    /// Saves an ask. LAB-2048: with the options it showed, its screen lines, the option you picked and the session's
+    /// name, so the action log can show the whole ask later (`sessionName` nil keeps what is stored).
+    public func save(_ d: Decision) { save(d, sessionName: nil) }
+
+    public func save(_ d: Decision, sessionName: String?) {
         run("""
-            INSERT INTO decisions(id,session_id,kind,command,plan_id,why,why_source,touches,risk,if_no,where_txt,asked_at,answered_at,answer,agent,path,pattern,repo,why_missing,reply)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO decisions(id,session_id,kind,command,plan_id,why,why_source,touches,risk,if_no,where_txt,asked_at,answered_at,answer,agent,path,pattern,repo,why_missing,reply,choices_json,screen_json,chosen,session_name)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, command=excluded.command, plan_id=excluded.plan_id, why=excluded.why, why_source=excluded.why_source,
               touches=excluded.touches, risk=excluded.risk, if_no=excluded.if_no, where_txt=excluded.where_txt, answered_at=excluded.answered_at,
-              answer=excluded.answer, path=excluded.path, pattern=excluded.pattern, repo=excluded.repo, why_missing=excluded.why_missing, reply=excluded.reply
+              answer=excluded.answer, path=excluded.path, pattern=excluded.pattern, repo=excluded.repo, why_missing=excluded.why_missing, reply=excluded.reply,
+              choices_json=COALESCE(excluded.choices_json, decisions.choices_json), screen_json=COALESCE(excluded.screen_json, decisions.screen_json),
+              chosen=COALESCE(excluded.chosen, decisions.chosen), session_name=COALESCE(excluded.session_name, decisions.session_name)
             """,
             [.text(d.id.uuidString), .text(d.sessionId), .text(d.kind.rawValue), .text(d.command), .text(d.planId?.uuidString), .text(d.why),
              .text(d.whySource.rawValue), .text(d.touches), .text(d.risk.rawValue), .text(d.ifNo), .text(d.where_), Self.t(d.askedAt),
              Self.t(d.answeredAt), .text(d.answer?.rawValue), .text(d.agent.rawValue), .text(d.path), .text(d.pattern), .text(d.repo),
-             .int(d.whyMissing ? 1 : 0), .text(d.replyText)])
+             .int(d.whyMissing ? 1 : 0), .text(d.replyText), .text(Self.json(d.choices)), .text(Self.json(d.screen)), .text(d.chosen), .text(sessionName)])
     }
 
-    /// Records an answer with the time (every answer is written).
-    public func answer(decision id: UUID, _ a: Answer, reply: String? = nil, at: Date = Date()) {
-        run("UPDATE decisions SET answer=?, answered_at=?, reply=? WHERE id=?", [.text(a.rawValue), Self.t(at), .text(reply), .text(id.uuidString)])
+    /// Records an answer with the time (every answer is written). `chosen`: the option's label (LAB-2048).
+    public func answer(decision id: UUID, _ a: Answer, reply: String? = nil, chosen: String? = nil, at: Date = Date()) {
+        run("UPDATE decisions SET answer=?, answered_at=?, reply=?, chosen=COALESCE(?, chosen) WHERE id=?",
+            [.text(a.rawValue), Self.t(at), .text(reply), .text(chosen), .text(id.uuidString)])
     }
 
-    private static let decisionColumns = "id,session_id,kind,command,plan_id,why,why_source,touches,risk,if_no,where_txt,asked_at,answered_at,answer,agent,path,pattern,repo,why_missing,reply"
+    private static func json<T: Encodable>(_ v: T?) -> String? {
+        guard let v, let d = try? JSONEncoder().encode(v) else { return nil }
+        return String(data: d, encoding: .utf8)
+    }
+    private static func unjson<T: Decodable>(_ s: String?, _ t: T.Type) -> T? {
+        guard let s, let d = s.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(t, from: d)
+    }
+
+    private static let decisionColumns = "id,session_id,kind,command,plan_id,why,why_source,touches,risk,if_no,where_txt,asked_at,answered_at,answer,agent,path,pattern,repo,why_missing,reply,choices_json,screen_json,chosen,session_name"
 
     private func decisions(_ clause: String, _ args: [Value]) -> [Decision] {
-        query("SELECT \(Self.decisionColumns) FROM decisions \(clause)", args) { r in
+        decisionRows(clause, args).map(\.0)
+    }
+
+    /// Decisions with the session name stored beside each (LAB-2048).
+    func decisionRows(_ clause: String, _ args: [Value]) -> [(Decision, String?)] {
+        query("SELECT \(Self.decisionColumns) FROM decisions \(clause)", args) { r -> (Decision, String?)? in
             guard let id = r.text(0).flatMap(UUID.init(uuidString:)), let s = r.text(1),
                   let kind = r.text(2).flatMap(DecisionKind.init(rawValue:)), let asked = r.date(11) else { return nil }
-            return Decision(id: id, sessionId: s, agent: r.text(14).flatMap(AgentKind.init(rawValue:)) ?? .claude, kind: kind,
+            let d = Decision(id: id, sessionId: s, agent: r.text(14).flatMap(AgentKind.init(rawValue:)) ?? .claude, kind: kind,
                             command: r.text(3), path: r.text(15), planId: r.text(4).flatMap(UUID.init(uuidString:)), why: r.text(5) ?? "",
                             whySource: r.text(6).flatMap(CaptionSource.init(rawValue:)) ?? .heuristic, whyMissing: r.int(18) == 1,
                             touches: r.text(7) ?? "", risk: r.text(8).flatMap(Risk.init(rawValue:)) ?? .high, ifNo: r.text(9) ?? "",
                             where_: r.text(10) ?? "", pattern: r.text(16) ?? "", repo: r.text(17) ?? "", askedAt: asked,
-                            answeredAt: r.date(12), answer: r.text(13).flatMap(Answer.init(rawValue:)), replyText: r.text(19))
+                            answeredAt: r.date(12), answer: r.text(13).flatMap(Answer.init(rawValue:)), replyText: r.text(19),
+                            choices: Self.unjson(r.text(20), [DecisionChoice].self), screen: Self.unjson(r.text(21), [String].self), chosen: r.text(22))
+            return (d, r.text(23))
         }
     }
 

@@ -1,10 +1,10 @@
 # One Roof help: work and tickets
 
-**Status:** LIVE · **Date:** 2026-10-20
+**Status:** LIVE · **Date:** 2026-11-01
 
-> **One line:** the Work view (⇧⌘W) shows every project from Linear with its milestones, tickets and sessions; New work item (⌃⌘N) decides what a piece of work is before creating it; and tickets and sessions update each other. All of this is optional and needs a Linear API key.
+> **One line:** the Projects view (⇧⌘W) shows every project from Linear, team by team, filtered by status, with its milestones and tickets; New work item (⌃⌘N) decides what a piece of work is before creating it; and tickets and sessions update each other. All of this is optional and needs a Linear API key.
 
-![The Work view: projects on the left, the selected project's sessions and roadmap on the right](img/work.png)
+![The Projects view: teams and their projects on the left with the status chips, the selected project's roadmap on the right](img/work.png)
 
 ## Goal
 
@@ -12,7 +12,7 @@ Each tool owns one thing: Linear owns **projects** and **tickets**, One Roof own
 
 ## Connect Linear
 
-The Work view and tickets are optional. Without Linear, the rest of One Roof works the same, and the Work view explains how to connect.
+The Projects view and tickets are optional. Without Linear, the rest of One Roof works the same, and the Projects view explains how to connect.
 
 - **The key:** a Linear personal API key, in the `LINEAR_API_KEY` environment variable or in `~/.config/oneroof/linear-api-key`. The first-run setup (One Roof › Setup…) can save it there for you. One Roof never shows the key.
 - **Check the connection:** `OneRoof --linear` in a terminal prints your teams and how many projects it found, with each project's code.
@@ -27,13 +27,20 @@ The Work view and tickets are optional. Without Linear, the rest of One Roof wor
 | Ticket | One deliverable, defect, spike, decision or chore, in a Linear team and usually in a project. | `ENG-42`, the payment form |
 | Session | One agent run, usually on one ticket. | "Payment form" on Claude1, linked to ENG-42 |
 
-## The Work view
+## The Projects view (was Work)
 
-Open it with **⇧⌘W** (View › Work: Projects and Roadmap), **Work** in the toolbar, or the palette.
+Open it with **⇧⌘W** (View › Projects), **Projects** on the left rail (it was called Work before 2.0), or the palette.
 
-- **Left:** every Linear project, grouped by team, with its state and a count of live sessions. Type in **Filter projects** to narrow them, tick **Show shipped**, reload from Linear, or go back to the terminals.
-- **Right, for the selected project:** its name and state, "12 of 20 tickets done", links to **Linear**, the **Tracker pane** and the **Docs** folder when they exist, then **Sessions** (the sessions working on it) and the **Roadmap**: each milestone with its open tickets (tick **Show done** for all).
-- **On each ticket:** its key, type (Deliverable, Defect, Spike, Decision, Chore), title, a state pill you can click to change the state in Linear, a play button to **plan a session** for it, a link to its session if one exists, and a link to Linear.
+- **Left: teams, then their projects.** Each team is a header such as `▾ ENG · Engineering   4` (key, name, how many projects show). Click it to fold or unfold the team; **⌥-click** folds or unfolds every team. Every team starts unfolded, and One Roof remembers the ones you fold. A team with no project in the chosen statuses is hidden, and a line at the end says how many ("2 teams have no projects in these statuses").
+- **Each project** shows its title first (up to two lines, never cut mid-word), then its code, its status pill and, when sessions are running on it, how many.
+- **Status chips:** **Backlog · Planned · In progress · In review · Completed · Canceled**, each with its count, in the same style as All sessions' filters. Pick several at once; with none picked, every status shows. The list opens on **In progress + In review**; when you change that, **Reset** brings it back (and clears the text). Your chips and filter text are remembered.
+  - *All In progress projects in ENG:* click **In review** off (one click) and read the ENG group, or fold the other teams.
+  - *Everything In review in WEB:* click **In progress** off (one click) and read the WEB group.
+- **In review** is worked out by One Roof, since Linear has no In Review project status: a project that is In Progress in Linear shows **In review** when it has open tickets In Review and none In Progress. (If you add a project status named "In Review" in Linear, it counts too.) Paused projects count as In progress. Linear's Completed shows as **Completed** (it said "Shipped" before 2.0).
+- **Filter by name or code** matches the project code and the title. **⌘F** jumps to it. The reload and back-to-terminals buttons sit under the chips; a spinner shows while projects load, with **Try again** if Linear fails, and **Connect Linear…** when there is no key.
+- **Keys:** ↑ and ↓ move through the projects you can see (folded teams are skipped) and open each one; ← folds the selected project's team and → unfolds it; Return reloads the open project.
+- **Right, for the selected project:** its code and status, its title, "12 of 20 tickets done", links to **Linear**, the **Tracker pane** and the **Docs** folder when they exist, then the **Roadmap**: each milestone with its open tickets (tick **Show done** for all). The project page shows the project only: sessions live in Sessions and All sessions, where each session row shows its ticket and project.
+- **On each ticket:** its key, type (Deliverable, Defect, Spike, Decision, Chore), title, a state pill you can click to change the state in Linear, a play button (▷) to **plan a session** for it, and a link to Linear. To find a ticket's running session, search its key in All sessions.
 
 **Tracker pane and Docs are optional.** The Tracker pane link appears when a `_MASTER-TRACKER.html` file in your projects folder, one of its subfolders or your shared folder has a section for the project. The Docs link appears when a `docs/projects/<code>/` or `docs/workstreams/<id>/` folder exists for it, in your shared folder, at the root of a `*-docs` repo, or in a repo's `docs/`.
 
@@ -66,7 +73,7 @@ In the New session sheet (⌘N), pick the team and project, then click **Issue �
 
 ## New work item: decide what it is first
 
-Press **⌃⌘N** (File › New Work Item…), **New item** in the Work view, or **+ New work item** on the Overview. The New session sheet (⌘N) can also create an issue or a project, as the last item of its **Issue ▾** and **Project ▾** menus, and then starts the session on it ([New session](02_planning-a-session.md#when-the-work-is-not-in-linear-yet)).
+Press **⌃⌘N** (File › New Work Item…), **New item** in the Projects view, or **+ New work item** on the Overview. The New session sheet (⌘N) can also create an issue or a project, as the last item of its **Issue ▾** and **Project ▾** menus, and then starts the session on it ([New session](02_planning-a-session.md#when-the-work-is-not-in-linear-yet)).
 
 1. Say what you want done ("Login fails on Safari") and optional details.
 2. Tick "It needs several sessions and more than one deliverable" if it is bigger than a ticket.

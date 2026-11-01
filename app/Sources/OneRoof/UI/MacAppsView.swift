@@ -7,6 +7,10 @@ import OneRoofCore
 /// Chrome or Electron helper says what it is (tab or site, extension, GPU …). Apps can be quit and single processes
 /// ended from here, each after a confirmation; One Roof's own leftovers (a local model a force-quit left running, a
 /// roofd this One Roof does not use) are called out at the top with a Stop button.
+/// LAB-2052: colours you can read (text2 for every piece of information, a visible track under every bar, warning rows
+/// tinted with a leading amber bar, the process panel at full surface2). LAB-2053: an open browser shows its windows and
+/// tabs, then only the helpers "using a lot" (over 250 MB or 10 % CPU, held 30 s), one line about memory per tab, and
+/// "All processes (N)" for today's full list. LAB-2054 / LAB-2060: tabs and windows close from here (Chrome, Safari).
 struct MacAppsCard: View {
     @Environment(\.theme) private var t
     @ObservedObject var res: ResourceMonitor
@@ -17,6 +21,10 @@ struct MacAppsCard: View {
     @State private var showRenderers: Set<String> = []
     @State private var pending: Pending?
     @State private var message: String?
+    /// LAB-2053: browsers whose full process list is open ("All processes"); closed by default, not remembered.
+    @State private var allOpen: Set<String> = []
+    /// LAB-2053: when each pid was last seen over a "Using a lot" line, so a process that drops below stays 30 s.
+    @State private var bigSince: [Int32: Date] = [:]
 
     static let firstApps = 12
     static let firstProcs = 25
@@ -49,7 +57,21 @@ struct MacAppsCard: View {
             Button(confirmLabel(p), role: .destructive) { run(p) }
             Button("Cancel", role: .cancel) { pending = nil }
         } message: { p in Text(dialogMessage(p)) }
-        .onAppear { if SelfTestMacFixture.mode != nil { open.insert(SelfTestMacFixture.chromeId) } }
+        .onAppear {
+            if SelfTestMacFixture.mode != nil {
+                open.insert(SelfTestMacFixture.chromeId)
+                if SelfTestMacFixture.allProcesses { allOpen.insert(SelfTestMacFixture.chromeId) }
+            }
+            noteBig(res.mac)
+        }
+        .onChange(of: res.mac) { _, b in noteBig(b) }
+    }
+
+    /// LAB-2053: stamp the browsers' helpers that are over a line now.
+    private func noteBig(_ b: MacBreakdown?) {
+        guard let b else { return }
+        let procs = b.groups.filter { BrowserTabs.family(appName: $0.name) != nil }.flatMap(\.procs)
+        bigSince = BrowserTabs.bigSeen(procs, since: bigSince, now: Date())
     }
 
     @ViewBuilder private func content(_ b: MacBreakdown) -> some View {
@@ -82,7 +104,7 @@ struct MacAppsCard: View {
                     .buttonStyle(.link).ui(12)
             }
             Spacer()
-            Text(footnote(b)).ui(11).foregroundStyle(t.text3.color).lineLimit(2).multilineTextAlignment(.trailing)
+            Text(footnote(b)).ui(11).foregroundStyle(t.text2.color).lineLimit(2).multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
     }
@@ -90,7 +112,7 @@ struct MacAppsCard: View {
     private func header(detail: String) -> some View {
         HStack(spacing: 8) {
             Text("This Mac, by app").ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-            Text(detail).ui(12).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.tail)
+            Text(detail).ui(12).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
             Spacer()
         }
         .padding(.horizontal, 14).frame(height: 36)
@@ -111,21 +133,25 @@ struct MacAppsCard: View {
 
     // MARK: Leftovers
 
+    /// LAB-2052: a warning row: `now` at 0.14 with a 3 pt amber bar on its leading edge; the name in text, the
+    /// explanation in text2, the amount and ● in the amber text token (≥ 4.5:1 on the tint).
     private func leftover(_ p: MacProc) -> some View {
-        HStack(spacing: 10) {
-            Text("●").ui(11).foregroundStyle(t.now.color)
+        let m = t.resourceMarks
+        return HStack(spacing: 10) {
+            Text("●").ui(11).foregroundStyle(m.nowText.color)
             VStack(alignment: .leading, spacing: 2) {
                 Text(p.kind ?? p.name).ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                 Text("One Roof did not start this one and nothing uses it; it keeps its memory until stopped. One Roof starts a fresh one when it needs it.")
                     .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Text(ResourceFormat.bytes(p.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(t.now.color)
+            Text(ResourceFormat.bytes(p.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(m.nowText.color)
             Button("Stop") { pending = .end(p, force: false) }.controlSize(.small)
                 .accessibilityLabel("Stop \(p.kind ?? p.name), \(ResourceFormat.bytes(p.footprint))")
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(t.now.color.opacity(0.08))
+        .background(m.nowTint.color)
+        .overlay(alignment: .leading) { Rectangle().fill(m.nowBar.color).frame(width: 3).accessibilityHidden(true) }
         .accessibilityElement(children: .combine)
     }
 
@@ -143,10 +169,10 @@ struct MacAppsCard: View {
                     AppIcon(bundlePath: g.bundlePath).frame(width: 20, height: 20)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(g.name).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                        Text(subtitle(g)).ui(11).foregroundStyle(t.text3.color).lineLimit(1)
+                        Text(subtitle(g)).ui(11).foregroundStyle(t.text2.color).lineLimit(1)
                     }
                     Spacer(minLength: 8)
-                    Meter(fraction: share, colour: t.accent).frame(width: 70)
+                    Meter(fraction: share, colour: t.resourceMarks.bar).frame(width: 70)
                     Text(ResourceFormat.cpu(g.cpu)).ui(12.5, mono: true).foregroundStyle(t.text2.color).frame(width: 58, alignment: .trailing)
                     Text(ResourceFormat.bytes(g.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(t.text.color)
                         .frame(width: 72, alignment: .trailing)
@@ -173,7 +199,7 @@ struct MacAppsCard: View {
             .frame(width: 56, alignment: .trailing)
         }
         .padding(.horizontal, 14).padding(.vertical, 7)
-        .hoverHighlight()
+        .hoverHighlight(over: t.surface)   // LAB-2052: a hover you can see
     }
 
     private func subtitle(_ g: MacAppGroup) -> String {
@@ -188,6 +214,92 @@ struct MacAppsCard: View {
     // MARK: Processes
 
     @ViewBuilder private func processes(_ g: MacAppGroup) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let family = BrowserTabs.family(appName: g.name) {
+                browserProcesses(g, family)
+            } else {
+                processList(g)
+            }
+        }
+        .padding(.leading, 54).padding(.trailing, 14).padding(.vertical, 8)
+        .background(t.resourceMarks.panel.color)   // LAB-2052: full strength (was surface2 at 50 %)
+    }
+
+    /// LAB-2053: an open browser, top to bottom: its windows and tabs; the helpers using a lot (only when one is); one
+    /// line about memory per tab; "All processes (N)", which opens today's full list.
+    @ViewBuilder private func browserProcesses(_ g: MacAppGroup, _ family: BrowserTabs.Family) -> some View {
+        BrowserTabsSection(app: g.name, family: family, mainPid: g.mainPid,
+                           bundleId: g.bundlePath.flatMap { Bundle(path: $0)?.bundleIdentifier },
+                           onForceQuit: g.quittable ? { pending = .quit(g, force: true) } : nil,
+                           onClosed: { res.soon() })
+            .padding(.bottom, 8)
+        let big = BrowserTabs.bigProcesses(g.procs, since: bigSince, now: Date(), mainPid: g.mainPid)
+        if !big.isEmpty {
+            Text("Using a lot · over 250 MB or 10 % CPU").ui(11.5, .semibold).foregroundStyle(t.text.color)
+                .padding(.bottom, 2)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(big) { p in bigRow(p) }
+                .padding(.bottom, 0)
+            Color.clear.frame(height: 6)
+        }
+        taskManagerLine(g)
+        let isAll = allOpen.contains(g.id)
+        Button {
+            if isAll { allOpen.remove(g.id) } else { allOpen.insert(g.id) }
+        } label: {
+            HStack(spacing: 6) {
+                Text(isAll ? "▾" : "▸").ui(10).foregroundStyle(t.text3.color).frame(width: 10)
+                Text("All processes (\(g.procs.count))").ui(11.5, .medium).foregroundStyle(t.accentText.color)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 6)
+        .accessibilityLabel("All processes, \(g.procs.count)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(isAll ? "Hides the full process list" : "Shows every process with its pid, CPU, memory and End")
+        if isAll {
+            processList(g).padding(.top, 6)
+        }
+    }
+
+    /// LAB-2053: "Memory per tab: Google Chrome's Task Manager (⇧Esc)", today's paragraph in the ⓘ tooltip, and Show.
+    private func taskManagerLine(_ g: MacAppGroup) -> some View {
+        let full = BrowserTabs.CloseCopy.taskManager(g.name)
+        return HStack(spacing: 6) {
+            Text("Memory per tab: \(g.name)'s Task Manager (⇧Esc)").ui(11.5).foregroundStyle(t.text2.color).lineLimit(2)
+            Image(systemName: "info.circle").font(.system(size: 11.5)).foregroundStyle(t.text2.color)
+                .help(full)
+                .accessibilityLabel("About memory per tab")
+                .accessibilityValue(full)
+            if let pid = g.mainPid {
+                Button("Show \(g.name)") { NSRunningApplication(processIdentifier: pid)?.activate() }
+                    .buttonStyle(.link).ui(11.5).fixedSize()
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// LAB-2053: one helper or renderer over a line: what it is, CPU, memory, End ▾ (today's confirmations).
+    private func bigRow(_ p: MacProc) -> some View {
+        let what = p.kind == BrowserTabs.rendererKind ? "A tab or site (macOS does not say which)" : (p.kind ?? p.name)
+        return HStack(spacing: 8) {
+            Text(what).ui(12, .medium).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help("\(p.name), pid \(p.pid)\n\(p.path)")
+            Text(ResourceFormat.cpu(p.cpu)).ui(11.5, mono: true).foregroundStyle(((p.cpu ?? 0) > BrowserTabs.bigCPU ? t.text : t.text2).color)
+                .frame(width: 50, alignment: .trailing)
+            Text(ResourceFormat.bytes(p.footprint)).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 66, alignment: .trailing)
+            endMenu(p).frame(width: 44, alignment: .trailing)
+        }
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(p.kind == BrowserTabs.rendererKind ? "A tab or site" : (p.kind ?? p.name)), process \(p.pid), memory \(ResourceFormat.bytes(p.footprint)), CPU \(ResourceFormat.cpu(p.cpu))")
+    }
+
+    /// Today's process list (every app; for a browser it sits under "All processes"): the breakdown by kind, a browser's
+    /// renderers folded into one row, every process with pid, CPU, memory and End, the first 25 then "Show all".
+    @ViewBuilder private func processList(_ g: MacAppGroup) -> some View {
         let all = showAllProcs.contains(g.id)
         // LAB-853: a browser's renderers are one row ("78 tabs or sites · 6.2 GB") until opened: macOS cannot say which
         // tab each one is, and the tab names are listed above them instead.
@@ -196,37 +308,30 @@ struct MacAppsCard: View {
         let folded = browser != nil && rend.count > 1
         let listed = folded && !showRenderers.contains(g.id) ? g.procs.filter { $0.kind != BrowserTabs.rendererKind } : g.procs
         let procs = all ? listed : Array(listed.prefix(Self.firstProcs))
-        VStack(alignment: .leading, spacing: 0) {
-            let kinds = kindSummary(g)
-            if !kinds.isEmpty {
-                Text(kinds).ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 6)
-            }
-            if let family = browser {
-                BrowserTabsSection(app: g.name, family: family, mainPid: g.mainPid,
-                                   bundleId: g.bundlePath.flatMap { Bundle(path: $0)?.bundleIdentifier }).padding(.bottom, 8)
-            } else if g.procs.contains(where: { $0.kind == "Tab or site" }) {
-                HStack(spacing: 6) {
-                    Text("Tab names: \(g.name) lists each tab with its memory in its own Task Manager (⇧Esc in \(g.name), or Window › Task Manager), and can end a tab there. Ending a \"Tab or site\" here shows that tab as crashed until reloaded.")
-                        .ui(11.5).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
-                    if let pid = g.mainPid {
-                        Button("Show \(g.name)") { NSRunningApplication(processIdentifier: pid)?.activate() }
-                            .buttonStyle(.link).ui(11.5).fixedSize()
-                    }
-                }
+        let kinds = kindSummary(g)
+        if !kinds.isEmpty {
+            Text(kinds).ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 6)
-            }
-            if folded { renderersRow(g, rend) }
-            ForEach(procs) { p in procRow(p) }
-            if listed.count > Self.firstProcs {
-                Button(all ? "Show the top \(Self.firstProcs)" : "Show all \(listed.count) processes") {
-                    if all { showAllProcs.remove(g.id) } else { showAllProcs.insert(g.id) }
-                }
-                .buttonStyle(.link).ui(11.5).padding(.top, 4)
-            }
         }
-        .padding(.leading, 54).padding(.trailing, 14).padding(.vertical, 8)
-        .background(t.surface2.color.opacity(0.5))
+        if browser == nil, g.procs.contains(where: { $0.kind == "Tab or site" }) {
+            HStack(spacing: 6) {
+                Text("Tab names: \(g.name) lists each tab with its memory in its own Task Manager (⇧Esc in \(g.name), or Window › Task Manager), and can end a tab there. Ending a \"Tab or site\" here shows that tab as crashed until reloaded.")
+                    .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                if let pid = g.mainPid {
+                    Button("Show \(g.name)") { NSRunningApplication(processIdentifier: pid)?.activate() }
+                        .buttonStyle(.link).ui(11.5).fixedSize()
+                }
+            }
+            .padding(.bottom, 6)
+        }
+        if folded { renderersRow(g, rend) }
+        ForEach(procs) { p in procRow(p) }
+        if listed.count > Self.firstProcs {
+            Button(all ? "Show the top \(Self.firstProcs)" : "Show all \(listed.count) processes") {
+                if all { showAllProcs.remove(g.id) } else { showAllProcs.insert(g.id) }
+            }
+            .buttonStyle(.link).ui(11.5).padding(.top, 4)
+        }
     }
 
     /// LAB-853: a browser's renderer processes as one row; it opens to list them (each can still be ended).
@@ -242,7 +347,7 @@ struct MacAppsCard: View {
                     Text("\(r.count) tabs or sites").ui(12, .medium).foregroundStyle(t.text.color).lineLimit(1)
                     Text(isOpen ? "renderer processes, listed below · macOS does not say which tab each one is"
                                 : "renderer processes, one per tab or site · macOS does not say which is which · show them")
-                        .ui(10.5).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.tail)
+                        .ui(10.5).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Text(ResourceFormat.cpu(cpu)).ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 50, alignment: .trailing)
@@ -253,7 +358,7 @@ struct MacAppsCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverHighlight()
+        .hoverHighlight(over: t.resourceMarks.panel)
         .accessibilityLabel("\(r.count) tabs or sites, renderer processes, memory \(ResourceFormat.bytes(r.bytes))")
         .accessibilityHint(isOpen ? "Hides the renderer processes" : "Lists the renderer processes one by one")
     }
@@ -272,32 +377,34 @@ struct MacAppsCard: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(p.kind ?? p.name).ui(12, p.kind == nil ? .regular : .medium).foregroundStyle(t.text.color).lineLimit(1)
-                if p.kind != nil { Text(p.name).ui(10.5, mono: true).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.middle) }
+                if p.kind != nil { Text(p.name).ui(10.5, mono: true).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.middle) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help(p.path)
-            Text("\(p.pid)").ui(11, mono: true).foregroundStyle(t.text3.color).frame(width: 56, alignment: .trailing)
+            Text("\(p.pid)").ui(11, mono: true).foregroundStyle(t.text2.color).frame(width: 56, alignment: .trailing)
             Text(ResourceFormat.cpu(p.cpu)).ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 50, alignment: .trailing)
             Text(ResourceFormat.bytes(p.footprint)).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 66, alignment: .trailing)
-            Group {
-                if p.endable {
-                    Menu {
-                        Button("End…") { pending = .end(p, force: false) }
-                        Button("Force end…") { pending = .end(p, force: true) }
-                    } label: { Text("End").ui(11, .medium).foregroundStyle(t.text2.color) }
-                    primaryAction: { pending = .end(p, force: false) }
-                    .menuStyle(.borderlessButton).fixedSize()
-                    .help("End this process (it may tidy up first). The arrow offers Force end.")
-                    .accessibilityLabel("End \(p.kind ?? p.name), process \(p.pid)")
-                } else {
-                    Color.clear
-                }
-            }
-            .frame(width: 44, alignment: .trailing)
+            endMenu(p).frame(width: 44, alignment: .trailing)
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(p.kind ?? p.name), process \(p.pid), CPU \(ResourceFormat.cpu(p.cpu)), memory \(ResourceFormat.bytes(p.footprint))")
+    }
+
+    /// End ▾ Force end, each after today's confirmation.
+    @ViewBuilder private func endMenu(_ p: MacProc) -> some View {
+        if p.endable {
+            Menu {
+                Button("End…") { pending = .end(p, force: false) }
+                Button("Force end…") { pending = .end(p, force: true) }
+            } label: { Text("End").ui(11, .medium).foregroundStyle(t.text2.color) }
+            primaryAction: { pending = .end(p, force: false) }
+            .menuStyle(.borderlessButton).fixedSize()
+            .help("End this process (it may tidy up first). The arrow offers Force end.")
+            .accessibilityLabel("End \(p.kind ?? p.name), process \(p.pid)")
+        } else {
+            Color.clear
+        }
     }
 
     // MARK: Confirm and run
@@ -341,23 +448,34 @@ struct MacAppsCard: View {
 
 /// LAB-554 / LAB-853: a browser's open tabs, read from the browser over Apple Events, by window (as the owner sees them
 /// in the browser) or by site. macOS does not say which renderer process is which tab, so this list stands above the
-/// processes, whose renderers are folded into one row. When the section appears it asks macOS, without prompting,
-/// whether One Roof may already read the browser: if so the tabs load at once; if macOS has not asked yet, one line says
-/// why and offers the ask ("Show tab names"); if the owner said no, it says where to allow it. Never an empty list
-/// without a reason. Clicking a tab brings it forward in the browser. Memory per tab stays in the browser's Task Manager.
+/// processes. When the section appears it asks macOS, without prompting, whether One Roof may already read the browser:
+/// if so the tabs load at once; if macOS has not asked yet, one line says why and offers the ask ("Show tab names"); if
+/// the owner said no, it says where to allow it. Never an empty list without a reason. Clicking a tab brings it forward.
+/// LAB-2054 (Chrome) / LAB-2060 (Safari): a tab's ✕ (on hover), right-click, ⌫ or VoiceOver closes it; "Close window"
+/// closes a window (asking first when it has 2 or more tabs). Closing goes through the browser's own scripting with the
+/// Automation permission reading already has; the scripts never launch the browser and close nothing that changed since
+/// the list was read. A browser that does not answer in 10 s offers Force quit. Other browsers list their tabs only.
 struct BrowserTabsSection: View {
     @Environment(\.theme) private var t
     let app: String
     let family: BrowserTabs.Family
     let mainPid: Int32?
     var bundleId: String? = nil
+    /// LAB-2054: opens the app row's Force quit confirmation (a browser that did not answer).
+    var onForceQuit: (() -> Void)? = nil
+    /// LAB-2054: something closed: the process list refreshes sooner.
+    var onClosed: (() -> Void)? = nil
     @State private var state: Load = .idle
     @State private var showAllSites = false
     @State private var showAllIn: Set<String> = []
+    /// LAB-2054: what the last close did (one line under the header).
+    @State private var note: Note?
+    /// LAB-2054: a window waiting for "Close window?".
+    @State private var askWindow: BrowserWindowTabs?
     /// Set after the first successful read: later opens read the tabs straight away.
-    @AppStorage("resources.browserTabs.on") private var on = false
+    @AppStorage("resources.browserTabs.on", store: Prefs.viewState) private var on = false   // QA M6: a self-test never writes the real settings
     /// "windows" (default) or "sites".
-    @AppStorage("resources.browserTabs.group") private var grouping = "windows"
+    @AppStorage("resources.browserTabs.group", store: Prefs.viewState) private var grouping = "windows"
 
     static let firstSites = 8
     static let firstTabs = 12
@@ -370,11 +488,21 @@ struct BrowserTabsSection: View {
         case failed(BrowserTabs.Failure)
     }
 
+    struct Note: Equatable {
+        var text: String
+        var error = false
+        /// The browser did not answer: offer Force quit.
+        var forceQuit = false
+    }
+
+    private var support: BrowserTabs.CloseSupport { BrowserTabs.closeSupport(appName: app) }
+    private var closes: Bool { support == .closes }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text("Open tabs").ui(12, .semibold).foregroundStyle(t.text.color)
-                Text(summary).ui(11.5).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.tail)
+                Text(summary).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 8)
                 switch state {
                 case .loading, .checking: ProgressView().controlSize(.small)
@@ -386,17 +514,32 @@ struct BrowserTabsSection: View {
                 default: EmptyView()
                 }
             }
+            if let note { noteLine(note) }
             content
-            HStack(spacing: 6) {
-                Text("Memory per tab: \(app)'s own Task Manager (⇧Esc in \(app), or Window › Task Manager) lists each tab with its memory and can end it. macOS does not tell other apps which process is which tab, so below they are counted together as tabs or sites. Ending one there shows that tab as crashed until reloaded.")
-                    .ui(11).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
-                if let pid = mainPid {
-                    Button("Show \(app)") { NSRunningApplication(processIdentifier: pid)?.activate() }
-                        .buttonStyle(.link).ui(11).fixedSize()
-                }
+            if case .loaded(let tabs, _) = state, !tabs.isEmpty, case .readOnly(let why) = support {
+                Text(why).ui(11).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             }
         }
         .onAppear(perform: appear)
+        .confirmationDialog(askWindow.map { BrowserTabs.CloseCopy.confirmTitle(window: $0.number, app: app) } ?? "",
+                            isPresented: Binding(get: { askWindow != nil }, set: { if !$0 { askWindow = nil } }),
+                            presenting: askWindow) { w in
+            Button("Close window", role: .destructive) { askWindow = nil; closeWindow(w, asked: true) }
+            Button("Cancel", role: .cancel) { askWindow = nil }
+        } message: { w in Text(BrowserTabs.CloseCopy.confirmMessage(tabs: w.tabs.count, app: app)) }
+    }
+
+    private func noteLine(_ n: Note) -> some View {
+        HStack(spacing: 8) {
+            Text(n.text).ui(11.5).foregroundStyle((n.error ? t.needsText : t.text).color).fixedSize(horizontal: false, vertical: true)
+            if n.forceQuit, let onForceQuit {
+                Button("Force quit \(app)…") { onForceQuit() }.controlSize(.small).fixedSize()
+                    .accessibilityLabel("Force quit \(app)")
+            }
+            Spacer(minLength: 4)
+            Button("✕") { note = nil }.buttonStyle(.plain).ui(11).foregroundStyle(t.text2.color).accessibilityLabel("Dismiss")
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var summary: String {
@@ -451,10 +594,21 @@ struct BrowserTabsSection: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text("Window \(w.number)").ui(12, .semibold).foregroundStyle(t.text.color)
-                        Text("\(w.tabs.count) tab\(w.tabs.count == 1 ? "" : "s")").ui(11).foregroundStyle(t.text3.color)
+                        Text("\(w.tabs.count) tab\(w.tabs.count == 1 ? "" : "s")").ui(11).foregroundStyle(t.text2.color)
+                        if closes {
+                            // LAB-2054: close the whole window (asks first with 2 or more tabs).
+                            Button("Close window") { closeWindow(w, asked: false) }
+                                .buttonStyle(.link).ui(11)
+                                .help(BrowserTabs.closeWindowAsks(tabs: w.tabs.count)
+                                      ? "Closes this window and its \(w.tabs.count) tabs in \(app) (asks first)"
+                                      : "Closes this window in \(app)")
+                                .accessibilityLabel("Close window, \(w.tabs.count) tab\(w.tabs.count == 1 ? "" : "s")")
+                        }
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Window \(w.number), \(w.tabs.count) tab\(w.tabs.count == 1 ? "" : "s")")
                     .accessibilityAddTraits(.isHeader)
-                    ForEach(shown) { tab in tabRow(tab, site: true) }
+                    ForEach(shown) { tab in row(tab, site: true) }
                     if w.tabs.count > Self.firstTabs {
                         Button(all ? "Show the first \(Self.firstTabs)" : "Show all \(w.tabs.count) tabs") {
                             if all { showAllIn.remove(w.id) } else { showAllIn.insert(w.id) }
@@ -484,30 +638,67 @@ struct BrowserTabsSection: View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 6) {
                 Text(site.site).ui(12, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                Text("\(site.tabs.count) tab\(site.tabs.count == 1 ? "" : "s")").ui(11).foregroundStyle(t.text3.color)
+                Text("\(site.tabs.count) tab\(site.tabs.count == 1 ? "" : "s")").ui(11).foregroundStyle(t.text2.color)
             }
             .accessibilityAddTraits(.isHeader)
-            ForEach(site.tabs) { tab in tabRow(tab, site: false) }
+            ForEach(site.tabs) { tab in row(tab, site: false) }
         }
     }
 
-    /// A tab: front-tab dot, title, and (by window) its site on the right. Clicking brings it forward.
-    private func tabRow(_ tab: BrowserTab, site: Bool) -> some View {
-        Button { show(tab) } label: {
-            HStack(spacing: 6) {
-                Text(tab.active ? "●" : " ").ui(9).foregroundStyle(t.accent.color).frame(width: 10)
-                Text(tab.title.isEmpty ? (tab.url.isEmpty ? "Untitled tab" : tab.url) : tab.title).ui(11.5).foregroundStyle(t.text2.color)
-                    .lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 8)
-                if site { Text(tab.site).ui(10.5, mono: true).foregroundStyle(t.text3.color).lineLimit(1).truncationMode(.middle) }
-            }
-            .contentShape(Rectangle())
+    private func row(_ tab: BrowserTab, site: Bool) -> some View {
+        BrowserTabRow(tab: tab, app: app, showSite: site, closes: closes,
+                      forcedHover: SelfTestMacFixture.mode != nil && SelfTestMacFixture.hoverTab == tab.tabId,
+                      onShow: { show(tab) }, onClose: { closeTab(tab) })
+    }
+
+    // MARK: Closing (LAB-2054)
+
+    private func closeTab(_ tab: BrowserTab) {
+        guard closes else { return }
+        run(.tab(tab), done: BrowserTabs.CloseCopy.closed(tab.title.isEmpty ? tab.url : tab.title, app: app))
+    }
+
+    /// Close window: a window with 2 or more tabs asks first (unless it just did).
+    private func closeWindow(_ w: BrowserWindowTabs, asked: Bool) {
+        guard closes else { return }
+        if !asked && BrowserTabs.closeWindowAsks(tabs: w.tabs.count) { askWindow = w; return }
+        run(.window(id: w.windowId, number: w.number, tabs: w.tabs.count),
+            done: BrowserTabs.CloseCopy.closedWindow(w.number, tabs: w.tabs.count, app: app))
+    }
+
+    private func run(_ target: BrowserTabs.CloseTarget, done: String) {
+        if SelfTestMacFixture.mode != nil {   // self-test: never the real browser (logged, row dropped)
+            handle(SelfTestMacFixture.close(target), target, done: done)
+            return
         }
-        .buttonStyle(.plain)
-        .hoverHighlight()
-        .help(tab.url)
-        .accessibilityLabel("\(tab.title.isEmpty ? "Untitled tab" : tab.title), \(tab.site)\(tab.active ? ", front tab of its window" : "")")
-        .accessibilityHint("Brings this tab forward in \(app)")
+        let app = app, family = family
+        DispatchQueue.global(qos: .userInitiated).async {
+            let o = BrowserTabs.close(app: app, family: family, target: target)
+            DispatchQueue.main.async { handle(o, target, done: done) }
+        }
+    }
+
+    private func handle(_ o: BrowserTabs.CloseOutcome, _ target: BrowserTabs.CloseTarget, done: String) {
+        switch o {
+        case .closed:
+            note = Note(text: done)
+            onClosed?()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { load() }
+        case .gone:
+            note = nil
+            load()
+        case .changed:
+            if case .window = target { note = Note(text: BrowserTabs.CloseCopy.windowChanged) }
+            else { note = Note(text: BrowserTabs.CloseCopy.changed) }
+            load()
+        case .timedOut:
+            note = Note(text: BrowserTabs.CloseCopy.timedOut(app), error: true, forceQuit: true)
+        case .notAllowed:
+            note = nil
+            state = .failed(.notAllowed)
+        case .failed(let why):
+            note = Note(text: BrowserTabs.CloseCopy.failed(why), error: true)
+        }
     }
 
     // MARK: Reading
@@ -520,6 +711,7 @@ struct BrowserTabsSection: View {
             default:
                 grouping = mode == "sites" ? "sites" : "windows"
                 state = .loaded(BrowserTabs.parse(SelfTestMacFixture.tabsOutput), Date())
+                runSelfTestActions()
             }
             return
         }
@@ -540,8 +732,27 @@ struct BrowserTabsSection: View {
         }
     }
 
+    /// ONEROOF_SELFTEST_TABCLOSE (SelfTestMacFixture): press the close buttons in order, 0.5 s apart.
+    private func runSelfTestActions() {
+        for (i, a) in SelfTestMacFixture.actions.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 + 0.5 * Double(i)) {
+                guard case .loaded(let tabs, _) = state else { return }
+                switch a.kind {
+                case "tab", "hung", "changed":
+                    if let tab = tabs.first(where: { $0.tabId == a.id }) { closeTab(tab) }
+                case "window", "ask":
+                    if let w = BrowserTabs.windows(tabs).first(where: { $0.windowId == a.id }) { closeWindow(w, asked: a.kind == "window") }
+                default: break
+                }
+            }
+        }
+    }
+
     private func load() {
-        if SelfTestMacFixture.mode != nil { return }
+        if SelfTestMacFixture.mode != nil {
+            if case .loaded = state { state = .loaded(BrowserTabs.parse(SelfTestMacFixture.tabsOutput), Date()) }
+            return
+        }
         state = .loading
         let app = app, family = family
         DispatchQueue.global(qos: .userInitiated).async {
@@ -563,6 +774,72 @@ struct BrowserTabsSection: View {
                 DispatchQueue.main.async { state = .failed(f) }
             }
         }
+    }
+}
+
+/// LAB-2054 · one tab: front-tab dot, title, its site (by window), and a ✕ that shows on hover (its place is kept, so
+/// nothing moves and it never covers the site). Click or Return brings it forward; ✕, ⌫ or the right-click menu closes
+/// it; the menu also copies its address. VoiceOver: Bring forward · Close tab · Copy address.
+struct BrowserTabRow: View {
+    @Environment(\.theme) private var t
+    let tab: BrowserTab
+    let app: String
+    let showSite: Bool
+    let closes: Bool
+    var forcedHover = false
+    let onShow: () -> Void
+    let onClose: () -> Void
+    @State private var hover = false
+
+    private var title: String { tab.title.isEmpty ? (tab.url.isEmpty ? "Untitled tab" : tab.url) : tab.title }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: onShow) {
+                HStack(spacing: 6) {
+                    Text(tab.active ? "●" : " ").ui(9).foregroundStyle(t.accent.color).frame(width: 10)
+                    Text(title).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 8)
+                    if showSite { Text(tab.site).ui(10.5, mono: true).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.middle) }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(tab.url)
+            .onKeyPress(.return) { onShow(); return .handled }
+            .onKeyPress(.delete) { guard closes else { return .ignored }; onClose(); return .handled }
+            .onKeyPress(.deleteForward) { guard closes else { return .ignored }; onClose(); return .handled }
+            if closes {
+                Button(action: onClose) {
+                    Text("✕").ui(10.5, .semibold).foregroundStyle(t.text2.color).frame(width: 16, height: 16).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .opacity(hover || forcedHover ? 1 : 0)
+                .help("Close this tab")
+                .accessibilityHidden(true)   // the row's "Close tab" action says it
+            }
+        }
+        .padding(.trailing, 2)
+        .hoverHighlight(over: t.resourceMarks.panel, forced: forcedHover)
+        .onHover { hover = $0 }
+        .contextMenu {
+            Button("Bring forward", action: onShow)
+            if closes { Button("Close tab", action: onClose) }
+            Button("Copy address") { copy() }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(tab.title.isEmpty ? "Untitled tab" : tab.title), \(tab.site)\(tab.active ? ", front tab of its window" : "")")
+        .accessibilityHint("Brings this tab forward in \(app)")
+        .accessibilityActions {
+            Button("Bring forward", action: onShow)
+            if closes { Button("Close tab", action: onClose) }
+            Button("Copy address") { copy() }
+        }
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(tab.url, forType: .string)
     }
 }
 

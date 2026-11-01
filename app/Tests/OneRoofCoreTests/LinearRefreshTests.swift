@@ -70,3 +70,45 @@ final class LinearRefreshTests: XCTestCase {
         XCTAssertEqual(seen().count, 1)
     }
 }
+
+/// LAB-2050 · the project list reads `status { name type }` and whether open issues are In Progress / In Review; the
+/// deprecated `state` is the fallback. Fixtures only, no network.
+final class LinearProjectStatusParseTests: XCTestCase {
+    private func client(_ nodes: [[String: Any]]) -> (LinearClient, () -> String) {
+        let c = LinearClient(key: "test-key")
+        var query = ""
+        c.transport = { req in
+            let q = (try? JSONSerialization.jsonObject(with: req.httpBody ?? Data())) as? [String: Any] ?? [:]
+            query = q["query"] as? String ?? ""
+            let body: [String: Any] = ["data": ["projects": ["pageInfo": ["hasNextPage": false], "nodes": nodes]]]
+            return (200, try JSONSerialization.data(withJSONObject: body))
+        }
+        return (c, { query })
+    }
+
+    func test_LAB2050_parsesStatusAndIssueProbes() throws {
+        let (c, q) = client([
+            ["id": "1", "name": "LAB-A · Alpha", "state": "started", "status": ["name": "In Progress", "type": "started"],
+             "teams": ["nodes": [["key": "LAB"]]], "working": ["nodes": []], "reviewing": ["nodes": [["id": "r"]]]],
+            ["id": "2", "name": "LAB-B · Beta", "state": "started", "status": ["name": "In Progress", "type": "started"],
+             "teams": ["nodes": [["key": "LAB"]]], "working": ["nodes": [["id": "w"]]], "reviewing": ["nodes": [["id": "r"]]]],
+            ["id": "3", "name": "HYP-C · Gamma", "state": "started", "status": ["name": "In Review", "type": "started"],
+             "teams": ["nodes": [["key": "HYP"]]]],
+        ])
+        let list = try c.workstreams().sorted { $0.id < $1.id }   // workstreams() sorts by name
+        XCTAssertTrue(q().contains("status { name type }"))
+        XCTAssertTrue(q().contains("working: issues(") && q().contains("reviewing: issues("))
+        XCTAssertEqual(list.map(\.status), [.inReview, .inProgress, .inReview])
+        XCTAssertEqual(list[0].statusName, "In Progress")
+        XCTAssertTrue(list[0].reviewing); XCTAssertFalse(list[0].working)
+        XCTAssertEqual(list[1].stateLabel, "In progress")
+    }
+
+    func test_LAB2050_oldStateIsTheFallback() throws {
+        let (c, _) = client([["id": "1", "name": "WS-OLD-1 · Old", "state": "completed", "teams": ["nodes": [["key": "CMN"]]]]])
+        let list = try c.workstreams()
+        XCTAssertEqual(list.first?.state, "completed")
+        XCTAssertEqual(list.first?.status, .completed)
+        XCTAssertEqual(list.first?.stateLabel, "Completed")
+    }
+}

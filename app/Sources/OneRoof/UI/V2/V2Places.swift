@@ -100,93 +100,7 @@ struct V2TonightPanel: View {
     }
 }
 
-/// Needs you › Rules (handover C2.2, NEW-19): every always-allow rule with Remove, and what you decided today.
-struct V2RulesPage: View {
-    @Environment(\.theme) private var t
-    @ObservedObject var model: AppModel
-    var back: () -> Void
-    @State private var tick = 0   // the rules live in the store; redraw after a Remove
-
-    var body: some View {
-        let rules = (model.store?.decisionRules() ?? []).sorted { $0.createdAt > $1.createdAt }
-        let today = model.decisions.filter { !$0.isOpen && Calendar.current.isDateInToday($0.answeredAt ?? .distantPast) }
-            .sorted { ($0.answeredAt ?? .distantPast) > ($1.answeredAt ?? .distantPast) }
-        let _ = tick
-        VStack(alignment: .leading, spacing: 14) {
-            Button(action: back) { Text("‹ Needs you").ui(12.5, .semibold).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
-                .keyboardShortcut("[", modifiers: .command).help("Back to the queue (⌘[)")
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What you've allowed, and what you decided today").ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
-                Text("One Roof notes when a new decision in the same repo matches one of these; it never answers for you. Always allow also told the agent not to ask again, and the agent keeps that in its own settings: removing a rule here only removes One Roof's note.").ui(13).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(alignment: .top, spacing: 14) {
-                Card(padding: 14) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        MicroLabel("Always allow · \(rules.count) rule\(rules.count == 1 ? "" : "s")").padding(.bottom, 8)
-                        if rules.isEmpty { Text("None yet. Always allow on a decision adds one.").ui(12.5).foregroundStyle(t.text3.color) }
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(rules) { r in
-                                    HStack(spacing: 10) {
-                                        CheckGlyph(passed: true)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(r.pattern).ui(12.5, .semibold, mono: true).foregroundStyle(t.text.color).lineLimit(1)
-                                            Text(Workspace.repoLabel(for: r.repo) + " · added " + r.createdAt.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
-                                                .ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
-                                        }
-                                        Spacer()
-                                        RoofButton("Remove") { model.removeRule(pattern: r.pattern, repo: r.repo); tick += 1 }
-                                    }
-                                    .padding(.vertical, 7)
-                                    Hairline()
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Card(padding: 14) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        MicroLabel("Today · \(today.count) decided").padding(.bottom, 8)
-                        if today.isEmpty { Text("Nothing decided today.").ui(12.5).foregroundStyle(t.text3.color) }
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(today) { d in
-                                    HStack(spacing: 10) {
-                                        if d.answer == .deny { CheckGlyph(passed: false) } else if d.answer?.isAllow == true { CheckGlyph(passed: true) } else { Text("·").ui(12.5).foregroundStyle(t.text3.color) }
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(Self.verb(d) + " · " + (d.command ?? d.headline)).ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                                            Text((model.item(d.sessionId)?.session.name ?? "") + " · " + (d.answeredAt?.formatted(date: .omitted, time: .shortened) ?? ""))
-                                                .ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 7)
-                                    Hairline()
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 26)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(t.window.color)
-    }
-
-    static func verb(_ d: Decision) -> String {
-        switch d.answer {
-        case .allowOnce: return "Allowed once"
-        case .always: return "Always allowed"
-        case .deny: return "Denied"
-        case .reply: return "Replied" + (d.replyText.map { " · " + $0 } ?? "")
-        case nil: return "Decided"
-        }
-    }
-}
+// LAB-2048: Inbox › Rules (V2RulesPage, two side-by-side cards) became the Action log, UI/V2/V2ActionLog.swift.
 
 /// A loop's fences (NEW-24, C5.1), worded as what is enforced (✓) and what the loop is only told (•), from
 /// roofd's LoopEngine and the round prompt (OneRoofCore/Loops.swift): no claim stronger than the code.
@@ -200,7 +114,7 @@ struct V2LoopFences: View {
             fence(true, "Stops at \(loop.limits.maxRounds) rounds or \(Schedule.every(mins))" + (loop.limits.sameFailureStop > 0 ? ", or after \(loop.limits.sameFailureStop) rounds with the same failure" : ""))
             fence(true, "Each round starts in its own worktree, \(Workspace.repoLabel(for: loop.worktreePath)) on \(loop.branch)")
             fence(false, "Told never to push, merge or deploy, and never to touch your checkout (an instruction, not a technical block)")
-            fence(false, "Permission prompts come to Needs you, unless the agent already allows that command itself")
+            fence(false, "Permission prompts come to the Inbox, unless the agent already allows that command itself")
         }
     }
     private func fence(_ enforced: Bool, _ s: String) -> some View {

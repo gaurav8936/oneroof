@@ -54,16 +54,18 @@ struct MenuSpecV2 {
         }
         var v: [V2Item] = []
         v += place("Home", "place.home", K.home, .home)
-        v += place("Needs You", "place.needsYou", K.needsYou, .needsYou)
+        v += place("Inbox", "place.needsYou", K.needsYou, .needsYou)
+        v += [i("Action Log", "inbox.actionLog")]                                                                                      // ★ LAB-2047
+        v += place("History", "place.history", nil, .history)                                                                          // ★ LAB-2044 (⌃⌘9)
         v += place("Sessions", "place.sessions", K.focusTerminal, .sessions)
-        v += place("Work", "place.work", K.work, .work)
+        v += place("Projects", "place.work", K.work, .work)
         v += [i("Board", "work.board", K.board)]
-        v += place("Machine", "place.machine", K.machine, .machine)
+        v += place("Resources", "place.machine", K.machine, .machine)
         v += place("Loops", "place.loops", nil, .loops)
         v += place("Learn", "place.learn", K.learn, .learn)
-        v += place("Evals", "place.evals", nil, .evals)   // LAB-EVALS
+        v += place(EvalsDraft.isDraft ? EvalsDraft.menuTitle : "Evals", "place.evals", nil, .evals)   // LAB-EVALS; LAB-2072 draft
         v += [i("Subagents", "home.subagents", K.subagents), sep]
-        v += [i("Single", "layout.single", K.layouts[0]), i("Grid", "layout.grid", K.layouts[1]), i("Wall", "layout.wall", K.layouts[2]), i("Scroll", "layout.scroll", K.layouts[3]),   // ★ Scroll: LAB-1831
+        v += [i("Single", "layout.single", K.layouts[0]), i("Grid", "layout.grid", K.layouts[1]), i("Wall", "layout.wall", K.layouts[2]),   // LAB-2044: Scroll → History
               i("Focus: Step On", "focus.next", K.focusForward), i("Focus: Step Back", "focus.previous", K.focusBack), sep]                  // ★ back
         v += [i("Sessions Column", "toggle.sessions", K.sessionsColumn), i("Plan", "toggle.plan", K.plan),
               i("Terminal Panel", "toggle.centre", K.terminalPanel), i("Files Tab", "tab.files", K.filesTab),

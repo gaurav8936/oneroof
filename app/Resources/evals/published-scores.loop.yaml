@@ -1,0 +1,37 @@
+# published-scores: One Roof's weekly check of published best scores (LAB-2063, EVO-3). Ships OFF; copy it into your
+# loops folder (Settings › Loops) or `ae loops new published-scores --from <this file>`, shadow 3 nights, then live.
+name: published-scores
+origin: one-roof
+version: 1
+title: Published scores
+kind: reporter
+goal: Every benchmark in score_sources.json has this week's published best scores in published_scores.json, each with its
+  source link and the date it was checked; a source that fails keeps last week's values and records why.
+inputs:
+- public-web:7d
+check:
+  run: roof eval scores refresh --json
+  pass: exit 0
+stop:
+  when: check passes
+  max_iterations: 1
+  max_minutes: 5
+cost_cap:
+  usd: 0.0
+schedule:
+  cron: 0 6 * * 1
+agent:
+  use: none
+  profile: strict
+  headless: true
+act:
+  by: none
+  min_severity: high
+writes:
+- published_scores.json
+notify: on-breach
+guards:
+- inside-workspace
+notes: Reads public pages only (no key, nothing sent but the request). Values are parsed from the pages, never typed in;
+  the Evals place also refreshes them when they are older than 7 days and Explore › Scores is opened.
+dry_run: Fetches every source and prints how many scores each would store; writes nothing.

@@ -91,6 +91,8 @@ final class AppModel: ObservableObject {
     @Published var v2UndoRule: (decision: Decision, window: String)? = nil
     /// Self-test: the Needs you entry to show (a decision id), as a click in its list would.
     @Published var needsPick: String? = nil
+    /// LAB-2042 · self-test only (ONEROOF_SELFTEST_INBOX): asks of the demo sessions, answered in place (no pane).
+    @Published var selfTestDecisions: [Decision] = []
     /// Objectives typed by the owner, with their plans.
     @Published var objectives: [Objective] = []
     @Published var issues: [String: [LinearIssue]] = [:]     // project id → tickets
@@ -1182,6 +1184,7 @@ extension Notification.Name {
     static let openFoundations = Notification.Name("oneroof.openFoundations")
     static let openSetup = Notification.Name("oneroof.openSetup")
     static let newWorkItem = Notification.Name("oneroof.newWorkItem")
+    static let projectsFind = Notification.Name("oneroof.projectsFind")   // LAB-2050: ⌘F in Projects focuses its filter
     static let newObjective = Notification.Name("oneroof.newObjective")
     static let panelCommand = Notification.Name("oneroof.panelCommand")
     static let shortcutsChanged = Notification.Name("oneroof.shortcutsChanged")

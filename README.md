@@ -94,17 +94,17 @@ step stays a real terminal. Subagents sit beside it with their own captions.
 
 <img src="site/shots/session-daylight.png" alt="A session: what you asked, steps, chapters and subagents" width="960">
 
-### Everything that needs you, with the reason in front of you. <sub>Needs you · ⌘I</sub>
-Every agent waiting on you, oldest first: why it wants to do it, what it touches, the risk, what happens if you say
+### Everything that needs you, with the reason in front of you. <sub>Inbox · ⌘I</sub>
+Every agent waiting on you, one dark block each, newest at the top, answered in place: why it wants to do it, what it touches, the risk, what happens if you say
 no, and every option its own prompt offers, in its words, one button each. A question shows as the agent drew it,
 with its own answers. A turn that finished waits here too, with what the agent said last and a reply box, so you can
-keep it going without opening the terminal. Nothing is approved for you, and nothing covers the terminal: you can
+keep it going without opening the terminal; paste a screenshot into a reply and the agent reads it. Nothing is approved for you, and nothing covers the terminal: you can
 always answer there instead.
 
-<img src="site/shots/decisions-daylight.png" alt="Needs you: Kimi asks to use the network, with its reason, risk and all four of its own options; finished turns wait in the list" width="960">
+<img src="site/shots/decisions-daylight.png" alt="The Inbox (was Needs you): Kimi asks to use the network, with its reason, risk and all four of its own options; finished turns wait in the list" width="960">
 
 ### Open-source agents, on your own API key. <sub>OpenCode · Goose</sub>
-OpenCode and Goose run beside the others in the same terminals, Needs you and handoffs. Pick a hosted model (tested
+OpenCode and Goose run beside the others in the same terminals, Inbox and handoffs. Pick a hosted model (tested
 with Together's GLM-5.3-Flash; OpenRouter and Fireworks connect too), point One Roof at your key file, and set a cap
 per session and in total: a session stops before it spends past it. Your key never goes into a prompt, a log or the repo.
 

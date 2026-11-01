@@ -24,6 +24,23 @@ only; the few steps that need Inspect re-run this file under the engine's own py
                                    repo's fix history (evalset.py); the catalog lists it under "Your evals"
   judge new|label|build|agreement|list|show   a model as judge, measured against your own pass/fail labels (judge.py)
   lmeval setup | run <task> --model openai-api/<svc>/<name> --base-url URL   the same benchmark in lm-evaluation-harness
+  overview [--since ISO] [--json]   your scorecard: each eval's contestants (agents first), what changed, running, a next step
+  anatomy <benchmark> [--json]      what a benchmark is made of: questions, answer, graded by, chance, how one is scored
+  items <task> [--limit 50] [--offset K] [--filter all|seen|wrong|random] [--seed N] [--download] [--json]
+                                   its real questions on this Mac (first open downloads the dataset), one dot per run
+  item <task> <id> [--json]        one question: reference, what the model sees, how it's marked, each run's answer
+  item-results <task> <id> [--json]   each run's answer to one question
+  scores show <benchmark> | refresh [--json]   published best scores, one official source each, with date
+  run <your set's task file> --agent claude_code|codex_cli --seat C1|CX [--seat-limit 90]   the agent CLI on your
+                                   subscription seat answers each case in a fresh worktree at the commit before the fix
+                                   (agent_runner.py); never an API key; waits while the seat is over its limit, or
+                                   while its use is unknown until you say run-anyway
+  run-anyway <run> [--json]        a seat run waiting with "seat use unknown" goes on without knowing the seat's use
+                                   (the owner's explicit choice, recorded in the run)
+  power --n N [--epochs E] [--p 0.5] [--json]   the ± points a run of N questions × E attempts can tell apart
+  compare <runA> <runB> [--json]   paired difference over shared questions, verdict a|b|noise, the questions only one solved
+  leaderboard <task | set@vN> [--json]   latest finished run per contestant, the floor, judge agreement
+  history <task | set@vN> [--json]       every finished run per contestant over time, with possible drops
   Runs started with --background wait for a free slot (ONEROOF_EVALS_SLOTS, default 2), so a queue of runs survives
   closing One Roof.
 
@@ -70,6 +87,8 @@ PROVIDER_ENV = {
     "mistral": "MISTRAL_API_KEY", "grok": "XAI_API_KEY", "groq": "GROQ_API_KEY", "deepseek": "DEEPSEEK_API_KEY",
     # Cloud sandboxes (not models): where code-running benchmarks execute. Modal signs in with `modal setup` instead.
     "daytona": "DAYTONA_API_KEY", "e2b": "E2B_API_KEY",
+    # Hugging Face (not a model provider here): gated datasets such as HLE need a token after you accept their terms.
+    "hf": "HF_TOKEN",
 }
 # Where a benchmark that runs code executes: this Mac's Docker, or a cloud sandbox (inspect-sandboxes).
 WHERE = {"local": None, "daytona": "daytona", "modal": "modal"}
@@ -311,7 +330,8 @@ def cmd_doctor(argv):
     pr = read_json(PRICES, {})
     rep = {"engine": info, "uv": find_uv(), "docker": dk, "providers": prov,
            "prices_checked": pr.get("checked"), "runs": len(list(RUNS.glob("*/run.json"))) if RUNS.exists() else 0,
-           "where": {w: where_ready(w) if w != "local" else dk.startswith("running") for w in WHERE}}
+           "where": {w: where_ready(w) if w != "local" else dk.startswith("running") for w in WHERE},
+           "agents": agents_state()}
     lines = [f"engine    {'ready' if info.get('ready') else 'NOT INSTALLED (roof eval setup)'}"
              + (f" · inspect-ai {info.get('inspect_ai')} · inspect-evals {info.get('inspect_evals')}" if info.get("ready") else ""),
              f"folder    {EVALS}", f"uv        {rep['uv'] or 'missing (brew install uv)'}", f"docker    {dk}",
@@ -377,7 +397,7 @@ def run_env(model: str) -> dict:
         if k:
             env[var] = k
     p = provider_of(model)
-    if p in PROVIDER_ENV and not env.get(PROVIDER_ENV[p]):
+    if p in PROVIDER_ENV and not model.startswith(FREE_PREFIXES) and not env.get(PROVIDER_ENV[p]):
         die(f"no key for {p}: roof eval providers set {p} --key-file PATH", 6)
     env.setdefault("INSPECT_LOG_LEVEL", "warning")
     return env
@@ -556,8 +576,26 @@ def cmd_prices(argv):
         f"{len(doc.get('models', {}))} model prices from {doc.get('source')} · checked {doc.get('checked')}")
 
 
+def seat_estimate_row(task: str, agent: str, limit: int, epochs: int, seat_limit: float | None = None) -> dict:
+    """An agent on your seat: no dollars, a share of the seat's five-hour window (HP EV-1)."""
+    ar = _sibling("agent_runner")
+    if agent not in ar.SEAT_AGENTS:
+        die(f"{AGENT_NAMES.get(agent, agent)} cannot run on a seat yet", 2, True)
+    s = ar.seat_estimate(agent, limit, epochs, seat_limit)
+    return dict(s, task=task_name(task), model=f"seat/{s['seat']}", agent=agent, samples=limit, epochs=epochs, calls=limit * epochs,
+                tokens_per_sample={"input": 0, "output": 0}, token_basis="a share of your seat's 5-hour window, not tokens",
+                usd=0.0, model_usd=0.0, cap_check_usd=0.0, grader={"models": [], "usd": 0.0, "basis": "none"}, where="local")
+
+
 def cmd_estimate(argv):
-    pos, o = args_of(argv, {"--model": "", "--limit": "50", "--epochs": "1", "--where": "local", "--agent": "", "--json": False})
+    pos, o = args_of(argv, {"--model": "", "--limit": "50", "--epochs": "1", "--where": "local", "--agent": "", "--seat": "",
+                            "--seat-limit": "", "--json": False})
+    if len(pos) == 1 and o["seat"]:
+        e = seat_estimate_row(pos[0], o["agent"], int(o["limit"]), int(o["epochs"]),
+                              float(o["seat_limit"]) if o["seat_limit"] else None)
+        out(e, o["json"], f"{e['task']} × {AGENT_NAMES.get(o['agent'], o['agent'])} on {e['seat']}: {e['calls']} cases · about "
+            f"{e['seat_share'] * 100:.1f} % of the seat's 5-hour window ({e['seat_basis']})")
+        return
     if len(pos) != 1 or not o["model"]:
         die("estimate <task> --model M [--limit N] [--epochs E] [--where local|daytona|modal]", 2, o["json"])
     if o["where"] not in WHERE:
@@ -612,6 +650,8 @@ def inspect_cmd(r: dict) -> list[str]:
          "--log-dir", r["dir"], "--display", "plain", "--no-log-images"]
     if r.get("epochs"):
         c += ["--epochs", str(r["epochs"])]
+    if r.get("sample_id"):
+        c += ["--sample-id", str(r["sample_id"])]   # LAB-2064: Run just this one
     for a in r.get("task_args") or []:
         c += ["-T", a]
     if r.get("parallel"):
@@ -666,7 +706,10 @@ def pid_alive(pid: int | None) -> bool:
 def cmd_run(argv):
     pos, o = args_of(argv, {"--model": "", "--limit": "50", "--epochs": "", "--seed": "42", "--temperature": "",
                             "--task-args": "", "--where": "local", "--agent": "", "--parallel": "", "--max-cost": "2", "--allow-unknown-cost": False, "--background": False,
+                            "--sample-id": "", "--seat": "", "--seat-limit": "", "--wait": False,
                             "--json": False})
+    if len(pos) == 1 and o["seat"]:
+        return run_on_seat(pos[0], o)
     if len(pos) != 1 or not o["model"]:
         die("run <task> --model M [--limit 50] [--epochs 1] [--seed 42] [--temperature T] [--max-cost 2] [--background]",
             2, o["json"])
@@ -678,6 +721,8 @@ def cmd_run(argv):
             die(f"no task file {task}", 2, o["json"])
     # Epochs: the benchmark's own default unless asked (MBPP needs 2 for pass@2). Estimates assume 1 when unset.
     limit, epochs, cap = int(o["limit"]), (int(o["epochs"]) if o["epochs"] else None), float(o["max_cost"])
+    if o["sample_id"]:
+        limit = len([x for x in o["sample_id"].split(",") if x])   # one question (or a few): priced and run at that size
     if limit < 1 or (epochs is not None and epochs < 1) or cap < 0:
         die("limit and epochs must be ≥ 1 and the cap ≥ 0", 2, o["json"])
     if o["where"] not in WHERE:
@@ -709,6 +754,7 @@ def cmd_run(argv):
          "seed": int(o["seed"]) if o["seed"] != "" else None,
          "temperature": float(o["temperature"]) if o["temperature"] != "" else None,
          "task_args": [a for a in o["task_args"].split(",") if a], "where": o["where"], "agent": o["agent"] or None,
+         "sample_id": o["sample_id"] or None,
          # Containers at once: agent runs start a container per question; ~10 emulated x86 SWE-bench containers on a Mac
          # made sandbox commands time out (LAB-1993), so sandboxed agent runs default to 2.
          "parallel": int(o["parallel"]) if o["parallel"] else (2 if o["agent"] else None), "max_cost": cap, "estimate": est, "status": "queued", "created": now(), "dir": str(d)}
@@ -743,6 +789,55 @@ def cmd_run(argv):
     sys.exit(0 if rr["status"] == "done" else 1)
 
 
+def run_on_seat(task: str, o: dict):
+    """HP EV-1: an agent CLI on your subscription seat answers your own set, one fresh worktree per case. Refused before
+    it starts when the seat would pass its limit (unless --wait: then it queues and waits); never fails mid-run for it."""
+    ar = _sibling("agent_runner")
+    agent = o["agent"]
+    if agent not in ar.SEAT_AGENTS:
+        why = (ar.NOT_YET.get(agent) or (agent, agent, "not an agent One Roof knows"))[2]
+        die(f"{AGENT_NAMES.get(agent, agent)} cannot run on a seat: {why}", 2, o["json"])
+    task = str(Path(os.path.expanduser(task)).resolve())
+    sname, sver = set_of(task)
+    if not sname or not os.path.isfile(task):
+        die("agents on your seats answer your own eval sets; for a benchmark, run the agent on an API model "
+            "(--agent with --model)", 2, o["json"])
+    if not ar.find_bin(agent):
+        die(f"{ar.SEAT_AGENTS[agent]['bin']} is not installed on this Mac", 6, o["json"])
+    meta, cases = ar.load_set(task)
+    limit = min(int(o["limit"]), len(cases)) if o["limit"] else len(cases)
+    if o["sample_id"]:
+        limit = len([x for x in o["sample_id"].split(",") if x])
+    epochs = int(o["epochs"]) if o["epochs"] else None
+    lim = float(o["seat_limit"]) if o["seat_limit"] else None
+    est = seat_estimate_row(task, agent, limit, epochs or 1, lim)
+    if not est["seat_fits"] and not o["wait"]:
+        die(f"{est['seat']} is at {est['seat_used']:.0f} % of its 5-hour window; this run needs about "
+            f"{est['seat_share'] * 100:.0f} % more and would pass the {est['seat_limit']:.0f} % limit. Wait for the window "
+            "to reset, or start it with --wait to queue it", 9, o["json"])
+    es = _sibling("evalset")
+    rid = new_run_id(task)
+    d = RUNS / rid
+    d.mkdir(parents=True)
+    r = {"id": rid, "task": task_name(task), "task_ref": task, "model": f"seat/{est['seat']}", "limit": limit, "epochs": epochs,
+         "seed": None, "temperature": None, "task_args": [], "where": "local", "agent": agent, "seat": est["seat"],
+         "seat_limit": est["seat_limit"], "runner": "seat", "sample_id": o["sample_id"] or None, "max_cost": 0.0,
+         "repo_path": es.repo_of(meta), "estimate": est, "status": "queued", "created": now(), "dir": str(d),
+         "cap_mode": "no API credit: the agent runs on your subscription seat"}
+    write_json(d / "run.json", r)
+    env = ar.strip_keys(dict(os.environ))
+    if o["background"]:
+        log = open(d / "console.log", "ab")
+        p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_worker", rid], stdout=log, stderr=log,
+                             stdin=subprocess.DEVNULL, start_new_session=True, env=env, cwd=str(d))
+        out({"id": rid, "pid": p.pid, "estimate": est}, o["json"], f"started {rid} in the background (pid {p.pid})")
+        return
+    rc = work(rid)
+    rr = read_json(d / "run.json")
+    out(dict(rr, results=results_for(rid)), o["json"], render_result(rid))
+    sys.exit(0 if rc == 0 else 1)
+
+
 def set_status(d: Path, **kw):
     r = read_json(d / "run.json", {})
     r.update(kw)
@@ -766,6 +861,13 @@ def final_status(rc: int, log_status: str | None, cancelled: bool) -> str:
 
 def work(rid: str, env: dict | None = None, retry_log: str | None = None) -> int:
     d = RUNS / rid
+    if read_json(d / "run.json", {}).get("runner") == "seat":   # an agent on your seat: no Inspect, no API key
+        rc = _sibling("agent_runner").work(rid)
+        index()
+        r = read_json(d / "run.json", {})
+        if r.get("status") != "done" and r.get("error"):
+            set_status(d, hint=hint_for(r["error"]))
+        return rc
     r = set_status(d, status="running", started=now(), pid=os.getpid())
     cmd = [str(INSPECT), "eval-retry", retry_log, "--log-dir", str(d)] if retry_log else inspect_cmd(r)
     with open(d / "console.log", "ab") as log:
@@ -847,12 +949,31 @@ def cmd_cancel(argv):
     # Interrupt Inspect only: it writes a partial 'cancelled' log, and the worker (left alive) records the outcome.
     if r.get("status") == "running" and pid_alive(r.get("child")):
         try:
-            os.kill(r["child"], signal.SIGINT)
+            if r.get("child_group"):   # an agent on a seat: its whole process group
+                os.killpg(os.getpgid(r["child"]), signal.SIGTERM)
+            else:
+                os.kill(r["child"], signal.SIGINT)
         except OSError:
             pass
-    if r.get("status") in ("queued", "running", "interrupted") and not pid_alive(r.get("pid")):
+    if r.get("status") in ("queued", "running", "waiting", "interrupted") and not pid_alive(r.get("pid")):
         set_status(d, status="cancelled", finished=now())
     out({"id": argv[0], "cancelled": True}, o["json"], f"cancel sent to {argv[0]}")
+
+
+def cmd_run_anyway(argv):
+    """QA (M9): the owner's Run anyway for a seat run waiting because the seat's use is unknown or stale."""
+    _, o = args_of(argv[1:], {"--json": False})
+    if not argv:
+        die("run-anyway <run>", 2, o["json"])
+    d = run_dir(argv[0])
+    r = read_json(d / "run.json", {})
+    if r.get("runner") != "seat":
+        die(f"{argv[0]} is not an agent run on a seat", 2, o["json"])
+    if r.get("status") in ("done", "failed", "cancelled"):
+        die(f"{argv[0]} already {r['status']}", 3, o["json"])
+    r = _sibling("agent_runner").run_anyway(d)
+    out({"id": argv[0], "seat_unknown_ok": True, "at": r.get("seat_unknown_ok_at")}, o["json"],
+        f"{argv[0]} goes on without knowing {r.get('seat')}'s use (from the next case)")
 
 
 def latest_log(d: Path) -> Path | None:
@@ -865,6 +986,17 @@ def cmd_resume(argv):
     if not argv:
         die("resume <run>", 2)
     d = run_dir(argv[0])
+    if read_json(d / "run.json", {}).get("runner") == "seat":   # answered cases are kept; the rest are asked again
+        if read_json(d / "run.json", {}).get("status") in ("running", "waiting", "queued") and pid_alive(read_json(d / "run.json", {}).get("pid")):
+            die(f"{argv[0]} is still going", 3, o["json"])
+        (d / "CANCEL").unlink(missing_ok=True)
+        set_status(d, status="queued", error=None, hint=None, finished=None)
+        logf = open(d / "console.log", "ab")
+        env = _sibling("agent_runner").strip_keys(dict(os.environ))
+        p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_worker", argv[0]], stdout=logf, stderr=logf,
+                             stdin=subprocess.DEVNULL, start_new_session=True, env=env, cwd=str(d))
+        out({"id": argv[0], "pid": p.pid}, o["json"], f"resuming {argv[0]} (pid {p.pid}); answered cases are kept")
+        return
     log = latest_log(d)
     if not log:
         die("nothing to resume: the run never wrote a log; start it again", 3)
@@ -882,12 +1014,23 @@ def cmd_status(argv):
     rows = []
     for f in sorted(RUNS.glob("*/run.json")) if RUNS.exists() else []:
         r = read_json(f, {})
-        if r.get("status") in ("running", "queued") and r.get("pid") and not pid_alive(r.get("pid")):
+        if r.get("status") in ("running", "queued", "waiting") and r.get("pid") and not pid_alive(r.get("pid")):
             r = set_status(f.parent, status="cancelled" if (f.parent / "CANCEL").exists() else "interrupted")
-        rows.append({k: r.get(k) for k in ("id", "task", "model", "limit", "epochs", "status", "created", "finished")}
-                    | {"progress": progress(f.parent)})
+        rows.append(status_row(r, f.parent))
     out(rows, o["json"], "\n".join(f"{r['id']:<44} {r['model']:<36} {r['status']:<11} {r['progress']}" for r in rows)
         or "no runs yet")
+
+
+def status_row(r: dict, d: Path) -> dict:
+    """A queue row (HP EV-2): who is running, how far, and why it stopped (the last line of the error and what to do)."""
+    err = r.get("error")
+    last = redact(err.strip().splitlines()[-1][:300]) if err and err.strip() else None
+    sname, sver = set_of(r.get("task_ref") or "")
+    return dict({k: r.get(k) for k in ("id", "task", "model", "limit", "epochs", "status", "created", "finished", "agent",
+                                       "seat", "waiting", "where", "seat_unknown_ok")},
+                progress=progress(d), error=last, hint=(r.get("hint") or hint_for(err)) if last else None,
+                contestant=contestant(r.get("model"), r.get("agent")), set_name=sname, set_version=sver,
+                task_ref=r.get("task_ref"))
 
 
 def progress(d: Path) -> str:
@@ -895,7 +1038,14 @@ def progress(d: Path) -> str:
     small batches while running); Inspect's plain display ('Samples: 12/50') is the fallback."""
     r = read_json(d / "run.json", {})
     total = (r.get("limit") or 0) * (r.get("epochs") or 1)
+    if r.get("runner") == "seat":   # an agent on a seat: one line per answered case
+        p = d / "answers.jsonl"
+        n = len([x for x in p.read_text().splitlines() if x.strip()]) if p.exists() else 0
+        return f"{n}/{total}" if total else str(n)
     log = latest_log(d)
+    if not log and (r.get("summary") or {}).get("samples_done") is not None:   # lm-eval: no Inspect log, a summary
+        n = r["summary"]["samples_done"]
+        return f"{n}/{total}" if total else str(n)
     if log:
         try:
             with zipfile.ZipFile(log) as z:
@@ -918,9 +1068,12 @@ CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, task TEXT, task_version TE
   started TEXT, finished TEXT, limit_n INTEGER, epochs INTEGER, seed INTEGER, temperature REAL, max_cost REAL,
   est_cost REAL, cost REAL, input_tokens INTEGER, output_tokens INTEGER, samples_total INTEGER, samples_done INTEGER,
   dataset TEXT, dataset_size INTEGER, inspect_ai TEXT, inspect_evals TEXT, log_path TEXT, framework TEXT,
-  log_status TEXT, error TEXT, where_run TEXT, sample_seconds REAL, agent TEXT);
+  log_status TEXT, error TEXT, where_run TEXT, sample_seconds REAL, agent TEXT, set_name TEXT, set_version INTEGER);
 CREATE TABLE IF NOT EXISTS scores (run_id TEXT, scorer TEXT, metric TEXT, value REAL,
   PRIMARY KEY (run_id, scorer, metric));
+-- LAB-2064: one row per question and attempt, so per-question dots, solve counts and paired compares read no logs.
+CREATE TABLE IF NOT EXISTS sample_scores (run_id TEXT, sample_id TEXT, epoch INTEGER, score REAL,
+  PRIMARY KEY (run_id, sample_id, epoch));
 CREATE TABLE IF NOT EXISTS model_usage (run_id TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cost REAL,
   PRIMARY KEY (run_id, model));
 """
@@ -937,10 +1090,21 @@ for p in sys.argv[1:]:
     u = l.stats.model_usage or {}
     cost = [x.total_cost for x in u.values() if x.total_cost is not None]
     err = (l.error.message if l.error else None)
-    secs = 0.0
+    secs, samples = 0.0, []
     try:
         from inspect_ai.log import read_eval_log_sample_summaries
-        secs = sum((x.total_time or 0) for x in read_eval_log_sample_summaries(p))
+        from inspect_ai.scorer import value_to_float
+        to_f = value_to_float()
+        for x in read_eval_log_sample_summaries(p):
+            secs += x.total_time or 0
+            sc = next(iter((x.scores or {}).values()), None)
+            v = None
+            if sc is not None and not isinstance(sc.value, dict):
+                try:
+                    v = to_f(sc.value)
+                except Exception:
+                    v = None
+            samples.append([str(x.id), x.epoch, v])
     except Exception:
         pass
     usage = [{"model": k, "input_tokens": x.input_tokens + (x.input_tokens_cache_read or 0) + (x.input_tokens_cache_write or 0),
@@ -952,10 +1116,20 @@ for p in sys.argv[1:]:
       "samples_done": l.results.completed_samples if l.results else 0,
       "input_tokens": sum(x.input_tokens + (x.input_tokens_cache_read or 0) + (x.input_tokens_cache_write or 0) for x in u.values()),
       "output_tokens": sum(x.output_tokens for x in u.values()),
-      "cost": sum(cost) if cost else None, "usage": usage, "sample_seconds": secs,
+      "cost": sum(cost) if cost else None, "usage": usage, "sample_seconds": secs, "samples": samples,
       "scores": [{"scorer": s.name, "metrics": {k: m.value for k, m in s.metrics.items()}} for s in (l.results.scores if l.results else [])]}
 print(json.dumps(out))
 """
+
+
+SET_PATH = re.compile(r"/sets/([^/]+)/v(\d+)/[^/]+\.py$")
+
+
+def set_of(task_ref: str) -> tuple:
+    """Your own eval set's name and version from its task file path (<evals>/sets/<name>/v<N>/<task>.py), else (None, None).
+    Runs keep the version they ran on, so scores are only ever compared within one frozen version (LAB-2062, LAB-2065)."""
+    m = SET_PATH.search(task_ref or "")
+    return (m.group(1), int(m.group(2))) if m else (None, None)
 
 
 def index() -> int:
@@ -988,7 +1162,8 @@ def index() -> int:
             r = read_json(d / "run.json", {})
             h = heads.get(str(logs[d]), {}) if logs[d] else (r.get("summary") or {})   # lm-eval runs: no Inspect log
             pk = h.get("packages") or {}
-            db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+            sname, sver = set_of(r.get("task_ref") or "")
+            db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
                 r.get("id"), r.get("task"), h.get("task_version"), r.get("model"), r.get("status"),
                 h.get("started") or r.get("started"), h.get("finished") or r.get("finished"), r.get("limit"),
                 r.get("epochs"), r.get("seed"), r.get("temperature"), r.get("max_cost"),
@@ -996,7 +1171,10 @@ def index() -> int:
                 h.get("samples_total"), h.get("samples_done"), h.get("dataset"), h.get("dataset_size"),
                 pk.get("inspect_ai"), pk.get("inspect_evals"), str(logs[d]) if logs[d] else r.get("results_file"),
                 r.get("framework") or "inspect",
-                h.get("status"), redact(h.get("error") or r.get("error")), r.get("where") or "local", h.get("sample_seconds"), r.get("agent")))
+                h.get("status"), redact(h.get("error") or r.get("error")), r.get("where") or "local", h.get("sample_seconds"), r.get("agent"),
+                sname, sver))
+            for sid, ep, v in h.get("samples") or []:
+                db.execute("INSERT OR REPLACE INTO sample_scores VALUES (?,?,?,?)", (r.get("id"), sid, ep, v))
             for mu in h.get("usage", []):
                 db.execute("INSERT OR REPLACE INTO model_usage VALUES (?,?,?,?,?)",
                            (r.get("id"), mu["model"], mu["input_tokens"], mu["output_tokens"], mu["cost"]))
@@ -1069,10 +1247,42 @@ def results_for(rid: str | None = None) -> list[dict]:
                 r["metrics"].append({"scorer": s["scorer"], "metric": s["metric"], "value": v, "stderr": se,
                                      "n": n, "ci95": [round(lo, 4), round(hi, 4)], "ci_method": how})
     for r in runs:
+        r["contestant"] = contestant(r.get("model"), r.get("agent"))
+        r["task_ref"] = (read_json(RUNS / str(r["id"]) / "run.json", {}) or {}).get("task_ref")   # Run again (LAB-2069)
         a = judge_agreement(r)
         if a:
             r["judge_agreement"] = a
     return runs
+
+
+# ── contestants (HP EV-2): agents first, then models, then models on this Mac, then the no-model baseline ─────────────
+AGENT_NAMES = {"claude_code": "Claude Code", "codex_cli": "Codex", "opencode": "OpenCode", "kimi_code": "Kimi",
+               "gemini_cli": "Gemini CLI", "antigravity": "Antigravity", "mini_swe_agent": "mini-SWE-agent"}
+LOCAL_PREFIXES = ("ollama/", "openai-api/local/", "hf/", "llama-cpp-python/", "vllm/", "sglang/")
+KIND_RANK = {"agent": 0, "model": 1, "local": 2, "baseline": 3}
+
+
+def short_model(model: str) -> str:
+    if not model or model.startswith(FREE_PREFIXES):
+        return model or "?"
+    return model.split("/", 1)[-1]
+
+
+def contestant(model, agent) -> dict:
+    """Who is being measured: an agent (its CLI is the subject, the model its brain), a model (API), a model on this Mac,
+    or the baseline (the mock stand-in that always gives the same answer)."""
+    model = model or ""
+    if agent and model.startswith("seat/"):   # the agent on your subscription seat (HP EV-1)
+        return {"kind": "agent", "id": f"{agent}@{model}", "agent": agent, "model": model, "seat": model[5:],
+                "name": f"{AGENT_NAMES.get(agent, agent)} · {model[5:]}"}
+    if agent:
+        return {"kind": "agent", "id": f"{agent}@{model}", "agent": agent, "model": model,
+                "name": f"{AGENT_NAMES.get(agent, agent)} · {short_model(model)}"}
+    if model.startswith("mockllm/"):
+        return {"kind": "baseline", "id": model, "model": model, "name": model}
+    if model.startswith(LOCAL_PREFIXES):
+        return {"kind": "local", "id": model, "model": model, "name": short_model(model)}
+    return {"kind": "model", "id": model, "model": model, "name": short_model(model)}
 
 
 def render_result(rid: str) -> str:
@@ -1136,6 +1346,7 @@ for s in read_eval_log_samples(sys.argv[1], all_samples_required=False):
       "answer": text(first.answer if first else None, 200), "target": text(s.target, 200),
       "input": text(s.input, 400), "output": text(s.output.completion if s.output else None, 400),
       "explanation": text(first.explanation if first else None, 600),
+      "item": (s.metadata or {}).get("item"),
       "time": s.total_time, "input_tokens": sum(x.input_tokens for x in u.values()),
       "output_tokens": sum(x.output_tokens for x in u.values()), "error": text(s.error.message if s.error else None, 400)})
 print(json.dumps(rows))
@@ -1160,21 +1371,46 @@ else:
 """
 
 
+def sample_rows(rid: str, as_json: bool = False) -> list[dict]:
+    """Every answer of a run: from its Inspect log; an agent on a seat keeps its answers in answers.jsonl; a run with
+    neither (lm-eval) has only the per-question scores of the index."""
+    d = run_dir(rid)
+    log = latest_log(d)
+    if log:
+        need_engine(as_json)
+        r = subprocess.run([str(VPY), "-c", _SAMPLES_CODE, str(log)], capture_output=True, text=True)
+        if r.returncode != 0:
+            die(f"could not read the log: {r.stderr.strip()[-300:]}", 8, as_json)
+        return json.loads(r.stdout)
+    ans = d / "answers.jsonl"
+    if ans.exists():
+        rows = []
+        for line in ans.read_text().splitlines():
+            try:
+                a = json.loads(line)
+            except ValueError:
+                continue
+            rows.append({"id": a["id"], "epoch": a["epoch"], "score": a.get("score"), "answer": a.get("answer"),
+                         "target": a.get("target"), "input": a.get("input"), "output": (a.get("output") or "")[:400],
+                         "explanation": a.get("explanation"), "time": a.get("time"), "error": a.get("error")})
+        return rows
+    if DB.exists():
+        with sqlite3.connect(DB) as db:
+            got = db.execute("SELECT sample_id, epoch, score FROM sample_scores WHERE run_id=? ORDER BY sample_id, epoch",
+                             (rid,)).fetchall()
+        if got:
+            return [{"id": a, "epoch": b, "score": c} for a, b, c in got]
+    die("This run has no log yet", 3, as_json)
+
+
 def cmd_samples(argv):
     pos, o = args_of(argv, {"--json": False})
     if len(pos) != 1:
         die("samples <run>", 2, o["json"])
-    need_engine(o["json"])
-    log = latest_log(run_dir(pos[0]))
-    if not log:
-        die("this run has no log yet", 3, o["json"])
-    r = subprocess.run([str(VPY), "-c", _SAMPLES_CODE, str(log)], capture_output=True, text=True)
-    if r.returncode != 0:
-        die(f"could not read the log: {r.stderr.strip()[-300:]}", 8, o["json"])
-    rows = json.loads(r.stdout)
+    rows = with_verdicts(pos[0], sample_rows(pos[0], o["json"]))
     for x in rows:
         x["error"] = redact(x.get("error"))
-    out(rows, o["json"], "\n".join(f"{x['id']:<24} e{x['epoch']} score={x['score']} answer={x['answer']!r} target={x['target']!r}"
+    out(rows, o["json"], "\n".join(f"{x['id']:<24} e{x['epoch']} score={x.get('score')} answer={x.get('answer')!r} target={x.get('target')!r}"
                                    for x in rows) or "no samples yet")
 
 
@@ -1182,10 +1418,27 @@ def cmd_sample(argv):
     pos, o = args_of(argv, {"--epoch": "1", "--json": False})
     if len(pos) != 2:
         die("sample <run> <id> [--epoch N]", 2, o["json"])
+    d = run_dir(pos[0])
+    log = latest_log(d)
+    if not log and (d / "answers.jsonl").exists():   # an agent on a seat: the question it got and its final message
+        a = next((x for x in sample_rows(pos[0], o["json"]) if x["id"] == pos[1] and str(x["epoch"]) == o["epoch"]), None)
+        if not a:
+            die("no such sample", 3, o["json"])
+        full = json.loads(next(line for line in (d / "answers.jsonl").read_text().splitlines()
+                               if json.loads(line)["id"] == pos[1] and str(json.loads(line)["epoch"]) == o["epoch"]))
+        r0 = read_json(d / "run.json", {})
+        ask = _sibling("agent_runner").SYSTEM.get((read_json(Path(r0.get("task_ref", "")).parent / "set.json", {}) or {}).get("kind"), "")
+        msgs = [{"role": "system", "text": ask, "tool_calls": []}, {"role": "user", "text": full.get("input") or "", "tool_calls": []},
+                {"role": "assistant", "text": full.get("output") or full.get("error") or "", "tool_calls": []}]
+        d2 = {"id": pos[1], "epoch": int(o["epoch"]), "target": full.get("target"), "messages": msgs,
+              "scores": {"fix_located": {"value": "C" if full.get("score") else "I", "answer": full.get("answer"),
+                                         "explanation": full.get("explanation")}},
+              "time": full.get("time"), "error": full.get("error")}
+        out(d2, o["json"], "\n\n".join(f"[{m['role']}]\n{m['text']}" for m in msgs))
+        return
     need_engine(o["json"])
-    log = latest_log(run_dir(pos[0]))
     if not log:
-        die("this run has no log yet", 3, o["json"])
+        die("This run has no log yet", 3, o["json"])
     r = subprocess.run([str(VPY), "-c", _SAMPLE_CODE, str(log), pos[1], o["epoch"]], capture_output=True, text=True)
     if r.returncode != 0:
         die(f"could not read the log: {r.stderr.strip()[-300:]}", 8, o["json"])
@@ -1193,6 +1446,299 @@ def cmd_sample(argv):
     if d.get("error"):
         d["error"] = redact(d["error"])
     out(d, o["json"], "\n\n".join(f"[{m['role']}]\n{m['text']}" for m in d.get("messages", [])) or json.dumps(d))
+
+
+# ── LAB-2067/2068/2069 (stage 2): agents, power, compare, leaderboard, history, verdicts per answer ──────────────────
+def agents_state() -> list[dict]:
+    try:   # doctor must answer even when the agent runner cannot look at the seats
+        return _sibling("agent_runner").agents_state()
+    except Exception as e:
+        print(f"roof eval: agents were skipped: {e}", file=sys.stderr)
+        return []
+
+
+def power(n: int, epochs: int = 1, p: float = 0.5) -> dict:
+    """HP EV-9: the ± points a run of n questions × epochs attempts can tell apart (Wilson half-width at p): differences
+    smaller than this are noise. Every contestant answers the same questions, so they compare question by question."""
+    total = max(n * max(epochs, 1), 1)
+    lo, hi, _ = interval(p, total, None, True)
+    half = (hi - lo) / 2
+    return {"n": n, "epochs": max(epochs, 1), "p": p, "method": "wilson", "plus_minus_points": round(half * 100, 1)}
+
+
+def cmd_power(argv):
+    _, o = args_of(argv, {"--n": "", "--epochs": "1", "--p": "0.5", "--paired": False, "--json": False})
+    if not o["n"]:
+        die("power --n N [--epochs E] [--p 0.5]", 2, o["json"])
+    r = power(int(o["n"]), int(o["epochs"] or 1), float(o["p"]))
+    r["paired"] = bool(o["paired"])
+    out(r, o["json"], f"{r['n']} questions × {r['epochs']} attempts: about ±{r['plus_minus_points']:.0f} points")
+
+
+def solved(means: dict) -> set:
+    return {k for k, v in means.items() if v is not None and v >= 0.5}
+
+
+def compare_runs(a: str, b: str) -> dict | None:
+    """The engine's twin of the app's EvalStats.compare (HP blend), plus the questions only one of them solved."""
+    ma, mb = sample_means(a), sample_means(b)
+    c = paired_compare(ma, mb)
+    if c is None:
+        return None
+    shared = set(ma) & set(mb)
+    sa, sb = solved(ma) & shared, solved(mb) & shared
+    c = dict(c, verdict={"a_better": "a", "b_better": "b"}.get(c["verdict"], "noise"), a=a, b=b,
+             only_a=sorted(sa - sb), only_b=sorted(sb - sa), tied=len(shared) - len(sa ^ sb))
+    return c
+
+
+def cmd_compare(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if len(pos) != 2:
+        die("compare <runA> <runB>", 2, o["json"])
+    index()
+    for x in pos:
+        if not (RUNS / x / "run.json").exists():
+            die(f"no run {x}", 3, o["json"])
+    c = compare_runs(*pos)
+    if c is None:
+        die("too few scored questions to compare (each run needs at least 2)", 3, o["json"])
+    word = {"a": f"{pos[0]} is better", "b": f"{pos[1]} is better", "noise": "can't tell them apart yet"}[c["verdict"]]
+    if c.get("too_few"):
+        word = f"can't tell them apart yet: too few shared questions ({c['n']})"
+    out(c, o["json"], f"{word}: {c['diff'] * 100:+.0f} points, 95 % {c['ci95'][0] * 100:+.0f} to {c['ci95'][1] * 100:+.0f} "
+        f"over {c['n']} {'shared questions (paired)' if c['paired'] else 'questions (unpaired)'}; only A solved "
+        f"{len(c['only_a'])}, only B {len(c['only_b'])}, {c['tied']} tied")
+
+
+def parse_key(k: str) -> tuple:
+    """'oneroof@v1' → ('set', 'oneroof', 1); 'gsm8k' → ('task', 'gsm8k', None)."""
+    m = re.match(r"^(.+)@v(\d+)$", k)
+    return ("set", m.group(1), int(m.group(2))) if m else ("task", k, None)
+
+
+def key_text(key: tuple) -> str:
+    return f"{key[1]}@v{key[2]}" if key[0] == "set" else str(key[1])
+
+
+def chance_share(task: str) -> float | None:
+    """A benchmark's chance level as a share (anatomy.json, reviewed): '25 %' → 0.25, '≈ 0 %' → 0."""
+    try:
+        b = catalog_entry(task) or {}
+    except Exception:
+        b = {}
+    ch = (anatomy_table().get(b.get("folder") or task) or {}).get("chance") or ""
+    m = re.search(r"(\d+(?:\.\d+)?)\s*%", ch)
+    return float(m.group(1)) / 100 if m else None
+
+
+def eval_info(key: tuple) -> dict:
+    """Title, cases, kind and the floor of one eval (one set version or one benchmark task)."""
+    if key[0] == "set":
+        try:
+            vs = {(s["name"], s["version"]): s for s in _sibling("evalset").all_versions()}
+        except Exception:
+            vs = {}
+        s = vs.get((key[1], key[2])) or {}
+        floor = {"right": s.get("baseline_frequent_files"), "of": s.get("count"), "kind": "no-model floor"} if s else None
+        share = (floor["right"] / floor["of"]) if floor and floor["of"] and floor["right"] is not None else None
+        versions = sorted(v for (n, v) in vs if n == key[1])
+        return {"key": key_text(key), "title": eval_title(key, vs), "set": key[1], "version": key[2], "kind": s.get("kind"),
+                "cases": s.get("count"), "task_file": s.get("task_file"), "floor": share, "floor_kind": "no-model floor",
+                "floor_counts": floor, "versions": versions, "judged": s.get("kind") == "triage"}
+    share = chance_share(str(key[1]))
+    return {"key": key_text(key), "title": str(key[1]), "task": key[1], "cases": None, "floor": share,
+            "floor_kind": "chance" if share is not None else None, "versions": [], "judged": str(key[1]).startswith("judge_")}
+
+
+def judge_for(info: dict) -> dict | None:
+    """The judge that grades this eval's answers, with its agreement with you (judged scores always show it)."""
+    try:
+        j = _sibling("judge")
+        for name in sorted(p.name for p in j.JUDGES.glob("*") if (p / "judge.json").exists()) if j.JUDGES.is_dir() else []:
+            meta = read_json(j.JUDGES / name / "judge.json", {}) or {}
+            task = meta.get("task") or ""
+            if info.get("task") == f"judge_{name}" or str(info.get("task") or "").startswith(f"judge_{name}_v") or \
+                    (info.get("set") and task.startswith(f"own_{info['set']}_v")):
+                t = j.trust(name)
+                return {"name": name, "agreement": t.get("agreement"), "n": t.get("n"), "tpr": t.get("tpr"),
+                        "tnr": t.get("tnr"), "ready": t.get("ready"), "reference": t.get("reference")}
+    except (Exception, SystemExit) as e:
+        print(f"roof eval: judge skipped: {e}", file=sys.stderr)
+    return None
+
+
+def runs_of_key(key: tuple, statuses=("done",)) -> list[dict]:
+    rs = [r for r in results_for() if r.get("status") in statuses and not str(r.get("task") or "").startswith("labeller_")]
+    return [r for r in rs if eval_key(r) == key]
+
+
+def leaderboard(k: str) -> dict:
+    """HP EV-8: the latest finished run per contestant on one eval version, agents first then best first, the baseline
+    last; the floor; the judge's agreement for judged evals; cost and $ per right answer."""
+    key = parse_key(k)
+    info = eval_info(key)
+    runs = runs_of_key(key)
+    rows = leaderboard_rows(runs)
+    rows = [x for x in rows if x["kind"] != "baseline"] + [x for x in rows if x["kind"] == "baseline"]
+    failed = [r for r in runs_of_key(key, ("failed",))]
+    latest_failed = None
+    if failed and (not runs or (failed[0].get("started") or "") > (runs[0].get("started") or "")):
+        f = failed[0]
+        latest_failed = {"run": f["id"], "error": (f.get("error") or "").strip().splitlines()[-1][:300] if f.get("error") else None,
+                         "hint": hint_for(f.get("error"))}
+    return dict(info, rows=rows, runs=len(runs), judge=judge_for(info) if info.get("judged") else None, latest_failed=latest_failed)
+
+
+def cmd_leaderboard(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if len(pos) != 1:
+        die("leaderboard <task | set@vN>", 2, o["json"])
+    index()
+    lb = leaderboard(pos[0])
+    lines = [lb["title"] + (f" · floor {lb['floor'] * 100:.0f} %" if lb.get("floor") is not None else "")]
+    for i, r in enumerate(lb["rows"], 1):
+        sc = "–" if r["score"] is None else f"{r['score'] * 100:.0f} %"
+        lines.append(f"  {'-' if r['kind'] == 'baseline' else i:<3} {r['kind']:<8} {r['contestant']:<36} {sc:>6}  n={r['n']}  {r['run']}")
+    out(lb, o["json"], "\n".join(lines))
+
+
+def history_of(k: str) -> dict:
+    """HP EV-8: every finished run per contestant on one eval version, oldest first; a drop is a contestant's latest
+    score below its previous one, 'possible' unless the paired range of the difference excludes 0 (HP G4)."""
+    key = parse_key(k)
+    runs = sorted(runs_of_key(key), key=lambda r: r.get("started") or "")
+    series: dict = {}
+    for r in runs:
+        c = r.get("contestant") or contestant(r.get("model"), r.get("agent"))
+        p = primary(r) or {}
+        s = series.setdefault(c["id"], {"contestant": c["name"], "kind": c["kind"], "points": []})
+        s["points"].append({"run": r["id"], "date": r.get("started"), "score": p.get("value"), "ci95": p.get("ci95"),
+                            "n": p.get("n"), "epochs": r.get("epochs")})
+    drops = []
+    for cid, s in series.items():
+        pts = [x for x in s["points"] if x["score"] is not None]
+        if len(pts) < 2 or pts[-1]["score"] >= pts[-2]["score"]:
+            continue
+        a, b = pts[-1], pts[-2]
+        c = compare_runs(a["run"], b["run"])
+        possible = not (c and c["verdict"] == "b")
+        pts_ = round((a["score"] - b["score"]) * 100)
+        day = EvalDay.of(a["date"])
+        text = (f"{s['contestant']} dropped {-pts_} points on {day}, inside its range. Re-run with 3 attempts to check."
+                if possible else f"{s['contestant']} dropped {-pts_} points on {day}, outside its range: a real drop. "
+                                 "Open both runs to see the cases it lost.")
+        drops.append({"contestant": s["contestant"], "id": cid, "run": a["run"], "prev_run": b["run"],
+                      "delta": round(a["score"] - b["score"], 4), "possible": possible, "text": text})
+    order = sorted(series.values(), key=lambda s: (KIND_RANK.get(s["kind"], 9), s["contestant"]))
+    dates = [r.get("started") for r in runs if r.get("started")]
+    return {"key": key_text(key), "series": order, "drops": drops, "first": dates[0] if dates else None,
+            "last": dates[-1] if dates else None, "floor": eval_info(key).get("floor")}
+
+
+class EvalDay:
+    @staticmethod
+    def of(iso: str | None) -> str:
+        try:
+            return datetime.strptime((iso or "")[:10], "%Y-%m-%d").strftime("%b %-d")
+        except ValueError:
+            return iso or "?"
+
+
+def cmd_history(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if len(pos) != 1:
+        die("history <task | set@vN>", 2, o["json"])
+    index()
+    h = history_of(pos[0])
+    lines = [f"{s['contestant']}: " + ", ".join("–" if p["score"] is None else f"{p['score'] * 100:.0f}" for p in s["points"])
+             for s in h["series"]] + [d["text"] for d in h["drops"]]
+    out(h, o["json"], "\n".join(lines) or "no finished runs on this eval")
+
+
+def with_verdicts(rid: str, rows: list[dict]) -> list[dict]:
+    """HP EV-10: beside each answer, the code check, the judge and you, and whether the judge disagrees with you.
+    Code check: your set's own scorer (or a benchmark's scorer); for a judge run, the set's check on the judged answer.
+    Judge: a judge run's own verdict, or the verdict of a judge whose items come from this run. You: your label."""
+    r = read_json(RUNS / rid / "run.json", {}) or {}
+    task = str(r.get("task") or "")
+    sname, _ = set_of(r.get("task_ref") or "")
+    try:
+        j = _sibling("judge")
+    except Exception:
+        j = None
+    judge_items: dict = {}   # item id → (judge name, item, owner label, judge verdict)
+    jt = j.judge_of_task(task) if j else None
+    if j and j.JUDGES.is_dir():
+        for jd in sorted(p for p in j.JUDGES.glob("*") if (p / "judge.json").exists()):
+            try:
+                items = {x["id"]: x for x in j.items_of(jd)}
+            except (OSError, ValueError, KeyError):
+                continue
+            if jt and jd.name != jt[0]:
+                continue
+            if not jt:   # only the items this run answered (ids carry just a 4-letter run suffix)
+                items = {k: x for k, x in items.items() if x.get("run") == rid}
+                if not items:
+                    continue
+            try:
+                last = (j.last_run(jd.name) or {}).get("verdicts") or {}
+            except (Exception, SystemExit):
+                last = {}
+            owner = j.labels_of(jd)
+            for iid, x in items.items():
+                judge_items[iid] = (jd.name, x, owner.get(iid), last.get(iid))
+    suffix = rid.rsplit("-", 1)[-1]
+    out_rows = []
+    for x in rows:
+        sid, ep = str(x["id"]), x.get("epoch") or 1
+        sc = x.get("score")
+        x = dict(x)
+        iid = x.get("item") or (sid if jt else f"{suffix}:{sid}:{ep}")
+        ji = judge_items.get(iid)
+        question = (ji[1].get("question") if ji else None) or x.get("input") or ""
+        key, report = j.report_of(question) if j else ("", question)
+        x["issue"] = key or None
+        x["title"] = (report.split("\n", 1)[0] or sid)[:160]
+        if jt:   # a judge run: the score is the judge's verdict; the code check is the set's own check on the answer
+            x["judge"] = {"verdict": "pass" if (sc or 0) >= 1 else "fail", "why": judge_reason(x.get("explanation"))}
+            if ji and ji[1].get("target"):
+                cd = j.code_detail(ji[1].get("answer") or "", ji[1]["target"])
+                x["code"] = {"verdict": "pass" if cd["right"] else "fail",
+                             "why": ("names " + ", ".join(cd["hits"]) + ", changed by the fix") if cd["right"] else
+                             "The fix changed " + ", ".join(t for t in ji[1]["target"].splitlines() if t.strip()),
+                             "named": cd["named"], "changed": [t for t in ji[1]["target"].splitlines() if t.strip()]}
+        else:
+            changed = [t for t in str(x.get("target") or "").splitlines() if t.strip()]
+            right = sc is not None and sc >= 1
+            why = x.get("explanation") or ""
+            if sname and changed:
+                names = [n.strip() for n in str(x.get("answer") or "").split(",") if n.strip()]
+                hits = [n for n in names if any(f == n or f.endswith("/" + n) for f in changed)]
+                why = ("names " + ", ".join(hits or names) + ", changed by the fix") if right else "The fix changed " + ", ".join(changed)
+            x["code"] = {"verdict": "pass" if right else "fail" if sc is not None else "none", "why": why[:600],
+                         "named": [n.strip() for n in str(x.get("answer") or "").split(",") if n.strip()] if sname else None,
+                         "changed": changed if sname else None}
+            if ji and ji[3]:
+                x["judge"] = {"verdict": ji[3], "why": None}
+        if ji:
+            x["judge_item"] = {"judge": ji[0], "item": iid}
+            if ji[2]:
+                x["you"] = {"verdict": ji[2]["verdict"], "why": ji[2].get("why") or None}
+        jv, yv = (x.get("judge") or {}).get("verdict"), (x.get("you") or {}).get("verdict")
+        x["disagree"] = bool(jv and yv and jv != yv)
+        x["labelled"] = yv is not None
+        out_rows.append(x)
+    return out_rows
+
+
+def judge_reason(text: str | None) -> str | None:
+    """The judge's one-line reason: its last sentence before the VERDICT line."""
+    if not text:
+        return None
+    body = re.split(r"VERDICT:", text, flags=re.I)[0].strip()
+    lines = [x.strip() for x in body.splitlines() if x.strip()]
+    return (lines[-1] if lines else body)[:300] or None
 
 
 def cmd_export(argv):
@@ -1321,7 +1867,9 @@ def build_catalog(refresh: bool = False, as_json: bool = False) -> dict:
                "categories": starter.get("categories", []), "benchmarks": benches,
                "count": len(benches), "tasks": sum(len(b["tasks"]) for b in benches)}
         write_json(CATALOG, cat)
-    own = own_benchmarks()
+    curated = anatomy_table()
+    cat = dict(cat, benchmarks=[dict(b, **catalog_extras(b, curated)) for b in cat["benchmarks"]])
+    own = [dict(b, **catalog_extras(b, curated)) for b in own_benchmarks()]
     if own:
         cat = dict(cat, benchmarks=own + cat["benchmarks"], count=cat["count"] + len(own), tasks=cat["tasks"] + len(own),
                    categories=["Your evals"] + [c for c in cat.get("categories", []) if c != "Your evals"])
@@ -1343,12 +1891,610 @@ def cmd_catalog(argv):
     print("\n".join(lines))
 
 
+# ── LAB-2061 redesign: overview, anatomy, questions, published scores ─────────────────────────────────────────────────
+def done_runs() -> list[dict]:
+    """Finished runs, newest first, with their contestant (results_for), minus the judge's own helper runs."""
+    return [r for r in results_for() if r.get("status") == "done" and not str(r.get("task") or "").startswith("labeller_")]
+
+
+def sample_means(rid: str) -> dict:
+    """Question → its mean score over attempts, from the index (no log read)."""
+    if not DB.exists():
+        return {}
+    with sqlite3.connect(DB) as db:
+        try:
+            rows = db.execute("SELECT sample_id, AVG(score) FROM sample_scores WHERE run_id=? AND score IS NOT NULL "
+                              "GROUP BY sample_id", (rid,)).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+    return {a: b for a, b in rows}
+
+
+MIN_VERDICT_N = 10   # the fewest shared questions (or, unpaired, answers per run) a verdict needs; EvalStats.minVerdictN
+
+
+def paired_compare(a: dict, b: dict) -> dict | None:
+    """The engine's twin of the app's EvalStats.compare: paired over shared questions (≥ 2), else unpaired (Welch)."""
+    shared = sorted(set(a) & set(b))
+    if len(shared) >= 2:
+        d = [a[k] - b[k] for k in shared]
+        n = len(d)
+        mean = sum(d) / n
+        sd = math.sqrt(sum((x - mean) ** 2 for x in d) / (n - 1))
+        half = 1.96 * sd / math.sqrt(n)
+        lo, hi, paired = mean - half, mean + half, True
+    else:
+        xa, xb = list(a.values()), list(b.values())
+        if len(xa) < 2 or len(xb) < 2:
+            return None
+        def mv(x):
+            m = sum(x) / len(x)
+            return m, sum((y - m) ** 2 for y in x) / (len(x) - 1)
+        (m1, v1), (m2, v2) = mv(xa), mv(xb)
+        se = math.sqrt(v1 / len(xa) + v2 / len(xb))
+        mean, lo, hi, n, paired = m1 - m2, m1 - m2 - 1.96 * se, m1 - m2 + 1.96 * se, min(len(xa), len(xb)), False
+    # QA (stage 2): under MIN_VERDICT_N shared questions no winner is called, however clear the interval looks (2 shared
+    # questions with the same difference give a zero-width range).
+    too_few = n < MIN_VERDICT_N
+    verdict = "noise" if too_few else "a_better" if lo > 0 else "b_better" if hi < 0 else "noise"
+    return {"diff": round(mean, 4), "ci95": [round(lo, 4), round(hi, 4)], "n": n, "paired": paired, "verdict": verdict,
+            "too_few": too_few}
+
+
+def primary(r: dict) -> dict | None:
+    return next((m for m in r.get("metrics") or [] if m.get("value") is not None), None)
+
+
+def eval_key(r: dict) -> tuple:
+    """What a score is comparable within: one frozen version of your set, or one benchmark task."""
+    return ("set", r["set_name"], r["set_version"]) if r.get("set_name") else ("task", r.get("task"), None)
+
+
+def board_row(r: dict) -> dict:
+    p = primary(r) or {}
+    c = r.get("contestant") or contestant(r.get("model"), r.get("agent"))
+    score, n = p.get("value"), p.get("n")
+    cost = r.get("cost")
+    free = (r.get("model") or "").startswith(FREE_PREFIXES) and not cost
+    per_right = (round(cost / (score * n), 6) if cost and score and n and p.get("ci_method") == "wilson" else None)
+    return {"contestant": c["name"], "kind": c["kind"], "agent": c.get("agent"), "model": r.get("model"), "run": r["id"],
+            "score": score, "metric": p.get("metric"), "ci95": p.get("ci95"), "ci_method": p.get("ci_method"), "n": n,
+            "epochs": r.get("epochs"), "cost": cost, "free": free,
+            "seat": c["kind"] == "agent" and not cost,   # an agent on your seat; one run through Inspect on an API key paid dollars
+            "usd_per_right": per_right, "date": r.get("started")}
+
+
+def leaderboard_rows(runs: list[dict]) -> list[dict]:
+    """The latest finished run per contestant; agents first, then models, models on this Mac, the baseline; best first."""
+    latest = {}
+    for r in runs:   # newest first
+        cid = (r.get("contestant") or {}).get("id") or r.get("model")
+        latest.setdefault(cid, r)
+    rows = [board_row(r) for r in latest.values()]
+    rows.sort(key=lambda x: (KIND_RANK.get(x["kind"], 9), -(x["score"] if x["score"] is not None else -1),
+                             x["cost"] or 0.0, x["contestant"]))   # ties: the cheaper first
+    return rows
+
+
+def eval_title(key: tuple, sets: dict) -> str:
+    if key[0] == "set":
+        s = sets.get((key[1], key[2])) or {}
+        kind = {"fix-locator": "fix locator", "triage": "bug triage"}.get(s.get("kind"), s.get("kind") or "")
+        return f"{s.get('repo') or key[1]} · {kind} v{key[2]}".strip()
+    return str(key[1])
+
+
+def overview(since: str | None = None) -> dict:
+    """Overview (LAB-2062): one call, so the app does no joins. Your evals (newest version of each set), then benchmarks
+    run at least twice; what changed between each contestant's last two runs on the same eval; runs going now; one
+    suggested next eval (the first rule that fires)."""
+    runs = done_runs()
+    try:
+        es = _sibling("evalset")
+        all_versions = es.all_versions()
+    except Exception as e:   # a damaged set never stops the overview
+        print(f"roof eval: your eval sets were skipped: {e}", file=sys.stderr)
+        es, all_versions = None, []
+    sets = {(s["name"], s["version"]): s for s in all_versions}
+    newest = {}
+    for s in all_versions:
+        if s["version"] >= newest.get(s["name"], {}).get("version", 0):
+            newest[s["name"]] = s
+    groups: dict = {}
+    for r in runs:
+        if str(r.get("task") or "").startswith("judge_"):
+            continue
+        groups.setdefault(eval_key(r), []).append(r)
+    cards = []
+    for name, s in sorted(newest.items(), key=lambda kv: kv[1].get("built") or "", reverse=True):
+        key = ("set", name, s["version"])
+        cards.append({"key": f"{name}@v{s['version']}", "set": name, "version": s["version"], "kind": s.get("kind"),
+                      "title": eval_title(key, sets), "cases": s.get("count"),
+                      "checked_by": "judged" if s.get("kind") == "triage" else "code",
+                      "task_file": s.get("task_file"),
+                      "floor": {"right": s.get("baseline_frequent_files"), "of": s.get("count")},
+                      "rows": leaderboard_rows(groups.get(key, []))})
+    for key, rs in sorted(groups.items(), key=lambda kv: kv[1][0].get("started") or "", reverse=True):
+        if key[0] == "task" and len(rs) >= 2 and not str(key[1]).startswith(("lm-eval:",)):
+            cards.append({"key": key[1], "task": key[1], "title": key[1], "cases": None, "checked_by": None, "floor": None,
+                          "rows": leaderboard_rows(rs)})
+    changes = []
+    for key, rs in groups.items():
+        by_c: dict = {}
+        for r in rs:
+            by_c.setdefault((r.get("contestant") or {}).get("id"), []).append(r)
+        for cid, xs in by_c.items():
+            if len(xs) < 2:
+                continue
+            a, b = xs[0], xs[1]   # newest, the one before
+            if since and (a.get("started") or "") < since:
+                continue
+            cmp = paired_compare(sample_means(a["id"]), sample_means(b["id"]))
+            if not cmp:
+                continue
+            pts = round(cmp["diff"] * 100)
+            word = "inside the noise" if cmp["verdict"] == "noise" else "a real change"
+            name = (a.get("contestant") or {}).get("name") or a.get("model")
+            text = f"{name} {pts:+d} on {eval_title(key, sets)}, {word}."
+            if cmp["verdict"] != "noise" and cmp["diff"] < 0:
+                text = f"{name} {pts:+d} on {eval_title(key, sets)}: a real change. Re-run to confirm."
+            changes.append(dict(cmp, text=text, eval=eval_title(key, sets), contestant=name, delta=cmp["diff"],
+                                runs=[a["id"], b["id"]], date=a.get("started")))
+    changes.sort(key=lambda c: c.get("date") or "", reverse=True)
+    status_rows = []
+    for f in sorted(RUNS.glob("*/run.json")) if RUNS.exists() else []:
+        r = read_json(f, {})
+        if r.get("status") in ("running", "queued", "waiting") and pid_alive(r.get("pid")):
+            status_rows.append({"id": r.get("id"), "task": r.get("task"), "model": r.get("model"), "status": r.get("status"),
+                                "progress": progress(f.parent), "contestant": contestant(r.get("model"), r.get("agent"))["name"]})
+    return {"evals": cards, "changes": changes[:5], "running": status_rows,
+            "suggestion": suggestion(runs, newest, es), "finished_runs": len(runs)}
+
+
+def judges_summary() -> list[dict]:
+    try:
+        j = _sibling("judge")
+        return [j.summary(d) for d in sorted(j.JUDGES.glob("*")) if (d / "judge.json").exists()] if j.JUDGES.is_dir() else []
+    except (Exception, SystemExit) as e:
+        print(f"roof eval: judges were skipped: {e}", file=sys.stderr)
+        return []
+
+
+def suggestion(runs: list[dict], newest: dict, es) -> dict | None:
+    """One suggested next eval: the first of five rules that fires (LAB-2062)."""
+    for j in judges_summary():
+        try:   # your labels the judge never saw as examples (judge.py trust); 10 are needed before it is trusted
+            held = _sibling("judge").trust(j["name"]).get("held_back_yours") or 0
+        except (Exception, SystemExit):
+            held = j.get("labelled") or 0
+        if held < 10:
+            return {"rule": "judge_untrusted", "text": f"Judge not trusted yet: label {10 - held} answers",
+                    "target": {"tab": "your-evals", "judge": j["name"]}}
+    for name, s in newest.items():
+        mine = [r for r in runs if r.get("set_name") == name and r.get("set_version") == s["version"]]
+        if not mine:
+            continue
+        best = max(mine, key=lambda r: (primary(r) or {}).get("value") or 0)
+        p = primary(best) or {}
+        if (best.get("epochs") or 1) == 1 and p.get("ci95"):
+            pts = round((p["ci95"][1] - p["ci95"][0]) * 50)
+            title = eval_title(("set", name, s["version"]), {(name, s["version"]): s})
+            return {"rule": "one_attempt", "text": f"Add attempts: {title} has 1 attempt per case, ±{pts} points",
+                    "target": {"tab": "run", "task": s.get("task_file"), "epochs": 3, "limit": s.get("count")}}
+    if es is not None:
+        for name, s in newest.items():
+            try:
+                n = es.new_fix_count(s)
+            except Exception:
+                n = None
+            if n:
+                return {"rule": "new_fixes", "text": f"{n} bugs fixed since v{s['version']}: build v{s['version'] + 1}",
+                        "target": {"tab": "your-evals", "set": name}}
+    if not newest:
+        return {"rule": "no_set", "text": "Build your first eval from a repo's fixed bugs", "target": {"tab": "your-evals"}}
+    if not runs:
+        return {"rule": "nothing_ran", "text": "Your first eval, free", "target": {"tab": "learn"}}
+    return None
+
+
+def cmd_overview(argv):
+    _, o = args_of(argv, {"--since": "", "--json": False})
+    index()
+    ov = overview(o["since"] or None)
+    lines = []
+    for c in ov["evals"]:
+        lines.append(f"{c['title']}" + (f" · floor {c['floor']['right']}/{c['floor']['of']}" if c.get("floor") and c["floor"].get("of") else ""))
+        for r in c["rows"][:6]:
+            sc = "–" if r["score"] is None else f"{r['score'] * 100:.0f} %"
+            lines.append(f"  {r['kind']:<8} {r['contestant']:<40} {sc:>6}  n={r['n']}  {r['run']}")
+    lines += ["changed: " + c["text"] for c in ov["changes"]]
+    lines += [f"running: {r['task']} × {r['contestant']} {r['progress']}" for r in ov["running"]]
+    if ov["suggestion"]:
+        lines.append("next: " + ov["suggestion"]["text"])
+    out(ov, o["json"], "\n".join(lines) or "no runs yet")
+
+
+# Anatomy (HP EV-3): what a benchmark is made of, read from its own files, overridden by a reviewed anatomy.json for the
+# Start-here shelf. Unknown facts are left out, never guessed.
+CODE_SCORERS = ("match(", "choice(", "includes(", "exact(", "f1(", "pattern(", "answer(", "verify(")
+
+
+def evals_source() -> Path | None:
+    hits = sorted(VENV.glob("lib/python*/site-packages/inspect_evals"))
+    return hits[-1] if hits else None
+
+
+def derived_facts(folder: str, sandbox: bool) -> dict:
+    """Graded by and the prompt template, read from the benchmark's own code (nothing when it can't be read)."""
+    src = evals_source()
+    d = src / folder if src else None
+    facts = {}
+    if not d or not d.is_dir():
+        return {"graded_by": "tests"} if sandbox else {}
+    text = ""
+    for f in sorted(d.glob("*.py")):
+        try:
+            text += f.read_text(errors="ignore") + "\n"
+        except OSError:
+            pass
+    if sandbox:
+        facts["graded_by"] = "tests"
+    elif "model_graded" in text or any((d / n).exists() and "get_model(" in (d / n).read_text(errors="ignore")
+                                       for n in ("scorer.py", "scorers.py")):
+        facts["graded_by"] = "judge"
+    elif any(c in text for c in CODE_SCORERS):
+        facts["graded_by"] = "code"
+    m = re.search(r'^[A-Z_]*PROMPT[A-Z_]*TEMPLATE\s*=\s*(?:r?"""|\(?\s*r?""")(.*?)"""', text, re.S | re.M)
+    if m and "{" in m.group(1):
+        facts["prompt_template"] = m.group(1).strip()
+    fs = re.search(r"def \w+\([^)]*fewshot: int = (\d+)", text)
+    if fs:
+        facts["few_shot"] = int(fs.group(1))
+    return facts
+
+
+GRADED_LABEL = {"code": "Code / exact match", "judge": "Model judge", "tests": "Runs tests"}
+GRADED_SHORT = {"code": "checked by code", "judge": "judged", "tests": "runs tests"}
+
+
+def anatomy_table() -> dict:
+    return (read_json(HERE / "anatomy.json", {}) or {}).get("benchmarks", {})
+
+
+def catalog_extras(b: dict, curated: dict | None = None) -> dict:
+    """The catalog row's extra facts: what it is made of, how it is graded, which shelf (HP EV-3)."""
+    a = (curated if curated is not None else anatomy_table()).get(b["folder"], {})
+    graded = a.get("graded_by") or derived_facts(b["folder"], b.get("sandbox", False)).get("graded_by")
+    if b.get("category") == "Your evals":
+        graded = graded or ("judge" if "triage" in (b.get("tags") or []) else "code")
+    parts = [x for x in (a.get("made_of"), a.get("answer_short"), GRADED_SHORT.get(graded)) if x]
+    shelf = ("own" if b.get("category") == "Your evals" else "start" if b.get("starter") else
+             "agent" if b.get("sandbox") or "Agent" in (b.get("tags") or []) else None)
+    return {"made_of": " · ".join(parts) or None, "graded_by": graded, "shelf": shelf}
+
+
+def anatomy(folder: str) -> dict:
+    cat = build_catalog()
+    b = next((x for x in cat["benchmarks"] if x["folder"] == folder or any(t["name"] == folder for t in x["tasks"])), None)
+    if b is None:
+        die(f"no benchmark {folder}", 3, True)
+    a = dict(anatomy_table().get(b["folder"], {}))
+    d = derived_facts(b["folder"], b.get("sandbox", False))
+    graded = a.get("graded_by") or d.get("graded_by")
+    task = next((s["task"] for s in sorted(b.get("starter") or [], key=lambda s: s["rank"])), b["tasks"][0]["name"] if b["tasks"] else folder)
+    n = next((t.get("samples") for t in b["tasks"] if t["name"] == task), None)
+    res = {"benchmark": b["folder"], "task": task, "title": b.get("title") or b["folder"], "summary": b.get("description"),
+           "category": b.get("category"), "maker": a.get("maker"), "year": a.get("year"), "questions": n,
+           "questions_note": a.get("questions_note"), "answer_format": a.get("answer_format"),
+           "graded_by": graded, "graded_by_label": GRADED_LABEL.get(graded), "judge": a.get("judge"),
+           "chance": a.get("chance"), "made_of": catalog_extras(b).get("made_of"),
+           "prompt_template": a.get("prompt_template") or d.get("prompt_template"),
+           "few_shot": a.get("few_shot", d.get("few_shot")), "watch_out": a.get("watch_out") or [],
+           "teaches": next((s["teaches"] for s in b.get("starter") or []), None), "paper": b.get("arxiv"),
+           "dataset": a.get("dataset"), "gated": bool(a.get("gated")), "terms_url": a.get("terms_url"),
+           "marking": a.get("marking"), "lesson": a.get("lesson"), "split": a.get("split"),
+           "metrics": a.get("metrics"), "needs": needs_of(b, a)}
+    steps = a.get("steps")
+    if not steps:
+        third = {"judge": ("Judge compares", "A grader model reads the answer and the reference and says right or wrong."
+                           + (f" Judge: {a['judge']}." if a.get("judge") else "")),
+                 "code": ("Code checks", "Code compares the answer with the reference. No model is involved."),
+                 "tests": ("Tests run", "The answer's code runs against the benchmark's tests in a sandbox.")}.get(graded)
+        fmt = None
+        if res["prompt_template"]:
+            fm = re.search(r'"([^"\n]*\$ANSWER[^"\n]*)"', res["prompt_template"])
+            fmt = fm.group(1) if fm else None
+        steps = [{"title": "Prompt", "body": "The question is put into the benchmark's template"
+                  + (f", with {res['few_shot']} worked examples first." if res.get("few_shot") else ".")},
+                 {"title": "Model answers", "body": ("Its last line must read " + fmt) if fmt else "The model writes its answer."}]
+        if third:
+            steps.append({"title": third[0], "body": third[1]})
+        steps.append({"title": "The number", "body": "Right answers over all questions, with the 95 % range."})
+    res["steps"] = steps
+    try:
+        res["headroom"] = _sibling("published_scores").headroom(b["folder"])
+    except Exception:
+        res["headroom"] = None
+    return {k: v for k, v in res.items() if v not in (None, [], "")} | {"steps": steps}
+
+
+def needs_of(b: dict, a: dict) -> list[str]:
+    n = []
+    if a.get("gated"):
+        n.append("Hugging Face sign-in, terms accepted")
+    if b.get("sandbox"):
+        n.append("Docker (it runs code)")
+    if b.get("internet"):
+        n.append("internet during the run")
+    if b.get("extra"):
+        n.append(f"an extra package ({b['extra']})")
+    if not b.get("sandbox"):
+        n.append("no Docker")
+    return n
+
+
+def cmd_anatomy(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if len(pos) != 1:
+        die("anatomy <benchmark folder or task> [--json]", 2, o["json"])
+    need_engine(o["json"])
+    a = anatomy(pos[0])
+    lines = [f"{a['title']} · {a.get('maker', '?')} · {a.get('year', '?')}", a.get("summary", ""),
+             f"questions {a.get('questions')} · answer {a.get('answer_format', '?')} · graded by {a.get('graded_by_label', '?')} "
+             f"· chance {a.get('chance', '?')}"] + [f"  {i + 1}. {s['title']}: {s['body']}" for i, s in enumerate(a["steps"])]
+    out(a, o["json"], "\n".join(lines))
+
+
+# Questions (HP EV-4/EV-5, LAB-2064): a benchmark's real questions on this Mac, browsed without running it.
+QUESTIONS = EVALS / "questions"
+GATED_ERR = re.compile(r"gated (dataset|repo)|GatedRepoError|must be authenticated|401 Client Error|403 Client Error", re.I)
+
+_ITEMS_CODE = r"""
+import json, sys, inspect_evals._registry as r
+t = getattr(r, sys.argv[1])()
+out = open(sys.argv[2], "w")
+def text(x):
+    if isinstance(x, str): return x, False
+    parts, img = [], False
+    for m in x:
+        c = getattr(m, "content", m)
+        if isinstance(c, str): parts.append(c); continue
+        for p in c if isinstance(c, list) else [c]:
+            if type(p).__name__ == "ContentImage": img = True
+            elif getattr(p, "text", None): parts.append(p.text)
+    return "\n".join(parts), img
+for i, s in enumerate(t.dataset):
+    q, img = text(s.input)
+    tgt = s.target if isinstance(s.target, str) else ", ".join(s.target)
+    md = s.metadata or {}
+    sol = next((md[k] for k in ("reasoning", "solution", "rationale", "explanation") if isinstance(md.get(k), str) and md.get(k)), None)
+    out.write(json.dumps({"id": str(s.id) if s.id is not None else str(i + 1), "index": i + 1, "input": q, "target": tgt,
+                          "solution": sol, "choices": s.choices, "image": img}) + "\n")
+out.close()
+print(json.dumps({"ok": True}))
+"""
+
+
+def questions_file(task: str) -> Path:
+    v = (build_catalog().get("inspect_evals") or "x") if not task.endswith(".py") else "set"
+    return QUESTIONS / task_name(task) / f"{v}.jsonl"
+
+
+def own_items(task: str) -> list[dict] | None:
+    """Your own set's questions come from its cases file: nothing to download."""
+    if not task.endswith(".py"):
+        return None
+    p = Path(os.path.expanduser(task)).resolve().parent / "cases.jsonl"
+    rows = [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
+    out = []
+    for i, r in enumerate(rows):
+        q = r["input"].split("\n\nSource files:\n", 1)[0]
+        out.append({"id": r["id"], "index": i + 1, "input": q, "target": "\n".join(r["target"]) if isinstance(r["target"], list) else r["target"],
+                    "solution": None, "choices": None, "image": False})
+    return out
+
+
+def dataset_size(dataset: str | None) -> int | None:
+    """Bytes of the dataset's files, from Hugging Face's public size endpoint (no key, nothing sent but the name)."""
+    if not dataset:
+        return None
+    try:
+        with urllib.request.urlopen(f"https://datasets-server.huggingface.co/size?dataset={dataset}", timeout=15) as r:
+            d = json.load(r)
+        return int(((d.get("size") or {}).get("dataset") or {}).get("num_bytes_original_files") or 0) or None
+    except Exception:
+        return None
+
+
+def runs_of_task(task: str) -> list[dict]:
+    """Every run of this task (any status) with its contestant, oldest first: the order of a question's dots."""
+    tn = task_name(task)
+    return sorted([r for r in results_for() if r.get("task") == tn], key=lambda r: r.get("started") or "")
+
+
+def scores_by_item(runs: list[dict]) -> dict:
+    """sample id → [(run id, mean score)] for the runs given."""
+    if not DB.exists() or not runs:
+        return {}
+    out: dict = {}
+    with sqlite3.connect(DB) as db:
+        for r in runs:
+            try:
+                rows = db.execute("SELECT sample_id, AVG(score) FROM sample_scores WHERE run_id=? GROUP BY sample_id", (r["id"],))
+            except sqlite3.OperationalError:
+                return {}
+            for sid, v in rows:
+                out.setdefault(sid, []).append([r["id"], v])
+    return out
+
+
+def load_items(task: str, download: bool) -> tuple:
+    """(items, None) or (None, state) where state says what is needed first: a download, or the dataset's terms."""
+    own = own_items(task)
+    if own is not None:
+        return own, None
+    qf = questions_file(task)
+    if qf.exists():
+        return [json.loads(x) for x in qf.read_text().splitlines() if x.strip()], None
+    entry = catalog_entry(task) or {"folder": task_name(task)}
+    a = anatomy_table().get(entry["folder"], {})
+    gated = {"gated": True, "dataset": a.get("dataset"), "terms_url": a.get("terms_url") or
+             (f"https://huggingface.co/datasets/{a['dataset']}" if a.get("dataset") else None)}
+    if not download:
+        ran = any(r.get("task") == task_name(task) for r in results_for())
+        return None, {"needs_download": True, "dataset": a.get("dataset"), "gated": bool(a.get("gated")),
+                      "terms_url": gated["terms_url"], "already_on_mac": ran,
+                      "size_bytes": None if ran else dataset_size(a.get("dataset"))}
+    need_engine(True)
+    qf.parent.mkdir(parents=True, exist_ok=True)
+    tmp = qf.with_suffix(".tmp")
+    r = subprocess.run([str(VPY), "-c", _ITEMS_CODE, task_name(task), str(tmp)], capture_output=True, text=True,
+                       env=run_env("mockllm/model"))
+    if r.returncode != 0:
+        tmp.unlink(missing_ok=True)
+        if GATED_ERR.search(r.stderr):
+            return None, gated
+        die(f"could not load the questions: {redact(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'no output')[:400]}", 8, True)
+    tmp.replace(qf)
+    return [json.loads(x) for x in qf.read_text().splitlines() if x.strip()], None
+
+
+def filter_items(items: list[dict], dots: dict, how: str, seed: int) -> list[dict]:
+    if how == "seen":
+        return [x for x in items if dots.get(x["id"])]
+    if how == "wrong":
+        return [x for x in items if any(v is not None and v < 1 for _, v in dots.get(x["id"], []))]
+    if how == "random":
+        rnd = random.Random(seed)
+        return sorted(rnd.sample(items, min(10, len(items))), key=lambda x: x["index"])
+    return items
+
+
+def cmd_items(argv):
+    pos, o = args_of(argv, {"--limit": "50", "--offset": "0", "--filter": "all", "--seed": "17", "--download": False,
+                            "--json": False})
+    if len(pos) != 1:
+        die("items <task> [--limit 50] [--offset 0] [--filter all|seen|wrong|random] [--seed N] [--download]", 2, o["json"])
+    if o["filter"] not in ("all", "seen", "wrong", "random"):
+        die("--filter is one of all, seen, wrong, random", 2, o["json"])
+    task = pos[0]
+    items, state = load_items(task, o["download"])
+    if items is None:
+        out(dict(state, task=task_name(task)), o["json"], json.dumps(state))
+        return
+    index()
+    runs = runs_of_task(task)
+    dots = scores_by_item(runs)
+    chosen = filter_items(items, dots, o["filter"], int(o["seed"]))
+    off, lim = int(o["offset"]), int(o["limit"])
+    page = []
+    for x in chosen[off:off + lim]:
+        page.append(dict(x, input=x["input"][:400], dots=[{"run": rid, "score": v} for rid, v in dots.get(x["id"], [])]))
+    res = {"task": task_name(task), "total": len(items), "shown": len(chosen), "offset": off, "seed": int(o["seed"]),
+           "filter": o["filter"], "runs": [{"id": r["id"], "contestant": r["contestant"]["name"]} for r in runs],
+           "counts": {"all": len(items), "seen": len(filter_items(items, dots, "seen", 0)),
+                      "wrong": len(filter_items(items, dots, "wrong", 0))}, "items": page}
+    out(res, o["json"], "\n".join(f"#{x['index']:<5} {x['input'][:90]!r} → {x['target'][:30]}" for x in page) or "no questions")
+
+
+_ITEM_RUNS_CODE = r"""
+import json, sys
+from inspect_ai.log import read_eval_log_sample
+want = sys.argv[1]
+res = []
+for spec in sys.argv[2:]:
+    rid, log = spec.split("=", 1)
+    for ep in range(1, 50):
+        try:
+            s = read_eval_log_sample(log, want, ep)
+        except Exception:
+            break
+        sc = next(iter((s.scores or {}).values()), None)
+        msgs = [{"role": m.role, "text": (m.text or "")[:8000]} for m in s.messages if m.role in ("system", "user")]
+        res.append({"run": rid, "epoch": ep, "answer": (sc.answer if sc and sc.answer else None),
+                    "output": (s.output.completion if s.output else "")[-600:], "value": str(sc.value) if sc else None,
+                    "explanation": (sc.explanation or "")[:600] if sc else None, "prompt": msgs})
+print(json.dumps(res))
+"""
+
+
+def item_runs(task: str, sid: str) -> tuple[list[dict], dict | None]:
+    """Each run's answer to one question (from its log) and the exact prompt the first such run sent."""
+    runs = [r for r in runs_of_task(task) if r.get("log_path")]
+    dots = scores_by_item(runs)
+    saw = {rid for rid, _ in dots.get(sid, [])}
+    specs = [f"{r['id']}={r['log_path']}" for r in runs if r["id"] in saw and str(r["log_path"]).endswith(".eval")]
+    if not specs or not engine_ready():
+        return [], None
+    r = subprocess.run([str(VPY), "-c", _ITEM_RUNS_CODE, sid, *specs], capture_output=True, text=True)
+    rows = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else []
+    by_id = {x["id"]: x for x in runs}
+    prompt = None
+    out_rows = []
+    for x in rows:
+        run = by_id.get(x["run"], {})
+        if prompt is None and x["prompt"]:
+            prompt = {"messages": x["prompt"], "source": f"as sent in run {x['run']}"}
+        tail = (x["output"] or "").strip().splitlines()
+        out_rows.append({"run": x["run"], "epoch": x["epoch"], "contestant": (run.get("contestant") or {}).get("name"),
+                         "kind": (run.get("contestant") or {}).get("kind"), "model": run.get("model"),
+                         "score": next((v for rid, v in dots.get(sid, []) if rid == x["run"]), None),
+                         "answer": x["answer"], "answer_tail": (tail[-1] if tail else "")[-200:],
+                         "explanation": x["explanation"]})
+    return out_rows, prompt
+
+
+def cmd_item(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if len(pos) != 2:
+        die("item <task> <question id> [--json]", 2, o["json"])
+    task, sid = pos
+    items, state = load_items(task, False)
+    if items is None:
+        out(dict(state, task=task_name(task)), o["json"], json.dumps(state))
+        return
+    x = next((i for i in items if i["id"] == sid or str(i["index"]) == sid), None)
+    if x is None:
+        die(f"no question {sid} in {task_name(task)}", 3, o["json"])
+    index()
+    rows, prompt = item_runs(task, x["id"])
+    entry = catalog_entry(task) or {"folder": task_name(task)}
+    a = anatomy_table().get(entry["folder"], {})
+    tpl = a.get("prompt_template") or derived_facts(entry["folder"], bool(entry.get("sandbox"))).get("prompt_template")
+    if prompt is None and tpl:
+        prompt = {"template": tpl, "source": "the benchmark's template (no run has seen this question yet)"}
+    if prompt is not None and a.get("few_shot") is not None:
+        prompt["few_shot"] = a["few_shot"]
+    marking = [{"scorer": a.get("graded_by") or "?", "text": a["marking"].replace("{target}", x["target"])}] if a.get("marking") else []
+    res = dict(x, task=task_name(task), dataset=a.get("dataset"), split=a.get("split"), prompt=prompt, marking=marking,
+               lesson=a.get("lesson"), runs=rows, no_reference=(a.get("graded_by") == "judge" and not x.get("target")))
+    out(res, o["json"], f"#{x['index']} {x['input']}\n→ {x['target']}\n" + "\n".join(
+        f"  {'✓' if (r['score'] or 0) >= 1 else '✕'} {r['contestant']}: {r['answer_tail']}" for r in rows))
+
+
+def cmd_item_results(argv):
+    pos, o = args_of(argv, {"--json": False})
+    if len(pos) != 2:
+        die("item-results <task> <question id> [--json]", 2, o["json"])
+    index()
+    rows, _ = item_runs(pos[0], pos[1])
+    out(rows, o["json"], "\n".join(f"{r['run']} {r['contestant']} {r['score']} {r['answer_tail']}" for r in rows) or "no run saw it")
+
+
+def cmd_scores(argv):
+    """Published best-model scores, one official source per benchmark (LAB-2063): published_scores.py beside this file."""
+    os.execv(sys.executable, [sys.executable, str(HERE / "published_scores.py"), *argv])
+
+
 # ── main ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 COMMANDS = {"setup": cmd_setup, "doctor": cmd_doctor, "catalog": cmd_catalog, "providers": cmd_providers,
             "prices": cmd_prices, "estimate": cmd_estimate, "run": cmd_run, "status": cmd_status, "cancel": cmd_cancel,
-            "resume": cmd_resume, "results": cmd_results, "index": cmd_index, "_worker": cmd_worker,
+            "resume": cmd_resume, "run-anyway": cmd_run_anyway, "results": cmd_results, "index": cmd_index, "_worker": cmd_worker,
             "samples": cmd_samples, "sample": cmd_sample, "export": cmd_export, "xray": cmd_xray,
-            "evalset": cmd_evalset, "judge": cmd_judge, "lmeval": cmd_lmeval}
+            "evalset": cmd_evalset, "judge": cmd_judge, "lmeval": cmd_lmeval, "overview": cmd_overview,
+            "anatomy": cmd_anatomy, "items": cmd_items, "item": cmd_item, "item-results": cmd_item_results,
+            "scores": cmd_scores, "power": cmd_power, "compare": cmd_compare, "leaderboard": cmd_leaderboard,
+            "history": cmd_history}
 
 
 def main(argv: list[str]) -> None:

@@ -369,11 +369,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Workspace", "Back to the terminals", "terminal", "View") { m.goTerminals() }
         add("Overview", "Every window, the feed, objectives (⇧⌘L)", "square.grid.2x2", "View") { m.centre = .overview }
         add("Resources", "Memory and CPU of One Roof, every window and session (⇧⌘U)", "gauge.with.dots.needle.33percent", "View") { m.centre = .resources }
-        add("Decisions", "\(m.openDecisionCount) waiting (⌘I)", "hand.raised", "View") { m.centre = .decisions }
+        if isV2Window {   // LAB-2043: the Inbox; "Needs you" and "Decisions" stay as words to find it by
+            let n = m.needsYouBadge
+            add("Inbox", "\(n) waiting (⌘I) · Needs you · Decisions", Place.needsYou.symbol(count: n), "View") { m.centre = .decisions }
+            // LAB-2044 · LAB-2047: History (Scroll and transcript are words to find it by) and the Action log.
+            add("History", "every session's important moments, newest first (⌃⌘9) · Scroll · transcript", Place.history.symbol, "View") { [weak self] in
+                self?.main.v2Open(.history)
+            }
+            add("Action log", "what you decided, always-allow rules", "list.bullet.clipboard", "View") { [weak self] in
+                self?.main.v2Page = nil; self?.main.win.openActionLog()
+            }
+        } else {
+            add("Decisions", "\(m.openDecisionCount) waiting (⌘I)", "hand.raised", "View") { m.centre = .decisions }
+        }
         add("Subagents", "Trace of every subagent (⇧⌘A)", "point.3.connected.trianglepath.dotted", "View") { m.centre = .subagents }
         add("Loops", "Work that repeats until a check passes, or every night", "arrow.triangle.2.circlepath", "View") { m.centre = .loops }
         add("Session catalog", "Every session ever run, by repo; resume any of them", "books.vertical", "View") { m.centre = .catalog }
-        add("Evals", "Run any model on any benchmark; scores with their 95 % range (LAB-EVALS)", "chart.bar.xaxis", "View") { m.centre = .evals }
+        add(EvalsDraft.isDraft ? EvalsDraft.menuTitle : "Evals", (EvalsDraft.isDraft ? EvalsDraft.banner + ": " : "") + "run any model on any benchmark; scores with their 95 % range", "chart.bar.xaxis", "View") { m.centre = .evals }
         add("New loop", "Goal, check, agent, limits; test the check first", "plus.arrow.triangle.2.circlepath", "Action") {
             m.centre = .loops
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { NotificationCenter.default.post(name: .newLoop, object: nil) }
@@ -384,7 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             add(d.headline, "Decision · " + (m.item(d.sessionId)?.session.name ?? ""), "hand.raised", "Decision") { m.centre = .decisions }
         }
         add("Board", "Kanban of every session", "rectangle.split.3x1", "View") { m.boardMode = true }
-        add("Work", "Projects, roadmap, tickets", "list.bullet.rectangle", "View") { m.workMode = true }
+        add("Projects", "Teams, projects, roadmap, tickets", "list.bullet.rectangle", "View") { m.workMode = true }
         add("Learn", isV2Window ? "Radio, Writing, All cards" : "Skills, Help, your Learn folders", "graduationcap", "View") { m.learnMode = true }
         add("Foundations", "Startup check, skills, hooks, memory", "checkmark.shield", "View") { [weak self] in self?.showFoundations(nil) }
         add("Settings", "Themes, agents, accounts, foundations", "gearshape", "View") { [weak self] in self?.showSettings(nil) }
@@ -455,7 +467,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return out
     }
 
-    @objc func findInTerminal(_ sender: Any?) { model.goTerminals(); main.terminalArea.showFind() }
+    @objc func findInTerminal(_ sender: Any?) {
+        // LAB-2050: in Projects, ⌘F focuses the page's filter (elsewhere it finds in the terminal, as before).
+        if model.workMode { NotificationCenter.default.post(name: .projectsFind, object: nil); return }
+        model.goTerminals(); main.terminalArea.showFind()
+    }
     @objc func findNext(_ sender: Any?) { main.terminalArea.findNext() }
     @objc func findPrevious(_ sender: Any?) { main.terminalArea.findPrevious() }
     @objc func openReadme(_ sender: Any?) { openBundled(AppResources.readme, "The README files") }
@@ -812,8 +828,6 @@ extension AppDelegate: NSMenuItemValidation {
             item.state = main?.win.layout == .single ? .on : .off; return isV2Window
         case #selector(v2LayoutWall(_:)):
             item.state = main?.win.layout == .wall ? .on : .off; return isV2Window
-        case #selector(v2LayoutScroll(_:)):
-            item.state = main?.win.layout == .scroll ? .on : .off; return isV2Window
         case #selector(v2LayoutGrid(_:)):
             item.state = main?.win.layout == .grid ? .on : .off; return isV2Window
         case #selector(copySessionOutput(_:)):
