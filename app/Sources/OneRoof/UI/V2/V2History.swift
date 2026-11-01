@@ -458,7 +458,7 @@ struct V2HistoryPage: View {
         let shape = UnevenRoundedRectangle(topLeadingRadius: top ? 10 : 0, bottomLeadingRadius: r.closesCard ? 10 : 0,
                                            bottomTrailingRadius: r.closesCard ? 10 : 0, topTrailingRadius: top ? 10 : 0, style: .continuous)
         // LAB-2107: the session's own colour (the same as its Inbox card) on every line's edge and on its header.
-        let hue = SessionHue(sessionId: r.sessionId, on: t, panel: t.card)
+        let hue = SessionHue.cached(sessionId: r.sessionId, on: t, panel: t.card)
         return Group {
             switch r.part {
             case .head(let g): cardHeader(g, hue: hue).padding(.top, 10).padding(.bottom, 6)
@@ -583,7 +583,8 @@ struct V2HistoryPage: View {
                     .accessibilityLabel("You answered: " + a)
                 }
             }
-            .contextMenu { Button("Open conversation") { openConversation(e.sessionId, moment: e.id) } }
+            // LAB-2115: no context menu per row (built for every line as it scrolls in); the card header and the answer
+            // rows carry Open conversation, and VoiceOver has it as an action on every row.
             .accessibilityElement(children: .combine)
             .accessibilityLabel(HistoryFormat.accessibility(e, session: name(e.sessionId)))
             .accessibilityAction(named: "Open conversation") { openConversation(e.sessionId, moment: e.id) }
