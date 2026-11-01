@@ -24,7 +24,10 @@ struct WorkView: View {
     var statuses: Set<ProjectStatus> { ProjectStatus.decode(statusesRaw) }
     var folded: Set<String> { ProjectList.decodeTeams(foldedRaw) }
     var result: ProjectList.Result {
-        ProjectList.groups(projects: model.workstreams, teams: model.linearTeams, statuses: statuses, query: query, folded: folded)
+        // LAB-2102: teams hidden in Settings › Linear are left out.
+        let m = model.linearMapping
+        return ProjectList.groups(projects: m.visible(model.workstreams), teams: model.linearTeams.filter { !m.hiddenTeams.contains($0.key) },
+                                  statuses: statuses, query: query, folded: folded)
     }
 
     var current: LinearWorkstream? { model.workstreams.first { $0.id == (selected ?? SelfTest.workSelect) } }
@@ -42,6 +45,14 @@ struct WorkView: View {
         .background(t.background.color)
         .environment(\.colorScheme, model.themes.centre.colorScheme)
         .onAppear { model.loadWorkstreams() }
+        // LAB-2103: read Linear again every few minutes while Projects is visible (the task ends when it closes).
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(LinearFreshness.refreshInterval * 1_000_000_000))
+                if Task.isCancelled { break }
+                model.loadWorkstreams(force: true)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .newWorkItem)) { _ in intakeWorkstream = selected; showIntake = true }
         .onReceive(NotificationCenter.default.publisher(for: .projectsFind)) { _ in filterFocused = true }
         .sheet(isPresented: $showIntake) {
@@ -82,12 +93,14 @@ struct WorkView: View {
                         .help("Back to In progress + In review, no filter text")
                 }
                 Spacer()
-                Button { model.loadWorkstreams(force: true) } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).help("Reload from Linear").accessibilityLabel("Reload from Linear")
+                Button { reloadAll() } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless).help("Read projects (and the open project's tickets) from Linear now")
+                    .accessibilityLabel("Reload from Linear")
                 Button { model.workMode = false } label: { Image(systemName: "terminal") }
                     .buttonStyle(.borderless).help("Back to terminals").accessibilityLabel("Back to terminals")
             }
-            if model.linearLoading {
+            if model.linear.hasKey { freshness }
+            if model.linearLoading && model.workstreams.isEmpty {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text("Loading projects from Linear…").font(.system(size: 11.5)).foregroundStyle(t.secondaryText.color)
@@ -97,12 +110,17 @@ struct WorkView: View {
             if let e = model.linearError {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(e).font(.system(size: 11)).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
-                    RoofButton("Try again", .secondary) { model.loadWorkstreams(force: true) }
+                    RoofButton("Try again", .secondary) { reloadAll() }
                 }
             }
             if !model.linear.hasKey {
-                Button("Connect Linear…") { NotificationCenter.default.post(name: .openSetup, object: nil) }
-                    .controlSize(.small).help("Optional: paste a Linear API key in Setup")
+                // LAB-2102: a fresh profile shows nothing but this: One Roof ships no tracker data.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Projects shows your own Linear workspace. Nothing is bundled: connect Linear to see your teams, projects and tickets.")
+                        .font(.system(size: 11.5)).foregroundStyle(t.secondaryText.color).fixedSize(horizontal: false, vertical: true)
+                    RoofButton("Connect Linear…", .primary) { NotificationCenter.default.post(name: .openLinearSettings, object: nil) }
+                        .help("Settings › Linear: connect, test, and see how One Roof maps your setup")
+                }
             }
             list(r)
         }
@@ -230,7 +248,27 @@ struct WorkView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// LAB-2103: when Projects was last read from Linear, or that it could not be (with the last good read).
+    private var freshness: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { ctx in
+            let line = LinearFreshness.line(fetchedAt: model.workstreamsFetchedAt, error: model.linearError,
+                                            loading: model.linearLoading, now: ctx.date)
+            HStack(spacing: 6) {
+                if model.linearLoading { ProgressView().controlSize(.mini) }
+                Text(line.text).font(.system(size: 11, weight: line.isError ? .semibold : .regular))
+                    .foregroundStyle((line.isError ? t.needsText : t.secondaryText).color)
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
     // MARK: Actions
+
+    /// ↻ and Try again: the project list and the open project's tickets, now.
+    private func reloadAll() {
+        model.loadWorkstreams(force: true)
+        if let w = current { model.loadIssues(w, force: true) }
+    }
 
     private func open(_ w: LinearWorkstream) { selected = w.id; SelfTest.workSelect = nil; model.loadIssues(w) }
 
@@ -279,11 +317,18 @@ struct WorkstreamDetail: View {
     @ObservedObject var model: AppModel
     let w: LinearWorkstream
     let newItem: () -> Void
-    @State private var showDone = false
+    /// LAB-2101: the owner's Show done choice per project (none = the default: on for a finished project).
+    @State private var showDoneChoice: [String: Bool] = [:]
+    /// LAB-2101: the roadmap, rebuilt when the project or its tickets change (not on every draw).
+    @State private var phases: [Roadmap.Phase] = []
+    /// The tracker pane and docs folder, looked up off the main thread when the project changes (file scans).
+    @State private var trackerPane: URL?
+    @State private var docsFolder: String?
     @Environment(\.colorScheme) private var scheme
 
     var t: ThemeTokens { model.themes.centre.tokens }
     var tickets: [LinearIssue] { (model.issues[w.id] ?? []).filter { $0.type != "commit" } }
+    var showDone: Bool { Roadmap.showDone(choice: showDoneChoice[w.id], status: w.status, tickets: tickets) }
 
     var body: some View {
         ScrollView {
@@ -294,10 +339,31 @@ struct WorkstreamDetail: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { rebuild() }
+        .onChange(of: w) { _, _ in rebuild() }
+        .onChange(of: model.issues[w.id]) { _, _ in rebuild() }
+        .task(id: w.wsId) {
+            guard let id = w.wsId else { trackerPane = nil; docsFolder = nil; return }
+            let found = await Task.detached(priority: .utility) { (Trackers.pane(for: id), Trackers.docsFolder(for: id)) }.value
+            trackerPane = found.0; docsFolder = found.1
+        }
+        // LAB-2103: the open project's tickets are read again every few minutes while the page is visible.
+        .task(id: w.id) {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(LinearFreshness.refreshInterval * 1_000_000_000))
+                if Task.isCancelled { break }
+                model.loadIssues(w, force: true)
+            }
+        }
+    }
+
+    private func rebuild() {
+        let next = Roadmap.phases(milestones: w.milestones, tickets: tickets)
+        if next != phases { phases = next }
     }
 
     private var header: some View {
-        let all = tickets, done = all.filter { $0.stateType == "completed" }.count
+        let all = phases.reduce(0) { $0 + $1.tickets.count }, done = phases.reduce(0) { $0 + $1.doneCount }
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(w.wsId ?? "").font(.system(size: 13, weight: .heavy, design: .monospaced)).foregroundStyle(t.accent.color)
@@ -309,62 +375,69 @@ struct WorkstreamDetail: View {
             }
             Text(w.title).font(.system(size: 20, weight: .bold)).foregroundStyle(t.text.color)
             HStack(spacing: 14) {
-                if !all.isEmpty {
-                    ProgressView(value: Double(done), total: Double(max(all.count, 1))).frame(width: 160)
-                    Text("\(done) of \(all.count) tickets done").font(.system(size: 11)).foregroundStyle(t.secondaryText.color)
+                if all > 0 {
+                    ProgressView(value: Double(done), total: Double(max(all, 1))).frame(width: 160)
+                    Text("\(done) of \(all) tickets done").font(.system(size: 11)).foregroundStyle(t.secondaryText.color)
                 }
                 Link(destination: URL(string: w.url) ?? URL(string: "https://linear.app")!) { Label("Linear", systemImage: "arrow.up.right.square") }
                     .font(.system(size: 11))
-                if let id = w.wsId, let pane = Trackers.pane(for: id) {
+                if let pane = trackerPane {
                     Button { NSWorkspace.shared.open(pane) } label: { Label("Tracker pane", systemImage: "list.bullet.rectangle") }
                         .buttonStyle(.link).font(.system(size: 11))
                 }
-                if let id = w.wsId, let docs = Trackers.docsFolder(for: id) {
+                if let docs = docsFolder {
                     Button { model.openInViewer(docs) } label: { Label("Docs", systemImage: "doc.text") }
                         .buttonStyle(.link).font(.system(size: 11))
                 }
                 Button { model.loadIssues(w, force: true) } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless)
+                    .help("Read this project's tickets from Linear now").accessibilityLabel("Reload tickets from Linear")
+            }
+            // LAB-2103: when the tickets were last read (or why they could not be).
+            TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                let line = LinearFreshness.line(fetchedAt: model.issuesFetchedAt[w.id], error: model.linearError,
+                                                loading: model.issuesLoading.contains(w.id), now: ctx.date)
+                Text("Tickets · " + line.text).font(.system(size: 11))
+                    .foregroundStyle((line.isError ? t.needsText : t.secondaryText).color)
             }
         }
     }
 
     private var roadmap: some View {
-        let groups = phases()
+        let on = showDone
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("ROADMAP").font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(t.secondaryText.color)
                 Spacer()
-                Toggle("Show done", isOn: $showDone).toggleStyle(.checkbox).font(.system(size: 11))
+                // LAB-2101: always here, on every project; on by default for a finished one.
+                Toggle(isOn: Binding(get: { on }, set: { showDoneChoice[w.id] = $0 })) {
+                    Text("Show done").font(.system(size: 11)).foregroundStyle(t.text.color)
+                }
+                .toggleStyle(.checkbox)
+                .help(on ? "Hide done and canceled tickets" : "List done and canceled tickets too")
+                .accessibilityLabel("Show done tickets")
             }
             if model.issues[w.id] == nil { ProgressView().controlSize(.small) }
-            else if groups.isEmpty {
+            else if phases.isEmpty {
                 Text("No tickets in this project yet.").font(.system(size: 11.5)).foregroundStyle(t.secondaryText.color)
             }
-            ForEach(groups, id: \.0) { name, list in
-                let open = list.filter { $0.stateType != "completed" && $0.stateType != "canceled" }
-                let shown = showDone ? list : open
+            ForEach(phases) { ph in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text(name).font(.system(size: 13, weight: .bold)).foregroundStyle(t.text.color)
-                        Text("\(list.count - open.count)/\(list.count) done").font(.system(size: 10.5)).foregroundStyle(t.secondaryText.color)
+                        Text(ph.name).font(.system(size: 13, weight: .bold)).foregroundStyle(t.text.color)
+                        Text("\(ph.doneCount)/\(ph.tickets.count) done").font(.system(size: 10.5)).foregroundStyle(t.secondaryText.color)
                     }
-                    if shown.isEmpty {
-                        Text(list.isEmpty ? "No tickets" : "All done").font(.system(size: 11)).foregroundStyle(t.secondaryText.color)
+                    if let line = ph.emptyLine(showDone: on) {
+                        Text(line).font(.system(size: 11)).foregroundStyle(t.secondaryText.color)
                     }
-                    ForEach(shown) { ticketRow($0) }
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(ph.shown(showDone: on)) { ticketRow($0) }
+                    }
                 }
                 .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.surface.color.opacity(0.7)))
             }
         }
-    }
-
-    /// Tickets grouped by phase (milestone), in the workstream's phase order; tickets without one last.
-    private func phases() -> [(String, [LinearIssue])] {
-        var out: [(String, [LinearIssue])] = w.milestones.map { m in (m.name, tickets.filter { $0.milestoneId == m.id }) }
-        let loose = tickets.filter { $0.milestoneId == nil }
-        if !loose.isEmpty { out.append(("Not in a phase", loose)) }
-        return out
     }
 
     private func ticketRow(_ i: LinearIssue) -> some View {
@@ -376,8 +449,8 @@ struct WorkstreamDetail: View {
             Text(i.shortTitle).font(.system(size: 12)).foregroundStyle(t.text.color).lineLimit(1)
             Spacer(minLength: 6)
             Menu {
-                ForEach(["Backlog", "Todo", "In Progress", "In Review", "Done", "Canceled"], id: \.self) { st in
-                    Button(st) { model.moveTicket(id: i.id, team: w.team, to: st) }
+                ForEach(LinearMapping.canonicalStates, id: \.self) { st in
+                    Button(model.linearMapping.stateName(st)) { model.moveTicket(id: i.id, team: w.team, to: st) }
                 }
             } label: {
                 Text(i.state).font(.system(size: 9.5, weight: .bold, design: .rounded))

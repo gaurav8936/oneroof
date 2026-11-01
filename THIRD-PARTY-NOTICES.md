@@ -57,3 +57,12 @@ Runs the on-device model. One Roof does not ship it: it starts the `llama-server
 
 One Roof used Arch-Router-1.5B up to 0.5.1 and never shipped or downloaded it. It still works if you point Settings at
 your own copy, under its own licence, which requires a separate licence for commercial use.
+
+## Narration
+
+### OpenAI text-to-speech (generated audio, no code)
+
+Narration: AI-generated voice (OpenAI text-to-speech). The narrated audio in Learn (cards, Radio, papers) and Evals ›
+How to was generated with OpenAI's text-to-speech API; it is an AI voice, not a human voice. Only the audio files ship;
+no OpenAI key, account or library is included. OpenAI's usage policies ask that listeners are told the voice is
+AI-generated (https://openai.com/policies/usage-policies; text-to-speech guide checked 2026-11-01).

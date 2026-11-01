@@ -37,10 +37,11 @@ final class InboxTests: XCTestCase {
         let open = [perm("a", at: 10), question("b", at: 50), perm("a", at: 70), finished("c", at: 30)]
         let l = Inbox.layout(open: open, plans: [(id: "p1", at: t0.addingTimeInterval(40))],
                              loops: [(id: "L1", at: t0.addingTimeInterval(5)), (id: "L2", at: t0.addingTimeInterval(90))])
-        XCTAssertEqual(l.asks.map(\.id), ["session-b", "plan-p1", "session-c", "session-a"], "newest at the top (owner 11-01)")
+        // LAB-2112: critical blocks (the plan, a's permission prompt) first, then the calm ones; each class newest first.
+        XCTAssertEqual(l.asks.map(\.id), ["plan-p1", "session-a", "session-b", "session-c"], "critical first, newest at the top within a class")
         XCTAssertEqual(l.loops.map(\.id), ["loop-L2", "loop-L1"], "loop items after sessions, newest first, never as sessions")
         XCTAssertEqual(l.all.count, 6)
-        let a = l.asks.last!
+        let a = l.asks.first { $0.id == "session-a" }!
         XCTAssertEqual(a.decision?.askedAt, t0.addingTimeInterval(10), "a session shows its oldest open ask first")
         XCTAssertEqual(a.more, 1)
         XCTAssertEqual(Inbox.moreLine(a.more), "1 more from this session")

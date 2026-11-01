@@ -80,8 +80,8 @@ public enum FocusStep: Int, CaseIterable, Codable, Sendable, Comparable {
 
 /// Places (shared/NAVIGATION.md).
 public enum Place: String, CaseIterable, Identifiable, Codable, Sendable {
-    // LAB-2044: History sits right under the Inbox on the rail (the live list, then its record).
-    case home, needsYou, history, sessions, work, machine, loops, learn, evals   // evals: LAB-EVALS
+    // LAB-2114: History moved to the bottom of the rail, below Evals (owner: the least important); keeps ⌃⌘9.
+    case home, needsYou, sessions, work, machine, loops, learn, evals, history   // evals: LAB-EVALS
     public var id: String { rawValue }
     public var title: String {
         switch self { case .home: return "Home"; case .needsYou: return "Inbox"; case .history: return "History"; case .sessions: return "Sessions"; case .work: return "Projects"   // LAB-2049 (was Work); Resources: LAB-2039 (was Machine)

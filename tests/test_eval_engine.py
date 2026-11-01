@@ -771,6 +771,20 @@ class Items(unittest.TestCase):
             {"folder": "hle", "title": "HLE", "description": "", "tags": [], "sandbox": False, "internet": False,
              "tasks": [{"name": "hle", "samples": 3}], "starter": [], "category": "x"}]})
         self.e.dataset_size = lambda ds: 1234
+        # LAB-2117: no Hugging Face sign-in of the user's own → locked, even with a copy already on this Mac.
+        for k in ("HF_TOKEN", "ONEROOF_HF_ACCEPTED"):
+            os.environ.pop(k, None)
+        self.addCleanup(lambda: [os.environ.pop(k, None) for k in ("HF_TOKEN", "ONEROOF_HF_ACCEPTED")])
+        items, state = self.e.load_items("hle", False)
+        self.assertIsNone(items)
+        self.assertEqual((state.get("locked"), state["gated"]), (True, True))
+        self.assertIn("gated", self.e.hf_locked("hle"))
+        self.assertIsNone(self.e.hf_locked("gsm8k"))
+        os.environ["HF_TOKEN"] = "hf_test_token_not_real_000000"
+        os.environ["ONEROOF_HF_ACCEPTED"] = "gaia"
+        self.assertIn("tick it", self.e.hf_locked("hle"))                  # signed in, terms not accepted for hle
+        os.environ["ONEROOF_HF_ACCEPTED"] = "gaia,hle"
+        self.assertIsNone(self.e.hf_locked("hle"))
         items, state = self.e.load_items("hle", False)
         self.assertIsNone(items)
         self.assertEqual((state["needs_download"], state["gated"], state["size_bytes"], state["dataset"]),

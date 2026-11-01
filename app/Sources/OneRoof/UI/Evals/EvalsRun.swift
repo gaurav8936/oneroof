@@ -21,6 +21,7 @@ struct EvalsRunTab: View {
     @State private var capText = "2.00"
     @State private var started = false
     @FocusState private var typing: Bool
+    @ObservedObject private var hf = HFAccount.shared   // LAB-2117
 
     var body: some View {
         ScrollView {
@@ -154,7 +155,10 @@ struct EvalsRunTab: View {
         Array(Set(estimates.values.filter { $0.isSeat && $0.seatFits == false }.compactMap(\.seat))).sorted()
     }
     private var startReason: String? {
-        EvalStartCheck.reason(plan: plan, overCap: overCap, missingKeys: missingKeys, sandbox: sandbox,
+        // LAB-2117: a gated set stays locked until the user's own Hugging Face sign-in and accepted terms.
+        if let g = EvalGate.startReason(tasks: plan.tasks, folderOf: { t in catalog.first { $0.tasks.contains { $0.name == t } }?.folder },
+                                        signedIn: hf.signedIn, accepted: hf.accepted) { return g }
+        return EvalStartCheck.reason(plan: plan, overCap: overCap, missingKeys: missingKeys, sandbox: sandbox,
                               placeReady: placeReady(plan.place), place: plan.place, fullSeats: fullSeats)
     }
 
@@ -258,9 +262,19 @@ struct EvalsRunWhat: View {
                 Button { picking = true } label: { Text("+ any benchmark…").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
                     .buttonStyle(.plain).padding(.top, 4)
                     .popover(isPresented: $picking, arrowEdge: .bottom) { picker }
+                // LAB-2117: each picked benchmark's data source and licence.
+                ForEach(sources, id: \.folder) { s in EvalsSourceLine(source: s).padding(.top, 4) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var sources: [EvalDataSource] {
+        let cat = board.catalog?.benchmarks ?? []
+        var seen = Set<String>()
+        return plan.tasks.compactMap { t in cat.first { $0.tasks.contains { $0.name == t } } }
+            .filter { seen.insert($0.folder).inserted }
+            .compactMap { EvalSources.source(folder: $0.folder) }
     }
 
     /// Recently run benchmarks first, then whatever the plan was pre-filled with (Explore's Run this…).

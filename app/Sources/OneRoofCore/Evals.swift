@@ -39,7 +39,7 @@ public enum EvalEngine {
         p.arguments = [s] + args
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")   // uv, docker
-        p.environment = env
+        p.environment = hfEnvironment(env, extra: extraEnvironment?() ?? [:])
         let out = Pipe(), err = Pipe()
         p.standardOutput = out; p.standardError = err
         do { try p.run() } catch { return Output(code: 126, stdout: Data(), stderr: "\(error)") }
@@ -50,6 +50,22 @@ public enum EvalEngine {
         if g.wait(timeout: .now() + timeout) == .timedOut { p.terminate() }
         p.waitUntilExit()
         return Output(code: p.terminationStatus, stdout: o, stderr: String(decoding: e, as: UTF8.self))
+    }
+
+    /// LAB-2117 · the user's own Hugging Face sign-in (token from the Keychain, accepted gated sets), set by the app.
+    nonisolated(unsafe) public static var extraEnvironment: (() -> [String: String])?
+
+    /// LAB-2117 · the engine's environment for Hugging Face: only the token the user signed in with in One Roof is passed
+    /// (an inherited HF_TOKEN or a cached `hf auth login` token is never reused: HF_TOKEN_PATH points at a file that
+    /// does not exist), and ONEROOF_HF_ACCEPTED lists the gated sets whose terms the user accepted.
+    public static func hfEnvironment(_ base: [String: String], extra: [String: String]) -> [String: String] {
+        var env = base
+        env["HF_TOKEN"] = nil
+        env["HUGGING_FACE_HUB_TOKEN"] = nil
+        env["HF_TOKEN_PATH"] = dataDir + "/no-cached-hf-token"
+        env["ONEROOF_HF_ACCEPTED"] = ""
+        for k in ["HF_TOKEN", "ONEROOF_HF_ACCEPTED"] { if let v = extra[k], !v.isEmpty { env[k] = v } }
+        return env
     }
 
     /// Decode a --json answer; an engine error ({"error": …}) or bad JSON comes back as the message.

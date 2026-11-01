@@ -111,7 +111,7 @@ public enum Inbox {
         }
         asks += plans.map { InboxBlock(id: "plan-" + $0.id, kind: .plan, at: $0.at, planId: $0.id) }
         let loopBlocks = loops.map { InboxBlock(id: "loop-" + $0.id, kind: .loop, at: $0.at, loopItemId: $0.id) }
-        return InboxLayout(asks: newestFirst(asks), loops: newestFirst(loopBlocks))
+        return InboxLayout(asks: InboxUrgency.sorted(newestFirst(asks)), loops: newestFirst(loopBlocks))   // LAB-2112: critical first
     }
 
     static func newestFirst(_ b: [InboxBlock]) -> [InboxBlock] {

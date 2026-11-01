@@ -54,5 +54,151 @@ gesturemark
 focusstep 1
 hitch stop step-sessions
 textcount OR4242MK = 1
+
+# LAB-2115 · every place: first open (open-<place>), a hard fling down its main list and back (fling-/flingup-<place>:
+# 6000 pt in 500 ms), History's deep fling (24000 pt in 1.5 s, LAB-2105), then a second open of each (reopen-<place>).
+# Budgets: limits.json › budgets.gestures. Measured on the real-profile copy, like the rest of this journey.
+windowsize 1500 940
+hitch start
+gesturemark
+place home
+hitch stop open-home
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-home
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-home
+hitch start
+gesturemark
+place needsYou
+hitch stop open-needsYou
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-needsYou
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-needsYou
+hitch start
+gesturemark
+place history
+hitch stop open-history
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-history
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-history
+hitch start
+scrollgesture 24000 1500
+hitch stop fling-history-deep
+scrolltop
+hitch start
+gesturemark
+place sessions
+hitch stop open-sessions
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-sessions
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-sessions
+hitch start
+gesturemark
+place work
+hitch stop open-work
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-work
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-work
+hitch start
+gesturemark
+place machine
+hitch stop open-machine
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-machine
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-machine
+hitch start
+gesturemark
+place loops
+hitch stop open-loops
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-loops
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-loops
+hitch start
+gesturemark
+place learn
+hitch stop open-learn
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-learn
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-learn
+hitch start
+gesturemark
+place evals
+hitch stop open-evals
+wait 1.5
+hitch start
+scrollgesture 6000 500
+hitch stop fling-evals
+hitch start
+scrollgesture -6000 500
+hitch stop flingup-evals
+hitch start
+gesturemark
+place home
+hitch stop reopen-home
+hitch start
+gesturemark
+place needsYou
+hitch stop reopen-needsYou
+hitch start
+gesturemark
+place history
+hitch stop reopen-history
+hitch start
+gesturemark
+place sessions
+hitch stop reopen-sessions
+hitch start
+gesturemark
+place work
+hitch stop reopen-work
+hitch start
+gesturemark
+place machine
+hitch stop reopen-machine
+hitch start
+gesturemark
+place loops
+hitch stop reopen-loops
+hitch start
+gesturemark
+place learn
+hitch stop reopen-learn
+hitch start
+gesturemark
+place evals
+hitch stop reopen-evals
+place sessions
+wait 1
 snap gestures-end
 quit

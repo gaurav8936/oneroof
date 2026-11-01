@@ -22,6 +22,7 @@ final class EvalsBoard: ObservableObject {
     let io = DispatchQueue(label: "oneroof.evals.io")
 
     func start() {
+        HFAccount.shared.install()   // LAB-2117: the user's own Hugging Face sign-in, for gated sets only
         refreshDoctor()
         refreshRuns()
         timer?.invalidate()

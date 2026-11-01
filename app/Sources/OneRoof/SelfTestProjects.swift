@@ -99,7 +99,12 @@ enum SelfTestProjects {
         Fixture(id: "p-kit", name: "LAB-AE-KIT · Agentic Engineering gold-standard kit", team: "LAB", type: "started", statusName: "In Progress", working: true, reviewing: true),
         Fixture(id: "p-papers", name: "LAB-AE-PAPERS · Research papers track, narrated, with voice questions", team: "LAB", type: "planned", statusName: "Planned"),
         Fixture(id: "p-starter", name: "LAB-STARTER-KIT · Starter kit for a new machine", team: "LAB", type: "backlog", statusName: "Backlog"),
-        Fixture(id: "p-pitch", name: "LAB-ENERGYLAB-EXPLAINED · Energy Lab pitch deck for regulatory affairs teams", team: "LAB", type: "completed", statusName: "Completed"),
+        Fixture(id: "p-pitch", name: "LAB-ENERGYLAB-EXPLAINED · Energy Lab pitch deck for regulatory affairs teams", team: "LAB", type: "completed", statusName: "Completed",
+                // LAB-2101: a finished project with every ticket done (2.0.0 showed only "All done" here).
+                milestones: ["Draft", "Ship"],
+                issues: [("Outline the fifteen slides", "Done", "completed", 0), ("Write the speaker notes", "Done", "completed", 0),
+                         ("Owner review of the draft", "Done", "completed", 1), ("Publish the deck", "Done", "completed", 1),
+                         ("Old cover page", "Canceled", "canceled", nil)]),
         Fixture(id: "p-checkout", name: "WEB-CHECKOUT · New checkout with saved cards and wallets", team: "WEB", type: "started", statusName: "In Progress", working: true),
         Fixture(id: "p-a11y", name: "WEB-A11Y · Accessibility pass on every form", team: "WEB", type: "started", statusName: "In Progress", reviewing: true),
         Fixture(id: "p-dark", name: "WEB-DARK-MODE · Dark mode for the marketing site", team: "WEB", type: "backlog", statusName: "Backlog"),

@@ -49,6 +49,10 @@ enum V2Counts {
     @MainActor static func needsYou(_ model: AppModel) -> Int {
         model.needsYouBadge   // LAB-1933
     }
+    /// LAB-2112: something critical waits (an agent blocked until you act): the badge turns red.
+    @MainActor static func critical(_ model: AppModel) -> Bool {
+        model.openDecisions.contains { InboxUrgency.of($0) == .critical } || model.loopInbox.contains { _ in true }
+    }
     @MainActor static func tonight(_ model: AppModel) -> Int {
         model.scheduleRecords.values.filter { if case .tonight = $0.schedule { return true }; if case .nightly = $0.schedule { return true }; return false }.count
     }
@@ -65,7 +69,7 @@ struct V2Rail: View {
     var body: some View {
         VStack(spacing: 4) {
             ForEach(Place.allCases) { p in
-                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0,
+                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
                               labelled: true) { controller.v2Open(p) }
             }
             Spacer(minLength: 8)
@@ -100,7 +104,7 @@ struct V2PlacesIconRow: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Place.allCases) { p in
-                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0,
+                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
                               labelled: false) { controller.v2Open(p) }
             }
         }
@@ -112,6 +116,7 @@ struct V2PlaceButton: View {
     let place: Place
     let selected: Bool
     let badge: Int
+    var critical = false
     let labelled: Bool
     let action: () -> Void
 
@@ -127,7 +132,7 @@ struct V2PlaceButton: View {
                         if badge > 0 {
                             Text("\(badge)").ui(9, .bold).foregroundStyle(t.onAccent.color)
                                 .padding(.horizontal, 4).frame(minWidth: 14, minHeight: 14)
-                                .background(Capsule().fill(t.statusColor(.needsYou).color))
+                                .background(Capsule().fill((critical ? t.statusColor(.needsYou) : t.accent).color))   // LAB-2112
                                 .offset(x: labelled ? 11 : 9, y: labelled ? -6 : -7)
                         }
                     }

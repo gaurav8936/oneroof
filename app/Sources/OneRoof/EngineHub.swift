@@ -126,17 +126,17 @@ final class EngineHub {
                 }
                 if s.status == .needsYou {
                     // LAB-1827: a finished turn waiting for you gives way to the prompt.
-                    if let open = openDecision[s.id], decisions.first(where: { $0.id == open })?.isFinished == true { closeDecision(open, answeredInTerminal: true) }
+                    if let open = openDecision[s.id], decisions.first(where: { $0.id == open })?.isFinished == true { closeDecision(open, answeredInTerminal: true, session: s) }
                     buildDecision(s, now: now); changed = true
                 }
-                else if old == .needsYou, let open = openDecision[s.id] { closeDecision(open, answeredInTerminal: true); changed = true }
+                else if old == .needsYou, let open = openDecision[s.id] { closeDecision(open, answeredInTerminal: true, session: s); changed = true }
                 if s.status == .done, old != nil, s.agent.isAgent { buildFinished(s, now: now); changed = true }
             }
             // LAB-1827: a finished turn stays in Needs you until you reply (here or in the terminal: it works again),
             // close the session or set it aside. Looking at it (Ready → Idle) does not remove it.
             if [.running, .exited, .doNotUse].contains(s.status), let open = openDecision[s.id],
                decisions.first(where: { $0.id == open })?.isFinished == true {
-                closeDecision(open, answeredInTerminal: true); changed = true
+                closeDecision(open, answeredInTerminal: true, session: s); changed = true
             }
             if let r = s.revision, revisions[s.id] != r {
                 if revisions[s.id] != nil || old == nil { scheduler.noteOutput(s.id, at: now) }
@@ -337,12 +337,16 @@ final class EngineHub {
         }
     }
 
-    private func closeDecision(_ id: UUID, answeredInTerminal: Bool) {
+    private func closeDecision(_ id: UUID, answeredInTerminal: Bool, session s: Live? = nil) {
         guard let i = decisions.firstIndex(where: { $0.id == id }) else { return }
         if decisions[i].answer == nil {
             decisions[i].answer = .reply
             decisions[i].answeredAt = Date()
-            decisions[i].replyText = answeredInTerminal ? "answered in the terminal" : nil
+            // LAB-2106: a finished turn or a question you answered by typing in the agent's terminal keeps your words
+            // (the newest prompt line on its screen); a permission prompt answered there stays "answered in the terminal".
+            let typed = answeredInTerminal && (decisions[i].isFinished || decisions[i].isQuestion)
+                ? s.flatMap { TerminalReply.lastTyped(in: text($0, lines: 80)) } : nil
+            decisions[i].replyText = answeredInTerminal ? TerminalReply.record(typed) : nil
             store?.answer(decision: id, .reply, reply: decisions[i].replyText)
         }
         openDecision[decisions[i].sessionId] = nil

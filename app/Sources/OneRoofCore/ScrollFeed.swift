@@ -33,7 +33,8 @@ public enum ScrollFeed {
     public static func answerText(_ d: Decision) -> String? {
         guard let a = d.answer else { return nil }
         let reply = d.replyText?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if reply == "answered in the terminal" { return "Answered in its terminal" }   // the engine's note, not your words
+        if let typed = TerminalReply.typed(reply) { return "Replied in its terminal: " + typed }   // LAB-2106: your words
+        if reply == TerminalReply.marker { return "Answered in its terminal" }   // the engine's note, not your words
         switch a {
         case .allowOnce: return reply.map { "Chose: " + $0 } ?? "Allowed once"
         case .always: return "Always allowed"
@@ -45,7 +46,7 @@ public enum ScrollFeed {
     /// The words of an ask, as Needs you shows it.
     public static func askText(_ d: Decision) -> String {
         if let c = d.command { return "Run " + c }
-        if d.isFinished && TerminalText.isStatusLine(d.why) { return d.title }   // QA M4: never the agent's status line
+        if d.isFinished && TerminalText.isChrome(d.why) { return d.title }   // QA M4 · LAB-2108: never the CLI's furniture
         if d.isQuestion || d.isFinished { return d.why }
         if d.pattern.hasPrefix("ask:") { return "\(d.agent.displayName) is asking: " + d.pattern.dropFirst(4) }
         return d.title
