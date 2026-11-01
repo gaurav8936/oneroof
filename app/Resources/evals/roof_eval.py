@@ -20,6 +20,10 @@ only; the few steps that need Inspect re-run this file under the engine's own py
   sample <run> <id> [--epoch N] [--json]   one question's full transcript (messages, tool calls, scorer's reasoning)
   export [--format csv|json] [--out FILE]  every run with its metrics and 95 % intervals
   xray --repo PATH [--repo …] [--days 30] [--horizon 14] [--json]   agent X-ray from git: churn, reverts, fix-ups
+  evalset build --repo PATH [--count 20] [--linear-key-file PATH] | list | show <name>   your own eval set from a
+                                   repo's fix history (evalset.py); the catalog lists it under "Your evals"
+  judge new|label|build|agreement|list|show   a model as judge, measured against your own pass/fail labels (judge.py)
+  lmeval setup | run <task> --model openai-api/<svc>/<name> --base-url URL   the same benchmark in lm-evaluation-harness
   Runs started with --background wait for a free slot (ONEROOF_EVALS_SLOTS, default 2), so a queue of runs survives
   closing One Roof.
 
@@ -730,7 +734,7 @@ def cmd_run(argv):
     if o["background"]:
         log = open(d / "console.log", "ab")
         p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_worker", rid], stdout=log, stderr=log,
-                             stdin=subprocess.DEVNULL, start_new_session=True, env=env)
+                             stdin=subprocess.DEVNULL, start_new_session=True, env=env, cwd=str(d))
         out({"id": rid, "pid": p.pid, "estimate": est}, o["json"], f"started {rid} in the background (pid {p.pid})")
         return
     rc = work(rid, env)
@@ -746,6 +750,20 @@ def set_status(d: Path, **kw):
     return r
 
 
+def run_cwd(r: dict) -> str:
+    """Where Inspect runs: a task file's own folder, otherwise the run's folder. Never the caller's folder: a run started
+    from a worktree that is removed mid-run would crash at the end (Inspect's closing panel calls getcwd; LAB-1993)."""
+    return task_cwd(r) or r["dir"]
+
+
+def final_status(rc: int, log_status: str | None, cancelled: bool) -> str:
+    """The log decides. Inspect can exit 0 with every call failed (log status 'error'), and can exit non-zero AFTER a
+    complete, scored log (a closing or sandbox-shutdown error): that run is done, with the error kept as a note."""
+    if cancelled:
+        return "cancelled"
+    return "done" if log_status == "success" else "failed"
+
+
 def work(rid: str, env: dict | None = None, retry_log: str | None = None) -> int:
     d = RUNS / rid
     r = set_status(d, status="running", started=now(), pid=os.getpid())
@@ -755,7 +773,7 @@ def work(rid: str, env: dict | None = None, retry_log: str | None = None) -> int
         if r.get("where") == "modal":
             # Modal 1.5 (held for inspect-sandboxes) predates the newest image builder new accounts default to.
             env.setdefault("MODAL_IMAGE_BUILDER_VERSION", MODAL_IMAGE_BUILDER)
-        p = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=task_cwd(r))
+        p = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=run_cwd(r))
         set_status(d, child=p.pid)
         rc = p.wait()
     index()
@@ -763,12 +781,7 @@ def work(rid: str, env: dict | None = None, retry_log: str | None = None) -> int
     with sqlite3.connect(DB) as db:
         row = db.execute("SELECT log_status, error FROM runs WHERE id=?", (rid,)).fetchone()
     log_status, err = row if row else (None, None)
-    if (d / "CANCEL").exists():
-        status = "cancelled"
-    elif rc == 0 and log_status == "success":
-        status = "done"
-    else:
-        status = "failed"
+    status = final_status(rc, log_status, (d / "CANCEL").exists())
     if status != "done" and not err:
         try:  # errors before the log exists (dataset download, missing package) are only in the console
             lines = [x for x in (d / "console.log").read_text(errors="ignore").splitlines() if x.strip()]
@@ -776,8 +789,15 @@ def work(rid: str, env: dict | None = None, retry_log: str | None = None) -> int
         except OSError:
             pass
     error = None if status == "done" else redact(err or f"inspect exited {rc}; see console.log")[:2000]
+    closing = None
+    if status == "done" and rc != 0:   # scored and logged, then Inspect failed while closing: keep why, as a note
+        try:
+            lines = [x for x in (d / "console.log").read_text(errors="ignore").splitlines() if x.strip()]
+            closing = redact(next((x for x in reversed(lines) if "Error" in x), f"inspect exited {rc}"))[:500]
+        except OSError:
+            closing = f"inspect exited {rc}"
     set_status(d, status=status, finished=now(), returncode=rc, log_status=log_status, error=error,
-               hint=hint_for(err) if status != "done" else None)
+               closing_error=closing, hint=hint_for(err) if status != "done" else None)
     index()
     return 0 if status == "done" else 1
 
@@ -853,7 +873,7 @@ def cmd_resume(argv):
     env = run_env(r["model"])
     logf = open(d / "console.log", "ab")
     p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_retry", argv[0], str(log)], stdout=logf,
-                         stderr=logf, stdin=subprocess.DEVNULL, start_new_session=True, env=env)
+                         stderr=logf, stdin=subprocess.DEVNULL, start_new_session=True, env=env, cwd=str(d))
     out({"id": argv[0], "pid": p.pid}, o["json"], f"resuming {argv[0]} (pid {p.pid}); samples already done are kept")
 
 
@@ -966,7 +986,7 @@ def index() -> int:
         db.executescript(SCHEMA)
         for d in dirs:
             r = read_json(d / "run.json", {})
-            h = heads.get(str(logs[d]), {}) if logs[d] else {}
+            h = heads.get(str(logs[d]), {}) if logs[d] else (r.get("summary") or {})   # lm-eval runs: no Inspect log
             pk = h.get("packages") or {}
             db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
                 r.get("id"), r.get("task"), h.get("task_version"), r.get("model"), r.get("status"),
@@ -974,7 +994,8 @@ def index() -> int:
                 r.get("epochs"), r.get("seed"), r.get("temperature"), r.get("max_cost"),
                 (r.get("estimate") or {}).get("usd"), h.get("cost"), h.get("input_tokens"), h.get("output_tokens"),
                 h.get("samples_total"), h.get("samples_done"), h.get("dataset"), h.get("dataset_size"),
-                pk.get("inspect_ai"), pk.get("inspect_evals"), str(logs[d]) if logs[d] else None, "inspect",
+                pk.get("inspect_ai"), pk.get("inspect_evals"), str(logs[d]) if logs[d] else r.get("results_file"),
+                r.get("framework") or "inspect",
                 h.get("status"), redact(h.get("error") or r.get("error")), r.get("where") or "local", h.get("sample_seconds"), r.get("agent")))
             for mu in h.get("usage", []):
                 db.execute("INSERT OR REPLACE INTO model_usage VALUES (?,?,?,?,?)",
@@ -1047,6 +1068,10 @@ def results_for(rid: str | None = None) -> list[dict]:
                 lo, hi, how = interval(v, n, se, bounded)
                 r["metrics"].append({"scorer": s["scorer"], "metric": s["metric"], "value": v, "stderr": se,
                                      "n": n, "ci95": [round(lo, 4), round(hi, 4)], "ci_method": how})
+    for r in runs:
+        a = judge_agreement(r)
+        if a:
+            r["judge_agreement"] = a
     return runs
 
 
@@ -1068,6 +1093,8 @@ def render_result(rid: str) -> str:
     lines = [head] + [f"  {m['scorer']}/{m['metric']}: n/a ({m['note']})" if m["value"] is None else
                       f"  {m['scorer']}/{m['metric']}: {m['value']:.3f}  95% [{m['ci95'][0]:.3f}, {m['ci95'][1]:.3f}] "
                       f"({m['ci_method']}, n={m['n']})" for m in r["metrics"]]
+    if r.get("judge_agreement"):
+        lines.append("  judge: " + _sibling("judge").render(r["judge_agreement"]))
     return "\n".join(lines)
 
 
@@ -1197,6 +1224,51 @@ def cmd_export(argv):
         print(text)
 
 
+def cmd_evalset(argv):
+    """Your own eval sets (LAB-1995): evalset.py beside this file, standard library only."""
+    os.execv(sys.executable, [sys.executable, str(HERE / "evalset.py"), *argv])
+
+
+def cmd_judge(argv):
+    """A model as judge, measured against your labels (LAB-1996): judge.py beside this file."""
+    os.execv(sys.executable, [sys.executable, str(HERE / "judge.py"), *argv])
+
+
+def _sibling(name: str):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def judge_agreement(r: dict) -> dict | None:
+    """A judge run's agreement with your held-back labels, measured once from its log and kept (LAB-1996). Never fatal:
+    results must show even when the judge folder is gone or damaged."""
+    if not str(r.get("task") or "").startswith("judge_") or r.get("status") != "done":
+        return None
+    try:
+        j = _sibling("judge")
+        return j.cached(r["id"]) or j.measure(r["id"])
+    except (Exception, SystemExit) as e:   # judge.py's die() exits; a results call must not
+        print(f"roof eval: agreement for {r['id']} not measured: {e}", file=sys.stderr)
+        return None
+
+
+def cmd_lmeval(argv):
+    """A second framework, lm-evaluation-harness, behind the same runs and results (LAB-1997): lmeval_adapter.py."""
+    os.execv(sys.executable, [sys.executable, str(HERE / "lmeval_adapter.py"), *argv])
+
+
+def own_benchmarks() -> list[dict]:
+    """Your eval sets as catalog benchmarks, read fresh each time (a new set shows without a catalog refresh)."""
+    try:   # cmd_run reads the catalog before every run: your sets must never stop a run
+        return _sibling("evalset").catalog_entries()
+    except Exception as e:
+        print(f"roof eval: your eval sets were skipped: {e}", file=sys.stderr)
+        return []
+
+
 def cmd_xray(argv):
     """The agent X-ray from git (LAB-1961): xray.py beside this file, standard library only."""
     os.execv(sys.executable, [sys.executable, str(HERE / "xray.py"), *argv])
@@ -1249,6 +1321,10 @@ def build_catalog(refresh: bool = False, as_json: bool = False) -> dict:
                "categories": starter.get("categories", []), "benchmarks": benches,
                "count": len(benches), "tasks": sum(len(b["tasks"]) for b in benches)}
         write_json(CATALOG, cat)
+    own = own_benchmarks()
+    if own:
+        cat = dict(cat, benchmarks=own + cat["benchmarks"], count=cat["count"] + len(own), tasks=cat["tasks"] + len(own),
+                   categories=["Your evals"] + [c for c in cat.get("categories", []) if c != "Your evals"])
     return cat
 
 
@@ -1271,7 +1347,8 @@ def cmd_catalog(argv):
 COMMANDS = {"setup": cmd_setup, "doctor": cmd_doctor, "catalog": cmd_catalog, "providers": cmd_providers,
             "prices": cmd_prices, "estimate": cmd_estimate, "run": cmd_run, "status": cmd_status, "cancel": cmd_cancel,
             "resume": cmd_resume, "results": cmd_results, "index": cmd_index, "_worker": cmd_worker,
-            "samples": cmd_samples, "sample": cmd_sample, "export": cmd_export, "xray": cmd_xray}
+            "samples": cmd_samples, "sample": cmd_sample, "export": cmd_export, "xray": cmd_xray,
+            "evalset": cmd_evalset, "judge": cmd_judge, "lmeval": cmd_lmeval}
 
 
 def main(argv: list[str]) -> None:
