@@ -2,7 +2,7 @@
 
 **Status:** LIVE · **Date:** 2026-10-31
 
-> **One line:** each agent has one permission mode, set once in Settings › Permissions: Manual, Plan, Auto or Full. Every new session starts in it. Antigravity starts in Full; the others start in Auto. You can change the mode and type your own flags.
+> **One line:** each agent has one permission mode, set once in Settings › Permissions: Manual, Plan, Auto or Full. Every new session starts in it. Every agent starts in Manual, so it asks before it acts, until you choose another mode. You can change the mode and type your own flags.
 
 ## The four modes
 
@@ -20,7 +20,7 @@ Flags checked against each CLI's own `--help` on 2026-10-31.
 | Claude | `--permission-mode manual` | `--permission-mode plan` | `--permission-mode auto` | `--dangerously-skip-permissions` | A safety check stops risky actions. |
 | Codex | `--ask-for-approval on-request` | `--sandbox read-only --ask-for-approval on-request` | `--approve-for-me` | `--dangerously-bypass-approvals-and-sandbox` | Approvals are reviewed for you inside the workspace sandbox. Full also turns the sandbox off. |
 | Gemini | `--approval-mode default` | `--approval-mode plan` | `--approval-mode yolo` | `--approval-mode yolo` | Nothing: Gemini's Auto already never asks. |
-| Antigravity | (none: the CLI asks) | `--mode plan` | `--mode auto` | `--dangerously-skip-permissions` | Auto still asks for some tools. This is why Antigravity starts in Full. |
+| Antigravity | (none: the CLI asks) | `--mode plan` | `--mode auto` | `--dangerously-skip-permissions` | Auto still asks for some tools; pick Full if you want it never to ask. |
 | Kimi | (none: the CLI asks) | `--plan` | `--yolo` | `--auto` | Risky actions, questions and plans still ask. |
 | OpenCode, Goose | supervised | supervised | supervised | supervised | Hosted sessions always run under the guarded launcher. They have no unattended mode. |
 
@@ -31,7 +31,7 @@ Flags checked against each CLI's own `--help` on 2026-10-31.
 - **Your own flags:** the Flags field under each agent shows the standard flags as a hint. Type your own to replace them for that agent's current mode. **Reset** puts the standard ones back.
 - **Extra arguments** (Settings › Seats & accounts): if a session's own arguments already set a mode, those win and the mode adds nothing.
 
-Loops and objective steps keep their own setting.
+Loops and objective steps keep their own setting; the objective planner session uses Claude's mode.
 
 ## Full means no safety net
 

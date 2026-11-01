@@ -29,14 +29,30 @@ final class PermissionModeTests: XCTestCase {
         for m in PermissionMode.allCases { XCTAssertEqual(m.args(for: .shell), []) }
     }
 
-    func test_LAB1600_subscriptionDefaultsStayAutoAndHostedDefaultsAreSupervised() {
-        let s = AppSettings()
+    func test_LAB2169_newProfilesStartInManualOlderProfilesKeepAutoAndFull() throws {
+        let s = AppSettings()   // a new profile (public 2.0.3)
+        for a in AgentKind.allCases where a.isAgent { XCTAssertEqual(s.permissionMode(for: a), .manual, a.rawValue) }
+        // Settings saved before 2.0.3 with no mode stored keep the old defaults (LAB-1600 Auto, LAB-1935 Antigravity Full)…
+        let old = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
         for a in AgentKind.allCases where a.isAgent {
-            XCTAssertEqual(s.permissionMode(for: a), a.isHosted ? .manual : (a == .agy ? .full : .auto), a.rawValue)   // LAB-1935
+            XCTAssertEqual(old.permissionMode(for: a), a.isHosted ? .manual : (a == .agy ? .full : .auto), a.rawValue)
         }
-        // Settings saved before LAB-1600 (no key) decode to Auto too.
-        let old = try! JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
-        XCTAssertEqual(old.permissionMode(for: .claude), .auto)
+        // …written into the profile, so they survive the next save and load.
+        let again = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(old))
+        XCTAssertEqual(again.permissionMode(for: .claude), .auto)
+        XCTAssertEqual(again.permissionDefaultsVersion, 2)
+        // A new profile saved and loaded stays Manual (the migration does not run on it).
+        let fresh = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(s))
+        XCTAssertEqual(fresh.permissionMode(for: .claude), .manual)
+        // The owner's real path: a profile saved at version 1 with some modes chosen keeps them; only the rest are filled.
+        let v1 = try JSONDecoder().decode(AppSettings.self, from: Data(
+            #"{"permissionDefaultsVersion":1,"permissionModes":{"codex":"manual","agy":"auto"}}"#.utf8))
+        XCTAssertEqual(v1.permissionMode(for: .codex), .manual)
+        XCTAssertEqual(v1.permissionMode(for: .agy), .auto)
+        for a in [AgentKind.claude, .gemini, .kimi] { XCTAssertEqual(v1.permissionMode(for: a), .auto, a.rawValue) }
+        for a in AgentKind.allCases where a.isHosted { XCTAssertEqual(v1.permissionMode(for: a), .manual, a.rawValue) }
+        XCTAssertNil(v1.permissionModes[AgentKind.shell.rawValue])
+        XCTAssertEqual(v1.permissionDefaultsVersion, 2)
     }
 
     func test_LAB1600_choiceRoundTripsThroughSettings() throws {
@@ -44,7 +60,7 @@ final class PermissionModeTests: XCTestCase {
         s.permissionModes["codex"] = .manual
         let back = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(s))
         XCTAssertEqual(back.permissionMode(for: .codex), .manual)
-        XCTAssertEqual(back.permissionMode(for: .claude), .auto)
+        XCTAssertEqual(back.permissionMode(for: .claude), .manual)   // LAB-2169: a new profile's default
     }
 
     func test_LAB1600_sessionLaunchesWithItsMode() {
@@ -132,8 +148,9 @@ final class PermissionModeTests: XCTestCase {
         XCTAssertEqual(PermissionMode.detect(["--approval-mode", "yolo"], agent: .gemini), .auto)
     }
 
-    func test_LAB1935_antigravityStartsInFullAndLaunchesWithoutPrompts() {
-        let s = AppSettings()
+    func test_LAB1935_antigravityInFullLaunchesWithoutPrompts() throws {
+        // LAB-2169: only a profile from before 2.0.3 starts Antigravity in Full by default.
+        let s = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
         XCTAssertEqual(s.permissionMode(for: .agy), .full)
         var row = Session(name: "x", agent: .agy, repoPath: "/tmp")
         row.permissionMode = s.permissionMode(for: .agy)
