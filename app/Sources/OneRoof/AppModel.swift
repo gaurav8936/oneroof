@@ -84,6 +84,9 @@ final class AppModel: ObservableObject {
     @Published var workstreams: [LinearWorkstream] = []
     /// Usage windows per seat (Claude1, Claude2, Codex), refreshed every 30 s.
     @Published var seats: [SeatUsage] = []
+    /// LAB-1998: which agents are set up on this Mac (for the bottom bar); refreshed with the seats, at most every 10 min.
+    @Published var dockFacts: DockSeats.Facts?
+    private var dockFactsAt = Date.distantPast
     /// v2 (CAP-26): the rule just learned from Always allow on a terminal's approval card, offered for Undo for 5 s.
     @Published var v2UndoRule: (decision: Decision, window: String)? = nil
     /// Self-test: the Needs you entry to show (a decision id), as a click in its list would.
@@ -115,6 +118,13 @@ final class AppModel: ObservableObject {
                 || settings.localModelPath != oldValue.localModelPath { Self.applyFolders(settings) }
             if settings.learnFolders != oldValue.learnFolders { learnItems = [] }
             if !settings.dockBadge { NSApp.dockTile.badgeLabel = nil }
+            if settings.accounts != oldValue.accounts || settings.removedAccounts != oldValue.removedAccounts {
+                AgentAccounts.use(stored: settings.accounts, removed: settings.removedAccounts)   // LAB-1999
+            }
+            if settings.hostedRuntime != oldValue.hostedRuntime || settings.hostedConnections != oldValue.hostedConnections
+                || settings.accounts != oldValue.accounts || settings.removedAccounts != oldValue.removedAccounts {
+                refreshSeats(facts: true)
+            }
             if settings.followSystemAppearance != oldValue.followSystemAppearance { applyAppearance() }
             if settings.scheduledRuns != oldValue.scheduledRuns || settings.projectsPath != oldValue.projectsPath { configureRoofdScheduler() }
             if settings.agenticEngineeringPath != oldValue.agenticEngineeringPath { learnItems = [] }   // re-read on next open
@@ -191,10 +201,13 @@ final class AppModel: ObservableObject {
 
     init() {
         grouping = Grouping(rawValue: Prefs.defaults.string(forKey: "grouping") ?? "") ?? .status
-        let chosen = PanelThemes.load(Prefs.defaults)
+        var chosen = PanelThemes.load(Prefs.defaults)
+        // LAB-1951: ONEROOF_SELFTEST_LOOK picks the panels' themes too (a self-test never saves them).
+        if SelfTest.isActive, let v = ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LOOK"], let t = Look.selfTestThemes(v) { chosen = t }
         chosenThemes = chosen
         themes = chosen
         let loaded = Prefs.loadSettings()
+        AgentAccounts.use(stored: loaded.accounts, removed: loaded.removedAccounts)   // LAB-1999, before anything reads it
         settings = loaded
         Self.applyFolders(loaded)
         var openError: Error?
@@ -444,7 +457,7 @@ final class AppModel: ObservableObject {
     private var deckCache: LearnDeck?
 
     /// LAB-1835 · the shared Learn page saved in this build (`agentic_engineering/learn/`) and the deck it plays, checked once
-    /// per folder. Nil: no saved page (a build from source without the deck), so Learn shows the classic screens.
+    /// per folder. Nil: no saved page (a build from source without the deck); Learn then says so.
     var learnShared: LearnShared.Location? {
         let ae = settings.agenticEngineering.path
         if let c = learnSharedCache, c.ae == ae { return c.loc }
@@ -453,16 +466,6 @@ final class AppModel: ObservableObject {
         return loc
     }
     private var learnSharedCache: (ae: String, loc: LearnShared.Location?)?
-
-    /// LAB-1837 · Learn shows the shared page unless Settings › Learn › classic screens is on, the build saved no page, or a
-    /// self-test asks for a classic screen (ONEROOF_SELFTEST_LEARNMODE, the native screens' captures; ONEROOF_LEARN_CLASSIC=0
-    /// keeps the shared page there too). ONEROOF_LEARN_CLASSIC=1 forces the classic screens.
-    var learnUsesShared: Bool {
-        let env = ProcessInfo.processInfo.environment
-        if env["ONEROOF_LEARN_CLASSIC"] == "1" || settings.learnClassic || learnShared == nil { return false }
-        if env["ONEROOF_SELFTEST_LEARNMODE"] != nil, env["ONEROOF_LEARN_CLASSIC"] != "0" { return false }
-        return true
-    }
 
     /// LAB-1274 · the deck cards that best answer `question` (v2: How do I…, Search, the Plan panel), best first.
     /// LAB-1316: ranking all the deck's cards runs from view bodies (the Plan panel's Related in Learn) on every
@@ -776,11 +779,28 @@ final class AppModel: ObservableObject {
         createPlanned(s, launchNow: true)
     }
 
-    func refreshSeats() {
+    func refreshSeats(facts: Bool = false) {
+        let settings = self.settings
+        let wantFacts = facts || Date().timeIntervalSince(dockFactsAt) > 600
+        if wantFacts { dockFactsAt = Date() }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let u = Usage.all()
-            DispatchQueue.main.async { if self?.seats != u { self?.seats = u } }   // LAB-1314: only on change
+            let f = wantFacts ? DockSeats.facts(settings: settings) : nil
+            DispatchQueue.main.async {
+                if self?.seats != u { self?.seats = u }   // LAB-1314: only on change
+                if let f, self?.dockFacts != f { self?.dockFacts = f }
+            }
         }
+    }
+
+    /// LAB-1998: the agents the bottom bar shows, in order: set up on this Mac, minus the ones hidden in Settings.
+    var dockMarks: [SeatMark] {
+        let usage = Set(seats.map(\.seat))
+        guard let f = dockFacts else {
+            return DockSeats.order.map { SeatMark($0) }.filter { m in DockSeats.usageName(m).map(usage.contains) ?? false || m == .claude1 }
+                .filter { !settings.dockHidden.contains($0.rawValue) }
+        }
+        return DockSeats.shown(f, hidden: settings.dockHidden, usageSeats: usage)
     }
 
     /// Router suggestion for a step, with the policy read in place from the agentic-engineering folder.
@@ -956,8 +976,12 @@ final class AppModel: ObservableObject {
         }
         lastError = nil
         busy.insert(s.id)
+        let briefRuntime = InterimBrief.needsOpeningBrief(s.agent) && !SelfTest.isActive ? settings.hostedRuntime : nil
         queue.async { [weak self] in
             guard let self else { return }
+            var spec = spec
+            // LAB-1971: OpenCode and Goose have no session-start hook; the interim brief rides in the opening message.
+            if let r = briefRuntime { spec.opening = InterimBrief.opening(brief: InterimBrief.fetch(runtime: r, cwd: (s.repoPath as NSString).expandingTildeInPath), opening: spec.opening) }
             do { self.finishLaunch(s, .success(try self.runtime.start(spec))) }
             catch { self.finishLaunch(s, .failure(error)) }
         }

@@ -3,8 +3,9 @@ import SwiftUI
 import OneRoofCore
 
 /// View › Learn (⌘⇧E). The classic window (settings.ui2 off) lists pages: the field manual, every skill's narrated page
-/// (its audio plays in place), One Roof's Help, and any extra Learn folders from Settings. The v2 window is three views,
-/// Radio · Writing · All cards (1.9.2, LAB-1274: no Pages list and no course). Read where it lives; nothing is copied (D7).
+/// (its audio plays in place), One Roof's Help, and any extra Learn folders from Settings. The v2 window shows the shared
+/// Agentic Engineering page (LAB-1762), Radio · Writing · All cards, saved in the app at build; LAB-1894 removed the classic
+/// native screens it replaced (LAB-1893 restored what they had through the page's bridge). Nothing is copied (D7).
 struct LearnView: View {
     @ObservedObject var model: AppModel
     @State private var selected: String?
@@ -15,24 +16,14 @@ struct LearnView: View {
 
     var current: LearnItem? { items.first { $0.id == (selected ?? model.learnTarget) } }
 
-    /// v2 (LAB-1233, LAB-1274): where Learn is (Radio, a band, a card, Writing, a post, a programme, All cards), the deck
-    /// and the posts. Classic (settings.ui2 off) shows pagesBody only, as before.
-    @StateObject private var lnav = LearnNav()
-    @State private var deck: LearnDeck?
-    @State private var posts: [LearnPost] = []
-    @State private var appeared = false
-    /// LAB-1251: the owner's posts come from the blog hub (BlogHub, cached), plus any in Learn folders.
-    @ObservedObject private var blog = LearnBlogFeed.shared
-
-    /// LAB-1835 · the shared Agentic Engineering page (default from 1.9.32) and its bridge; LAB-1837: Settings › Learn › classic
-    /// screens (or a build without the saved page) shows the native v2 screens below instead.
+    /// LAB-1835 · the shared Agentic Engineering page and its bridge.
     @StateObject private var shared = LearnSharedController()
     @State private var sharedAppeared = false
     @Environment(\.textScale) private var textScale
 
     var body: some View {
         if model.settings.ui2 {
-            if model.learnUsesShared, let loc = model.learnShared { sharedBody(loc) } else { v2Body }
+            if let loc = model.learnShared { sharedBody(loc) } else { noPage }
         } else { pagesBody }
     }
 
@@ -302,7 +293,7 @@ extension LearnView {
                 if let e = shared.error {
                     VStack(spacing: 8) {
                         Text("Learn could not load").font(.system(size: 15, weight: .semibold)).foregroundStyle(t.text.color)
-                        Text(e + ". Settings › Learn › classic screens shows the earlier screens.").font(.system(size: 12)).foregroundStyle(t.text2.color)
+                        Text(e + ".").font(.system(size: 12)).foregroundStyle(t.text2.color)
                     }
                     .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity).background(t.window.color)
                 }
@@ -321,6 +312,7 @@ extension LearnView {
         .onChange(of: LearnShared.mountOptions(t)) { _, _ in shared.theme(t, scale: textScale) }
         .onChange(of: textScale) { _, s in shared.theme(t, scale: s) }
         .onChange(of: model.settings.learnAutoAdvance) { _, _ in shared.theme(t, scale: textScale) }
+        .onChange(of: model.settings.learnFolders) { _, _ in shared.loadPosts() }   // LAB-1893: posts from Settings › Learn folders
     }
 
     /// Where the page opens: a pending link or question is taken on appear; else where it was last time Learn showed.
@@ -328,7 +320,21 @@ extension LearnView {
         model.learnTarget == nil && model.learnQuery == nil ? LearnSharedController.lastHash : nil
     }
 
+    /// A build without the saved page (built from source without the deck, or with ONEROOF_LEARN_SKIP=1): say so.
+    private var noPage: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 34)).foregroundStyle(t.text3.color)
+            Text("Learn is not in this build").font(.system(size: 15, weight: .semibold)).foregroundStyle(t.text.color)
+            Text("Learn shows the Agentic Engineering page and deck that release builds save inside One Roof. This build was made without them. One Roof Help is under Help › One Roof Help.")
+                .font(.system(size: 12)).foregroundStyle(t.text2.color).multilineTextAlignment(.center).frame(maxWidth: 440)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(t.window.color)
+        .accessibilityElement(children: .combine)
+    }
+
     private func sharedAppear() {
+        LearnSharedController.current = shared
         shared.model = model
         shared.theme(t, scale: textScale)
         model.loadLearn()
@@ -345,8 +351,14 @@ extension LearnView {
         let help = AppResources.helpFolder
         let route = model.learnDeck?.route(target, helpFolder: help)
             ?? (help.map { target.hasPrefix($0 + "/") } == true ? .help(target) : .none)
-        if case .help(let page) = route { v2OpenHelp(page); return }
+        if case .help(let page) = route { openHelp(page); return }
         if let h = LearnShared.hash(route) { shared.go(h) }
+    }
+
+    /// One Roof Help lives on the window's Help page (B4.1), open at `page`.
+    private func openHelp(_ page: String) {
+        model.helpTarget = page
+        (NSApp.delegate as? AppDelegate)?.openHelp(nil)
     }
 
     /// "How do I…": the best card; no question: the search field; no match: All cards › search with the question.
@@ -369,7 +381,8 @@ extension LearnView {
     private func sharedPlayCard(next: Bool) {
         guard let deck = model.learnDeck, let id = model.player.pageId, let slug = deck.slug(forPage: id) else { return }
         guard let k = next ? LearnRollover.next(after: slug, in: deck) : LearnRollover.previous(before: slug, in: deck) else { return }
-        let audio = LearnAudio(deck: deck, player: model.player, nav: lnav)
+        let c = shared
+        let audio = LearnAudio(deck: deck, player: model.player, flash: { [weak c] in c?.flash($0) })
         shared.pauseMedia()
         audio.play(k, then: audio.bandFrom(k))
         if shared.hash.hasPrefix("#ae/card/") { shared.go(LearnShared.hash(.card(k)) ?? "#ae/radio") }
@@ -385,175 +398,6 @@ extension LearnView {
         if !shared.toast.isEmpty {
             let d = t.display
             Text(shared.toast).font(.system(size: 13)).foregroundStyle(d.text.color)
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(d.fill.color).shadow(color: t.text.color.opacity(0.25), radius: 12, y: 8))
-                .padding(.top, 72)
-                .transition(.opacity)
-        }
-    }
-}
-
-// MARK: - v2 (LAB-1233 · handover A12.2; 1.9.2 LAB-1274: Radio · Writing · All cards, no Pages)
-
-extension LearnView {
-    /// One header (breadcrumb · section left; card actions, Radio · Writing · All cards and search right), the place
-    /// below it, and the player bar at the foot.
-    var v2Body: some View {
-        VStack(spacing: 0) {
-            v2RadioHeader
-            V2LearnRadio(model: model, player: model.player, nav: lnav, deck: deck, posts: posts)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            LearnPlayerBar(player: model.player, tokens: t, openPage: { v2OpenPlaying() },
-                           onPrevCard: deck == nil ? nil : { v2PlayCard(next: false) },
-                           onNextCard: deck == nil ? nil : { v2PlayCard(next: true) },
-                           onBand: deck == nil ? nil : { v2BackToBand() })
-        }
-        .background(t.window.color)
-        .overlay(alignment: .top) { v2Toast }
-        .onAppear { v2Appear() }
-        .onChange(of: model.learnTarget) { _, target in v2Take(target) }
-        .onChange(of: model.learnQuery) { _, _ in v2TakeQuestion() }
-        .onChange(of: model.settings.learnFolders) { _, _ in v2LoadPosts() }
-        .onChange(of: blog.revision) { _, _ in v2LoadPosts() }
-    }
-
-    private func v2Appear() {
-        model.loadLearn()
-        if deck == nil { deck = model.learnDeck }
-        v2LoadPosts()
-        blog.refresh()
-        guard !appeared else { v2TakeQuestion(); return }
-        appeared = true
-        if model.learnQuery != nil { v2TakeQuestion() }
-        else if let target = model.learnTarget { v2Take(target) }
-    }
-
-    private func v2LoadPosts() {
-        let folders = model.settings.learnFolders
-        DispatchQueue.global(qos: .userInitiated).async {
-            let found = LearnPosts.all(folders: folders, hubCache: BlogHub.cacheDir)
-            DispatchQueue.main.async { posts = found }
-        }
-    }
-
-    /// LAB-1274 · a link, Search's Learn result, the Plan panel, Foundations › Skills, the mini player: a deck card opens
-    /// its station; a field-manual page its band (at the track) or Radio; a One Roof Help page the window's Help page.
-    /// Anything else (an extra-folder page) leaves Learn where it is.
-    private func v2Take(_ target: String?) {
-        guard let target else { return }
-        let help = AppResources.helpFolder
-        let route = deck?.route(target, helpFolder: help)
-            ?? (help.map { target.hasPrefix($0 + "/") } == true ? .help(target) : .none)
-        switch route {
-        case .card(let slug): lnav.openCard(slug, scene: model.player.pageId == target ? model.player.index : 0)
-        case .band(let id, let track): lnav.openBand(id, track: track)
-        case .radio: lnav.go(.radio)
-        case .help(let page): v2OpenHelp(page)
-        case .none: break
-        }
-    }
-
-    /// LAB-1274 · "How do I…" (menu ⌥⌘/, palette, the Plan panel's "More: how do I…"): the best-matching card's station.
-    /// No question: the search field takes the keyboard. No match: All cards › How do I… shows the question (nothing found).
-    private func v2TakeQuestion() {
-        guard let q = model.learnQuery else { return }
-        model.learnQuery = nil
-        let question = q.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { lnav.focusSearch += 1; return }
-        guard let deck else { return }
-        if let best = deck.bestCards(for: question, limit: 1).first { lnav.query = ""; lnav.openCard(best) }
-        else { lnav.query = question; lnav.go(.library) }
-    }
-
-    /// One Roof Help lives on the window's Help page (B4.1), open at `page`.
-    private func v2OpenHelp(_ page: String) {
-        model.helpTarget = page
-        (NSApp.delegate as? AppDelegate)?.openHelp(nil)
-    }
-
-    /// LAB-1629 · ⏮ ⏭ on the player bar: the previous or next card in the roll-over order plays on (and its station opens
-    /// when a card station is showing).
-    private func v2PlayCard(next: Bool) {
-        guard let deck, let id = model.player.pageId, let slug = deck.slug(forPage: id) else { return }
-        guard let k = next ? LearnRollover.next(after: slug, in: deck) : LearnRollover.previous(before: slug, in: deck) else { return }
-        let audio = LearnAudio(deck: deck, player: model.player, nav: lnav)
-        audio.play(k, then: audio.bandFrom(k))
-        if lnav.place == .card { lnav.openCard(k) }
-    }
-
-    /// LAB-1629 · back to band from the player bar: the band (or Radio) the card was opened from.
-    private func v2BackToBand() {
-        guard let deck else { return }
-        let slug = lnav.place == .card ? lnav.slug : (model.player.pageId.flatMap { deck.slug(forPage: $0) } ?? lnav.slug)
-        lnav.backToBand(slug, in: deck)
-    }
-
-    /// The player bar's title: the card station of the card playing.
-    private func v2OpenPlaying() {
-        guard let id = model.player.pageId, let slug = deck?.slug(forPage: id) else { return }
-        lnav.openCard(slug, scene: model.player.index)
-    }
-
-    // MARK: Header (A12.2)
-
-    private var v2RadioHeader: some View {
-        let (crumbs, section) = v2Crumbs()
-        return LearnHeaderRow {
-            LearnCrumbs(crumbs: crumbs, section: section)
-        } right: {
-            if lnav.place == .card, let deck, deck.cards[lnav.slug] != nil {
-                LearnCardActions(model: model, nav: lnav, player: model.player, audio: LearnAudio(deck: deck, player: model.player, nav: lnav))
-            }
-            if let deck {   // without a deck: the neutral no-deck state, nothing to switch or search
-                LearnModeControl(nav: lnav)
-                LearnSearchField(nav: lnav, total: deck.count)
-            }
-        }
-    }
-
-    private func v2Crumbs() -> ([LearnCrumbs.Crumb], String) {
-        let home = LearnCrumbs.Crumb(label: "Learn") { lnav.go(.radio) }
-        guard let deck else { return ([.init(label: "Learn")], "Agentic Engineering") }
-        switch lnav.place {
-        case .band:
-            let b = deck.band(id: lnav.band)
-            // LAB-1247: the band is opened from Radio home, so the way back names it.
-            return ([home, .init(label: "Radio") { lnav.go(.radio) }, .init(label: "\(b.n) \(b.title)")], "Band")
-        case .card:
-            let b = deck.band(of: lnav.slug), c = deck.cards[lnav.slug]
-            return ([home, .init(label: "\(b.n) \(b.title)") { lnav.openBand(b.id) }, .init(label: c?.title ?? lnav.slug)],
-                    "Agentic Engineering · " + (c?.track ?? ""))
-        case .post:
-            return ([home, .init(label: "Writing") { lnav.go(.writing) }, .init(label: posts.first { $0.slug == lnav.post }?.title ?? "")], "Post")
-        case .writing:
-            return ([home, .init(label: "Writing")], "Broadcast schedule")
-        case .path:
-            return ([home, .init(label: deck.paths.first { $0.id == lnav.path }?.title ?? "")], "Programme")
-        case .library:
-            var c = [home, LearnCrumbs.Crumb(label: "All cards") { lnav.libSel = nil; lnav.query = "" }]
-            if lnav.query.isEmpty, let sel = lnav.libSel { c.append(.init(label: v2BlockName(sel))) }
-            return (c, !lnav.query.isEmpty ? "How do I…" : lnav.lens == "loop" ? "By band" : lnav.lens == "folder" ? "By folder" : "By kind")
-        default:
-            return ([.init(label: "Learn")], "Agentic Engineering · Radio")
-        }
-    }
-
-    /// "loops:rhythms" → "Daily loops"; "loops:start" → "Start here"; "kind:vault" → "Notes & memory".
-    private func v2BlockName(_ id: String) -> String {
-        // By folder: "folder:skills/doctrine" → "doctrine/", a file → its name.
-        if id.hasPrefix("folder:") {
-            let rel = String(id.dropFirst(7)), name = (rel as NSString).lastPathComponent
-            let isDir = deck.flatMap { DeckFolders.entry(rel, in: $0) }?.isDir ?? !name.contains(".")
-            return isDir ? name + "/" : name
-        }
-        let tail = String(id.split(separator: ":").last ?? "")
-        return tail == "start" ? "Start here" : LearnDeck.trackNames[tail]?.name ?? LearnDeck.label(tail)
-    }
-
-    @ViewBuilder private var v2Toast: some View {
-        if !lnav.toast.isEmpty {
-            let d = t.display
-            Text(lnav.toast).font(.system(size: 13)).foregroundStyle(d.text.color)
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(d.fill.color).shadow(color: t.text.color.opacity(0.25), radius: 12, y: 8))
                 .padding(.top, 72)

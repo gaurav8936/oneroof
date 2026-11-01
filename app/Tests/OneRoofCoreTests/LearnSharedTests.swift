@@ -204,12 +204,15 @@ final class LearnSharedTests: XCTestCase {
         XCTAssertNotNil((o["fonts"] as? [String: String])?["mono"])
     }
 
-    func test_settings_learn_classic_defaults_off_and_decodes_old_files() throws {
-        XCTAssertFalse(AppSettings().learnClassic)
-        let old = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
-        XCTAssertFalse(old.learnClassic)
-        var s = AppSettings(); s.learnClassic = true
-        let back = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(s))
-        XCTAssertTrue(back.learnClassic)
+    /// LAB-1894 · the classic screens and their toggle are gone: a settings file saved by 1.9.32–1.9.34 with `learnClassic`
+    /// (on or off) still loads, keeps every other Learn setting, and the key is not written back.
+    func test_settings_old_learn_classic_key_is_ignored_and_dropped() throws {
+        let old = #"{"learnClassic": true, "learnAutoAdvance": false, "learnFolders": ["~/notes"]}"#
+        let s = try JSONDecoder().decode(AppSettings.self, from: Data(old.utf8))
+        XCTAssertFalse(s.learnAutoAdvance)
+        XCTAssertEqual(s.learnFolders, ["~/notes"])
+        let written = String(decoding: try JSONEncoder().encode(s), as: UTF8.self)
+        XCTAssertFalse(written.contains("learnClassic"))
+        XCTAssertNoThrow(try JSONDecoder().decode(AppSettings.self, from: Data(#"{"learnClassic": false}"#.utf8)))
     }
 }

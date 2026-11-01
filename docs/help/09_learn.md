@@ -1,6 +1,6 @@
 # One Roof help: Learn
 
-**Status:** LIVE · **Date:** 2026-10-26
+**Status:** LIVE · **Date:** 2026-10-31
 
 > **One line:** Learn (⇧⌘E) is the narrated Agentic Engineering deck inside One Roof, in three views (Radio, Writing and All cards), with "How do I…?" answers and a player that keeps going while you work.
 
@@ -8,11 +8,18 @@
 
 Learning how to work with agents should not mean leaving the place where the work happens. Learn shows the deck that ships with One Roof but never copies or rewrites it: every card, skill, band and track name comes from the Agentic Engineering deck's own repository, packaged when the app is built.
 
-## The shared page (1.9.32)
+## The shared page
 
-Learn is the same Agentic Engineering page every site shows, from one copy. Each One Roof release saves that page inside the app, so it works offline and changes with the next release. Inside One Roof its buttons do One Roof things: **Play in One Roof** uses One Roof's player (it keeps playing while you work), **Use in a session ▾** lists your live agent sessions, **Show in Finder** opens the card's folder, and links to posts and sources open in your browser.
+Learn is the same Agentic Engineering page every site shows, from one copy. Each One Roof release saves that page inside the app, so it works offline and changes with the next release. Inside One Roof the page does One Roof things:
 
-For this release the earlier screens are still there: **Settings › Learn › Learn: classic screens** switches back. The rest of this page describes both; where they differ, the classic screens have a native post reader and file previews in All cards › By folder.
+- **Play in One Roof** uses One Roof's player (it keeps playing while you work). Radio's display, dial and keys follow that player: ON AIR, the time into the card, the part and its chapter, ▶ / pause, the speed (0.75× to 2×) and ⏭. The card that plays shows a pause button wherever it is listed, and a card's header says **Pause** / **Resume**.
+- **Listen** shows the scene One Roof is playing; **Transcript** marks it, and a scene's number plays from there.
+- **Use in a session ▾** lists your live agent sessions; **Show in Finder** opens the card's folder.
+- **Writing** reads posts inside Learn, and lists your own Learn folders' posts next to the blog's, which refresh while Learn is open.
+- **All cards › By folder** is the deck folder as it ships in this build: open a file to read it, or **Open in Terminal** there.
+- **How do I…?** ranks the cards the way One Roof does (below).
+
+Links to sources and other sites open in your browser. The earlier native screens and their Settings switch were removed in 1.9.35; everything they did is on this page.
 
 ## Open it
 
@@ -25,10 +32,10 @@ For this release the earlier screens are still there: **Settings › Learn › L
 The control at the top right switches between them.
 
 - **Radio:** the deck as a radio. Four bands (Context · Loops · Evidence · Procedure) sit on a dial, one line per card. Click a band key or an "On this band" chip to open the band, then pick what to hear. ▶, a line on the dial, ⏭, Play the band and a card's ▶ play. Programmes below play a set of cards in order.
-- **Writing:** posts from the blog, with a broadcast schedule; open one to read it. Posts in your own Learn folders (Settings › Foundations › Learn folders, one folder per post with an `index.md`) join them.
-- **All cards:** every card at a glance, **By band**, **By kind** or **By folder** (the deck's skills folder as it ships: click a folder to list it, a file to read it, double-click a skill to open its card).
+- **Writing:** posts from the blog, with a broadcast schedule; open one to read it in Learn (its sections, the next and previous part of the series, and the cards to hear on its band). Posts in your own Learn folders (Settings › Learn, one folder per post with an `index.md`) join them.
+- **All cards:** every card at a glance, **By band**, **By kind** or **By folder** (the deck's folder as it ships: click a folder to list it, a file to read it, double-click a skill to open its card).
 
-A card's page (its **station**) has Listen (scene by scene, with the narration), Transcript and Skill file tabs, and **Play**, **Use in a session ▾** (sends `/skill-name` to a live agent session) and **Open in browser** at the top.
+A card's page (its **station**) has Listen (the card's own narrated page), Transcript and Skill file tabs, and **Play in One Roof**, **Use in a session ▾** (sends `/skill-name` to a live agent session), **Show in Finder** and **Open in browser** at the top.
 
 Everything ships inside One Roof, audio included, and works offline. One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched (`LearnExclusions`).
 

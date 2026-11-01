@@ -4,7 +4,7 @@ import WebKit
 import OneRoofCore
 
 /// In-process checks driven by environment variables, so tests never send keystrokes system-wide.
-///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
+///   ONEROOF_SELFTEST_UI2=1 · LOOK=<look | daylight|graphite|midnight: every panel> · PLACE=<place> · FOCUS=<0-3> · LAYOUT=<single|grid|wall>   v2 window (1.x)
 ///   ONEROOF_SELFTEST_WIDTH=<pt>                 the window this wide (1.8.2: narrow-window and toolbar checks)
 ///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
 ///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)
@@ -43,6 +43,10 @@ import OneRoofCore
 ///   ONEROOF_SELFTEST_PAGECLICK=<id>[@<s>]      Learn card page: click that element once loaded (LAB-1305, e.g. playAll;
 ///                                               with PLAYCARD=…@muted the page's clips play muted too)
 ///   ONEROOF_SELFTEST_PLAY=<page title>[@terminals]  play that Learn page's narration (then show the terminals)
+///   ONEROOF_SELFTEST_LEARNHASH=#ae/<screen>    Learn's shared page opens at that screen (LAB-1893: #ae/post/<slug>, #ae/cards/folder …)
+///   ONEROOF_SELFTEST_LEARNJS=<s>@<js>[;;<s>@<js>…]  run scripts in Learn's shared page that many seconds after it mounted
+///   ONEROOF_SELFTEST_LEARNFOLDERS=<dir>[:<dir>…]  Settings › Learn folders for this run (never saved)
+///   ONEROOF_SELFTEST_LEARNMODE / RAILFOLDED / AUTOADVANCE / CARDENDED / PAGECLICK / PAGEJS   the shared page (LearnSharedSelfTest)
 ///   ONEROOF_SELFTEST_CENTRE_AFTER=<view>        switch the centre view after TYPE (decisions, board, review …)
 ///   ONEROOF_SELFTEST_KIND=session|ticket|defect|workstream   ONEROOF_SELFTEST_TEAM=<key>   ONEROOF_SELFTEST_PROJECT=<code>   New session sheet starting state
 ///   ONEROOF_SELFTEST_PICK=KEY,KEY,…   tick those issues (LAB-518)   ONEROOF_SELFTEST_ISSUES=1   open the issue checklist
@@ -235,6 +239,14 @@ enum SelfTest {
         }
         if env["ONEROOF_SELFTEST_LAUNCHPAD"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { app.model.launchpadMode = true } }
         if env["ONEROOF_SELFTEST_FILES"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { app.main.toggleFiles() } }
+        // LAB-1893 · the shared Learn page's own self-test hooks (LearnSharedController.selfTest runs LEARNJS once it mounts).
+        // LAB-1894 · LEARNMODE (the classic screens' places) opens the same place on the shared page (LearnSharedSelfTest).
+        if let m = env["ONEROOF_SELFTEST_LEARNMODE"] {
+            let plan = LearnSharedSelfTest.mode(m)
+            MainActor.assumeIsolated { LearnSharedController.lastHash = plan.hash; LearnSharedController.selfTestSteps += plan.scripts }
+        }
+        if let h = env["ONEROOF_SELFTEST_LEARNHASH"], h.hasPrefix("#ae/") { MainActor.assumeIsolated { LearnSharedController.lastHash = h } }
+        if let f = env["ONEROOF_SELFTEST_LEARNFOLDERS"] { app.model.settings.learnFolders = f.split(separator: ":").map(String.init) }
         if let l = env["ONEROOF_SELFTEST_LEARN"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 if l.hasPrefix("/") { app.model.learnTarget = l }

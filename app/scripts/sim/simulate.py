@@ -79,9 +79,14 @@ class Sim:
     # ------------------------------------------------------------ setup
 
     def env_base(self):
-        return {"HOME": os.environ["HOME"], "USER": os.environ.get("USER", ""), "LOGNAME": os.environ.get("LOGNAME", ""),
-                "SHELL": "/bin/zsh", "LANG": "en_US.UTF-8", "TMPDIR": os.environ.get("TMPDIR", "/tmp/"),
-                "ROOFD_DIR": self.roofd_dir}
+        env = {"HOME": os.environ["HOME"], "USER": os.environ.get("USER", ""), "LOGNAME": os.environ.get("LOGNAME", ""),
+               "SHELL": "/bin/zsh", "LANG": "en_US.UTF-8", "TMPDIR": os.environ.get("TMPDIR", "/tmp/"),
+               "ROOFD_DIR": self.roofd_dir}
+        # LAB-1939: a scratch shared folder (scripts/test/scratch-shared.sh) reaches the app and its roofd, so a run
+        # never reads or migrates the live loops.
+        if os.environ.get("ONEROOF_SHARED"):
+            env["ONEROOF_SHARED"] = os.environ["ONEROOF_SHARED"]
+        return env
 
     def roofd(self, *args, timeout=10):
         try:
@@ -190,6 +195,13 @@ class Sim:
         if self.a.scroll:   # LAB-1831: Needs you with its decided history, then the Scroll layout's feed
             lines += ["activate Main", "place needsYou", "wait 2", "snap scroll-needs-history", "needs scroll-end",
                       "place sessions", "layout scroll", "wait 3", "snap scroll-feed", "scroll final", "layout single", "wait 1"]
+        if self.a.visuals:   # LAB-1939: Needs you's decided history and the Scroll page in every theme at every size
+            for theme in ("daylight", "graphite", "midnight"):
+                for w, h in ((1440, 900), (1280, 800), (1700, 1000)):
+                    tag = f"{theme}-{w}x{h}"
+                    lines += ["activate Main", f"themes {theme}", f"windowsize {w} {h}", "place needsYou", "wait 2",
+                              f"snap visual-needs-{tag}", "needspick decided 0", "wait 1", f"snap visual-needs-decided-{tag}", "place sessions", "layout scroll", "wait 3",
+                              f"snap visual-scroll-{tag}", "layout single", "wait 1"]
         lines += ["place sessions", "snap end-sessions", "quit"]
         self.script = os.path.join(self.run, "script.txt")
         with open(self.script, "w") as f:
@@ -349,7 +361,7 @@ class Sim:
         self.prepare()
         print(f"run folder: {self.run}\nroofd dir:  {self.roofd_dir}", flush=True)
         self.launch()
-        end = time.time() + self.a.minutes * 60 + 25 + (180 if self.a.tour else 0) + (150 if self.a.scroll else 0)   # the tour / Scroll run after the reads
+        end = time.time() + self.a.minutes * 60 + 25 + (180 if self.a.tour else 0) + (150 if self.a.scroll else 0) + (420 if self.a.visuals else 0)   # the tour / Scroll run after the reads
         try:
             while time.time() < end and self.app.poll() is None:
                 self.poll()
@@ -516,6 +528,7 @@ def main():
     p.add_argument("--tour", action="store_true", help="LAB-1924: snap every place at the end of the run")
     p.add_argument("--each", action="store_true", help="LAB-1907: snap every open Needs you entry and a blocked terminal")
     p.add_argument("--scroll", action="store_true", help="LAB-1831: snap Needs you's history and the Scroll feed at the end, check the feed")
+    p.add_argument("--visuals", action="store_true", help="LAB-1939: snap Needs you's history and the Scroll page in Daylight, Graphite, Midnight at 1440x900, 1280x800, 1700x1000")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args()
     Sim(a).go()

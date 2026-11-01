@@ -5,7 +5,7 @@ import OneRoofCore
 struct RowData: Equatable, Identifiable {
     var id: String
     var name: String
-    var mark: AgentMark
+    var mark: SeatMark   // LAB-1999: account-aware (X2, G3)
     var status: SessionStatus
     var caption: LiveCaption
     /// "Claude1" and "main +3 −1" (the account never truncates; the branch does).
@@ -39,7 +39,7 @@ extension AppModel {
         } else {
             meta.append(i.repoLabel)
         }
-        return RowData(id: i.id, name: i.session.name, mark: AgentMark(agent: i.session.agent, account: i.account), status: i.status,
+        return RowData(id: i.id, name: i.session.name, mark: SeatMark(agent: i.session.agent, account: i.account ?? i.session.account), status: i.status,
                        caption: caption(for: i), account: i.account ?? i.session.agent.displayName, meta: meta.joined(separator: " · "),
                        stickers: Sticker.forSession(i.session, status: i.status).filter { !["next", "dnu"].contains($0.id) },
                        age: ageText(lastActiveDate(i), now: now), unread: isUnread(i), pinned: i.session.pinned,

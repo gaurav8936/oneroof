@@ -12,6 +12,7 @@ import Foundation
 //   /ae/api/card/<slug>        the saved card details (Transcript, Skill file, Profile); 404 when the build saved none
 //   /blog/api/posts            the saved posts list (a post opens in the browser)
 //   /deck/<path>               a file of the bundled deck (card pages, narration, photos), byte ranges for audio
+//   /app/…                     LAB-1893: what the app knows (its posts, the deck on disk, its search), LearnSharedApp
 //
 // Pure logic (no WebKit): the app's scheme handler and tests call `respond`. Foundation only, so a capture script can compile
 // this file on its own (scripts/learn-shot.swift).
@@ -32,7 +33,7 @@ public enum LearnShared {
     }
 
     /// `ONEROOF_LEARN_DIR`, else `<ae>/learn`; with the deck (`<ae>/deck`). Nil when either is missing or the saved files are
-    /// not all there (a build from source without the deck): Learn then shows the classic screens.
+    /// not all there (a build from source without the deck): Learn then says it is not in this build.
     public static func locate(ae: String, deck: String?, environment: [String: String] = ProcessInfo.processInfo.environment) -> Location? {
         guard let deck else { return nil }
         let dir = environment["ONEROOF_LEARN_DIR"].flatMap { $0.isEmpty ? nil : ($0 as NSString).expandingTildeInPath } ?? ae + "/learn"
@@ -295,11 +296,25 @@ public enum LearnShared {
     <script>
     (function () {
       function post(m) { try { window.webkit.messageHandlers.oneroofLearn.postMessage(m); } catch (e) { if (window.oneroofLearnPost) window.oneroofLearnPost(m); } }
+      // LAB-1893 · what the app knows (LearnSharedApp): asked at app/…, its events pushed through oneroofLearnEmit.
+      function ask(path) { return fetch(path).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }); }
+      var subs = [];
+      window.oneroofLearnEmit = function (e) { subs.slice().forEach(function (f) { try { f(e); } catch (x) {} }); };
       var bridge = {
-        play: function (slug, queue) { post({ type: "play", slug: slug, queue: queue || [] }); },
+        play: function (slug, queue, scene) { post({ type: "play", slug: slug, queue: queue || [], scene: typeof scene === "number" ? scene : -1 }); },
         useInSession: function (slug) { post({ type: "useInSession", slug: slug }); },
         openFolder: function (path) { post({ type: "openFolder", path: path }); },
-        openExternal: function (url) { post({ type: "openExternal", url: url }); }
+        openExternal: function (url) { post({ type: "openExternal", url: url }); },
+        subscribe: function (f) { subs.push(f); post({ type: "subscribed" }); return function () { var i = subs.indexOf(f); if (i >= 0) subs.splice(i, 1); }; },
+        toggle: function () { post({ type: "toggle" }); },
+        rate: function () { post({ type: "rate" }); },
+        refreshPosts: function () { post({ type: "refreshPosts" }); },
+        terminal: function (path) { post({ type: "terminal", path: path }); },
+        posts: function () { return ask("app/posts").then(function (r) { return r || { posts: null }; }); },
+        post: function (slug) { return ask("app/post/" + encodeURIComponent(slug)); },
+        folder: function (path) { return ask("app/folder?path=" + encodeURIComponent(path)).then(function (r) { return r && r.entries; }); },
+        file: function (path) { return ask("app/file?path=" + encodeURIComponent(path)); },
+        search: function (q) { return ask("app/search?q=" + encodeURIComponent(q)).then(function (r) { return (r && r.cards) || []; }); }
       };
       var el = document.getElementById("learn"), unmount = null, dark = null;
       window.oneroofLearnTheme = function (vars) {

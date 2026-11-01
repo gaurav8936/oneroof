@@ -220,54 +220,70 @@ public enum Workspace {
 
 /// Turns an agent process's environment into an account label.
 public enum AccountResolver {
-    /// Known Claude homes → labels: ~/.claude is "Claude1", ~/.claude-2 (a second account, if you have one) "Claude2".
+    /// Known Claude homes → labels: ~/.claude is "Claude1", ~/.claude-2 (a second account) "Claude2", ~/.claude-N
+    /// (LAB-1999) "ClaudeN"; any other folder is named by its last path part.
     public static func claudeLabel(configDir: String?, home: String = NSHomeDirectory()) -> String {
         guard let dir = configDir, !dir.isEmpty else { return "Claude1" }
         let d = (dir as NSString).standardizingPath
         let h = (home as NSString).standardizingPath
         if d == h + "/.claude" { return "Claude1" }
-        if d == h + "/.claude-2" { return "Claude2" }
-        return (d as NSString).lastPathComponent
+        return numbered(d, agent: .claude, home: h) ?? (d as NSString).lastPathComponent
+    }
+
+    /// "ClaudeN" / "CodexN" / "GeminiN" / "KimiN" when `dir` is the folder One Roof gives account N (N ≥ 2).
+    static func numbered(_ dir: String, agent: AgentKind, home: String) -> String? {
+        let d = (dir as NSString).standardizingPath
+        let first = AgentAccounts.folder(agent, 2, home: home).dropLast(1)   // "~/.codex-" (account 2's folder minus "2")
+        guard d.hasPrefix(first), let n = Int(d.dropFirst(first.count)), n >= 2 else { return nil }
+        return AgentAccounts.id(agent, n)
     }
 
     /// The account label for `agent`, given its environment. Nil when there is nothing to say.
     public static func label(agent: AgentKind, env: [String: String], home: String = NSHomeDirectory()) -> String? {
+        let h = (home as NSString).standardizingPath
         switch agent {
         case .claude:
             return claudeLabel(configDir: env["CLAUDE_CONFIG_DIR"], home: home)
         case .codex:
             guard let c = env["CODEX_HOME"], !c.isEmpty else { return "Codex" }
-            return (c as NSString).lastPathComponent
-        case .gemini, .agy:
-            return nil
-        case .kimi, .opencode, .goose, .shell:
+            if (c as NSString).standardizingPath == h + "/.codex" { return "Codex" }
+            return numbered(c, agent: .codex, home: h) ?? (c as NSString).lastPathComponent
+        case .gemini:
+            guard let g = env["GEMINI_CLI_HOME"], !g.isEmpty else { return nil }
+            return numbered(g, agent: .gemini, home: h)
+        case .kimi:
+            guard let k = env["KIMI_CODE_HOME"], !k.isEmpty else { return nil }
+            return numbered(k, agent: .kimi, home: h)
+        case .agy, .opencode, .goose, .shell:
             return nil
         }
     }
 
-    /// Environment to launch `agent` on the account `label` (the inverse of `label`).
-    /// Claude1 sets nothing: an EMPTY CLAUDE_CONFIG_DIR is not "unset" — Claude then uses the current folder as its
-    /// config folder (gotcha 20261017). Sessions must therefore not inherit account variables from One Roof;
+    /// Environment to launch `agent` on the account `label` (the inverse of `label`). The folder follows from the
+    /// account number (LAB-1999), so roofd's scheduler and loops launch the same way without the app's settings.
+    /// A first account sets nothing: an EMPTY CLAUDE_CONFIG_DIR is not "unset" — Claude then uses the current folder as
+    /// its config folder (gotcha 20261017). Sessions must therefore not inherit account variables from One Roof;
     /// roofd and RoofdRuntime strip them before starting a session.
     public static func launchEnv(agent: AgentKind, account: String?, home: String = NSHomeDirectory()) -> [String: String] {
-        guard agent == .claude, account == "Claude2" else { return [:] }
-        return ["CLAUDE_CONFIG_DIR": home + "/.claude-2"]
+        AgentAccounts.env(agent, AgentAccounts.number(account, agent: agent), home: home)
     }
 
-    /// Account variables removed from a session's environment unless the launch sets them.
-    public static let accountVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "KIMI_HOME", "GEMINI_HOME"]
+    /// Account variables removed from a session's environment unless the launch sets them. The CLIs read
+    /// GEMINI_CLI_HOME and KIMI_CODE_HOME (LAB-1999 fix); GEMINI_HOME and KIMI_HOME are older names, kept (harmless).
+    public static let accountVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "KIMI_CODE_HOME", "KIMI_HOME", "GEMINI_HOME"]
 
-    /// The Claude accounts on this Mac: "Claude1" (~/.claude) always, "Claude2" only when ~/.claude-2 exists.
+    /// The Claude accounts in One Roof: "Claude1" (~/.claude) always, "Claude2" when ~/.claude-2 exists, and any the
+    /// owner added in Settings › Seats & accounts (LAB-1999).
     public static func claudeAccounts(home: String = NSHomeDirectory()) -> [String] {
-        Workspace.folderExists(home + "/.claude-2") ? ["Claude1", "Claude2"] : ["Claude1"]
+        AgentAccounts.accounts(for: .claude, home: home).map(\.id)
     }
 
-    /// The account choices offered for an agent in the "new session" sheet.
+    /// The account choices offered for an agent in the "new session" sheet and Settings › Agents: Claude's always;
+    /// another agent's once it has more than one account.
     public static func choices(for agent: AgentKind, home: String = NSHomeDirectory()) -> [String] {
-        switch agent {
-        case .claude: return claudeAccounts(home: home)
-        default: return []
-        }
+        let ids = AgentAccounts.accounts(for: agent, home: home).map(\.id)
+        if agent == .claude { return ids }
+        return ids.count > 1 ? ids : []
     }
 
     /// True when `command` is found in the usual install folders or on the login shell's PATH.
@@ -293,6 +309,7 @@ public enum AccountResolver {
 
     /// The config file holding a Claude account's sign-in.
     public static func claudeConfigFile(_ account: String, home: String = NSHomeDirectory()) -> String {
-        account == "Claude2" ? home + "/.claude-2/.claude.json" : home + "/.claude.json"
+        let n = AgentAccounts.number(account, agent: .claude)
+        return n == 1 ? home + "/.claude.json" : AgentAccounts.folder(.claude, n, home: home) + "/.claude.json"
     }
 }
