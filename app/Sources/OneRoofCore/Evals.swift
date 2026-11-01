@@ -149,6 +149,12 @@ public struct EvalBenchmark: Decodable, Equatable, Identifiable, Sendable {
     public var category: String
     public var id: String { folder }
     public var name: String { title ?? folder }
+    /// Questions a first run uses: 50, or all of a smaller set (your own 20-question set is priced and run at 20).
+    public var firstRunLimit: Int { min(50, tasks.first(where: { $0.name == defaultTask })?.samples ?? 50) }
+    /// A task as people read it: your own eval sets run from a task file, shown by its name, not its path (LAB-1995).
+    public static func taskLabel(_ task: String) -> String {
+        task.hasSuffix(".py") ? String((task as NSString).lastPathComponent.dropLast(3)) : task
+    }
     public var isStarter: Bool { !starter.isEmpty }
     /// Shelf picks first (LAB-1974); the benchmark's first task otherwise.
     public var defaultTask: String { starter.min { $0.rank < $1.rank }?.task ?? tasks.first?.name ?? folder }
@@ -265,6 +271,49 @@ public struct EvalMetric: Decodable, Equatable, Sendable {
     public var label: String { scorer == metric ? metric : "\(scorer) · \(metric)" }
 }
 
+/// A judge run's agreement with the owner's held-back labels (LAB-1996), shown next to the judged score.
+public struct EvalJudgeAgreement: Decodable, Equatable, Sendable {
+    public var mode: String
+    public var n: Int
+    public var agreement: Double?
+    public var tpr: Double?
+    public var tnr: Double?
+    public var positionConsistency: Double?
+    public var judgedPassRate: Double?
+    public var selfPreference: String?
+    /// Whose labels the headline is measured on: "you", or "model:<id>" (silver labels, named as such).
+    public var reference: String?
+    public struct CodeCheck: Decodable, Equatable, Sendable {
+        public var failsWhatCodeFails: Double?
+        public var codeFail: Int
+        enum CodingKeys: String, CodingKey { case failsWhatCodeFails = "fails_what_code_fails", codeFail = "code_fail" }
+    }
+    /// Against a fact code checked (the note points at no changed file): how often the judge failed those too.
+    public var code: CodeCheck?
+    enum CodingKeys: String, CodingKey {
+        case mode, n, agreement, tpr, tnr, reference, code
+        case positionConsistency = "position_consistency", judgedPassRate = "judged_pass_rate", selfPreference = "self_preference"
+    }
+    /// "you", or the labelling model's short name + "'s labels".
+    public var against: String {
+        guard let r = reference, r.hasPrefix("model:") else { return "you" }
+        return (r.dropFirst(6).split(separator: ",").first.map { String($0.split(separator: "/").last ?? $0) } ?? "a model") + "'s labels"
+    }
+    /// Fewer than 10 held-back labels: the agreement is shown but marked as not yet trustworthy.
+    public var trustworthy: Bool { n >= 10 }
+    private static func pct(_ x: Double?) -> String { x.map { "\(Int(($0 * 100).rounded())) %" } ?? "–" }
+    /// "agrees with you 85 % (n=20) · good 90 % · bad 78 %" — overall, true positive and true negative rates.
+    public var short: String {
+        var s = "agrees with \(against) \(Self.pct(agreement)) (n=\(n))"
+        if mode == "pairwise" { s += " · same winner both orders \(Self.pct(positionConsistency))" }
+        else { s += " · good \(Self.pct(tpr)) · bad \(Self.pct(tnr))" }
+        if let c = code, c.codeFail > 0 { s += " · fails \(Self.pct(c.failsWhatCodeFails)) of \(c.codeFail) wrong-file notes" }
+        if !trustworthy { s += " · too few labels" }
+        if selfPreference != nil { s += " · grades its own answers" }
+        return s
+    }
+}
+
 public struct EvalResult: Decodable, Equatable, Identifiable, Sendable {
     public var id: String
     public var task: String?
@@ -285,8 +334,10 @@ public struct EvalResult: Decodable, Equatable, Identifiable, Sendable {
     public var inspectEvals: String?
     public var error: String?
     public var metrics: [EvalMetric]
+    public var judgeAgreement: EvalJudgeAgreement?
     enum CodingKeys: String, CodingKey {
         case id, task, model, status, started, finished, epochs, seed, temperature, cost, error, metrics
+        case judgeAgreement = "judge_agreement"
         case limitN = "limit_n", samplesDone = "samples_done", samplesTotal = "samples_total", inputTokens = "input_tokens"
         case outputTokens = "output_tokens", estCost = "est_cost", inspectEvals = "inspect_evals"
     }
@@ -490,6 +541,9 @@ public enum EvalGlossary {
         Entry(id: "harness", title: "The harness matters",
               body: "The same model scores differently with a different prompt, answer format, number of examples shown, or agent around it. Compare only runs made the same way; One Roof records the benchmark version and engine version with every run.",
               example: "Claude Code on Sonnet and Sonnet alone are two different things to measure on SWE-bench."),
+        Entry(id: "frameworks", title: "Two frameworks, one benchmark",
+              body: "The same benchmark run by two frameworks is two measurements. They word the question differently, ask for the answer in a different format, read it back differently, and may score multiple choice by asking for an answer or by comparing each option's probability. A small model is sensitive to all of it. Compare a model's scores only within one framework; when the frameworks disagree, look at the questions they disagree on.",
+              example: "ARC-Challenge, the same first 100 test questions, Qwen3-1.7B on this Mac (2026-10-31): Inspect 72 %, lm-evaluation-harness 64 %. 14 questions differ, 11 to 3 for Inspect, so the gap is borderline (p ≈ 0.06). Inspect asks for 'ANSWER: X'; lm-eval asks the reply to end 'The best answer is X'. As shipped, lm-eval scored 0 %: its chat task pre-fills the reply and expects only the letter back, which a server without pre-fill (llama-server) never sends. One Roof reads the letter with a pattern. lm-eval's usual scoring compares option probabilities, which this server cannot return."),
         Entry(id: "cost", title: "Cost per correct answer",
               body: "Dollars spent divided by the number of correct answers. A cheaper model that gets fewer right can still be the better buy, or the worse one.",
               example: "$0.40 for 40 right → 1 cent per correct answer."),

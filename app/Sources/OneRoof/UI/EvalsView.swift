@@ -173,7 +173,7 @@ struct EvalsView: View {
                     Text("Checking the eval engine…").ui(TypeScale.body).foregroundStyle(t.text2.color)
                 } else {
                     switch board.tab {
-                    case .catalog: EvalsCatalogTab(board: board) { b in plan = EvalRunPlan(benchmark: b, tasks: [b.defaultTask]) }
+                    case .catalog: EvalsCatalogTab(board: board) { b in plan = EvalRunPlan(benchmark: b, tasks: [b.defaultTask], limit: b.firstRunLimit) }
                     case .runs: EvalsRunsTab(board: board)
                     case .results: EvalsResultsTab(board: board)
                     case .learn: EvalsLearnTab(board: board) { plan = $0 }
@@ -332,7 +332,7 @@ struct EvalBenchmarkCard: View {
                     Text("Tasks").ui(TypeScale.small, .semibold).foregroundStyle(t.text2.color)
                     ForEach(b.tasks, id: \.name) { task in
                         HStack(spacing: 10) {
-                            Text(task.name).ui(TypeScale.small, mono: true).foregroundStyle(t.text.color)
+                            Text(EvalBenchmark.taskLabel(task.name)).ui(TypeScale.small, mono: true).foregroundStyle(t.text.color)
                             if let n = task.samples { Text("\(n) questions").ui(TypeScale.small).foregroundStyle(t.text2.color) }
                             if let h = task.humanBaseline, let s = h.score {
                                 Text("people: \(Int((s * 100).rounded())) % \(h.metric ?? "")").ui(TypeScale.small).foregroundStyle(t.text2.color)
@@ -345,7 +345,7 @@ struct EvalBenchmarkCard: View {
                     Text(needs(b)).ui(TypeScale.small).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Estimated cost for 50 questions").ui(TypeScale.small, .semibold).foregroundStyle(t.text2.color)
+                    Text("Estimated cost for \(benchmark.firstRunLimit) questions").ui(TypeScale.small, .semibold).foregroundStyle(t.text2.color)
                     ForEach(costModels, id: \.self) { m in
                         HStack {
                             Text(EvalModels.short(m)).ui(TypeScale.small, mono: true).foregroundStyle(t.text.color).frame(width: 220, alignment: .leading)
@@ -369,7 +369,7 @@ struct EvalBenchmarkCard: View {
     private func estimate() {
         let task = benchmark.defaultTask
         for m in costModels {
-            board.estimate(task: task, model: m, limit: 50, epochs: nil) { r in
+            board.estimate(task: task, model: m, limit: benchmark.firstRunLimit, epochs: nil) { r in
                 switch r {
                 case .success(let e): estimates[m] = e.usd.map { String(format: "$%.3f · %d calls", $0, e.calls) } ?? "price unknown"
                 case .failure: estimates[m] = "price unknown"
@@ -425,8 +425,12 @@ struct EvalRunSheet: View {
             } else {
                 HStack {
                     Text("Benchmark task").ui(TypeScale.small, .semibold).foregroundStyle(t.text2.color).frame(width: 130, alignment: .leading)
-                    TextField("gsm8k", text: Binding(get: { plan.tasks.first ?? "" }, set: { plan.tasks = [$0] }))
-                        .textFieldStyle(.roundedBorder).frame(width: 260).onSubmit(refresh)
+                    if let task = plan.tasks.first, task.hasSuffix(".py") {   // your own eval set: its task file, not typed
+                        Text(EvalBenchmark.taskLabel(task)).ui(TypeScale.small, mono: true).foregroundStyle(t.text.color)
+                    } else {
+                        TextField("gsm8k", text: Binding(get: { plan.tasks.first ?? "" }, set: { plan.tasks = [$0] }))
+                            .textFieldStyle(.roundedBorder).frame(width: 260).onSubmit(refresh)
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
@@ -532,7 +536,7 @@ struct EvalRunSheet: View {
                 ForEach(plan.models, id: \.self) { m in
                     let k = "\(task)|\(m)"
                     HStack {
-                        Text("\(task) × \(EvalModels.short(m))").ui(TypeScale.small, mono: true).foregroundStyle(t.text.color).frame(width: 330, alignment: .leading)
+                        Text("\(EvalBenchmark.taskLabel(task)) × \(EvalModels.short(m))").ui(TypeScale.small, mono: true).foregroundStyle(t.text.color).frame(width: 330, alignment: .leading)
                         if let e = estimates[k] {
                             Text(e.usd.map { String(format: "$%.4f", $0) } ?? "price unknown")
                                 .ui(TypeScale.small, .semibold).foregroundStyle((e.usd ?? 0) > plan.cap ? t.needsText.color : t.text.color)
@@ -668,6 +672,10 @@ struct EvalsResultsTab: View {
                     EvalIntervalBar(metric: p).frame(height: 6)
                     Text("n=\(p.n ?? 0)" + ((r.cost ?? 0) > 0 ? String(format: " · $%.3f", r.cost!) : (r.isFree ? " · free" : "")))
                         .ui(TypeScale.micro, mono: true).foregroundStyle(t.text3.color)
+                    if let j = r.judgeAgreement {   // a judged score: how far to trust it (LAB-1996)
+                        Text(j.short).ui(TypeScale.micro).foregroundStyle(j.trustworthy ? t.text2.color : t.needsText.color)
+                            .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .padding(8).frame(width: 130, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).fill(t.surface2.color))
@@ -687,6 +695,9 @@ struct EvalsResultsTab: View {
                 Text("\(r.task ?? "?") × \(EvalModels.short(r.model ?? "?"))").ui(TypeScale.small, .medium).foregroundStyle(t.text.color).frame(width: 330, alignment: .leading)
                 Text(r.status ?? "").ui(TypeScale.small).foregroundStyle(r.status == "done" ? t.text2.color : t.needsText.color).frame(width: 70, alignment: .leading)
                 if let p = r.primary, let v = p.value { Text("\(p.metric) \(format(v, p))").ui(TypeScale.small, mono: true).foregroundStyle(t.text.color) }
+                if let j = r.judgeAgreement {
+                    Text(j.short).ui(TypeScale.caption).foregroundStyle(j.trustworthy ? t.text2.color : t.needsText.color).lineLimit(1)
+                }
                 Spacer()
                 Text(EvalModels.when(r.started)).ui(TypeScale.caption, mono: true).foregroundStyle(t.text3.color)
             }

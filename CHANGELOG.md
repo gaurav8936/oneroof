@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.9.37 — Your own evals: questions from your repo's real bugs, a model as judge with its agreement measured, a second framework beside Inspect (draft, staged for after 1.9.36)
+
+- **Your evals** (LAB-1995). `roof eval evalset build --repo <repo>` turns a repo's own fix history into a versioned
+  question set: each question is a real bug report (the Linear issue) and the source files as they were before the fix,
+  and the model names the files to change, checked by code against the real fix. Listed first in the catalog, priced
+  and run at its own size, with a no-model floor beside it (guessing the most-fixed files). From One Roof's own
+  history: 20 bugs; Haiku 5.5 finds the right file for 80 % of them, the floor is 40 %.
+- **A model as judge, with its agreement measured** (LAB-1996). For answers code can't check, `roof eval judge`
+  builds a judge from your rubric and checks it against labels it never saw, from three sources kept apart: yours
+  (label in the terminal), code (a fact it can check, e.g. the note points at a file the fix changed) and a stronger
+  model applying the rubric (shown as that model's labels, never as yours). Results show the agreement next to every
+  judged score: overall, on good answers and on bad ones. Pairwise judging asks both orders; a judge grading its own
+  answers, or the model that made the labels, is flagged. First judge, GPT-5 mini on 40 triage notes about One Roof
+  bugs: agrees 70 % with Sonnet's labels but fails only half of the bad notes, so it is not trusted yet.
+- **Two frameworks, one benchmark** (LAB-1997). `roof eval lmeval` runs EleutherAI's lm-evaluation-harness (MIT) on
+  the same local model, recorded as a normal run beside Inspect's. On ARC-Challenge with Qwen3-1.7B on this Mac the
+  same 100 questions score 72 % in Inspect and 64 % in lm-eval; Learn › Two frameworks, one benchmark explains why.
+- **A run never depends on the folder it was started from** (LAB-1993). A coding-agent run started from a release
+  worktree that was removed mid-run finished every question but was marked failed; runs now work in their own folder,
+  and a complete, scored log counts as done even if closing fails.
+
 ## 1.9.36 — Evals: run any model on any benchmark, read every score with its range; coding agents on SWE-bench; the agent X-ray (31 Oct 2026)
 
 - **Evals place** (⌃⌘8, LAB-EVALS). One Roof installs the eval engine (Inspect AI, MIT) into its own folder with one

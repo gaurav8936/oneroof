@@ -1,0 +1,38 @@
+# LAB-1997 · lm-eval 0.4.13's arc_challenge_chat for servers without assistant prefill (llama-server, most chat APIs).
+# The original pre-fills the reply with "The best answer is" and expects only the letter back; a server that cannot
+# continue a pre-filled reply answers with the whole sentence ("The best answer is C"), and exact match on "C" fails.
+# Same prompt, data and metric as the original (copied, since include only reads files in this folder); only the
+# answer is read with a pattern instead of whitespace removal.
+task: arc_challenge_chat_letter
+dataset_path: allenai/ai2_arc
+dataset_name: ARC-Challenge
+output_type: generate_until
+training_split: train
+validation_split: validation
+test_split: test
+fewshot_split: train
+doc_to_text: 'Given the following question and four candidate answers (A, B, C and D), choose the best answer.\nQuestion: {{question.strip()}}\nA. {{choices.text[0]}}\nB. {{choices.text[1]}}\nC. {{choices.text[2]}}{% if choices.text|length > 3 %}\nD. {{choices.text[3]}}{% endif %}\nYour response should end with "The best answer is [the_answer_letter]" where the [the_answer_letter] is one of A, B, C or D.'
+gen_prefix: 'The best answer is'
+fewshot_delimiter: "\n\n"
+doc_to_target: "{{ 'ABCD'[answerKey|int - 1] if answerKey|string in '1234' else answerKey }}"
+num_fewshot: 0
+generation_kwargs:
+  max_gen_toks: 100
+  until:
+    - "\n\n"
+    - "."
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+    ignore_case: true
+    ignore_punctuation: true
+filter_list:
+  - name: letter
+    filter:
+      - function: regex
+        regex_pattern: "best answer is:?\\s*\\(?([ABCD])\\b"
+        group_select: -1
+      - function: take_first
+metadata:
+  version: 1.0
