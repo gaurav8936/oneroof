@@ -35,6 +35,44 @@ final class EvalsTests: XCTestCase {
         XCTAssertEqual(c.allCategories, ["Math", "Software engineering", "Writing"])   // shelf order, then the rest
     }
 
+    func test_own_eval_set_shows_by_name_under_your_evals() throws {
+        let json = """
+        {"benchmarks": [{"category": "Your evals", "description": "20 real bugs.", "folder": "own-oneroof", "group": "Your evals",
+          "sandbox": false, "internet": false, "starter": [], "tags": ["own", "fix-locator"], "version": "1",
+          "tasks": [{"name": "/data/evals/sets/oneroof/v1/own_oneroof_v1.py", "samples": 20}], "title": "oneroof · fix locator (your work)"}],
+         "categories": ["Your evals", "Math"], "count": 1, "tasks": 1}
+        """
+        let c = try decode(EvalCatalog.self, json)
+        let b = c.benchmarks[0]
+        XCTAssertEqual(c.allCategories, ["Your evals"])
+        XCTAssertEqual(b.defaultTask, "/data/evals/sets/oneroof/v1/own_oneroof_v1.py")   // the engine runs the file
+        XCTAssertEqual(EvalBenchmark.taskLabel(b.defaultTask), "own_oneroof_v1")          // people read its name
+        XCTAssertEqual(EvalBenchmark.taskLabel("gsm8k"), "gsm8k")
+        XCTAssertEqual(b.firstRunLimit, 20)                                                 // priced and run at 20, not 50
+        XCTAssertEqual(try decode(EvalCatalog.self, catalogJSON).benchmarks[0].firstRunLimit, 50)
+    }
+
+    func test_judged_score_carries_its_agreement_with_the_owner() throws {
+        let json = """
+        [{"id": "r1", "task": "judge_t_v1", "status": "done", "metrics": [],
+          "judge_agreement": {"mode": "single", "n": 20, "agreement": 0.85, "tpr": 0.9, "tnr": 0.78, "judged_pass_rate": 0.6}},
+         {"id": "r2", "task": "judge_p_v1", "status": "done", "metrics": [],
+          "judge_agreement": {"mode": "pairwise", "n": 4, "agreement": 0.5, "position_consistency": 0.67,
+                              "self_preference": "the judge model also wrote answers it grades"}},
+         {"id": "r3", "task": "gsm8k", "status": "done", "metrics": []}]
+        """
+        let rs = try decode([EvalResult].self, json)
+        XCTAssertEqual(rs[0].judgeAgreement?.short, "agrees with you 85 % (n=20) · good 90 % · bad 78 %")
+        XCTAssertEqual(rs[1].judgeAgreement?.short,
+                       "agrees with you 50 % (n=4) · same winner both orders 67 % · too few labels · grades its own answers")
+        XCTAssertNil(rs[2].judgeAgreement)
+        let silver = try decode(EvalJudgeAgreement.self, """
+        {"mode": "single", "n": 30, "agreement": 0.8, "tpr": 0.75, "tnr": 0.85, "reference": "model:anthropic/claude-sonnet-5-5",
+         "code": {"n": 30, "fails_what_code_fails": 0.9, "code_fail": 20}}
+        """)
+        XCTAssertEqual(silver.short, "agrees with claude-sonnet-5-5's labels 80 % (n=30) · good 75 % · bad 85 % · fails 90 % of 20 wrong-file notes")
+    }
+
     func test_catalog_filter() throws {
         let bs = try decode(EvalCatalog.self, catalogJSON).benchmarks
         XCTAssertEqual(EvalCatalogFilter(starterOnly: true).apply(bs).map(\.id), ["gsm8k", "swe_bench"])
