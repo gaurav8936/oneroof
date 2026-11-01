@@ -30,9 +30,9 @@ One Roof looks for `claude` (Claude Code), `codex`, `kimi`, `gemini` (Gemini CLI
 
 **Projects folder.** The folder that holds your code repos.
 
-- **Starts as:** `~/Projects` when that folder exists.
+- **Starts as:** `~/Projects` when that folder exists. If it does not, Setup asks you to choose a folder or press **Create ~/Projects**, and goes on only once you have one.
 - **Impact:** every agent starts in this folder, and New session, Search and Loops list the repos inside it. Agents can read everything below it.
-- **Choose a folder that holds only your code.** Do not choose your home folder: agents would start there with your documents in reach, and listing it makes macOS ask for access to Desktop, Documents and Downloads.
+- **Choose a folder that holds only your code.** Not your home folder: agents would start there with your documents in reach. One Roof never lists the home folder's contents as repos.
 - **Later:** Settings › Foundations. A single session can start inside one repo instead (New session › Start in › Repo folder).
 
 **Shared rules and docs (optional).** A folder for the rules, handoffs and gotchas that all your agents share.

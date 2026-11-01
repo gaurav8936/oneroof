@@ -18,6 +18,7 @@ public enum WorkspaceSearch {
         func isRepo(_ p: String) -> Bool { fm.fileExists(atPath: p + "/.git") }
         func skip(_ name: String) -> Bool { name.hasPrefix(".") || name.hasSuffix("-data") || name.hasPrefix("_archive") || name == "node_modules" }
         var out: [String] = []
+        guard !Workspace.isHome(root) else { return [] }   // LAB-2167
         for a in ((try? fm.contentsOfDirectory(atPath: root)) ?? []).sorted() where !skip(a) {
             let p = root + "/" + a
             if isRepo(p) { out.append(p); continue }
