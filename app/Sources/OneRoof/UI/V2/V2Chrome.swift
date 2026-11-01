@@ -404,18 +404,16 @@ struct V2RailSeats: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(usage[m]?.worst.map { "\(Int($0))%" } ?? "off").ui(10.5, .semibold)
                                 .foregroundStyle(usage[m] == nil ? t.text3.color : t.text.color).lineLimit(1).fixedSize()
-                            GeometryReader { g in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(t.separatorStrong.color.opacity(0.45))
-                                    Capsule().fill(m.fill.color).frame(width: g.size.width * CGFloat(min(100, max(0, usage[m]?.worst ?? 0))) / 100)
-                                }
+                            // 2.0.0 gate: a fixed 30 pt bar (no GeometryReader per seat), so stepping to Wide stays smooth.
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(t.separatorStrong.color.opacity(0.45))
+                                Capsule().fill(m.fill.color).frame(width: 30 * CGFloat(min(100, max(0, usage[m]?.worst ?? 0))) / 100)
                             }
-                            .frame(height: 5)
+                            .frame(width: 30, height: 5)
                         }
                         .frame(width: 30)
                     }
                     .opacity(usage[m] == nil ? 0.7 : 1)
-                    .help(V2SeatChip.help(m, usage[m]))
                     .frame(height: 24)
                 }
                 Text("seats").ui(10.5).foregroundStyle(hover ? t.text.color : t.text2.color)
