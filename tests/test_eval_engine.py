@@ -436,7 +436,8 @@ class Judge(unittest.TestCase):
         ns = {"re": __import__("re"), "MODE": "pairwise"}
         exec(compile(ast.Module([n for n in tree.body if isinstance(n, ast.Assign) and n.targets[0].id == "WORDS"]
                                 + [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "verdict"],
-                                type_ignores=[]), "task", "exec"), ns)
+                                type_ignores=[]), "task", "exec",
+                     flags=__import__("__future__").annotations.compiler_flag), ns)   # CI's python3 can be 3.9 (no X | None)
         self.assertEqual(ns["verdict"]("A is clearer.\nVERDICT: B"), "B")
         self.assertEqual(ns["verdict"]("verdict: tie"), "TIE")
         self.assertIsNone(ns["verdict"]("no idea"))
