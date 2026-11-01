@@ -1,9 +1,10 @@
 import Foundation
 
 /// One-time move from the original preferences domain (`com.gaurav8936.oneroof`, the author's first builds) to
-/// `io.github.gaurav8936.oneroof`. This is the ONLY file allowed to name the author's own folders: they fill in
-/// settings that older builds took for granted, so the author's Mac keeps working exactly as before. Nothing here
-/// runs for anyone else (their old domain is empty), and the old domain is only read, never written.
+/// `io.github.gaurav8936.oneroof`. This is the ONLY file allowed to name the old domain and the old Linear key file.
+/// It names no workspace folders (LAB-2140: they were compiled into the public download); the Learn folders and the
+/// on-device model are found on disk or set in Settings. Nothing here runs for anyone else (their old domain is
+/// empty), and the old domain is only read, never written.
 public enum LegacyMigration {
     public static let legacyDomain = "com.gaurav8936.oneroof"
     public static let flagKey = "migratedFromLegacy"
@@ -23,13 +24,6 @@ public enum LegacyMigration {
         var s: [String: Any] = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
         let projects = home + "/Projects"
         if (s["projectsPath"] as? String ?? "").isEmpty { s["projectsPath"] = projects }
-        if (s["learnFolders"] as? [String] ?? []).isEmpty {
-            let extra = [projects + "/gabblegrid/gabblegrid-app/help-content",
-                         projects + "/gabblegrid/gabblegrid-app/public/narration"].filter(exists)
-            if !extra.isEmpty { s["learnFolders"] = extra }
-        }
-        let model = projects + "/labs/labs-data/oneroof/models/Arch-Router-1.5B-Q4_K_M.gguf"
-        if (s["localModelPath"] as? String ?? "").isEmpty, exists(model) { s["localModelPath"] = model }
         s["setupDone"] = true
         return try? JSONSerialization.data(withJSONObject: s, options: [.sortedKeys])
     }

@@ -243,7 +243,7 @@ final class LinearKeyTests: XCTestCase {
 }
 
 final class LegacyMigrationTests: XCTestCase {
-    func testCopiesEveryKeyOnceAndFillsAssumedFolders() throws {
+    func testCopiesEveryKeyOnceAndNamesNoWorkspaceFolders() throws {
         let suite = "oneroof.tests.migration.\(UUID().uuidString)"
         let target = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { target.removePersistentDomain(forName: suite) }
@@ -257,7 +257,7 @@ final class LegacyMigrationTests: XCTestCase {
         let s = try JSONDecoder().decode(AppSettings.self, from: XCTUnwrap(target.data(forKey: "settings")))
         XCTAssertEqual(s.projectsPath, home + "/Projects")
         XCTAssertEqual(s.commonPath, home + "/Projects/_common")
-        XCTAssertEqual(s.learnFolders, Array(present))
+        XCTAssertEqual(s.learnFolders, [], "LAB-2140: no workspace folders filled in, even when they exist")
         XCTAssertEqual(s.localModelPath, "")
         XCTAssertFalse(s.dockBadge)
         XCTAssertTrue(s.setupDone)
@@ -283,7 +283,19 @@ final class LegacyMigrationTests: XCTestCase {
         let s = try JSONDecoder().decode(AppSettings.self, from: up)
         XCTAssertEqual(s.projectsPath, "/code")
         XCTAssertEqual(s.learnFolders, ["/docs"])
-        XCTAssertTrue(s.localModelPath.hasSuffix(".gguf"))
+        XCTAssertEqual(s.localModelPath, "", "LAB-2140: the model is found on disk or set in Settings")
+    }
+
+    /// LAB-2140 · the migration file is exempt from the neutral-source scan only for the old domain and key file; it
+    /// must not name workspace folders, which would be compiled into the public download.
+    func testMigrationFileNamesNoWorkspaceFolders() throws {
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/OneRoofCore/LegacyMigration.swift").path
+        let text = try String(contentsOfFile: file, encoding: .utf8).lowercased()
+        for b in ["gabblegrid", "hypothesys", "zibajoon", "agencium", "mindmesh", "labs-data", "labs-agentic-engineering",
+                  "/labs/oneroof/", "ganarasi"] {
+            XCTAssertFalse(text.contains(b), "LegacyMigration.swift names \(b)")
+        }
     }
 }
 

@@ -16,6 +16,9 @@ bad=0
 
 # A built app must hold no path or name of the machine that built it: home folders, zig's default cache, hostname.
 HOST="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
+WORKSPACE_WORDS='gabblegrid|hypothesys|agencium|mindmesh|labs-data|labs-agentic-engineering|access_admin|ganarasi'
+# The builder's login name and the local part of the git e-mail (both found at run time, never written here).
+OWNER_WORDS="$(id -un)$(e="$(git config user.email 2>/dev/null | cut -d@ -f1 | sed 's/\./\\./g')"; [ -n "$e" ] && printf '|%s@' "$e")"
 scan_app() {   # scan_app <path.app> → 0 clean, 1 hits (printed)
   local app="$1" exe hits n=0
   exe="$app/Contents/MacOS/OneRoof"
@@ -30,6 +33,14 @@ scan_app() {   # scan_app <path.app> → 0 clean, 1 hits (printed)
   hits="$(grep -rlaE '/Users/[A-Za-z0-9._-]|\.cache/zig' "$app" ; grep -rlaiF -- "$HOST" "$app")"
   [ -n "$hits" ] && { echo "FAIL build-machine paths in bundle files:"; echo "$hits" | sed "s|^$app/||" | sort -u | head -20; n=1; }
   [ "$n" = 0 ] && echo "ok   no build-machine paths in $(basename "$app") ($(find "$app" -type f | wc -l | tr -d ' ') files)"
+  # LAB-2140 · the executables name none of the author's workspace folders or handles (a "/Users/" check misses a
+  # path built from NSHomeDirectory(), e.g. ".../labs/labs-data/..."). The Learn hub's address is allowed.
+  local ex; ex="$(for b in "$app"/Contents/MacOS/*; do strings -a "$b"; done | grep -iE "$WORKSPACE_WORDS" | sort -u)"
+  if [ -n "$ex" ]; then echo "FAIL workspace names in the executables:"; echo "$ex" | head -20; n=1
+  else echo "ok   no workspace names in the executables"; fi
+  # The packaged Agentic Engineering deck comes from its own repo; report what it still names (warning until it is clean).
+  ex="$(grep -rlaiE "$WORKSPACE_WORDS|$OWNER_WORDS" "$app/Contents/Resources" 2>/dev/null | sed "s|^$app/Contents/Resources/||")"
+  [ -n "$ex" ] && echo "warn workspace names in $(echo "$ex" | wc -l | tr -d ' ') bundled content file(s), e.g. $(echo "$ex" | head -1)"
   local files=(); while IFS= read -r -d '' f; do files+=("$f"); done < <(find "$app" -type f -print0)
   scan_tracker "$(basename "$app")" "${files[@]}" || n=1
   scan_datasets "$app" || n=1
