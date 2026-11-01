@@ -14,6 +14,7 @@ only; the few steps that need Inspect re-run this file under the engine's own py
   run <task> --model M [--limit 50] [--epochs 1] [--seed 42] [--temperature T] [--max-cost 2] [--background] [--json]
       [--where local|daytona|modal]   where code-running benchmarks execute (cloud sandboxes need no Docker here)
       [--agent claude_code|codex_cli|gemini_cli|kimi_code|opencode|antigravity|mini_swe_agent]   the real agent CLI is the subject
+      [--parallel N]   questions (and containers) at once; agent runs default to 2
   status [--json]   cancel <run>   resume <run>   results [<run>] [--json]   index
   samples <run> [--json]           every question: id, attempt, score, answer, target, time, tokens
   sample <run> <id> [--epoch N] [--json]   one question's full transcript (messages, tool calls, scorer's reasoning)
@@ -609,6 +610,8 @@ def inspect_cmd(r: dict) -> list[str]:
         c += ["--epochs", str(r["epochs"])]
     for a in r.get("task_args") or []:
         c += ["-T", a]
+    if r.get("parallel"):
+        c += ["--max-samples", str(r["parallel"]), "--max-sandboxes", str(r["parallel"])]
     if r.get("agent"):
         c += ["--solver", f"inspect_swe/{r['agent']}"]   # the real agent CLI is the subject; the model is its brain
     if WHERE.get(r.get("where") or "local"):
@@ -658,7 +661,7 @@ def pid_alive(pid: int | None) -> bool:
 
 def cmd_run(argv):
     pos, o = args_of(argv, {"--model": "", "--limit": "50", "--epochs": "", "--seed": "42", "--temperature": "",
-                            "--task-args": "", "--where": "local", "--agent": "", "--max-cost": "2", "--allow-unknown-cost": False, "--background": False,
+                            "--task-args": "", "--where": "local", "--agent": "", "--parallel": "", "--max-cost": "2", "--allow-unknown-cost": False, "--background": False,
                             "--json": False})
     if len(pos) != 1 or not o["model"]:
         die("run <task> --model M [--limit 50] [--epochs 1] [--seed 42] [--temperature T] [--max-cost 2] [--background]",
@@ -701,7 +704,10 @@ def cmd_run(argv):
     r = {"id": rid, "task": task_name(task), "task_ref": task, "model": model, "limit": limit, "epochs": epochs,
          "seed": int(o["seed"]) if o["seed"] != "" else None,
          "temperature": float(o["temperature"]) if o["temperature"] != "" else None,
-         "task_args": [a for a in o["task_args"].split(",") if a], "where": o["where"], "agent": o["agent"] or None, "max_cost": cap, "estimate": est, "status": "queued", "created": now(), "dir": str(d)}
+         "task_args": [a for a in o["task_args"].split(",") if a], "where": o["where"], "agent": o["agent"] or None,
+         # Containers at once: agent runs start a container per question; ~10 emulated x86 SWE-bench containers on a Mac
+         # made sandbox commands time out (LAB-1993), so sandboxed agent runs default to 2.
+         "parallel": int(o["parallel"]) if o["parallel"] else (2 if o["agent"] else None), "max_cost": cap, "estimate": est, "status": "queued", "created": now(), "dir": str(d)}
     # Hard cap while answering: no answer may spend more than its share of the cap (Inspect's per-sample cost limit,
     # with every known price so tools and sub-agents count). Inspect applies it to the solver only: grading runs after
     # it (inspect_ai/_eval/task/run.py, the scoring block has only a time limit), and sandbox time is not tokens. Both
