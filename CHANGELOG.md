@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased (2.0.0)
+## 2.0.0 — The owner's review: Inbox, History, Projects, Resources, Loops and a redesigned Evals (draft) (1 Nov 2026)
+
+- **Evals is a draft, coming soon** (LAB-2072). The Evals place carries a Draft tag on the rail, "Evals · Draft" in the
+  menu and palette, and a "Draft · coming soon" banner on every tab and the run sheet: it is being redesigned, what you
+  see may change, and results are for trying out only. Shortcuts set on Evals carry over.
+- **Readable everywhere** (LAB-2071). One contrast pass on the shared colours of every theme (Daylight, Graphite,
+  Midnight and the pastels): small grey text now reads at 4.5:1 or more, card and control edges at 3:1, and hairlines
+  you can see. Each page below then fixed what was left.
+- **Places say what they hold** (LAB-2039, LAB-2040, LAB-2049). Machine is now **Resources**, Work is now **Projects**,
+  and the button at the foot of the rail is **Settings** with a gear (it was Look; the one-click looks are in
+  Settings › Appearance). Shortcuts set under the old names keep working.
+- **Seats you can read** (LAB-2041). The seat list on the rail shows each agent's mark as large as the place icons, its
+  use in words and a bar you can see, with a tooltip each.
+- **Learn: Papers and Start here** (LAB-2057, LAB-2058, LAB-2059). Learn gets a Papers tab: 50 papers that shaped
+  agents, on a timeline that grows from Foundations, every one narrated. The four bands, fifteen tracks and seven
+  building blocks open the Learn home as Start here; the Radio plays the four bands only.
 
 - **Needs you is now the Inbox** (LAB-2042, LAB-2043). One column of dark, terminal-style blocks, one per session that
   needs you, newest at the top, each answered in place: every option the prompt shows (1–9 and Return press them), a
