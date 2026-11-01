@@ -144,6 +144,21 @@ public final class LoopLedger {
         return out
     }
 
+    /// LAB-2098 · runs (any loop) that started in [from, to), oldest first, at most `limit`: Home's overnight river.
+    /// `started` is ISO-8601 with the writer's offset, so rows are compared as dates, not strings.
+    public func runs(from: Date, to: Date, limit: Int = 500) -> [Run] {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        let lo = Self.iso(from.addingTimeInterval(-86_400)), hi = Self.iso(to.addingTimeInterval(86_400))   // index range, a day of slack for offsets
+        let rs = rows("SELECT * FROM runs WHERE started >= ? AND started < ? ORDER BY started DESC LIMIT \(max(1, limit) * 2)", [lo, hi])
+        let picked = rs.filter { r in r["started"].flatMap(f.date(from:)).map { $0 >= from && $0 < to } ?? false }.prefix(limit)
+        return picked.reversed().map {
+            Run(id: $0["id"] ?? "", loop: $0["loop"] ?? "", engine: $0["engine"] ?? "", mode: $0["mode"] ?? "",
+                started: $0["started"] ?? "", ended: $0["ended"] ?? "", result: $0["result"] ?? "",
+                cost: $0["cost_usd"].flatMap(Double.init), summary: $0["summary"] ?? "")
+        }
+    }
+
     /// Staged outcomes, newest first: what the morning view asks you about.
     public func staged(limit: Int = 100) -> [[String: String]] {
         rows("SELECT id, loop, kind, title, link, created FROM outcomes WHERE status='staged' ORDER BY created DESC LIMIT \(max(1, limit))")
@@ -178,7 +193,7 @@ public final class LoopLedger {
             return (try? JSONSerialization.data(withJSONObject: v)).flatMap { String(data: $0, encoding: .utf8) }
         }
 
-        /// What `link` points at: `commit:<sha>@<branch>`, `branch:<branch>`, a URL, a file, or an issue key.
+        /// What `link` points at: `commit:<sha>@<branch>`, `branch:<branch>`, `journal:<path>`, a URL, a file, or an issue key.
         public var target: LinkTarget { LinkTarget(link) }
     }
 
@@ -187,6 +202,8 @@ public final class LoopLedger {
         case branch(String)
         case url(String)
         case file(String)
+        /// LAB-2099: `journal:runs/YYYY/MM/<run>.md`, a run report under the kit's journal root (AEConfig.journalRoots).
+        case journal(String)
         case key(String)
         case none
 
@@ -199,6 +216,7 @@ public final class LoopLedger {
                 self = .commit(sha: parts.first ?? "", branch: parts.count > 1 ? parts[1] : ""); return
             }
             if l.hasPrefix("branch:") { self = .branch(String(l.dropFirst(7))); return }
+            if l.hasPrefix("journal:") { self = .journal(String(l.dropFirst(8))); return }
             if l.hasPrefix("http://") || l.hasPrefix("https://") { self = .url(l); return }
             if l.hasPrefix("/") || l.hasPrefix("~") || l.hasPrefix("file:") { self = .file(l.hasPrefix("file:") ? String(l.dropFirst(5)) : l); return }
             self = .key(l)

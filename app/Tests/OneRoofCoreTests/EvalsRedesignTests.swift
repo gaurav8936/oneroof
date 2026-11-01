@@ -12,9 +12,9 @@ final class EvalsRedesignTests: XCTestCase {
     // MARK: Shell (LAB-2061)
 
     func test_LAB2061_tabs_in_the_owners_order_with_overview_first() {
-        XCTAssertEqual(EvalsTabV2.allCases.map(\.title), ["Overview", "Your evals", "Explore", "Run", "Results", "Learn"])
-        XCTAssertEqual(EvalsTabV2.allCases.first, .overview)
-        XCTAssertEqual(EvalsTabV2.allCases.map(\.keyDigit), ["1", "2", "3", "4", "5", "6"])   // ⌃⌥1…⌃⌥6
+        XCTAssertEqual(EvalsTabV2.allCases.map(\.title), ["How to", "Overview", "Your evals", "Explore", "Run", "Results", "Learn"])   // LAB-2113
+        XCTAssertEqual(EvalsTabV2.allCases.first, .howTo)
+        XCTAssertEqual(EvalsTabV2.allCases.map(\.keyDigit), ["1", "2", "3", "4", "5", "6", "7"])   // ⌃⌥1…⌃⌥7
     }
 
     func test_LAB2061_selftest_values_reach_every_tab_and_drill_down() {

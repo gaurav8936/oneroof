@@ -124,6 +124,48 @@ extension SessionStore {
         return Array(q.apply(rows).dropFirst(offset).prefix(limit))
     }
 
+    // MARK: Decided (LAB-2110 · LAB-2082)
+
+    /// One page of the Decided record: answered asks, newest answer first, paged and filtered in SQL (a 100k-decision
+    /// store reads a page through the `decisions_answered` index; nothing is loaded and then filtered in memory).
+    /// `search` matches the ask, the command, your reply, the option you chose and the session name; "set aside"
+    /// finished turns are left out (they were never decisions).
+    public func decided(search: String = "", sessions: Set<String> = [], answers: Set<Answer> = [], since: Date? = nil,
+                        limit: Int = Decided.pageSize, offset: Int = 0) -> [ActionLogRow] {
+        let (clause, args) = decidedWhere(search: search, sessions: sessions, answers: answers, since: since)
+        let remembered = historySessions()
+        return decisionRows(clause + " ORDER BY answered_at DESC, id LIMIT ? OFFSET ?", args + [.int(limit), .int(offset)]).map { d, stored in
+            ActionLogRow(decision: d, sessionName: stored ?? remembered[d.sessionId]?.name, closed: false)
+        }
+    }
+
+    /// How many answered asks the Decided record holds for this search (the tab's count and the pager).
+    public func decidedCount(search: String = "", sessions: Set<String> = [], answers: Set<Answer> = [], since: Date? = nil) -> Int {
+        let (clause, args) = decidedWhere(search: search, sessions: sessions, answers: answers, since: since)
+        return query("SELECT COUNT(*) FROM decisions \(clause)", args) { $0.int(0) }.first ?? 0
+    }
+
+    private func decidedWhere(search: String, sessions: Set<String>, answers: Set<Answer>, since: Date?) -> (String, [Value]) {
+        var clause = "WHERE answer IS NOT NULL AND answered_at IS NOT NULL AND COALESCE(reply,'') <> 'set aside'"
+        var args: [Value] = []
+        if let since { clause += " AND answered_at >= ?"; args.append(.real(since.timeIntervalSince1970)) }
+        if !answers.isEmpty {
+            clause += " AND answer IN (" + Array(repeating: "?", count: answers.count).joined(separator: ",") + ")"
+            args += answers.map(\.rawValue).sorted().map { .text($0) }
+        }
+        if !sessions.isEmpty {
+            clause += " AND session_id IN (" + Array(repeating: "?", count: sessions.count).joined(separator: ",") + ")"
+            args += sessions.sorted().map { .text($0) }
+        }
+        let needle = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !needle.isEmpty {
+            let like = "%" + needle.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_") + "%"
+            clause += " AND (" + ["pattern", "why", "command", "reply", "chosen", "session_name"].map { "COALESCE(\($0),'') LIKE ? ESCAPE '\\'" }.joined(separator: " OR ") + ")"
+            args += Array(repeating: .text(like), count: 6)
+        }
+        return (clause, args)
+    }
+
     /// Every rule, newest first.
     public func decisionRulesNewestFirst() -> [DecisionRule] { decisionRules().sorted { $0.createdAt > $1.createdAt } }
 }

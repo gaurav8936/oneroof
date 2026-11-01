@@ -239,7 +239,7 @@ private struct PlayPageButton: View {
             Label(here ? (player.playing ? "Pause" : "Play") : resume.map { "Continue part \($0.track + 1)" } ?? "Play in One Roof",
                   systemImage: here && player.playing ? "pause.fill" : "play.fill")
         }
-        .help("Plays the narration here, at your speed, and keeps playing while you work")
+        .help("Plays the narration here, at your speed, and keeps playing while you work. " + Narration.disclosure)   // LAB-2116
         button.controlSize(.small)
     }
 }
@@ -299,6 +299,18 @@ extension LearnView {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // LAB-2116: Radio, cards and papers play narration on this page (its own players and One Roof's): say plainly
+            // that the voice is AI-generated, always visible under the page.
+            HStack(spacing: 6) {
+                Text(Narration.disclosure).font(.system(size: 10.5)).foregroundStyle(t.text2.color)
+                if let u = URL(string: Narration.policyURL) {
+                    Link("Why this note ↗", destination: u).font(.system(size: 10.5)).help("OpenAI's usage policies ask for this disclosure")
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14).frame(height: 22).background(t.window.color)
+            .overlay(alignment: .top) { Rectangle().fill(t.separator.color).frame(height: 1) }
+            .accessibilityElement(children: .combine).accessibilityLabel(Narration.detail)
             LearnPlayerBar(player: model.player, tokens: t, openPage: { sharedOpenPlaying() },
                            onPrevCard: model.learnDeck == nil ? nil : { sharedPlayCard(next: false) },
                            onNextCard: model.learnDeck == nil ? nil : { sharedPlayCard(next: true) },

@@ -37,7 +37,7 @@ The control at the top right switches between them.
 
 A card's page (its **station**) has Listen (the card's own narrated page), Transcript and Skill file tabs, and **Play in One Roof**, **Use in a session ▾** (sends `/skill-name` to a live agent session), **Show in Finder** and **Open in browser** at the top.
 
-Everything ships inside One Roof, audio included, and works offline. One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched (`LearnExclusions`).
+Everything ships inside One Roof, audio included, and works offline. Narration: AI-generated voice (OpenAI text-to-speech); every player and the foot of the Learn page say so. One Roof leaves out pages that belong to another product: the **Career Agent** playbook is not listed or searched (`LearnExclusions`).
 
 ## How do I…? (⌥⌘/)
 

@@ -237,9 +237,17 @@ struct LoopFamilyPage: View {
         }
     }
 
+    /// LAB-2100: what a not-configured loop is missing (the loop's page says how to set it).
+    static func setupHelp(_ st: LoopSetup.Status?) -> String {
+        guard case .notConfigured(let m) = st else { return "" }
+        return m.joined(separator: "\n") + "\nOpen the loop to see what to set."
+    }
+
     private func row(_ l: Loop) -> some View {
-        let last = LoopFamilies.lastResult(runs: board.runsByLoop[l.id] ?? [], lastRunAt: l.lastRunAt)
-        let bad = ["fail", "failed", "capped"].contains { last.hasPrefix($0) }
+        // LAB-2100: a loop with nothing to check says "not configured", never pass/dry/done.
+        let setup = board.setup[l.id]
+        let last = LoopSetup.cardResult(LoopFamilies.lastResult(runs: board.runsByLoop[l.id] ?? [], lastRunAt: l.lastRunAt), status: setup)
+        let bad = ["fail", "failed", "capped", "not configured"].contains { last.hasPrefix($0) }
         return LoopCard(padding: 12, shadow: false) {
             VStack(alignment: .leading, spacing: 5) {
                 Button { openLoop(l.id) } label: {
@@ -263,6 +271,7 @@ struct LoopFamilyPage: View {
                 .accessibilityAddTraits(.isButton)
                 HStack(spacing: 8) {
                     Text(last).ui(12, bad ? .semibold : .regular).foregroundStyle((bad ? t.needsText : t.text2).color)
+                        .help(Self.setupHelp(setup))
                     Spacer(minLength: 6)
                     if l.origin == .builtIn {
                         RoofButton("Start from this", .plain) { startFrom(l) }

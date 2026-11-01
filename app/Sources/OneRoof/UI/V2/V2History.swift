@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import OneRoofCore
 
@@ -50,9 +51,11 @@ enum HistoryLoader {
 }
 
 struct V2HistoryPage: View {
-    @ObservedObject var engineState = EngineState.shared
+    // LAB-2105: the page doesn't observe the engine or the model as a whole (both publish every second, which rebuilt
+    // the list while you scrolled); it listens for the few changes that alter History (below).
+    private let engineState = EngineState.shared
     @Environment(\.theme) private var t
-    @ObservedObject var model: AppModel
+    let model: AppModel
     @ObservedObject var win: WindowState
 
     /// Every moment in the query's date range (before search and the other filters), and when it was read.
@@ -62,7 +65,13 @@ struct V2HistoryPage: View {
     @State private var slow = false
     @State private var failure: String?
     @State private var generation = 0
-    @State private var shown = HistoryPaging.pageSize
+    @State private var shapeGeneration = 0
+    /// LAB-2105: what the list shows, worked out when the moments or the query change — never while drawing.
+    @State private var list: [ScrollEntry] = []
+    @State private var dayRows: [HistoryDayRows] = []
+    @State private var sessionCount = 0
+    /// Live sessions by id (names and badges), refreshed when a name, agent or account changes.
+    @State private var liveItems: [String: BoardItem] = [:]
     @State private var search = ""
     @State private var atTop = true
     @State private var newCount = 0
@@ -75,32 +84,45 @@ struct V2HistoryPage: View {
     @FocusState private var searchFocused: Bool
 
     private var query: HistoryQuery { win.historyQuery }
-    private var list: [ScrollEntry] { query.apply(all, session: { sessions[$0] }) }
 
     var body: some View {
-        let list = self.list
+        listening(page)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("History: every session's important moments, newest first")
+    }
+
+    private var page: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header(list)
-            content(list)
+            header
+            content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(t.window.color)
         .background(keys)
-        .onAppear { search = win.historyQuery.text; reload() }
-        .onChange(of: win.historyQuery.range) { _, _ in shown = HistoryPaging.pageSize; reload() }
-        .onChange(of: win.historyQuery) { _, q in if q.text != search { search = q.text } }
+        .onAppear { search = win.historyQuery.text; liveItems = Self.liveItems(model.sessionItems); reload() }
+        .onChange(of: win.historyQuery.range) { _, _ in reload() }
+        .onChange(of: win.historyQuery) { _, q in if q.text != search { search = q.text }; recompute() }
         .onChange(of: search) { _, s in
             // 200 ms debounce: the list follows the last keystroke, not every one.
             let typed = s
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { if search == typed, win.historyQuery.text != typed { win.historyQuery.text = typed } }
         }
-        .onChange(of: engineState.feed.first?.id) { _, _ in reload() }
-        .onChange(of: model.decisions.map(\.answer)) { _, _ in reload() }
-        .onChange(of: model.decisions.count) { _, _ in reload() }
-        .onChange(of: model.selfTestDecisions.count) { _, _ in reload() }
-        .onReceive(NotificationCenter.default.publisher(for: .historyChanged)) { _ in reload() }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("History: every session's important moments, newest first")
+    }
+
+    // LAB-2105: the few changes that alter History, each as its own de-duplicated signal.
+    private var feedTop: AnyPublisher<String?, Never> { engineState.$feed.map { $0.first?.id }.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).eraseToAnyPublisher() }
+    private var answers: AnyPublisher<[String], Never> {
+        model.$decisions.map { ds -> [String] in ds.map { $0.id.uuidString + ($0.answer?.rawValue ?? "") } }.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).eraseToAnyPublisher()   // after the set, not before
+    }
+    private var testAsks: AnyPublisher<Int, Never> { model.$selfTestDecisions.map(\.count).removeDuplicates().dropFirst().receive(on: DispatchQueue.main).eraseToAnyPublisher() }
+    private var names: AnyPublisher<[String], Never> { model.$items.map(Self.liveKey).removeDuplicates().dropFirst().eraseToAnyPublisher() }
+
+    private func listening<V: View>(_ v: V) -> some View {
+        v.onReceive(feedTop) { _ in reload() }
+            .onReceive(answers) { _ in reload() }
+            .onReceive(testAsks) { _ in reload() }
+            .onReceive(names) { _ in DispatchQueue.main.async { liveItems = Self.liveItems(model.sessionItems) } }   // @Published sends before the set
+            .onReceive(NotificationCenter.default.publisher(for: .historyChanged)) { _ in reload() }
     }
 
     // MARK: Loading
@@ -108,36 +130,73 @@ struct V2HistoryPage: View {
     private func reload() {
         generation += 1
         let gen = generation, store = model.store, live = HistoryLoader.live(model), names = HistoryLoader.sessions(model)
-        let range = win.historyQuery.range
+        let range = win.historyQuery.range, q = win.historyQuery
         if store == nil { failure = "the session store isn't open"; loaded = true; return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { if gen == generation, !loaded { slow = true } }
         DispatchQueue.global(qos: .userInitiated).async {
             let entries = HistoryLoader.entries(store: store, live: live, sessions: names, range: range, now: Date())
+            let shaped = Self.shape(entries, query: q, sessions: names)
             DispatchQueue.main.async {
                 guard gen == generation else { return }
-                noteNew(entries)
+                noteNew(shaped.list, order: q.order)
                 all = entries; sessions = names; loaded = true; slow = false; failure = nil
+                shapeGeneration += 1
+                if q == win.historyQuery { show(shaped) } else { recompute() }
             }
         }
     }
 
+    /// LAB-2105: filter, sort and lay out the lines off the main thread, once per change of the moments or the query.
+    private func recompute() {
+        shapeGeneration += 1
+        let gen = shapeGeneration, entries = all, names = sessions, q = win.historyQuery
+        DispatchQueue.global(qos: .userInitiated).async {
+            let shaped = Self.shape(entries, query: q, sessions: names)
+            DispatchQueue.main.async { if gen == shapeGeneration { show(shaped) } }
+        }
+    }
+
+    private typealias Shaped = (list: [ScrollEntry], rows: [HistoryDayRows], sessions: Int)
+
+    private static func shape(_ entries: [ScrollEntry], query: HistoryQuery, sessions: [String: HistorySession]) -> Shaped {
+        let l = query.apply(entries, session: { sessions[$0] })
+        return (l, HistoryPaging.rows(HistoryPaging.days(l)), Set(l.map(\.sessionId)).count)
+    }
+
+    private func show(_ s: Shaped) {
+        // LAB-2115: new moments that arrive mid-fling wait until the scroll stops, so the list never reshuffles under it.
+        if let wait = ScrollActivity.wait() {
+            let gen = shapeGeneration
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { if gen == shapeGeneration { show(s) } }
+            return
+        }
+        if s.list != list { list = s.list; dayRows = s.rows }
+        sessionCount = s.sessions
+    }
+
+    private static func liveKey(_ items: [BoardItem]) -> [String] {
+        items.map { "\($0.id)|\($0.session.name)|\($0.session.agent.rawValue)|\($0.account ?? $0.session.account ?? "")" }
+    }
+
+    private static func liveItems(_ items: [BoardItem]) -> [String: BoardItem] {
+        Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+
     /// A moment arrived at the top while you are scrolled down: the "N new ↑" pill counts it; the view stays put.
-    private func noteNew(_ entries: [ScrollEntry]) {
-        let q = win.historyQuery
-        let top = q.apply(entries, session: { sessions[$0] }).first?.id
+    private func noteNew(_ shown: [ScrollEntry], order: HistoryOrder) {
+        let top = shown.first?.id
         defer { lastTop = top }
-        guard q.order == .newestFirst, loaded, !atTop, let old = lastTop, let top, top != old else { return }
-        let fresh = q.apply(entries, session: { sessions[$0] }).prefix { $0.id != old }.count
-        newCount += fresh
+        guard order == .newestFirst, loaded, !atTop, let old = lastTop, let top, top != old else { return }
+        newCount += shown.prefix { $0.id != old }.count
     }
 
     // MARK: Header and controls
 
-    private func header(_ list: [ScrollEntry]) -> some View {
+    private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("History").ui(TypeScale.title, .semibold).foregroundStyle(t.text.color).accessibilityAddTraits(.isHeader)
-                Text(HistoryFormat.subtitle(sessions: Set(list.map(\.sessionId)).count, moments: list.count, order: query.order))
+                Text(HistoryFormat.subtitle(sessions: sessionCount, moments: list.count, order: query.order))
                     .ui(12.5).foregroundStyle(t.text2.color)
                 Spacer()
             }
@@ -149,7 +208,7 @@ struct V2HistoryPage: View {
                 }
             }
             chipsRow
-            Text(list.isEmpty ? "" : HistoryFormat.resultLine(moments: list.count, sessions: Set(list.map(\.sessionId)).count))
+            Text(list.isEmpty ? "" : HistoryFormat.resultLine(moments: list.count, sessions: sessionCount))
                 .ui(12).foregroundStyle(t.text2.color)
         }
         .frame(maxWidth: 1080, alignment: .leading)
@@ -314,7 +373,7 @@ struct V2HistoryPage: View {
 
     // MARK: Content and states
 
-    @ViewBuilder private func content(_ list: [ScrollEntry]) -> some View {
+    @ViewBuilder private var content: some View {
         if let failure {
             VStack(spacing: 10) {
                 Text("History can't be read right now: \(failure).").ui(13).foregroundStyle(t.needsText.color)
@@ -329,7 +388,7 @@ struct V2HistoryPage: View {
         } else if list.isEmpty {
             emptyState
         } else {
-            listView(list)
+            listView
         }
     }
 
@@ -358,27 +417,18 @@ struct V2HistoryPage: View {
             .buttonStyle(.plain)
     }
 
-    private func listView(_ list: [ScrollEntry]) -> some View {
-        let page = Array(list.prefix(shown))
-        let days = HistoryPaging.days(page)
-        return ScrollViewReader { proxy in
+    private var listView: some View {
+        ScrollViewReader { proxy in
             ScrollView {
+                // LAB-2105: one lazy line per card header and per moment, so only what is on screen is built.
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Color.clear.frame(height: 1).id("history-top")
                         .onAppear { atTop = true; newCount = 0 }
                         .onDisappear { atTop = false }
-                    ForEach(days) { day in
+                    ForEach(dayRows) { day in
                         Section {
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(day.groups) { g in groupCard(g) }
-                            }
-                            .padding(.bottom, 14)
+                            ForEach(day.rows) { r in line(r).id(r.id) }
                         } header: { dayHeader(day.day) }
-                    }
-                    if list.count > page.count {
-                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Loading more…").ui(12).foregroundStyle(t.text2.color) }
-                            .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .onAppear { shown += HistoryPaging.pageSize }
                     }
                     Color.clear.frame(height: 20)
                 }
@@ -402,6 +452,33 @@ struct V2HistoryPage: View {
         }
     }
 
+    /// One line, drawn as its slice of the session card (the header opens it, the last moment closes it).
+    private func line(_ r: HistoryRow) -> some View {
+        let top: Bool = { if case .head = r.part { return true }; return false }()
+        let shape = UnevenRoundedRectangle(topLeadingRadius: top ? 10 : 0, bottomLeadingRadius: r.closesCard ? 10 : 0,
+                                           bottomTrailingRadius: r.closesCard ? 10 : 0, topTrailingRadius: top ? 10 : 0, style: .continuous)
+        // LAB-2107: the session's own colour (the same as its Inbox card) on every line's edge and on its header.
+        let hue = SessionHue(sessionId: r.sessionId, on: t, panel: t.card)
+        return Group {
+            switch r.part {
+            case .head(let g): cardHeader(g, hue: hue).padding(.top, 10).padding(.bottom, 6)
+            case .entry(let e): row(e, hue: hue).padding(.top, 4)
+            }
+        }
+        .padding(.leading, 16).padding(.trailing, 10).padding(.bottom, r.closesCard ? 10 : 0)
+        .background(shape.fill((top ? hue.fill : t.card).color))
+        .overlay(alignment: .leading) {
+            Rectangle().fill(hue.ink.color).frame(width: 4)
+                .padding(.top, top ? 8 : 0).padding(.bottom, r.closesCard ? 8 : 0).padding(.leading, 3)
+                .accessibilityHidden(true)
+        }
+        // The border's inner edges fall outside the slice and are clipped, so stacked slices read as one card.
+        .overlay(shape.strokeBorder(t.separatorStrong.color).padding(.top, top ? 0 : -2).padding(.bottom, r.closesCard ? 0 : -2))
+        .clipShape(Rectangle())
+        .padding(.top, top && !r.firstInDay ? 12 : 0)
+        .padding(.bottom, r.closesDay ? 14 : 0)
+    }
+
     private func dayHeader(_ d: Date) -> some View {
         Text(HistoryFormat.dayHeader(d)).ui(11.5, .bold).tracking(0.4).foregroundStyle(t.text2.color)
             .padding(.vertical, 6).padding(.horizontal, 2)
@@ -412,28 +489,35 @@ struct V2HistoryPage: View {
 
     // MARK: Session cards and rows (LAB-2045)
 
-    private func groupCard(_ g: HistoryGroup) -> some View {
+    private func cardHeader(_ g: HistoryGroup, hue: SessionHue) -> some View {
         let s = sessions[g.sessionId]
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                badge(g.sessionId, size: 18)
-                Text(name(g.sessionId)).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                Text(s.map { $0.account ?? $0.agent.displayName } ?? "").ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
-                Spacer()
+        return HStack(spacing: 8) {
+            badge(g.sessionId, size: 18)
+            Text(name(g.sessionId)).ui(13, .semibold).foregroundStyle(hue.ink.color).lineLimit(1)
+            Text(s.map { $0.agent.displayName + ($0.account.map { " · " + $0 } ?? "") } ?? "").ui(11.5).foregroundStyle(t.text.color).lineLimit(1)
+            Spacer()
+            Button { openConversation(g.sessionId, moment: nil) } label: {
+                Text("Open conversation ↗").ui(12, .semibold).foregroundStyle(t.accentText.color)
             }
-            .padding(.bottom, 4)
-            .contentShape(Rectangle())
-            .contextMenu { Button("Show only this session") { win.historyQuery.sessions = [g.sessionId] } }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Session " + name(g.sessionId))
-            ForEach(g.entries) { e in row(e).id(e.id) }
+            .buttonStyle(.plain)
+            .help(liveItems[g.sessionId] == nil ? "The session is closed: shows only its moments here" : "Opens the session's terminal")
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.card.color))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(t.separatorStrong.color))
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Open conversation") { openConversation(g.sessionId, moment: nil) }
+            Button("Show only this session") { win.historyQuery.sessions = [g.sessionId] }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Session " + name(g.sessionId))
     }
 
-    @ViewBuilder private func row(_ e: ScrollEntry) -> some View {
+    /// LAB-2106: a live session opens its terminal; a closed one shows only its moments here, at that moment.
+    private func openConversation(_ sessionId: String, moment: String?) {
+        if let item = liveItems[sessionId] { model.reveal(item); return }
+        V2Conversation.openInHistory(win: win, sessionId: sessionId, momentId: moment ?? "")
+    }
+
+    @ViewBuilder private func row(_ e: ScrollEntry, hue: SessionHue) -> some View {
         let st = e.kind.style
         if st.treatment == .divider {
             HStack(spacing: 10) {
@@ -460,6 +544,9 @@ struct V2HistoryPage: View {
                     .frame(width: 96, alignment: .leading)
                     Text(e.text).ui(13).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     Spacer(minLength: 8)
+                    // LAB-2107: the session's name on every row, in its colour, so a long run never loses its owner.
+                    Text(name(e.sessionId)).ui(10.5, .medium).foregroundStyle(hue.ink.color).lineLimit(1).frame(maxWidth: 150, alignment: .trailing)
+                        .accessibilityHidden(true)
                     if e.needsInput {
                         Text("Waiting in the Inbox").ui(11, .semibold).foregroundStyle(t.accentText.color)
                             .padding(.horizontal, 8).frame(height: 20)
@@ -484,6 +571,10 @@ struct V2HistoryPage: View {
                         Text("\(y.glyph) You: " + a).ui(12.5).foregroundStyle(t.text.color).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
+                        Button { openConversation(e.sessionId, moment: e.id) } label: {
+                            Text("Open conversation ↗").ui(11.5, .semibold).foregroundStyle(t.accentText.color)
+                        }
+                        .buttonStyle(.plain).fixedSize()
                     }
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.selection.color))
@@ -492,21 +583,23 @@ struct V2HistoryPage: View {
                     .accessibilityLabel("You answered: " + a)
                 }
             }
+            .contextMenu { Button("Open conversation") { openConversation(e.sessionId, moment: e.id) } }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(HistoryFormat.accessibility(e, session: name(e.sessionId)))
+            .accessibilityAction(named: "Open conversation") { openConversation(e.sessionId, moment: e.id) }
         }
     }
 
     // MARK: Names and badges
 
     private func name(_ id: String) -> String {
-        if let i = model.item(id) { return i.session.name }
+        if let i = liveItems[id] { return i.session.name }
         if let s = sessions[id] { return HistoryFormat.closedName(s.name) }
         return HistoryFormat.closedName("Session")
     }
 
     @ViewBuilder private func badge(_ id: String, size: CGFloat) -> some View {
-        if let i = model.item(id) { AgentBadge(item: i, size: size, status: false) }
+        if let i = liveItems[id] { AgentBadge(item: i, size: size, status: false) }
         else if let s = sessions[id] { AgentBadge(SeatMark(agent: s.agent, account: s.account), size: size) }
         else { RoundedRectangle(cornerRadius: 5).fill(t.separatorStrong.color).frame(width: size, height: size) }
     }

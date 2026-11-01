@@ -18,7 +18,14 @@ final class LoopBoard: ObservableObject {
     /// LAB-1941 · LAB-1922: each loop's outcomes (newest first) and runs from the ledger, for the drill-down and gallery.
     @Published private(set) var outcomesByLoop: [String: [LoopLedger.Outcome]] = [:]
     @Published private(set) var runsByLoop: [String: [LoopLedger.Run]] = [:]
+    /// LAB-2100: per kit loop that needs settings or a tool, whether it has them (from the kit's config, read off main).
+    @Published private(set) var setup: [String: LoopSetup.Status] = [:]
+    /// The kit config path the statuses were read from (Setup box's Open config), nil when there is none.
+    @Published private(set) var aeConfigPath: String?
     private var timer: Timer?
+    /// Config text cached by modification date, and the tool check by time (the board reloads every 3 s).
+    private var configCache: (path: String?, mtime: Date?, text: String?) = (nil, nil, nil)
+    private var toolCache: (at: Date, installed: [String: Bool]) = (.distantPast, [:])
     private let io = DispatchQueue(label: "oneroof.loops.io")
 
     var store: LoopStore { LoopStore() }
@@ -42,6 +49,7 @@ final class LoopBoard: ObservableObject {
             let os = led?.summary() ?? []
             let byLoop = Dictionary(grouping: led?.outcomes(limit: 1000) ?? [], by: \.loop)
             let runs = Dictionary(uniqueKeysWithValues: ls.map { ($0.id, led?.runs(loop: $0.id, limit: 10) ?? []) })
+            let (setup, cfgPath) = self?.readSetup(ls.map(\.id)) ?? ([:], nil)
             DispatchQueue.main.async {
                 guard let self else { return }
                 if self.loops != ls { self.loops = ls }
@@ -49,8 +57,33 @@ final class LoopBoard: ObservableObject {
                 if self.outcomes != os { self.outcomes = os }
                 if self.outcomesByLoop != byLoop { self.outcomesByLoop = byLoop }
                 if self.runsByLoop != runs { self.runsByLoop = runs }
+                if self.setup != setup { self.setup = setup }
+                if self.aeConfigPath != cfgPath { self.aeConfigPath = cfgPath }
             }
         }
+    }
+
+    /// LAB-2100 (on the io queue): each loop's setup status. The config is re-read only when its file changes; installed
+    /// tools are looked up at most once a minute.
+    private func readSetup(_ ids: [String]) -> ([String: LoopSetup.Status], String?) {
+        let fm = FileManager.default
+        let path = AEConfig.find()
+        let mtime = path.flatMap { (try? fm.attributesOfItem(atPath: $0))?[.modificationDate] as? Date }
+        if configCache.path != path || configCache.mtime != mtime {
+            configCache = (path, mtime, path.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) })
+        }
+        if Date().timeIntervalSince(toolCache.at) > 60 { toolCache = (Date(), [:]) }
+        var out: [String: LoopSetup.Status] = [:]
+        for id in ids {
+            let st = LoopSetup.status(loop: id, config: configCache.text) { tool in
+                if let v = toolCache.installed[tool] { return v }
+                let v = LoopSetup.installed(tool)
+                toolCache.installed[tool] = v
+                return v
+            }
+            if let st { out[id] = st }
+        }
+        return (out, path)
     }
 
     private func write(_ what: String, _ body: @escaping (LoopStore) throws -> Void) {
@@ -174,7 +207,7 @@ struct LoopsView: View {
                         // v2 (A9, C5.1): the loops beside Tonight, unchanged.
                         HStack(alignment: .top, spacing: 18) {
                             VStack(alignment: .leading, spacing: 14) {
-                                if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes) { popout = $0 } }   // LAB-1918 · LAB-1941
+                                if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes, setup: board.setup) { popout = $0 } }   // LAB-1918 · LAB-1941
                                 LoopRunsView(model: model, board: board)   // LAB-1933: loop rounds live here, not in the session rail
                                 if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
                             }
@@ -477,6 +510,7 @@ struct LoopDetail: View {
                 }
             }
             facts(l)
+            if case .notConfigured(let missing) = board.setup[l.id] { setupBox(l, missing) }   // LAB-2100
             if let why = l.stopReason, l.run == nil {
                 Text((l.state == .done ? "✓ " : "✕ ") + why).ui(12.5).foregroundStyle((l.state == .done ? t.text2 : t.text).color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -489,6 +523,43 @@ struct LoopDetail: View {
             roundsTable(l)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// LAB-2100 · the loop is on but has nothing to check: what is missing, the settings to add (a starting point to copy)
+    /// and where they go. One Roof never edits the kit's config; Open config shows it in the viewer.
+    private func setupBox(_ l: Loop, _ missing: [String]) -> some View {
+        let snippet = LoopSetup.snippet(l.id)
+        let cfg = board.aeConfigPath
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Not configured: a run checks nothing yet").ui(13, .semibold).foregroundStyle(t.needsText.color)
+            ForEach(missing, id: \.self) { m in
+                Text("· " + m).ui(12.5).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            }
+            if let snippet {
+                Text(snippet).ui(TypeScale.monoBody, mono: true).foregroundStyle(t.text.color)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).fill(t.window.color))
+                    .accessibilityLabel("Settings to add: \(snippet)")
+            }
+            Text(cfg.map { "Add it under loops › settings in \(($0 as NSString).abbreviatingWithTildeInPath), the kit's config. The next run uses it." }
+                 ?? "The kit has no config file yet: create ~/.config/ae/config.yaml (ae init writes one) and add it there.")
+                .ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                if let cfg { RoofButton("Open config") { model.openInViewer(cfg) }.help("Show the kit's config in One Roof's viewer") }
+                if let snippet {
+                    RoofButton("Copy settings") {
+                        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(snippet, forType: .string)
+                    }
+                    .help("Copy the settings above, to paste into the config and fill in")
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(t.needsText.color, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Not configured")
     }
 
     private func facts(_ l: Loop) -> some View {
@@ -1050,6 +1121,8 @@ struct LoopEditor: View {
 struct LoopOutcomesCard: View {
     @Environment(\.theme) private var t
     let rows: [LoopLedger.LoopSummary]
+    /// LAB-2100: loops with nothing to check show "not configured" in place of their last result.
+    var setup: [String: LoopSetup.Status] = [:]
     /// LAB-1941: a row opens its loop (its outcomes, with approve and reject).
     var open: (String) -> Void = { _ in }
 
@@ -1065,7 +1138,9 @@ struct LoopOutcomesCard: View {
                 ForEach(rows, id: \.loop) { r in
                     Button { open(r.loop) } label: { HStack(spacing: 10) {
                         Text(r.loop).ui(12.5, .semibold).foregroundStyle(t.text.color).frame(width: 170, alignment: .leading).lineLimit(1)
-                        Text(Self.result(r)).ui(12).foregroundStyle((Self.bad(r.lastResult) ? t.needsText : t.text2).color)
+                        let unset: Bool = { if case .notConfigured = setup[r.loop] { return true }; return false }()
+                        Text(unset ? "not configured" : Self.result(r)).ui(12, unset ? .semibold : .regular)
+                            .foregroundStyle((unset || Self.bad(r.lastResult) ? t.needsText : t.text2).color)
                             .frame(width: 130, alignment: .leading)
                         Text("\(r.runs) run\(r.runs == 1 ? "" : "s")").ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 60, alignment: .leading)
                         Text(String(format: "$%.2f", r.costUSD)).ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 52, alignment: .trailing)

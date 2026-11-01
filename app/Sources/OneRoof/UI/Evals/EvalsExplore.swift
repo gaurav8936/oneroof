@@ -10,6 +10,7 @@ struct EvalsExploreTab: View {
     @ObservedObject var nav: EvalsNav
     @Environment(\.theme) private var t
     @State private var filter = EvalExploreFilter(shelf: .start)
+    @ObservedObject private var hf = HFAccount.shared   // LAB-2117: rows show Locked until the user's own sign-in
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
     @State private var hintSeen = Prefs.viewState.bool(forKey: "evals.exploreHintSeen")
@@ -174,8 +175,10 @@ struct EvalsExploreTab: View {
                 } else {
                     Text(b.category + (b.sandbox ? " · Docker" : "")).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                 }
-                if b.isStarter || runs > 0 || b.sandbox {
+                let locked = hf.status(EvalSources.table[b.folder]).locked   // LAB-2117
+                if b.isStarter || runs > 0 || b.sandbox || locked {
                     HStack(spacing: 6) {
+                        if locked { EvalsChip(text: "Locked · Hugging Face") }
                         if b.isStarter { EvalsChip(text: "★ Start here") }
                         if runs > 0 { EvalsChip(text: "run \(runs)×", accent: true) }
                         if b.sandbox { EvalsChip(text: "Docker") }
@@ -213,10 +216,16 @@ struct EvalsBenchmarkPage: View {
     @State private var anatomy: EvalAnatomy?
     @State private var anatomyError: String?
     @State private var set: EvalSetDetail?
+    @ObservedObject private var hf = HFAccount.shared
+
+    /// LAB-2117: where the data comes from (nil for your own sets) and whether it is locked here.
+    private var source: EvalDataSource? { EvalSources.source(folder: benchmark.folder, dataset: anatomy?.dataset, gated: anatomy?.gated ?? false) }
 
     var body: some View {
         let b = benchmark
         let runs = myRuns
+        let src = source
+        let gate = hf.status(src)
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top) {
@@ -225,12 +234,19 @@ struct EvalsBenchmarkPage: View {
                         Text(b.name).ui(22, .bold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    RoofButton("Run this…", .primary) {
-                        nav.run(EvalRunPlan(benchmark: b, tasks: [b.defaultTask], limit: b.firstRunLimit))
+                    if gate.locked {
+                        RoofButton("Locked · how to unlock") { NotificationCenter.default.post(name: .openEvalsSettings, object: nil) }
+                            .help(EvalSources.lockedLine)
+                    } else {
+                        RoofButton("Run this…", .primary) {
+                            nav.run(EvalRunPlan(benchmark: b, tasks: [b.defaultTask], limit: b.firstRunLimit))
+                        }
+                        .help("Opens the run sheet with this benchmark; the cost shows before anything starts")
                     }
-                    .help("Opens the run sheet with this benchmark; the cost shows before anything starts")
                 }
                 Text(b.description).ui(TypeScale.body).foregroundStyle(t.text.color).lineLimit(5).fixedSize(horizontal: false, vertical: true)
+                if let src { EvalsSourceLine(source: src) }
+                if let src, gate.locked { EvalsLockCard(name: b.name, source: src, status: gate) }
                 EvalsTextTabs(options: tabs(runs: runs.count), selection: Binding(get: { nav.exploreTab }, set: { tab in
                     if tab == .questions { nav.route = .questions(benchmark: b.id, task: b.defaultTask) } else { nav.exploreTab = tab }
                 }))

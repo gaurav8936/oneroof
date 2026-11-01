@@ -2,23 +2,207 @@
  "_rule": "perf suite (LAB-1596). A measure regresses when it is worse than the previous release's baseline by more than regression_pct AND by more than its min_delta; budgets are absolute ceilings for every run. Edit here, or pass --limits <file>.",
  "regression_pct": 25,
  "min_delta": {
-  "app_cpu": 1.0, "roofd_cpu": 1.0, "main_busy": 2.0, "stalls_50_per_min": 5, "stall_ms_per_s": 10, "children_per_min": 10,
-  "footprint_mb": 25, "mb_per_terminal": 3,
-  "hitch_ms_per_s": 10, "longest_ms": 50, "gap_p99_ms": 16, "stalls_50": 2, "size_changes": 3, "settle_ms": 100, "frame_p99_ms": 8
+  "app_cpu": 1.0,
+  "roofd_cpu": 1.0,
+  "main_busy": 2.0,
+  "stalls_50_per_min": 5,
+  "stall_ms_per_s": 10,
+  "children_per_min": 10,
+  "footprint_mb": 25,
+  "mb_per_terminal": 3,
+  "hitch_ms_per_s": 10,
+  "longest_ms": 50,
+  "gap_p99_ms": 16,
+  "stalls_50": 2,
+  "size_changes": 3,
+  "settle_ms": 100,
+  "frame_p99_ms": 8
  },
- "lower_is_better": ["app_cpu", "roofd_cpu", "main_busy", "stalls_50_per_min", "stall_ms_per_s", "children_per_min", "footprint_mb",
-                     "mb_per_terminal", "hitch_ms_per_s", "longest_ms", "gap_p99_ms", "stalls_50", "size_changes", "settle_ms", "frame_p99_ms"],
+ "lower_is_better": [
+  "app_cpu",
+  "roofd_cpu",
+  "main_busy",
+  "stalls_50_per_min",
+  "stall_ms_per_s",
+  "children_per_min",
+  "footprint_mb",
+  "mb_per_terminal",
+  "hitch_ms_per_s",
+  "longest_ms",
+  "gap_p99_ms",
+  "stalls_50",
+  "size_changes",
+  "settle_ms",
+  "frame_p99_ms"
+ ],
  "budgets": {
   "gestures": {
-   "step-full":     {"size_changes": 8, "longest_ms": 400},
-   "step-wide":     {"size_changes": 8, "longest_ms": 400},
-   "step-focus":    {"size_changes": 8, "longest_ms": 400},
-   "step-sessions": {"size_changes": 8, "longest_ms": 400},
-   "drag-sessions-edge": {"longest_ms": 400},
-   "resize-shrink": {"hitch_ms_per_s": 250, "longest_ms": 400},
-   "resize-grow":   {"hitch_ms_per_s": 250, "longest_ms": 400},
-   "resize-wiggle": {"hitch_ms_per_s": 250, "longest_ms": 400},
-   "idle-2s":       {"hitch_ms_per_s": 20, "longest_ms": 100}
+   "step-full": {
+    "size_changes": 8,
+    "longest_ms": 400
+   },
+   "step-wide": {
+    "size_changes": 8,
+    "longest_ms": 400
+   },
+   "step-focus": {
+    "size_changes": 8,
+    "longest_ms": 400
+   },
+   "step-sessions": {
+    "size_changes": 8,
+    "longest_ms": 400
+   },
+   "drag-sessions-edge": {
+    "longest_ms": 400
+   },
+   "resize-shrink": {
+    "hitch_ms_per_s": 250,
+    "longest_ms": 400
+   },
+   "resize-grow": {
+    "hitch_ms_per_s": 250,
+    "longest_ms": 400
+   },
+   "resize-wiggle": {
+    "hitch_ms_per_s": 250,
+    "longest_ms": 400
+   },
+   "idle-2s": {
+    "hitch_ms_per_s": 20,
+    "longest_ms": 100
+   },
+   "open-home": {
+    "longest_ms": 200
+   },
+   "reopen-home": {
+    "longest_ms": 130
+   },
+   "fling-home": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-home": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-needsYou": {
+    "longest_ms": 200
+   },
+   "reopen-needsYou": {
+    "longest_ms": 130
+   },
+   "fling-needsYou": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-needsYou": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-history": {
+    "longest_ms": 200
+   },
+   "reopen-history": {
+    "longest_ms": 130
+   },
+   "fling-history": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-history": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-sessions": {
+    "longest_ms": 200
+   },
+   "reopen-sessions": {
+    "longest_ms": 130
+   },
+   "fling-sessions": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-sessions": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-work": {
+    "longest_ms": 200
+   },
+   "reopen-work": {
+    "longest_ms": 130
+   },
+   "fling-work": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-work": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-machine": {
+    "longest_ms": 200
+   },
+   "reopen-machine": {
+    "longest_ms": 130
+   },
+   "fling-machine": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 75
+   },
+   "flingup-machine": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-loops": {
+    "longest_ms": 200
+   },
+   "reopen-loops": {
+    "longest_ms": 130
+   },
+   "fling-loops": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-loops": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-learn": {
+    "longest_ms": 200
+   },
+   "reopen-learn": {
+    "longest_ms": 130
+   },
+   "fling-learn": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-learn": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "open-evals": {
+    "longest_ms": 200
+   },
+   "reopen-evals": {
+    "longest_ms": 130
+   },
+   "fling-evals": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "flingup-evals": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   },
+   "fling-history-deep": {
+    "longest_ms": 50,
+    "hitch_ms_per_s": 40
+   }
   }
- }
+ },
+ "_budgets_rule": "LAB-2115 (owner 2026-11-01: no latency, no jerk on any screen): a place's first open ≤ 200 ms longest main-thread stall, a re-open ≤ 130 ms (2.0.1 measured 40–125 ms; target 60 ms, follow-up issue), a hard fling ≤ 50 ms longest and ≤ 40 ms/s hitch time. Exception: fling-machine hitch ≤ 75 ms/s until LAB-2115's follow-up (Resources builds its Mac-app rows on the first fling after opening)."
 }

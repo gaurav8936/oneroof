@@ -66,6 +66,9 @@ final class WindowState: ObservableObject, Identifiable {
     @Published var historyQuery = HistoryQuery() { didSet { if historyQuery != oldValue { saveJSON(historyQuery, "v2.historyQuery") } } }
     /// LAB-2047 · LAB-2048: the Action log open over the Inbox, on this tab (nil = the Inbox itself).
     @Published var actionLog: ActionLogTab? { didSet { if let t = actionLog { save(t.rawValue, "v2.actionLogTab") } } }
+    /// LAB-2110: the Inbox's tab (Inbox · Decided). The Action log is gone: Decisions became Decided, Rules moved to
+    /// Settings › Permissions.
+    @Published var inboxTab: InboxTab = .inbox
     /// The tab the Action log opens on (the last one used in this window).
     var actionLogTab: ActionLogTab = .decisions
     /// LAB-2048: the Decisions tab's filters, remembered per window (the search text is not).
@@ -172,11 +175,14 @@ final class WindowState: ObservableObject, Identifiable {
         d.string(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: Data($0.utf8)) }
     }
     /// LAB-2047: open the Action log over the Inbox, on `tab` (or the last one used).
+    /// LAB-2110: the old entry points land where their content went — Decisions on the Inbox's Decided tab, Rules in
+    /// Settings › Permissions.
     func openActionLog(_ tab: ActionLogTab? = nil) {
-        let t = tab ?? actionLogTab
+        let t = tab ?? .decisions
         actionLogTab = t
+        if t == .rules { NotificationCenter.default.post(name: .openPermissionRules, object: nil); return }
         if place != .needsYou { open(.needsYou) }
-        actionLog = t
+        inboxTab = .decided
     }
 
     /// Open a place at its default step (FOCUS_LADDER.md: Sessions at 1, the other places at 0).
@@ -301,4 +307,12 @@ struct StepReader<Content: View>: View {
     @ObservedObject var step: WindowStep
     @ViewBuilder let content: (WindowStep) -> Content
     var body: some View { content(step) }
+}
+
+/// LAB-2110: the Inbox place's two tabs.
+enum InboxTab: String { case inbox, decided }
+
+extension Notification.Name {
+    /// LAB-2110: open Settings › Permissions at its always-allow rules (they moved there from the Action log).
+    static let openPermissionRules = Notification.Name("oneroof.settings.permissionRules")
 }

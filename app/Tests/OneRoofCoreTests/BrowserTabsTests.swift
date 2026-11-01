@@ -68,7 +68,7 @@ final class BrowserTabsTests: XCTestCase {
         func rec(_ w: String, _ i: Int, _ id: String, _ active: Bool, _ url: String, _ title: String) -> String {
             [w, "\(i)", id, active ? "true" : "false", url, title].joined(separator: fs) + rs
         }
-        let out = rec("1201", 1, "11", false, "https://linear.app/zibajoon/project/x", "Project · Linear")
+        let out = rec("1201", 1, "11", false, "https://linear.app/example/project/x", "Project · Linear")
             + rec("1201", 2, "12", true, "https://github.com/gaurav8936/oneroof/pulls", "Pull requests")
             + rec("1187", 1, "21", true, "https://mail.google.com/mail/u/0/#inbox", "Inbox (3) · Gmail")
             + rec("1201", 3, "13", false, "chrome://settings/", "Settings")

@@ -37,6 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // LAB-2110: the old Action log › Rules entry points open Settings › Permissions, where the rules moved.
+        NotificationCenter.default.addObserver(forName: .openPermissionRules, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.isV2Window { self.main.v2ShowSettings(pane: SettingsView.v2Panes.firstIndex(of: "Permissions") ?? 9) } else { self.showSettings(nil) }
+            }
+        }
         holdWatchActivity(true)
         napBag = model.$items.combineLatest(model.$schedules).receive(on: DispatchQueue.main).sink { [weak self] items, schedules in
             let watching = !schedules.isEmpty || items.contains { $0.starting || ($0.liveAgent != nil && [.running, .needsYou].contains($0.status)) }
@@ -98,8 +105,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .openFoundations, object: nil, queue: .main) { [weak self] _ in
             self?.showFoundations(nil)
         }
+        NotificationCenter.default.addObserver(forName: .openEvalsSettings, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            if self.isV2Window { self.main.v2ShowSettings(pane: SettingsView.v2Panes.firstIndex(of: "Evals") ?? 0) }   // LAB-2117
+            else { self.showSettings(nil) }
+        }
         NotificationCenter.default.addObserver(forName: .openSetup, object: nil, queue: .main) { [weak self] _ in
             self?.showSetup(nil)
+        }
+        NotificationCenter.default.addObserver(forName: .openLinearSettings, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            if self.isV2Window { self.main.v2ShowSettings(pane: SettingsView.linearPane) } else { self.showSetup(nil) }
         }
         // First run on this Mac (or --fresh-profile): the setup window. Self-tests show it only for a fresh profile.
         if !model.settings.setupDone, !SelfTest.isActive || Prefs.freshProfile {
@@ -376,8 +392,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             add("History", "every session's important moments, newest first (⌃⌘9) · Scroll · transcript", Place.history.symbol, "View") { [weak self] in
                 self?.main.v2Open(.history)
             }
-            add("Action log", "what you decided, always-allow rules", "list.bullet.clipboard", "View") { [weak self] in
-                self?.main.v2Page = nil; self?.main.win.openActionLog()
+            add("Decided", "what you decided, newest first (⇧⌘I) · Action log", "checkmark.circle", "View") { [weak self] in
+                self?.main.v2Page = nil; self?.main.win.openActionLog(.decisions)
+            }
+            add("Always-allow rules", "Settings › Permissions · Action log rules", "checklist", "View") { [weak self] in
+                self?.main.win.openActionLog(.rules)
             }
         } else {
             add("Decisions", "\(m.openDecisionCount) waiting (⌘I)", "hand.raised", "View") { m.centre = .decisions }

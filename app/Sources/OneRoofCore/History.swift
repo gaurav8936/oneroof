@@ -182,20 +182,27 @@ public enum HistoryFormat {
     }
     /// "Sat 31 Oct".
     public static func day(_ d: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        let f = DateFormatter(); f.locale = locale; f.timeZone = timeZone
-        f.setLocalizedDateFormatFromTemplate("EEEdMMM")
-        return f.string(from: d).replacingOccurrences(of: ",", with: "")
+        formatter("t:EEEdMMM", locale, timeZone) { $0.setLocalizedDateFormatFromTemplate("EEEdMMM") }.string(from: d).replacingOccurrences(of: ",", with: "")
     }
     public static func time(_ d: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        let f = DateFormatter(); f.locale = locale; f.timeZone = timeZone
-        f.timeStyle = .short; f.dateStyle = .none
-        return f.string(from: d)
+        formatter("s:short", locale, timeZone) { $0.timeStyle = .short; $0.dateStyle = .none }.string(from: d)
     }
     /// The tooltip: the full timestamp with seconds.
     public static func full(_ d: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        let f = DateFormatter(); f.locale = locale; f.timeZone = timeZone
-        f.dateStyle = .full; f.timeStyle = .medium
-        return f.string(from: d)
+        formatter("s:full", locale, timeZone) { $0.dateStyle = .full; $0.timeStyle = .medium }.string(from: d)
+    }
+
+    /// LAB-2105: one formatter per style, locale and time zone, made once. History drew a few thousand stamps per
+    /// pass and made three formatters for each (the jerk when scrolling fast). DateFormatter formats thread-safely.
+    nonisolated(unsafe) private static var formatters: [String: DateFormatter] = [:]
+    private static let formattersLock = NSLock()
+    private static func formatter(_ style: String, _ locale: Locale, _ tz: TimeZone, _ make: (DateFormatter) -> Void) -> DateFormatter {
+        let key = style + "|" + locale.identifier + "|" + tz.identifier
+        formattersLock.lock(); defer { formattersLock.unlock() }
+        if let f = formatters[key] { return f }
+        let f = DateFormatter(); f.locale = locale; f.timeZone = tz; make(f)
+        formatters[key] = f
+        return f
     }
     /// A sticky day header: "Today", "Yesterday", or "Thu 29 Oct".
     public static func dayHeader(_ d: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
@@ -307,15 +314,57 @@ public struct HistoryDay: Identifiable, Equatable, Sendable {
     public var groups: [HistoryGroup]
 }
 
+/// LAB-2105: one line of History's list — a session card's header or one of its moments — so the list builds only the
+/// lines on screen (a day's cards used to be built all at once, the jerk when scrolling fast). Cards are drawn from
+/// their lines: the header opens the card, the last moment closes it.
+public struct HistoryRow: Identifiable, Equatable, Sendable {
+    public enum Part: Equatable, Sendable { case head(HistoryGroup), entry(ScrollEntry) }
+    public var id: String
+    public var part: Part
+    public var sessionId: String
+    /// The first card of its day (no gap above it).
+    public var firstInDay: Bool
+    /// The card's last line (closes the card).
+    public var closesCard: Bool
+    /// The day's last line (the gap before the next day's header).
+    public var closesDay: Bool
+}
+
+public struct HistoryDayRows: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var day: Date
+    public var rows: [HistoryRow]
+}
+
 public enum HistoryPaging {
+    /// LAB-2105: the days as lines (see HistoryRow).
+    public static func rows(_ days: [HistoryDay]) -> [HistoryDayRows] {
+        days.map { d in
+            var rows: [HistoryRow] = []
+            for (gi, g) in d.groups.enumerated() {
+                let lastGroup = gi == d.groups.count - 1
+                rows.append(HistoryRow(id: g.id, part: .head(HistoryGroup(id: g.id, sessionId: g.sessionId, day: g.day, entries: [])),
+                                       sessionId: g.sessionId, firstInDay: gi == 0, closesCard: g.entries.isEmpty, closesDay: lastGroup && g.entries.isEmpty))
+                for (ei, e) in g.entries.enumerated() {
+                    let last = ei == g.entries.count - 1
+                    rows.append(HistoryRow(id: e.id, part: .entry(e), sessionId: g.sessionId, firstInDay: false, closesCard: last, closesDay: last && lastGroup))
+                }
+            }
+            return HistoryDayRows(id: d.id, day: d.day, rows: rows)
+        }
+    }
+
     /// Rows per page: the list shows this many more each time you near its end.
     public static let pageSize = 500
 
     /// Days (sticky headers) holding runs of one session's moments, in the list's order.
     public static func days(_ entries: [ScrollEntry], calendar: Calendar = .current) -> [HistoryDay] {
         var out: [HistoryDay] = []
+        // LAB-2105: startOfDay is slow; moments come in day runs, so one lookup per run (the day's interval) is enough.
+        var span: DateInterval?
         for e in entries {
-            let d = calendar.startOfDay(for: e.at)
+            if span.map({ !($0.start <= e.at && e.at < $0.end) }) ?? true { span = calendar.dateInterval(of: .day, for: e.at) }
+            let d = span?.start ?? calendar.startOfDay(for: e.at)
             if out.last?.day != d { out.append(HistoryDay(id: "day-\(d.timeIntervalSince1970)", day: d, groups: [])) }
             if out[out.count - 1].groups.last?.sessionId == e.sessionId {
                 out[out.count - 1].groups[out[out.count - 1].groups.count - 1].entries.append(e)
@@ -369,7 +418,21 @@ public enum HistoryFeed {
             add(ScrollEntry(id: "hist-" + e.id, at: e.at, sessionId: e.sessionId, kind: e.kind, text: e.text, open: false))
         }
         out.sort { $0.at == $1.at ? $0.id < $1.id : $0.at < $1.at }
-        return out
+        return tidy(out)
+    }
+
+    /// LAB-2108: screen furniture is never a moment, and a moment the CLI repeats (the same Finished or Done line from
+    /// one session within 15 minutes) shows once. Asks are kept as they are (each is a real decision).
+    static func tidy(_ entries: [ScrollEntry]) -> [ScrollEntry] {
+        var last: [String: ScrollEntry] = [:]
+        return entries.filter { e in
+            if e.decisionId != nil { return true }
+            if !e.text.isEmpty, TerminalText.isFurniture(e.text) { return false }
+            let key = e.sessionId + "|" + e.kind.rawValue
+            if let p = last[key], p.text == e.text, e.at.timeIntervalSince(p.at) < 15 * 60 { return false }
+            last[key] = e
+            return true
+        }
     }
 }
 

@@ -183,6 +183,9 @@ struct PlayerBar: View {
                 .buttonStyle(.plain).disabled(onOpenPage == nil)
                 Text("Part \(player.index + 1) of \(player.tracks.count) · \(player.current?.title ?? "")")
                     .font(.system(size: 10.5)).foregroundStyle(tokens.secondaryText.color).lineLimit(1)
+                // LAB-2116: the voice is AI-generated, said plainly on the player.
+                Text(Narration.disclosure).font(.system(size: 10)).foregroundStyle(tokens.secondaryText.color).lineLimit(1)
+                    .help(Narration.detail).accessibilityLabel(Narration.detail)
             }
             .frame(width: 260, alignment: .leading)
             HStack(spacing: 6) {
@@ -257,7 +260,8 @@ struct MiniPlayer: View {
                 Button(action: openLearn) {
                     Text("\(player.pageTitle) · \(player.index + 1)/\(player.tracks.count)").font(.system(size: 11)).lineLimit(1).frame(maxWidth: 180)
                 }
-                .buttonStyle(.plain).barHelp("Open in Learn")
+                .buttonStyle(.plain).barHelp("Open in Learn. " + Narration.disclosure)   // LAB-2116
+                .accessibilityLabel("\(player.pageTitle), part \(player.index + 1) of \(player.tracks.count). \(Narration.detail) Open in Learn")
             }
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(Capsule().fill(Color.accentColor.opacity(0.16)))
