@@ -1,0 +1,15 @@
+# One Roof eval engine (LAB-EVALS, ADR docs/decisions/20261031_02_eval-engine-inspect.md).
+# Pinned per One Roof release; `roof eval setup` installs exactly these into One Roof's own folder.
+inspect-ai==0.3.287
+inspect-evals==0.27.0
+anthropic==2.3.0
+openai==3.42.0
+google-genai==2.34.0
+# Cloud sandboxes (Daytona, Modal, E2B) for benchmarks that run code, so this Mac needs no Docker (LAB-2000).
+inspect-sandboxes==0.6.1
+# inspect-sandboxes 0.6.1 uses modal.sandbox.ARG_MAX_BYTES, which modal 1.6 removed: hold Modal at 1.5.x.
+modal==1.5.5
+# Coding agents as the subject under test (Claude Code, Codex, Gemini CLI, Kimi, OpenCode, Antigravity), LAB-1994.
+inspect-swe==0.2.72
+# inspect_evals 0.27.0's SWE-bench scorer imports MAP_REPO_VERSION_TO_SPECS, which swebench 5 removed: hold at 4.1.0.
+swebench==4.1.0

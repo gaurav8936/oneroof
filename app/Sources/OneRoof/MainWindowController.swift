@@ -711,6 +711,7 @@ final class CentreController: NSViewController {
         case .review: v = AnyView(CentreThemed(model: m, win: w) { ReviewChangesView(model: m, win: w) })
         case .loops: v = AnyView(CentreThemed(model: m, win: w) { LoopsView(model: m, win: w) })
         case .catalog: v = AnyView(CentreThemed(model: m, win: w) { CatalogView(model: m, win: w) })   // LAB-1509
+        case .evals: v = AnyView(CentreThemed(model: m, win: w) { EvalsView(model: m, win: w) })   // LAB-EVALS
         }
         let h = NSHostingView(rootView: v)
         h.sizingOptions = []
