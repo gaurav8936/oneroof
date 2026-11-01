@@ -188,12 +188,12 @@ place loops
 snap j10c-loops-runs
 place sessions
 
-## J10d · Scroll layout (LAB-1831): one feed across sessions, then back to Single
+## J10d · Scroll moved to History (LAB-2044): the old Scroll layout opens History; Single is back on the terminals
 place sessions
 layout scroll
-barcheck scroll
-scroll j10d
-snap j10d-scroll
+expect place = history
+snap j10d-history
+place sessions
 layout single
 expect place = sessions
 
