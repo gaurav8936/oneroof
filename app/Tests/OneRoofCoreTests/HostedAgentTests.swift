@@ -47,7 +47,7 @@ final class HostedAgentTests: XCTestCase {
         XCTAssertEqual(AppSettings().permissionMode(for: .goose), .manual)
         var attemptedAuto = AppSettings(); attemptedAuto.permissionModes["goose"] = .auto
         XCTAssertEqual(attemptedAuto.permissionMode(for: .goose), .manual)
-        XCTAssertEqual(AppSettings().permissionMode(for: .codex), .auto)
+        XCTAssertEqual(AppSettings().permissionMode(for: .codex), .manual)   // LAB-2169: new profiles start in Manual
         XCTAssertTrue(AnswerKeys.keys(for: .allowOnce, prompt: nil, agent: .goose).sends.isEmpty)
     }
 
