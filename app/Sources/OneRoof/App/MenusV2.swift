@@ -61,6 +61,7 @@ struct MenuSpecV2 {
         v += place("Machine", "place.machine", K.machine, .machine)
         v += place("Loops", "place.loops", nil, .loops)
         v += place("Learn", "place.learn", K.learn, .learn)
+        v += place("Evals", "place.evals", nil, .evals)   // LAB-EVALS
         v += [i("Subagents", "home.subagents", K.subagents), sep]
         v += [i("Single", "layout.single", K.layouts[0]), i("Grid", "layout.grid", K.layouts[1]), i("Wall", "layout.wall", K.layouts[2]), i("Scroll", "layout.scroll", K.layouts[3]),   // ★ Scroll: LAB-1831
               i("Focus: Step On", "focus.next", K.focusForward), i("Focus: Step Back", "focus.previous", K.focusBack), sep]                  // ★ back

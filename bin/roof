@@ -10,6 +10,7 @@
 #   roof doors [--check]            a door (AGENTS.md + READ-FIRST link) at every project + repo level; Gemini reads AGENTS.md
 #   roof sync-skills <skills-dir>   link one skills folder into every agent's skills home
 #   roof swarm run|merge|clean ...  parallel tasks in git worktrees with file claims (tools/fanout.py)
+#   roof eval <command> ...         run any model on any benchmark (Inspect AI); `roof eval help` lists the commands
 set -euo pipefail
 ROOF_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../lib/common.sh
@@ -231,5 +232,9 @@ case "${1:-help}" in
   doors) shift; exec bash "$ROOF_HOME/tools/doors.sh" "$@" ;;
   sync-skills) shift; exec bash "$ROOF_HOME/tools/sync-skills.sh" "$@" ;;
   swarm) shift; exec python3 "$ROOF_HOME/tools/fanout.py" "$@" ;;
-  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
+  eval) shift
+    engine="$ROOF_HOME/app/Resources/evals/roof_eval.py"
+    [ -f "$engine" ] || engine="/Applications/One Roof.app/Contents/Resources/evals/roof_eval.py"
+    exec python3 "$engine" "$@" ;;
+  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
