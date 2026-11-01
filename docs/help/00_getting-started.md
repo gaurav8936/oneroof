@@ -56,7 +56,7 @@ If something is red, launching an agent asks you to choose: **Open Foundations**
 4. Pick an **agent card** (for example Claude1), the **Repo** (for example `acme/web`) and, if you like, a **Model**.
 5. Check the **Opening message**: the first prompt. One Roof sends it once the agent is ready, never while it is busy.
 6. Leave **When** on **Now** and press **Launch** (⌘↩). The row shows Working, the terminal appears in the centre, and the opening message arrives a moment later.
-7. When the agent stops to ask you something, the row turns **Needs you** and the Dock icon shows a badge. Click the row and answer in the terminal.
+7. When the agent stops to ask you something, the row turns **Needs you** and the Dock icon shows a badge. Answer it in the **Inbox** (⌘I): every session that needs you is a block there, with the prompt's own options and a reply box. Or click the row and answer in the terminal.
 
 Agents start in your projects folder, so they all share one memory and one set of rules. Choose **Start in › Repo folder** to start inside the repo instead; Claude may then ask once to trust that folder.
 

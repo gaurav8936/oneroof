@@ -135,17 +135,21 @@ struct StatusPill: View {
     let status: SessionStatus
     var label: String?
     var scheduled: String?
+    /// LAB-2052 · on Resources: every pill gets the strong edge (≥ 3:1 against the card; Ready, Idle and Working had
+    /// none, Needs you a pale one), and no label is struck through.
+    var strongEdge = false
 
     var body: some View {
         let p = scheduled != nil ? StatusPalette.scheduledPill(theme: t.name) : t.pill(status)
         Text(scheduled.map { "⏱ " + $0 } ?? label ?? StatusPalette.label(status))
             .ui(10.5, .semibold)
-            .strikethrough(p.edge == .strike)
+            .strikethrough(p.edge == .strike && !strongEdge)
             .foregroundStyle(p.text.color)
             .padding(.vertical, 1).padding(.horizontal, 7)
             .background(Capsule().fill(p.fill?.color ?? .clear))
             .overlay {
                 switch p.edge {
+                case _ where strongEdge: Capsule().strokeBorder(t.resourceMarks.pillEdge.color, lineWidth: 1)
                 case .solid(let c): Capsule().strokeBorder(c.color, lineWidth: 1)
                 case .dashed(let c): Capsule().strokeBorder(c.color, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
                 default: EmptyView()

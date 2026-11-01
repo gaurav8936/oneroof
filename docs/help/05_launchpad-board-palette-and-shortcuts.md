@@ -25,17 +25,28 @@ One page that answers "what needs me, and what is going on?" across every window
 
 A Kanban of every session in every window, left to right: **Planned · Next → Working → Needs you → Ready → Idle · Parked → Tonight → Exited → Do not use**. Drag a card onto Planned · Next, Tonight or Do not use to change it; the other columns follow the agents' live state. The Tonight column has **Schedule** with a time and an **Every night** switch. Exited and Do not use can be collapsed. Double-click a card to open that session. **By project** groups the cards by their Linear project. ⌘B again closes the Board.
 
-## Needs you (⌘I)
+## Inbox (⌘I)
 
-Everything waiting on you, in one list, oldest first:
+The Inbox (it was called Needs you until 2.0) is one column of dark, terminal-style blocks: one per session that needs you, **newest at the top**. Sessions with nothing for you are not shown; the header counts them ("5 other sessions working ›" opens Sessions). The header also says how many things wait ("3 things waiting for your attention") and, pinned on the right, **Action log · 555 decided today · 74 rules ›**: click it for the Action log on Decisions, or click "74 rules" for its Rules tab (also View › Action Log and Search; under 1100 pt it reads "Action log ›"). Each block shows only the current ask and is answered in place, without opening the terminal:
 
-- **A permission prompt**: the agent's reason in its own words, what the command would touch, the risk and what happens if you say no, then **one button per option the prompt shows**, in its order and words (Antigravity's four, Codex's three, …). Each presses that option's own key, exactly as if you had typed it in the terminal; the first is Return. An option that takes your words ("No, and tell Claude what to do differently") sends what is in the reply box. When the options cannot be read, **Allow once**, **Always allow** and **Deny** stand in. Picking an "always" option is remembered as a rule for that command in that repo.
-- **A question menu** (Claude's question tool, Gemini's sign-in menu): the question as the agent drew it and its own answers, with no risk badge; Esc cancels. If Gemini says Google refuses the sign-in, the card says so and points to an API key or Antigravity.
+- **A permission prompt**: the agent's words as its terminal shows them, the risk ("Same command you allowed 3 times this week"), **Details ▸** (why, in the agent's words; what it touches; if you say no; where it sits), then **one button per option the prompt shows**, in its order and words (Antigravity's four, Codex's three, …). Each presses that option's own key, exactly as if you had typed it in the terminal; the first is Return. An option that takes your words ("No, and tell Claude what to do differently") sends what is in the reply box. When the options cannot be read, **Allow once**, **Always allow this** and **Deny** stand in. Picking an "always" option is remembered as a rule for that command in that repo, with **Undo** for 5 seconds.
+- **A question menu** (Claude's question tool, Gemini's sign-in menu): the question as the agent drew it and its own answers; **Cancel** (Esc). If Gemini says Google refuses the sign-in, the block says so and points to an API key or Antigravity.
 - **A question at the end of a turn**: what it asked, and a reply box.
-- **A finished turn** (*Finished · waiting for you*): what the agent said last, a reply box (its next message), **Set aside** (leaves the list; the session stays open) and **Close session**. It leaves when you reply here or in the terminal.
-- **Plans** waiting for your approval.
+- **A finished turn** (*Finished · waiting for you*): what the agent said last (12 lines, then **Show all**), a reply box (its next message), **Set aside** (it leaves the Inbox; the session stays open) and **Close session**.
+- **Plans** waiting for your approval: the steps, Done when, **Approve plan · Edit plan · Reject**.
+- **Loops · Today**: loop items (a loop that stopped, a round that asks, what loops staged for you), with their own buttons.
+- **Decided · N ▸**: what you answered whose session is still alive, newest first. Click to open it.
 
-Nothing covers the terminal: you can always answer an agent in its own terminal instead, and the entry leaves Needs you. OpenCode's allow options can only be picked in its terminal; its Reject works here. The toolbar and the Dock show how many are waiting.
+**The reply box** takes several lines (↩ sends, ⇧↩ new line). Paste an image (⌘V), drop image files on the block, or click the paperclip: each shows as a thumbnail you can remove (up to 6, 20 MB each), and the agent gets their paths in your message to read. **Open session ↗** (⌘↩) opens the session's terminal. If the session cannot be reached, the block says so in red and keeps your text and images.
+
+After you answer, the block shows what you chose for a moment and folds away; the next one takes the focus. Nothing covers the terminal: you can always answer an agent in its own terminal instead, and its block folds with "Answered in its terminal". OpenCode's allow options can only be picked in its terminal; its Reject works here. The rail, the Dock and the menu bar show how many are waiting; the rail icon fills when something waits.
+
+## Action log (Inbox › Action log)
+
+What you decided, and the always-allow rules One Roof notes, in two tabs (⌘1 / ⌘2). ‹ Inbox, ⌘[ or Esc goes back. (LAB-2047, LAB-2048)
+
+- **Decisions · N**: one list, newest first, every row with the date and time, the session (a closed one reads "<name> (closed)"), what was asked and what you chose (✓ allowed, ✕ denied, ↩ replied or chose). **Search** (⌘F) matches the ask, the command, your answer and reply and the session's name; **Date** (Last 7 days by default, up to Custom…), **Session** and **Answer** (Allowed once, Always allowed, Denied, Replied, Chose an option, Answered in the terminal, Set aside) filter it, with chips and Clear all. Click a row, or ↑ ↓ and Return, to open it: the session (with **Open session ↗** while it runs), the full ask with its command and screen, **the options it showed with the one you chose marked**, why, what it touches, the risk, and your answer. ↑ Newer / ↓ Older step through the list. Asks from before 2.0.0 say their options weren't recorded. Decisions are kept for good. There is no Remove here.
+- **Rules · N**: each always-allow rule with its repo and when it was added, newest first, and **Stop noting this rule**, with **Undo** for 5 seconds. One Roof only notes when a new ask matches a rule; it never answers for you. Always allow also told the agent not to ask again, and the agent keeps that in its own settings: Stop noting this rule only removes One Roof's note.
 
 ## Subagents (⇧⌘A)
 
@@ -141,5 +152,5 @@ Without a shortcut, in the menus: Run Startup Check (One Roof menu); Ask Agent A
 | Command palette | ↑ ↓, Return | Move, run |
 | Review comment box | ⌘↩ | Send the comment to the agent |
 | Review panel | ⌘↩ / ⌥⌘D | Commit / side-by-side diff on or off |
-| Needs you | Return / Esc / ⌘] ⌘[ | The first option (or Allow once) / Deny or cancel / next or previous entry |
+| Inbox | ↑ ↓ or ⌘] ⌘[ / Return / Esc / 1–9 / ⌘↩ / Tab | Move between blocks / the first option (or Allow once) / Deny or cancel / press option n / open the session / into the reply box |
 | Terminal | ⌘-click a link | Files open in the viewer, web links in the browser |

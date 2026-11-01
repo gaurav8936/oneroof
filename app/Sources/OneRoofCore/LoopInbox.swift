@@ -28,6 +28,12 @@ public enum LoopInbox {
         public var sessionId: String?
 
         /// The outcome kind of a staged item (commit · pr · issue · report · proposal · file · slack · promotion).
+        public init(id: String, kind: Kind, loopId: String, loopTitle: String, headline: String, detail: String, when: Date,
+                    outcomes: [LoopLedger.Outcome] = [], sessionId: String? = nil) {
+            self.id = id; self.kind = kind; self.loopId = loopId; self.loopTitle = loopTitle; self.headline = headline
+            self.detail = detail; self.when = when; self.outcomes = outcomes; self.sessionId = sessionId
+        }
+
         public var outcomeKind: String { outcomes.first?.kind ?? "" }
         public var outcomeIds: [Int] { outcomes.map(\.id) }
     }

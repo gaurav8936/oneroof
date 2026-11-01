@@ -1,5 +1,173 @@
 # Changelog
 
+## 2.0.0 — The owner's review: Inbox, History, Projects, Resources, Loops and a redesigned Evals (draft) (1 Nov 2026)
+
+- **Evals is a draft, coming soon** (LAB-2072). The Evals place carries a Draft tag on the rail, "Evals · Draft" in the
+  menu and palette, and a "Draft · coming soon" banner on every tab and the run sheet: it is being redesigned, what you
+  see may change, and results are for trying out only. Shortcuts set on Evals carry over.
+- **Readable everywhere** (LAB-2071). One contrast pass on the shared colours of every theme (Daylight, Graphite,
+  Midnight and the pastels): small grey text now reads at 4.5:1 or more, card and control edges at 3:1, and hairlines
+  you can see. Each page below then fixed what was left.
+- **Places say what they hold** (LAB-2039, LAB-2040, LAB-2049). Machine is now **Resources**, Work is now **Projects**,
+  and the button at the foot of the rail is **Settings** with a gear (it was Look; the one-click looks are in
+  Settings › Appearance). Shortcuts set under the old names keep working.
+- **Seats you can read** (LAB-2041). The seat list on the rail shows each agent's mark as large as the place icons, its
+  use in words and a bar you can see, with a tooltip each.
+- **Learn: Papers and Start here** (LAB-2057, LAB-2058, LAB-2059). Learn gets a Papers tab: 50 papers that shaped
+  agents, on a timeline that grows from Foundations, every one narrated. The four bands, fifteen tracks and seven
+  building blocks open the Learn home as Start here; the Radio plays the four bands only.
+
+- **Needs you is now the Inbox** (LAB-2042, LAB-2043). One column of dark, terminal-style blocks, one per session that
+  needs you, newest at the top, each answered in place: every option the prompt shows (1–9 and Return press them), a
+  multi-line reply with pasted, dropped or attached images (the agent gets their paths), Set aside and Close session for
+  a finished turn, plans and loop items in their own blocks, Decided at the foot, Open session ↗ (⌘↩). Sessions with
+  nothing for you are hidden and counted ("5 other sessions working"). The name is Inbox in the rail (a tray icon that
+  fills when something waits), the View menu (⌘I, ⌃⌘2), the dock pill, the menu bar and help; shortcuts you set under
+  Needs You or Decisions carry over. A session's state is still called Needs you.
+- **Scroll is now History** (LAB-2044, LAB-2045, LAB-2046). Its own place right under the Inbox on the rail (⌃⌘9, View ›
+  History; the other places keep ⌃⌘1–8): the read-only record of every session's important moments, newest first, with
+  no Reply, Open or answer buttons (an open ask says "Waiting in the Inbox"). Every line has its date and time under day
+  headings; each kind has its own colour, glyph and word (errors red and tinted, asks with a blue bar, your answers as
+  their own indented rows, handovers as dividers), each session's run of moments is its own card, all at 4.5:1 in
+  Daylight, Graphite and Midnight. Search, sort and filters by session, agent, kind and date range, with chips; new
+  handover kinds (session started and closed, handoff written, release started and finished); closed and deleted
+  sessions keep their moments and names; kept 30 days (was 7); a "N new ↑" pill. Single · Grid · Wall arrange
+  terminals only; a window saved with Scroll opens as Single, and a shortcut set on Scroll moves to History.
+- **The Action log** (LAB-2047, LAB-2048). Pinned in the Inbox header ("Action log · 555 decided today · 74 rules ›",
+  View › Action Log, Search). Two tabs instead of two side-by-side cards: **Decisions**, one list newest first with date
+  and time, session, ask and answer, search and date range, session and answer filters, and a click opens the whole ask
+  with the options it showed and the one you chose (stored from 2.0.0 on; decisions are kept for good); **Rules**, where
+  the only remove lives, worded "Stop noting this rule", with Undo.
+- **Projects shows teams and their projects, filtered by status** (LAB-2050). Each team is a header with its name and
+  count (`▾ LAB · Labs   4`) that folds and unfolds (⌥-click: every team; folds are remembered). Status chips in the All
+  sessions style: Backlog · Planned · In progress · In review · Completed · Canceled, each with its count, several at
+  once, opening on In progress + In review with every team unfolded, and Reset. In review is worked out from the tickets
+  (In Progress in Linear, open tickets In Review, none In Progress). Projects read title first, code and status under
+  it, never cut mid-word; the filter matches code and title (⌘F); ↑ ↓ ← → and Return move, fold and open. The pill says
+  Completed, never Shipped. Show shipped is gone: the Completed and Canceled chips do its job.
+- **A project page shows the project only** (LAB-2051): its header, then the roadmap. Sessions stay in Sessions and All
+  sessions. A ticket's state pill now keeps its colour in Graphite and Midnight (its dark text had vanished there).
+- **Evals is redesigned around your own work** (LAB-2061, stages 1 to 3; still marked Draft · coming soon). Six
+  tabs: **Overview · Your evals · Explore · Run · Results · Learn** (⌃⌥1–6), opening on Overview, with the Draft banner
+  on every tab and drill-down, the busy and error lines and the install card as before, and a subtitle that counts
+  benchmarks, your evals, judges and finished runs (the same benchmark count as Explore's list).
+- **Evals › Learn** (LAB-2070): 16 lessons in six groups (Start, Reading a score, How answers are marked, Agents vs
+  models, Your own evals, Reading leaderboards) with ticks you keep; each has its text (1.9.37's explanations word for
+  word, plus new lessons on exact match, your labels, golden sets, frozen versions and saturation), a Try it you can
+  play with at no cost (the 95 % range explorer gives the engine's own Wilson range), this Mac's runs as examples
+  (each opens), where the number shows up in Evals, and Next. Your first eval, free keeps 1.9.37's steps and buttons,
+  now ticked from what you really did, with Continue: step N.
+- **Every number in Evals explains itself** (LAB-2070): hover a score, range, n, ± points, pass@k, cost, dollars per
+  right answer, floor, chance, headroom, judge agreement or compare verdict for a card in words with Lesson ›;
+  right-click for the same; Explore's Why › and a question's Lesson line open the right lesson.
+- **Seat runs never go on with unknown seat use** (M9 QA): a seat whose use is unknown or stale makes the run wait
+  ("seat use unknown") before each case until the use is known and under 90 %, or you press Run anyway on that run
+  (recorded in it; `roof eval run-anyway`). Claude Code answers in restricted mode with every hook off and reads of
+  secrets folders denied; Codex runs without your config, hooks or plugins (it can still read outside the case folder,
+  and Run says so). Case worktrees moved to the temp folder.
+- **Compare calls no winner on fewer than 10 shared questions** (M9 QA): "Can't tell them apart yet — too few shared
+  questions (n)", in Results, Overview's changes and the 1.9.37 Compare.
+  Settings › General › Redesigned Evals (on) switches back to the 1.9.37 Evals.
+- **Evals › Overview** (LAB-2062): a scorecard per eval of yours, agents first, then models, models on this Mac and the
+  free baseline, each with its score, 95 % range, the no-model floor as a dashed line, cost (seat for agents), dollars
+  per right answer and its run; what changed between each contestant's last two runs, in words (inside the noise or a
+  real change, from the paired comparison); what is running; and one suggested next eval. A new profile shows the free
+  first eval and no numbers.
+- **Evals › Explore** (LAB-2063): shelves (Start here, Your evals, Agent tasks, Judges), what it tests, graded by, No
+  Docker needed and I've run it; each benchmark says what it is made of. A benchmark's page has Anatomy (questions,
+  answer, graded by, chance, headroom, how one question is scored, this Mac's runs with a warning under 30 questions,
+  what it teaches and what to watch, needs, the cost of 50 questions, the paper), Questions, Scores and Your runs.
+  **Scores** shows published best scores from one official source per benchmark (12 of the 24 Start-here so far), each
+  with its source link and the date checked, refreshed weekly (`published-scores` loop, or when over a week old); a
+  benchmark without a source says "No published score yet". Search, Start here, No Docker needed, every category (More
+  topics) and Rescan all stay.
+- **Evals › Explore › Questions** (LAB-2064): a benchmark's real questions on this Mac without running it (the dataset
+  downloads after a one-line confirm with its size; gated sets show the Hugging Face terms step and `roof eval providers
+  set hf --key-file`), one dot per run that saw each, All · Seen in your runs · Any run got wrong · Random 10, and one
+  question up close: reference, worked solution, what the model sees, how it's marked, and how each run answered. Run
+  just this one opens the run sheet for that question (cost first).
+- **Evals › Your evals** (LAB-2065): your eval sets with every case and who solved it (n of m runs on that version),
+  hardest first, the floor and the best so far; Build v2 previews the fixes since a version and what was left out, then
+  freezes v2 as that version's cases plus the new ones (the old version is never edited); versions with their runs;
+  make a set from a repo's fixed bugs in the app. From past sessions (LAB-2079) and From a file of questions (LAB-2078)
+  show as coming.
+- **Evals › Your evals › Judge** (LAB-2066): label answers with the keyboard (P pass, F fail, S skip, ↑ ↓, Tab to Why,
+  Return, ⌘Z undo), likely fails first, each answer with its code check; how far to trust the judge updates after every
+  label without a new run (agrees, passes good, fails bad, red under 70 %, too few labels, self-preference); what would
+  help; Rubric drafts for the next version; Agreement per source with the judge × label table; Versions; Rebuild judge.
+- **Evals › Run** (LAB-2067): one page instead of the run sheet. **What** (your sets, recent benchmarks, + any
+  benchmark, a multi-task benchmark's tasks) × **Who**, agents first: Claude Code and Codex **on your subscription
+  seats** (C1, CX, with how full each 5-hour window is), OpenCode, Kimi, Gemini CLI and Antigravity shown with why they
+  can't run yet; models by key (the rest folded), agents on an API model, models on this Mac and any model id × **How
+  much** (questions 5 · All, attempts, temperature, seed, cap per run, where code runs, ••• Advanced task args) and
+  **what this run can tell you** (± points, paired). **Cost before you start** per contestant: a share of the seat's
+  window for agents, dollars for models (the cap still counts the grader ×1.5); **Start N runs** says why when it can't
+  (over the cap, no key, Docker stopped, a seat too full, nothing picked); ↩ starts. The **queue** at the foot: progress,
+  the failure reason in the row, waiting for a seat, Cancel, Resume, Results.
+- **Agents on your seats** (LAB-2067, HP EV-1): an agent answers each case of your own set headless in a fresh git
+  worktree at the commit before the fix, with read-only tools and no API key in its environment; the worktree is removed
+  after every case (also on a failure or cancel; leftovers are swept), nothing is committed or pushed. Before Start the
+  seat must have room under the router's limit (90 %); mid-run a full seat makes the run wait, never fail. Agents score
+  like models and show as Agent everywhere.
+- **Evals › Results** (LAB-2068): By eval · All × all · X-ray, your evals and benchmarks with their run counts (failed
+  in red) and Export CSV · JSON at the foot. **By eval:** the leaderboard (latest run per contestant, agents first, the
+  baseline last and unranked, score, 95 % bar with the floor, cost, $ per right, run date; judged sets show the judge's
+  agreement); **Compare** A vs B on the same cases with the verdict in words ("Can't tell them apart yet"), the
+  difference with its range and the cases only one solved (See the N cases); **Over time** with possible drops circled
+  and what to do (Re-run ×3). Versions are never mixed. **All × all** is the 1.9.37 grid and every run; **X-ray** is a
+  read-only table per agent from git (commits, lines added, churn, fixes own work, reverted, followed by a fix).
+- **Evals › one run, question by question** (LAB-2069): the facts (answers, tokens, cost, $ per right, time, seed, date),
+  Compare with… and Run again; the judged score with its range, the code-checked score and how far to trust the judge;
+  All · Wrong · Judge ≠ you (W, ↑ ↓); the transcript (long inputs and tool calls folded, files named highlighted); Code
+  check · Judge · You side by side, with P / F to label in place; **Label for the judge** opens the judge with this answer
+  first; **Add to a regression set** (and Explore › Questions' **Add to an eval set**) writes the next version of a set,
+  never a frozen one. A question's "transcript ›" opens the run at that question.
+- **Fixed (stage 1 QA):** Explore › Scores no longer opens a tall gap above the first row (its last column's label had no
+  room and wrapped letter by letter); the Evals subtitle and Explore's list footer count benchmarks the same way.
+- **Eval engine** (LAB-2061–2069): `run --agent claude_code|codex_cli --seat C1|CX` (agent_runner.py), `estimate --seat`
+  (seat share), `power`, `compare`, `leaderboard`, `history`, `evalset add`; `status` carries the contestant, the error's
+  last line, what to do and why a run waits; `samples` carries each answer's code check, judge and your label;
+  `overview`, `anatomy`, `items`, `item`, `item-results`, `scores`, `run --sample-id`; runs keep the set name and version they ran on and every question's score; contestants (agent,
+  model, on this Mac, baseline) on every result; `evalset build --dry-run` and `--extend`, `evalset versions`, solve
+  counts in `evalset show`; `judge items`, `queue`, `trust`, `advise`, `rubric`, `versions`, `label --undo`.
+- **Retired on purpose:** the Sessions block on a project page and the per-ticket "Open its session (n)" button
+  (owner, LAB-2051: "this should just be project"); ▷ Plan a session stays on every open ticket.
+- **Resources you can read** (LAB-2052). Same layout, new colours: every number and note at 4.5:1 or more (no more light
+  grey on pale green), bars 6 pt on a visible track, charts with a 2 pt line, status pills with an edge, a hover you can
+  see, the process panel at full strength, and warning rows (a local model left over, roofd over its line) tinted with an
+  amber bar on the left. One Roof itself and the session rows no longer wrap names at 1280 ("One / Roof / app").
+  Checked in Daylight, Graphite, Midnight and the pastels by ResourcesContrastTests.
+- **A browser shows windows and tabs, and only what is big** (LAB-2053). Opening Chrome shows its windows and tabs, then
+  "Using a lot" (helpers or tabs over 250 MB or 10 % CPU, held 30 s so it does not flicker), one line about memory per tab
+  (the full Task Manager note is in its ⓘ), and All processes (N) for the full list as before.
+- **Close a tab or a window from Resources** (LAB-2054 Chrome, LAB-2060 Safari). ✕ on a tab (on hover; also right-click,
+  ⌫ and VoiceOver), Close window per window (asks first with 2 or more tabs), Copy address; the list refreshes after.
+  Nothing closes if the tab moved or the window changed since the list was read; the browser is never launched; no new
+  permission prompt for Chrome. A browser that does not answer in 10 s offers Force quit. Memory per tab and force-closing
+  one tab are not possible (macOS does not map processes to tabs), and the page says so. Brave and Arc stay read-only
+  until tested.
+- **Loops: the kinds first, details in a card** (LAB-2055). Loops opens on **Kinds**: four cards, Watch · Check ·
+  Report · Improve (the ten loop kinds grouped; Other only when a loop has no kind), each with a one-line description,
+  its kinds named, a "needs you" or "running" badge, and every loop's name as a chip (filled = yours, outlined =
+  built-in), two columns from 960 pt: at 1280 × 800 every loop is visible without scrolling and opens in two clicks.
+  A loop's details open in a card over the dimmed page (✕, Esc or a click outside closes it) with everything the full
+  page had: facts (now with Output and the kind's family), Run now, Pause / Resume, Stop, Edit, Duplicate as mine,
+  Pin, Delete or Reset, fences, outcomes (with the last run) and rounds. A family's page lists its kinds with what they
+  produce and one row per loop with its last result ("Never run", "done · Oct 30", "failed ×2") and Start from this.
+  **Activity** (beside Kinds, remembered) is the page as it was; its rows, the Outcomes card and the Inbox's Open loop
+  open the same card. The Gallery button is replaced by Kinds (in the classic window it stays). Self-test
+  `ONEROOF_SELFTEST_LOOPVIEW=kinds|activity|kind:<family>|loop:<id>|empty`.
+- **Loops are easier to read** (LAB-2056). A stopped loop shows a plain **Off** chip (was "Not running", struck
+  through); no Loops chip is struck through. Field labels, origin, schedule and counts are text2 (4.5:1); the mono "No
+  run yet: a sample shows here…" line is gone ("Never run" on a family's page, "Nothing produced yet" in the card);
+  cards have strong edges (3:1 against page and card); a disabled Stop, Run now or Pause stays legible (no faded red)
+  and says why on hover and to VoiceOver; check bars with no result are a neutral bar, not faded red. Tested per
+  token pair in every panel theme (`LoopsContrastTests`).
+- **Retired on purpose:** Scroll's Reply, Open ↗ and in-place Allow / Deny (owner, LAB-2044: History is read-only;
+  every ask is answered in the Inbox); the Scroll layout key ⌃⌥⌘4 (now free).
+- **Retired on purpose:** in the One Roof 1 window, the Needs you list's width drag (LAB-1932): the Inbox has no list
+  column. The classic window keeps its Decisions page, list width included.
+
 ## 1.9.37 — Your own evals: questions from your repo's real bugs, a model as judge with its agreement measured, a second framework beside Inspect (31 Oct 2026)
 
 - **Your evals** (LAB-1995). `roof eval evalset build --repo <repo>` turns a repo's own fix history into a versioned

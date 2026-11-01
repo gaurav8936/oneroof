@@ -7,6 +7,7 @@ import OneRoofCore
 /// the default. Replaces v0.1's six mode flags (boardMode, workMode, launchpadMode, learnMode, objectiveId, viewerPath).
 enum CentreView: String, CaseIterable, Codable {
     case workspace, overview, resources, board, decisions, subagents, work, learn, objective, editor, review, loops, catalog, evals
+    case history   // LAB-2044: the History place (was the Scroll layout page)
 
     var title: String {
         switch self {
@@ -16,7 +17,7 @@ enum CentreView: String, CaseIterable, Codable {
         case .board: return "Board"
         case .decisions: return "Decisions"
         case .subagents: return "Subagents"
-        case .work: return "Work"
+        case .work: return "Projects"   // LAB-2049
         case .learn: return "Learn"
         case .objective: return "Objective"
         case .editor: return "Editor"
@@ -24,6 +25,7 @@ enum CentreView: String, CaseIterable, Codable {
         case .loops: return "Loops"
         case .catalog: return "Session catalog"   // LAB-1509
         case .evals: return "Evals"   // LAB-EVALS
+        case .history: return "History"   // LAB-2044
         }
     }
 
@@ -31,7 +33,7 @@ enum CentreView: String, CaseIterable, Codable {
     static let switcher: [CentreView] = [.workspace, .overview, .resources, .board, .decisions, .work, .learn]
 
     /// Fleet views fold the Sessions panel away (v0.1 rule); the Plan panel stays for details.
-    var foldsSessions: Bool { [.overview, .resources, .board, .decisions, .subagents, .work, .learn, .loops, .catalog, .evals].contains(self) }
+    var foldsSessions: Bool { [.overview, .resources, .board, .decisions, .subagents, .work, .learn, .loops, .catalog, .evals, .history].contains(self) }
 }
 
 /// One main window = one workspace (WINDOW_SHELL §1): its own sessions, selection, centre view and text size. All
@@ -60,6 +62,14 @@ final class WindowState: ObservableObject, Identifiable {
     /// v2 Subagents tab: true = the trace (Trace ▸ / Whole trace ▸), false = the cards.
     @Published var v2Trace = false
     @Published var filter = ""
+    /// LAB-2046: History's filters and sort, remembered per window (the search text is not).
+    @Published var historyQuery = HistoryQuery() { didSet { if historyQuery != oldValue { saveJSON(historyQuery, "v2.historyQuery") } } }
+    /// LAB-2047 · LAB-2048: the Action log open over the Inbox, on this tab (nil = the Inbox itself).
+    @Published var actionLog: ActionLogTab? { didSet { if let t = actionLog { save(t.rawValue, "v2.actionLogTab") } } }
+    /// The tab the Action log opens on (the last one used in this window).
+    var actionLogTab: ActionLogTab = .decisions
+    /// LAB-2048: the Decisions tab's filters, remembered per window (the search text is not).
+    @Published var actionLogQuery = ActionLogQuery() { didSet { if actionLogQuery != oldValue { saveJSON(actionLogQuery, "v2.actionLogQuery") } } }
     /// Count-chip filter in the Sessions panel.
     @Published var statusFilter: StatusChip?
     /// UI text scale, 0.85–1.3 in 0.05 steps (⌘+ ⌘− ⌘0), per window (S00.W.2).
@@ -134,7 +144,8 @@ final class WindowState: ObservableObject, Identifiable {
             if saved == nil { save(focusStep.rawValue, "focusStep") }   // decided once; later launches read it back
             sessionsStep = (d.object(forKey: "sessionsStep." + id) as? Int).flatMap(FocusStep.init(rawValue:))
             // Grid and Wall are built from live sessions; a relaunch starts in Single (your panes), never empty tiles.
-            if let v = d.string(forKey: "layout." + id), let l = SessionLayout(rawValue: v), l == .single { layout = l }
+            // LAB-2044: a window saved with "scroll" (1.9.31–1.9.37) opens as Single.
+            if let v = d.string(forKey: "layout." + id), let l = SessionLayout(stored: v), l == .single { layout = l }
             if let v = d.string(forKey: "place." + id), let p = Place(rawValue: v) { place = p }
             if sessionsStep == nil, place == .sessions { sessionsStep = focusStep }
             columnWidth = d.object(forKey: "v2.columnWidth." + id) as? Double
@@ -142,6 +153,9 @@ final class WindowState: ObservableObject, Identifiable {
             railFolded = d.bool(forKey: "v2.railFolded." + id)
             railWidth = d.object(forKey: "v2.railWidth." + id) as? Double
             focusColumnWidth = d.object(forKey: "v2.focusColumnWidth." + id) as? Double
+            if let q: HistoryQuery = Self.loadJSON(d, "v2.historyQuery." + id) { historyQuery = q }
+            if let q: ActionLogQuery = Self.loadJSON(d, "v2.actionLogQuery." + id) { actionLogQuery = q }
+            if let t = d.string(forKey: "v2.actionLogTab." + id).flatMap(ActionLogTab.init(rawValue:)) { actionLogTab = t }
         }
         // After the saved values are read: like didSet, these run for later changes only.
         step.stepChanged = { [unowned self] old in self.focusStepChanged(from: old) }
@@ -150,6 +164,19 @@ final class WindowState: ObservableObject, Identifiable {
 
     private func save(_ value: Any, _ key: String) {
         if !SelfTest.isActive { Prefs.defaults.set(value, forKey: key + "." + id) }
+    }
+    private func saveJSON<T: Encodable>(_ value: T, _ key: String) {
+        if let d = try? JSONEncoder().encode(value), let s = String(data: d, encoding: .utf8) { save(s, key) }
+    }
+    private static func loadJSON<T: Decodable>(_ d: UserDefaults, _ key: String) -> T? {
+        d.string(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: Data($0.utf8)) }
+    }
+    /// LAB-2047: open the Action log over the Inbox, on `tab` (or the last one used).
+    func openActionLog(_ tab: ActionLogTab? = nil) {
+        let t = tab ?? actionLogTab
+        actionLogTab = t
+        if place != .needsYou { open(.needsYou) }
+        actionLog = t
     }
 
     /// Open a place at its default step (FOCUS_LADDER.md: Sessions at 1, the other places at 0).

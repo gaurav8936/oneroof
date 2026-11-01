@@ -12,9 +12,14 @@ final class EvalsBoard: ObservableObject {
     @Published private(set) var runs: [EvalRunRow] = []
     @Published private(set) var results: [EvalResult] = []
     @Published var error: String?
-    @Published private(set) var busy: String?
+    @Published var busy: String?
+    // LAB-2061 (Evals redesign): your sets and judges (subtitle, Explore shelves, Your evals) and the Overview.
+    @Published var sets: [EvalSetList.Entry] = []
+    @Published var judges: [EvalJudgeList.Judge] = []
+    @Published var overview: EvalOverview?
+    @Published var overviewError: String?
     private var timer: Timer?
-    private let io = DispatchQueue(label: "oneroof.evals.io")
+    let io = DispatchQueue(label: "oneroof.evals.io")
 
     func start() {
         refreshDoctor()
@@ -29,8 +34,8 @@ final class EvalsBoard: ObservableObject {
 
     func stop() { timer?.invalidate(); timer = nil }
 
-    private func call<T: Decodable>(_ args: [String], _ type: T.Type, label: String? = nil, timeout: TimeInterval = 600,
-                                    done: @escaping (T) -> Void) {
+    func call<T: Decodable>(_ args: [String], _ type: T.Type, label: String? = nil, timeout: TimeInterval = 600,
+                            done: @escaping (T) -> Void) {
         if let label { busy = label }
         io.async {
             let r = EvalEngine.decode(T.self, EvalEngine.run(args + ["--json"], timeout: timeout))
@@ -82,21 +87,27 @@ final class EvalsBoard: ObservableObject {
         }
     }
 
-    struct Started: Decodable { var id: String }
+    /// LAB-2067: the estimate for any contestant (agent on a seat, agent on an API model, model), as Run asks it.
+    func estimate(_ args: [String], done: @escaping (Result<EvalEstimate, EvalError>) -> Void) {
+        io.async {
+            let r = EvalEngine.decode(EvalEstimate.self, EvalEngine.run(args, timeout: 120))
+            DispatchQueue.main.async { done(r) }
+        }
+    }
 
-    func start(_ plan: EvalRunPlan) {
-        busy = "Starting \(plan.tasks.count * plan.models.count) run(s)…"
+    struct Started: Decodable { var id: String }
+    /// Counts started batches, so the redesigned shell can move to Run's queue (LAB-2061).
+    @Published var started = 0
+
+    func start(_ plan: EvalRunPlan, seatLimit: Double = 90) {
+        busy = "Starting \(plan.runCount) run(s)…"
         io.async {
             var errors: [String] = []
-            for task in plan.tasks { for model in plan.models {
-                var a = ["run", task, "--model", model, "--limit", String(plan.limit), "--max-cost", String(plan.cap), "--background", "--json"]
-                if let e = plan.epochs { a += ["--epochs", String(e)] }
-                if let s = plan.seed { a += ["--seed", String(s)] }
-                if let t = plan.temperature { a += ["--temperature", String(t)] }
-                if !plan.taskArgs.isEmpty { a += ["--task-args", plan.taskArgs] }
-                if plan.place != "local" { a += ["--where", plan.place] }
+            // Every task × contestant (agents on seats first), each through the engine's own estimate and cap check.
+            for task in plan.tasks { for c in plan.contestants {
+                let a = plan.arguments(task: task, contestant: c, seatLimit: seatLimit)
                 if case .failure(let e) = EvalEngine.decode(Started.self, EvalEngine.run(a, timeout: 300)) {
-                    errors.append("\(task) × \(model): \(e.message)")
+                    errors.append("\(EvalBenchmark.taskLabel(task)) × \(c.name): \(e.message)")
                 }
             } }
             DispatchQueue.main.async {
@@ -104,11 +115,14 @@ final class EvalsBoard: ObservableObject {
                 self.error = errors.isEmpty ? nil : errors.joined(separator: "\n")
                 self.tab = .runs
                 self.refreshRuns()
+                self.started += 1
             }
         }
     }
 
     func cancel(_ id: String) { io.async { _ = EvalEngine.run(["cancel", id]); DispatchQueue.main.async { self.refreshRuns() } } }
+    /// QA (M9): a seat run waiting because the seat's use is unknown goes on (the owner's explicit choice, recorded).
+    func runAnyway(_ id: String) { io.async { _ = EvalEngine.run(["run-anyway", id]); DispatchQueue.main.async { self.refreshRuns() } } }
     func resume(_ id: String) { io.async { _ = EvalEngine.run(["resume", id]); DispatchQueue.main.async { self.refreshRuns() } } }
 
     func samples(_ id: String, done: @escaping ([EvalSample]) -> Void) {
@@ -130,20 +144,7 @@ final class EvalsBoard: ObservableObject {
     }
 }
 
-/// What the run sheet starts: every task × every model, as background runs (they queue in the engine).
-struct EvalRunPlan: Identifiable, Equatable {
-    var id = UUID()
-    var benchmark: EvalBenchmark?
-    var tasks: [String]
-    var models: [String] = ["mockllm/model"]
-    var limit = 50
-    var epochs: Int?
-    var seed: Int? = 42
-    var temperature: Double?
-    var cap = 2.0
-    var taskArgs = ""
-    var place = "local"   // where code-running benchmarks execute (LAB-2000)
-}
+// EvalRunPlan moved to OneRoofCore (EvalsRunResults.swift, LAB-2067) so its arguments are tested.
 
 struct EvalsView: View {
     @ObservedObject var model: AppModel
@@ -163,6 +164,7 @@ struct EvalsView: View {
             }
         } content: {
             VStack(alignment: .leading, spacing: 12) {
+                if EvalsDraft.isDraft { EvalsDraftBanner() }   // LAB-2072: on every tab, and on the setup card
                 if let b = board.busy { Text(b).ui(TypeScale.small).foregroundStyle(t.text2.color) }
                 if let e = board.error {
                     Text(e).ui(TypeScale.small).foregroundStyle(t.needsText.color).textSelection(.enabled)
@@ -191,10 +193,13 @@ struct EvalsView: View {
         }
         .onDisappear { board.stop() }
         .sheet(item: $plan) { p in
+            VStack(spacing: 0) {
+            if EvalsDraft.isDraft { EvalsDraftBanner().padding([.horizontal, .top], 12) }   // LAB-2072: the run sheet too
             EvalRunSheet(board: board, plan: p, providers: board.doctor?.readyProviders ?? [],
                          places: board.doctor?.places ?? ["local": true]) { final in
                 plan = nil
                 if let final { board.start(final) }
+            }
             }
             .themed(t.name)
         }
@@ -483,7 +488,7 @@ struct EvalRunSheet: View {
                     .ui(TypeScale.caption).foregroundStyle(t.text3.color)
                 Spacer()
                 RoofButton("Cancel") { done(nil) }.keyboardShortcut(.cancelAction)
-                RoofButton("Start \(plan.tasks.count * plan.models.count) run(s)", .primary) {
+                RoofButton("Start \(plan.runCount) run(s)", .primary) {
                     var p = plan
                     p.epochs = Int(epochsText)
                     p.temperature = Double(temperatureText)
@@ -615,12 +620,15 @@ struct EvalsRunsTab: View {
 
 struct EvalsResultsTab: View {
     @ObservedObject var board: EvalsBoard
+    /// LAB-2061: a run to open on arrival (a score or a date anywhere in the redesigned Evals links here).
+    var startRun: String? = nil
     @Environment(\.theme) private var t
     @State private var open: EvalResult?
     @State private var compareA: String?
     @State private var compareB: String?
 
     var body: some View {
+        Group {
         if let r = open {
             EvalRunDetail(board: board, result: r) { open = nil }
         } else if board.results.isEmpty {
@@ -642,6 +650,15 @@ struct EvalsResultsTab: View {
                 }
             }
         }
+        }
+        .onAppear(perform: openStart)
+        .onChange(of: startRun) { _, _ in openStart() }
+        .onChange(of: board.results) { _, _ in if open == nil { openStart() } }
+    }
+
+    @State private var opened: String?
+    private func openStart() {   // once per link: Back stays back while results refresh
+        if let id = startRun, id != opened, let r = board.results.first(where: { $0.id == id }) { open = r; opened = id }
     }
 
     private var matrix: some View {
@@ -755,7 +772,7 @@ struct EvalCompareCard: View {
                     RoofButton(working ? "Comparing…" : "Compare", .primary, action: compare).disabled(a == nil || b == nil || a == b || working)
                 }
                 if let c = result {
-                    Text("\(c.verdict.rawValue): difference \(String(format: "%+.3f", c.diff)), 95 % range \(String(format: "%+.3f to %+.3f", c.lo, c.hi)) over \(c.n) \(c.paired ? "shared questions (paired)" : "questions (unpaired: the runs share no questions)")")
+                    Text("\(c.verdict.rawValue)\(c.tooFew ? " (too few shared questions to call)" : ""): difference \(String(format: "%+.3f", c.diff)), 95 % range \(String(format: "%+.3f to %+.3f", c.lo, c.hi)) over \(c.n) \(c.paired ? "shared questions (paired)" : "questions (unpaired: the runs share no questions)")")
                         .ui(TypeScale.body, .medium).foregroundStyle(c.verdict == .noise ? t.text2.color : t.text.color)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(EvalGlossary.entry("compare")?.body ?? "").ui(TypeScale.caption).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
@@ -920,5 +937,25 @@ struct EvalsLearnTab: View {
             }
             .frame(maxWidth: 820, alignment: .leading)
         }
+    }
+}
+
+/// LAB-2072: the banner at the top of every Evals tab while Evals is a draft.
+struct EvalsDraftBanner: View {
+    @Environment(\.theme) private var t
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(EvalsDraft.tag.uppercased()).ui(10, .bold).foregroundStyle(t.onAccent.color)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(t.statusColor(.needsYou).color))
+            Text(EvalsDraft.banner).ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
+            Text(EvalsDraft.detail).ui(TypeScale.body).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.surface.color))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(t.statusColor(.needsYou).color, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(EvalsDraft.banner + ". " + EvalsDraft.detail)
     }
 }

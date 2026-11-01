@@ -700,7 +700,8 @@ final class CentreController: NSViewController {
         case .overview: v = AnyView(CentreThemed(model: m, win: w) { OverviewView(model: m, win: w) })
         case .resources: v = AnyView(CentreThemed(model: m, win: w) { ResourcesView(model: m, win: w) })
         case .board: v = AnyView(CentreThemed(model: m, win: w) { BoardView(model: m, win: w) })
-        case .decisions: v = AnyView(CentreThemed(model: m, win: w) { DecisionsView(model: m, win: w) })
+        case .decisions: v = v2 ? AnyView(CentreThemed(model: m, win: w) { V2InboxPage(model: m, win: w) })   // LAB-2042: the Inbox
+                                : AnyView(CentreThemed(model: m, win: w) { DecisionsView(model: m, win: w) })
         case .subagents: v = v2 ? AnyView(CentreThemed(model: m, win: w) { V2SubagentsHost(model: m, win: w) })
                                 : AnyView(CentreThemed(model: m, win: w) { SubagentTraceView(model: m, win: w) })
         case .work: v = AnyView(CentreThemed(model: m, win: w) { WorkView(model: m) })
@@ -711,7 +712,8 @@ final class CentreController: NSViewController {
         case .review: v = AnyView(CentreThemed(model: m, win: w) { ReviewChangesView(model: m, win: w) })
         case .loops: v = AnyView(CentreThemed(model: m, win: w) { LoopsView(model: m, win: w) })
         case .catalog: v = AnyView(CentreThemed(model: m, win: w) { CatalogView(model: m, win: w) })   // LAB-1509
-        case .evals: v = AnyView(CentreThemed(model: m, win: w) { EvalsView(model: m, win: w) })   // LAB-EVALS
+        case .evals: v = AnyView(CentreThemed(model: m, win: w) { EvalsPlace(model: m, win: w) })   // LAB-EVALS; LAB-2061 redesign behind its flag
+        case .history: v = AnyView(CentreThemed(model: m, win: w) { V2HistoryPage(model: m, win: w) })   // LAB-2044
         }
         let h = NSHostingView(rootView: v)
         h.sizingOptions = []

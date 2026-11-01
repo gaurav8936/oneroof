@@ -65,7 +65,7 @@ private struct StatusPopover: View {
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
-                section("Needs you")
+                section("Inbox")
                 let ds = model.openDecisions
                 if ds.isEmpty && model.sessionItems.filter({ $0.status == .needsYou }).isEmpty { Text("Nothing waiting.").ui(12.5).foregroundStyle(t.text3.color) }
                 ForEach(ds.prefix(5)) { d in

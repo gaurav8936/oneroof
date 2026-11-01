@@ -121,6 +121,15 @@ struct LoopsView: View {
     @State private var gallery = false
     @ObservedObject private var inbox = LoopInboxState.shared
     @Environment(\.v2Window) private var v2
+    /// LAB-2055 (v2): Kinds (the four family cards, the default) or Activity (today's outcomes, rounds, list and
+    /// Tonight), remembered; a family's page; the loop whose pop-out card is open; the page's width (two columns ≥ 960).
+    @AppStorage("loops.view", store: Prefs.viewState) private var savedView = "kinds"
+    @State private var viewOverride: String?   // self-test only (never saved)
+    @State private var family: String?
+    @State private var popout: String?
+    @State private var pageWidth: CGFloat = 1100
+    @State private var selfTestEmpty = false   // LOOPVIEW=empty: the no-loops card, for captures only
+    private var view: String { viewOverride ?? savedView }
 
     var body: some View {
         FleetPage(title: "Loops", subtitle: subtitle) {
@@ -130,8 +139,17 @@ struct LoopsView: View {
                 } else {
                     RoofButton("⏸ Pause all") { board.pauseAll() }.disabled(board.loops.isEmpty)
                 }
-                RoofButton(gallery ? "‹ Loops" : "Gallery") { gallery.toggle(); selected = nil }
-                    .help("The kinds of loops, what each produces, and a real sample of each (LAB-1922)")
+                if v2 {
+                    // LAB-2055: Kinds · Activity replaces the Gallery toggle (the gallery's content is in Kinds, a
+                    // family's page and the pop-out).
+                    Segmented(options: [("kinds", "Kinds"), ("activity", "Activity")],
+                              selection: Binding(get: { view }, set: { viewOverride = nil; savedView = $0; family = nil }))
+                        .help("Kinds: every loop by what it does · Activity: outcomes, rounds, the list and Tonight")
+                        .accessibilityLabel("Loops view")
+                } else {
+                    RoofButton(gallery ? "‹ Loops" : "Gallery") { gallery.toggle(); selected = nil }
+                        .help("The kinds of loops, what each produces, and a real sample of each (LAB-1922)")
+                }
                 RoofButton("+ New loop", .primary) { editing = LoopDraft.new() }
             }
         } content: {
@@ -150,23 +168,34 @@ struct LoopsView: View {
                 .id("loop-gallery")
                 .accessibilityLabel("Loop gallery")
             } else if v2 {
-                // v2 (A9, C5.1): the loops beside Tonight; a loop opens as its own page with ‹ Loops back.
-                if let s = selected, board.loops.contains(where: { $0.id == s }) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Button { selected = nil } label: { Text("‹ Loops").ui(12.5, .semibold).foregroundStyle(t.accentText.color) }
-                            .buttonStyle(.plain).keyboardShortcut("[", modifiers: .command).help("Back to the loops (⌘[)")
-                        detail.frame(maxWidth: .infinity)
-                    }
-                } else {
-                    HStack(alignment: .top, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes) { selected = $0 } }   // LAB-1918 · LAB-1941
-                            LoopRunsView(model: model, board: board)   // LAB-1933: loop rounds live here, not in the session rail
-                            if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
+                // LAB-2055: a loop opens in a pop-out card over the page (the overlay below), never a full-width page.
+                Group {
+                    if view == "activity" {
+                        // v2 (A9, C5.1): the loops beside Tonight, unchanged.
+                        HStack(alignment: .top, spacing: 18) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes) { popout = $0 } }   // LAB-1918 · LAB-1941
+                                LoopRunsView(model: model, board: board)   // LAB-1933: loop rounds live here, not in the session rail
+                                if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
+                            }
+                            V2TonightPanel(model: model, board: board).frame(width: 250)
                         }
-                        V2TonightPanel(model: model, board: board).frame(width: 250)
+                    } else if let f = family {
+                        LoopFamilyPage(board: board, familyId: f, width: pageWidth, back: { family = nil },
+                                       openLoop: { popout = $0 }, startFrom: { l in editing = LoopDraft.duplicate(from: l) })
+                    } else if board.loops.isEmpty || selfTestEmpty {
+                        empty.frame(maxWidth: .infinity, alignment: .top)
+                    } else {
+                        ScrollView {
+                            LoopKindsView(board: board, width: pageWidth, openFamily: { family = $0 }, openLoop: { popout = $0 })
+                                .padding(.bottom, 8)
+                        }
+                        .defaultScrollAnchor(.top)
+                        .accessibilityLabel("Kinds of loops")
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
             } else if board.loops.isEmpty {
                 empty
             } else {
@@ -176,31 +205,58 @@ struct LoopsView: View {
                 }
             }
         }
+        .overlay {
+            // LAB-2055: the pop-out card (Kinds, a family's page, Activity, the Inbox's Open loop all open it).
+            if v2, let id = popout, let l = board.loops.first(where: { $0.id == id }) {
+                LoopPopout(loop: l, rounds: board.rounds[l.id] ?? [], model: model, board: board, win: win,
+                           edit: { editing = LoopDraft(loop: l, isNew: false) },
+                           duplicate: { editing = LoopDraft.duplicate(from: l) },
+                           delete: { confirmDelete = l },
+                           close: { popout = nil })
+            }
+        }
         .onAppear {
             board.start()
-            if let f = inbox.focus { selected = f; gallery = false; inbox.focus = nil }
+            if let f = inbox.focus { focus(f); inbox.focus = nil }
             if let d = inbox.draftRequest { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil }
-            if ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_LOOPGALLERY"] == "1" { gallery = true }
+            selfTest()
         }
         .onDisappear { board.stop() }
-        .onChange(of: inbox.focus) { _, f in if let f { selected = f; gallery = false; inbox.focus = nil } }
+        .onChange(of: inbox.focus) { _, f in if let f { focus(f); inbox.focus = nil } }
         .onChange(of: inbox.draftRequest) { _, d in if let d { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil } }
         .onReceive(NotificationCenter.default.publisher(for: .newLoop)) { _ in editing = LoopDraft.new() }
         .sheet(item: $editing) { d in
             LoopEditor(draft: d, settings: model.settings, onSave: { loop, run in
                 board.save(loop, isNew: d.isNew, run: run)
                 selected = loop.id
+                if v2 { popout = loop.id }
                 editing = nil
             }, onCancel: { editing = nil })
             .themed(t.name)
         }
         .alert("Delete this loop?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
                presenting: confirmDelete) { l in
-            Button("Delete", role: .destructive) { board.delete(l.id); if selected == l.id { selected = nil } }
+            Button("Delete", role: .destructive) { board.delete(l.id); if selected == l.id { selected = nil }; if popout == l.id { popout = nil } }
             Button("Cancel", role: .cancel) {}
         } message: { l in
             Text("Its loop.json, state.json and round log are removed. Its worktree \(l.worktreePath) and branch \(l.branch) stay, with any work in them.")
         }
+    }
+
+    /// Open a loop from elsewhere (the Inbox's Open loop, a self-test): v2 pops its card out over the page.
+    private func focus(_ id: String) {
+        if v2 { popout = id } else { selected = id; gallery = false }
+    }
+
+    /// LAB-2055 · ONEROOF_SELFTEST_LOOPVIEW=kinds|activity|kind:<family>|loop:<id> (LOOPGALLERY=1 = kinds in v2).
+    private func selfTest() {
+        let env = ProcessInfo.processInfo.environment
+        if env["ONEROOF_SELFTEST_LOOPGALLERY"] == "1" { if v2 { viewOverride = "kinds" } else { gallery = true } }
+        guard let v = env["ONEROOF_SELFTEST_LOOPVIEW"] else { return }
+        if v == "kinds" || v == "activity" { viewOverride = v }
+        else if v == "empty" { viewOverride = "kinds"; selfTestEmpty = true }
+        else if v.hasPrefix("kind:") { viewOverride = "kinds"; family = String(v.dropFirst(5)) }
+        else if v.hasPrefix("loop:") { viewOverride = "kinds"; focus(String(v.dropFirst(5))) }
     }
 
     private var subtitle: String {
@@ -216,7 +272,7 @@ struct LoopsView: View {
     }
 
     private var empty: some View {
-        Card(padding: 20) {
+        LoopCard(padding: 20) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("No loops yet").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
                 Text("A loop repeats work until a check passes, or runs every night: One Roof runs the check, counts the rounds and stops at the limits; an agent does the work in the loop's own worktree, never your checkout. Nothing is pushed or merged.")
@@ -238,19 +294,19 @@ struct LoopsView: View {
         let pinned = board.loops.filter(\.pinned)
         let mine = board.loops.filter { !$0.pinned && $0.origin == .mine }
         let builtIn = board.loops.filter { !$0.pinned && $0.origin == .builtIn }
-        return Card(padding: 8) {
+        return LoopCard(padding: 8) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     if !pinned.isEmpty {
-                        MicroLabel("Pinned").padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 2)
+                        LoopLabel("Pinned").padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 2)
                         ForEach(pinned) { row($0) }
                     }
                     if !mine.isEmpty {
-                        MicroLabel("Mine").padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
+                        LoopLabel("Mine").padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
                         ForEach(mine) { row($0) }
                     }
                     if !builtIn.isEmpty {
-                        MicroLabel("Built-in").padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
+                        LoopLabel("Built-in").padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
                         ForEach(builtIn) { row($0) }
                     }
                 }
@@ -262,20 +318,20 @@ struct LoopsView: View {
         let rs = board.rounds[l.id] ?? []
         let checks = rs.filter { $0.kind != .stop }
         let last = checks.last
-        let isSel = (v2 ? selected : (selected ?? board.loops.first?.id)) == l.id   // v2: nothing open = nothing selected
-        return Button { selected = l.id } label: {
+        let isSel = (v2 ? popout : (selected ?? board.loops.first?.id)) == l.id   // v2: nothing open = nothing selected
+        return Button { if v2 { popout = l.id } else { selected = l.id } } label: {
             if v2 { v2Row(l, rs, last) } else {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     StatusDot(status: l.state.pillStatus)
                     Text(l.displayTitle).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                    Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text3.color)
+                    Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text2.color)
                     Spacer(minLength: 4)
                     Text(rowRight(l, rs)).ui(11.5, l.state == .needsYou || l.state == .failed ? .semibold : .regular)
                         .foregroundStyle((l.state == .needsYou || l.state == .failed ? t.text : t.text2).color).lineLimit(1)
                 }
                 HStack(spacing: 8) {
-                    Text(Workspace.repoLabel(for: l.repoPath)).ui(11.5, mono: true).foregroundStyle(t.text3.color).lineLimit(1)
+                    Text(Workspace.repoLabel(for: l.repoPath)).ui(11.5, mono: true).foregroundStyle(t.text2.color).lineLimit(1)
                     Spacer(minLength: 4)
                     HealthStrip(results: checks.suffix(8).map(\.checkPassed))
                     if let last { CheckGlyph(passed: last.checkPassed == true) }
@@ -298,16 +354,16 @@ struct LoopsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(l.displayTitle).ui(TypeScale.row, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                    Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text3.color)
+                    Text(l.origin.label).ui(10.5, .medium).foregroundStyle(t.text2.color)
                 }
                 Text([l.externalSchedule.map { "ae · " + $0 } ?? l.trigger.label, l.limits.label, Workspace.repoLabel(for: l.repoPath)].joined(separator: " · "))
-                    .ui(11.5).foregroundStyle(t.text3.color).lineLimit(1)
+                    .ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
             }
             Spacer(minLength: 8)
             Text(rowRight(l, rs)).ui(12).foregroundStyle(t.text2.color).lineLimit(1).frame(width: 150, alignment: .leading)
             HealthStrip(results: rs.filter { $0.kind != .stop }.suffix(8).map(\.checkPassed))
             if let last { CheckGlyph(passed: last.checkPassed == true) }
-            StatusPill(status: l.state.pillStatus, label: l.state.label).frame(width: 96, alignment: .trailing)
+            LoopStateChip(loop: l).frame(width: 110, alignment: .trailing)   // LAB-2056: Off, never struck through
         }
         .padding(.vertical, 10).padding(.horizontal, 12)
         .contentShape(Rectangle())
@@ -328,7 +384,7 @@ struct LoopsView: View {
             return "done in \(n) round\(n == 1 ? "" : "s")"
         case .failed: return "stopped at a limit"
         case .paused: return "paused"
-        case .stopped: return l.trigger.isArmed ? "not running" : "run when you want"
+        case .stopped: return l.trigger.isArmed ? "off" : "run when you want"   // LAB-2056: Off, as its chip says
         }
     }
 
@@ -362,7 +418,7 @@ struct HealthStrip: View {
         HStack(spacing: 2) {
             ForEach(Array(results.enumerated()), id: \.offset) { _, r in
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill((r == true ? t.statusDone : t.needsText).color.opacity(r == nil ? 0.3 : 1))
+                    .fill((r == nil ? LoopLook.unknownBar(t.name) : r == true ? t.statusDone : t.needsText).color)   // LAB-2056: no faded red
                     .frame(width: 4, height: 10)
             }
         }
@@ -379,39 +435,60 @@ struct LoopDetail: View {
     var edit: () -> Void
     var duplicate: () -> Void = {}
     var delete: () -> Void
+    /// LAB-2055: set when the detail is the pop-out card (✕ in its header; it grows with its content up to `maxHeight`).
+    var close: (() -> Void)? = nil
+    var maxHeight: CGFloat? = nil
     @Environment(\.theme) private var t
     @State private var open: Set<String> = []
+    @State private var contentHeight: CGFloat = 400
     @Environment(\.v2Window) private var v2
 
     var body: some View {
-        let l = loop
-        Card(padding: 18) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 10) {
-                        StatusDot(status: l.state.pillStatus, size: 10)
-                        Text(l.displayTitle).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-                        StatusPill(status: l.state.pillStatus, label: l.state.label)
-                        StatusPill(status: .idle, label: l.origin.label)
-                        if l.pinned { StatusPill(status: .idle, label: "Pinned") }
-                        Spacer()
-                        Text(l.trigger.label).ui(12.5).foregroundStyle(t.text2.color)
-                    }
-                    facts(l)
-                    if let why = l.stopReason, l.run == nil {
-                        Text((l.state == .done ? "✓ " : "✕ ") + why).ui(12.5).foregroundStyle((l.state == .done ? t.text2 : t.text).color)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    actions(l)
-                    if v2 { V2LoopFences(loop: l) }   // NEW-24: what this loop can and cannot do
-                    Hairline()
-                    outcomesTable(l)                  // LAB-1941
-                    Hairline()
-                    roundsTable(l)
+        if let maxHeight {
+            // The card is as tall as its content, up to maxHeight; past that it scrolls inside.
+            LoopCard(padding: 18, shadow: false) {
+                ScrollView {
+                    content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: max(80, min(contentHeight, maxHeight - 36)))
             }
+        } else {
+            LoopCard(padding: 18) { ScrollView { content } }
         }
+    }
+
+    private var content: some View {
+        let l = loop
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                StatusDot(status: l.state.pillStatus, size: 10)
+                Text(l.displayTitle).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                LoopStateChip(loop: l)   // LAB-2056: a plain Off chip, never struck through
+                LoopTagChip(text: l.origin.label)
+                if l.pinned { LoopTagChip(text: "Pinned") }
+                Spacer()
+                Text(l.externalSchedule ?? l.trigger.label).ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
+                if let close {
+                    Button { close() } label: {
+                        Text("✕").ui(13, .semibold).foregroundStyle(t.text2.color).frame(width: 24, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressStyle()).help("Close (Esc)").accessibilityLabel("Close")
+                }
+            }
+            facts(l)
+            if let why = l.stopReason, l.run == nil {
+                Text((l.state == .done ? "✓ " : "✕ ") + why).ui(12.5).foregroundStyle((l.state == .done ? t.text2 : t.text).color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            actions(l)
+            if v2 { V2LoopFences(loop: l) }   // NEW-24: what this loop can and cannot do
+            Hairline()
+            outcomesTable(l)                  // LAB-1941
+            Hairline()
+            roundsTable(l)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func facts(_ l: Loop) -> some View {
@@ -419,20 +496,21 @@ struct LoopDetail: View {
             fact("Origin", l.origin == .builtIn ? "Built-in (Agentic Engineering kit · ships off)"
                  : l.isKitFile ? "Mine (an ae loop: \(((l.specFile ?? "") as NSString).lastPathComponent))" : "Mine (saved in _common/loops)")
             if let sched = l.externalSchedule { fact("Schedule", sched + " · run by ae (ae loops on/off); One Roof runs it only on Run now") }
-            if let k = LoopKinds.kind(l.kind) { fact("Kind", k.title + " · " + k.produces) }
+            if let k = LoopKinds.kind(l.kind) { fact("Kind", k.title + (k.family.map { " (" + $0.title + ")" } ?? "") + " · " + k.produces) }
             fact("Goal", l.goal.isEmpty ? "—" : l.goal)
             fact("Check", l.check, mono: true)
             fact("Agent", l.agent.displayName + (l.model.map { " · " + $0 } ?? ""))
             fact("Repo", Workspace.repoLabel(for: l.repoPath))
             fact("Worktree", "\((l.worktreePath as NSString).abbreviatingWithTildeInPath) · branch \(l.branch)", mono: true)
             fact("Limits", l.limits.label)
+            fact("Output", LoopKinds.destination(act: l.act))   // LAB-2055: was the gallery's Output line
             fact("Gates", "Never pushes, merges or deploys. A round that asks permission waits in Decisions.")
         }
     }
 
     private func fact(_ k: String, _ v: String, mono: Bool = false) -> some View {
         GridRow {
-            MicroLabel(k)
+            LoopLabel(k)
             Text(v).ui(mono ? TypeScale.monoBody : 13, mono: mono).foregroundStyle(t.text.color)
                 .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel("\(k): \(v)")
@@ -441,14 +519,14 @@ struct LoopDetail: View {
 
     private func actions(_ l: Loop) -> some View {
         HStack(spacing: 8) {
-            RoofButton("Run now", .primary) { board.runNow(l.id) }
-                .disabled(l.state == .running || l.state == .needsYou || l.runRequested)
+            // LAB-2056: a disabled button stays legible (no faded red) and says why on hover and to VoiceOver.
+            LoopButton("Run now", .primary, reason: LoopLook.disabledReason("Run now", l)) { board.runNow(l.id) }
             if l.state == .paused || l.state == .stopped && l.run == nil && l.trigger.isArmed {
                 RoofButton("Resume") { board.resume(l.id) }
             } else {
-                RoofButton("Pause") { board.pause(l.id) }.disabled(!(l.state.isActive || (l.trigger.isArmed && l.state != .stopped)))
+                LoopButton("Pause", reason: LoopLook.disabledReason("Pause", l)) { board.pause(l.id) }
             }
-            RoofButton("Stop", .danger) { board.stopLoop(l.id) }.disabled(l.run == nil && !l.runRequested && l.state == .stopped)
+            LoopButton("Stop", .danger, reason: LoopLook.disabledReason("Stop", l)) { board.stopLoop(l.id) }
             if let file = l.specFile {
                 RoofButton("Edit the file") { model.openInViewer(file) }
                     .help("ae owns this loop's file; One Roof shows it and runs it on Run now")
@@ -457,6 +535,7 @@ struct LoopDetail: View {
             }
             if l.origin == .builtIn {
                 RoofButton("Duplicate as mine") { duplicate() }
+                    .help("Start from this: a copy of this loop that is yours, opened in the editor")
             }
             RoofButton(l.pinned ? "Unpin" : "Pin") { board.togglePin(l.id) }
             Spacer()
@@ -475,7 +554,7 @@ struct LoopDetail: View {
         let runs = board.runsByLoop[l.id] ?? []
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                MicroLabel("Outcomes")
+                LoopLabel("Outcomes")
                 Spacer()
                 Text("\(runs.count) run\(runs.count == 1 ? "" : "s") in the ledger · \(os.filter { $0.status == "staged" }.count) staged")
                     .ui(11.5, mono: true).foregroundStyle(t.text2.color)
@@ -483,6 +562,11 @@ struct LoopDetail: View {
             if os.isEmpty {
                 Text("Nothing produced yet. Each commit a run leaves on \(l.branch), and each issue, PR or report, shows here.")
                     .ui(12.5).foregroundStyle(t.text2.color)
+                // LAB-2055: the gallery's "last run" line moved here (a sample is the first outcome row below).
+                if let r = runs.first {
+                    Text("Last run (\(r.result), \(String(r.started.prefix(10)))): " + (r.summary.isEmpty ? "no summary" : r.summary))
+                        .ui(12.5).foregroundStyle(t.text2.color).lineLimit(2).textSelection(.enabled)
+                }
             }
             ForEach(os.prefix(30)) { o in
                 HStack(spacing: 8) {
@@ -510,7 +594,7 @@ struct LoopDetail: View {
         let used = l.run.map { r in rounds.filter { $0.runId == r.id && $0.kind == .round }.count }
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                MicroLabel("Rounds")
+                LoopLabel("Rounds")
                 Spacer()
                 if let used { Text("this run \(used)/\(l.limits.maxRounds)").ui(11.5, mono: true).foregroundStyle(t.text2.color) }
             }
@@ -550,7 +634,7 @@ struct LoopDetail: View {
                         Text("check").ui(12.5, .semibold).foregroundStyle(t.text.color)
                         CheckGlyph(passed: r.checkPassed == true)
                     }
-                    Text(r.checkPassed == true ? (r.note ?? "") : (r.failureKey ?? "")).ui(12, mono: true).foregroundStyle(t.text3.color).lineLimit(1)
+                    Text(r.checkPassed == true ? (r.note ?? "") : (r.failureKey ?? "")).ui(12, mono: true).foregroundStyle(t.text2.color).lineLimit(1)
                 }
                 Spacer()
                 if let s = r.sessionId { openButton(s) }
@@ -970,10 +1054,10 @@ struct LoopOutcomesCard: View {
     var open: (String) -> Void = { _ in }
 
     var body: some View {
-        Card(padding: 12) {
+        LoopCard(padding: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    MicroLabel("Outcomes")
+                    LoopLabel("Outcomes")
                     Spacer()
                     let staged = rows.reduce(0) { $0 + $1.staged }
                     if staged > 0 { Text("\(staged) waiting for you").ui(11.5, .semibold).foregroundStyle(t.needsText.color) }
@@ -983,12 +1067,12 @@ struct LoopOutcomesCard: View {
                         Text(r.loop).ui(12.5, .semibold).foregroundStyle(t.text.color).frame(width: 170, alignment: .leading).lineLimit(1)
                         Text(Self.result(r)).ui(12).foregroundStyle((Self.bad(r.lastResult) ? t.needsText : t.text2).color)
                             .frame(width: 130, alignment: .leading)
-                        Text("\(r.runs) run\(r.runs == 1 ? "" : "s")").ui(11.5, mono: true).foregroundStyle(t.text3.color).frame(width: 60, alignment: .leading)
-                        Text(String(format: "$%.2f", r.costUSD)).ui(11.5, mono: true).foregroundStyle(t.text3.color).frame(width: 52, alignment: .trailing)
+                        Text("\(r.runs) run\(r.runs == 1 ? "" : "s")").ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 60, alignment: .leading)
+                        Text(String(format: "$%.2f", r.costUSD)).ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 52, alignment: .trailing)
                         Text(Self.produced(r)).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                         Spacer(minLength: 0)
                         if r.staged > 0 { Text("\(r.staged) staged").ui(11).foregroundStyle(t.accentText.color) }
-                        Text("›").ui(12).foregroundStyle(t.text3.color)
+                        Text("›").ui(12).foregroundStyle(t.text2.color)
                     }.contentShape(Rectangle()) }
                     .buttonStyle(PressStyle(radius: Radius.row))
                     .accessibilityElement(children: .combine)

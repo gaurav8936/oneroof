@@ -58,22 +58,12 @@ enum ShortcutBridge {
         }
     }
 
-    /// Menu titles that changed in v2, so overrides the owner saved under the old title keep working.
-    static let renamed: [String: String] = [
-        "New Session…": "Plan a Session…", "Find…": "Find in Terminal…", "Overview": "Launchpad",
-        "Raw Stream / Run": "Raw Stream",
-        // One Roof 1 window (A11, MENUS.md): the v2 names keep any shortcut you set under the old ones.
-        "Home": "Overview", "Machine": "Resources", "Needs You": "Decisions", "Work": "Work: Projects and Roadmap",
-        "Sessions Column": "Toggle Sidebar", "Plan": "Toggle Plan Panel", "Files Tab": "File Browser", "Changes": "Review Changes",
-        "Focus: Step On": "Focus: Terminal Only", "Sessions": "Focus Terminal",
-    ]
+    /// Menu titles that changed in v2, so overrides the owner saved under the old title keep working (MenuRenames, Core).
+    static var renamed: [String: String] { MenuRenames.renamed }
 
     /// Apply the owner's overrides on top of the built-in shortcuts.
     static func apply(_ overrides: ShortcutOverrides, to menu: NSMenu?) {
-        var overrides = overrides
-        for _ in 0..<2 {   // twice, so a chain (Home → Overview → Launchpad) resolves
-            for (new, old) in renamed where overrides[new] == nil { if let o = overrides[old] { overrides[new] = o } }
-        }
+        let overrides = MenuRenames.carry(overrides)
         for item in allItems(menu) where !item.title.isEmpty {
             if defaults[item.title] == nil { defaults[item.title] = .some(shortcut(of: item)) }
             let target: Shortcut?

@@ -1,13 +1,15 @@
 import Foundation
 
-/// LAB-1831 · Scroll: one continuous feed of every session's important moments (its finished steps, findings, choices,
+/// LAB-1831 · one continuous feed of every session's important moments (its finished steps, findings, choices,
 /// errors, the asks it put to you and what you answered, a finished turn), never its code, diffs or tool output.
-/// Oldest first, newest at the bottom. Needs you is the "only where input is needed" filter of the same feed, and keeps
-/// what you decided for as long as the session is alive. Manual sessions only (LAB-1933: loop rounds live in Loops).
+/// LAB-2044: the History place shows it newest first (History.swift); the Inbox keeps what you decided while the
+/// session is alive. Manual sessions only (LAB-1933: loop rounds live in Loops).
 public struct ScrollEntry: Identifiable, Equatable, Sendable {
-    public enum Kind: String, Sendable {
+    public enum Kind: String, Codable, CaseIterable, Sendable {
         case step, finding, choice, subagents, done, rotated, error   // what the agent did (feed + chapters)
         case ask, question, finished                                   // what it asked you (decisions)
+        // LAB-2046: handovers (rotated above is "Handed off").
+        case sessionStarted, sessionClosed, handoffWritten, releaseStarted, releaseFinished, releaseFailed
     }
     public var id: String
     public var at: Date
@@ -43,6 +45,7 @@ public enum ScrollFeed {
     /// The words of an ask, as Needs you shows it.
     public static func askText(_ d: Decision) -> String {
         if let c = d.command { return "Run " + c }
+        if d.isFinished && TerminalText.isStatusLine(d.why) { return d.title }   // QA M4: never the agent's status line
         if d.isQuestion || d.isFinished { return d.why }
         if d.pattern.hasPrefix("ask:") { return "\(d.agent.displayName) is asking: " + d.pattern.dropFirst(4) }
         return d.title
@@ -60,10 +63,11 @@ public enum ScrollFeed {
         }
     }
 
-    /// The feed across sessions, oldest first. `item` resolves a session id (nil = gone: its entries go too).
-    /// A session with step chapters shows those (title and summary) instead of the feed's shorter "step done" lines.
+    /// The feed across sessions, oldest first (or newest first: `order`, LAB-2044). `item` resolves a session id (nil =
+    /// gone: its entries go too; History reads the store instead, which keeps them). A session with step chapters shows
+    /// those (title and summary) instead of the feed's shorter "step done" lines. `limit` keeps the newest entries.
     public static func entries(feed: [FeedEvent], chapters: [String: [Chapter]], decisions: [Decision],
-                               item: (String) -> BoardItem?, limit: Int = limit) -> [ScrollEntry] {
+                               item: (String) -> BoardItem?, limit: Int = limit, order: HistoryOrder = .oldestFirst) -> [ScrollEntry] {
         var known: [String: Bool] = [:]
         func shown(_ id: String) -> Bool {
             if let k = known[id] { return k }
@@ -91,7 +95,8 @@ public enum ScrollFeed {
                                    text: askText(d), decisionId: d.id, open: d.isOpen, answer: answerText(d), answeredAt: d.answeredAt))
         }
         out.sort { $0.at == $1.at ? $0.id < $1.id : $0.at < $1.at }
-        return Array(out.suffix(limit))
+        let kept = Array(out.suffix(limit))
+        return order == .newestFirst ? kept.reversed() : kept
     }
 
     /// Needs you's history (LAB-1831 part 1): the asks you answered whose session is still alive (running, or its

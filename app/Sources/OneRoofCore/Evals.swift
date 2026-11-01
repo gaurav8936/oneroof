@@ -92,13 +92,16 @@ public struct EvalDoctor: Decodable, Equatable, Sendable {
     public var pricesChecked: String?
     /// Where code-running benchmarks can execute: local (Docker), daytona, modal → ready (LAB-2000).
     public var places: [String: Bool]
-    enum CodingKeys: String, CodingKey { case engine, uv, docker, providers, pricesChecked = "prices_checked", places = "where" }
+    /// LAB-2067: every agent in Run's order, with its seat and why it cannot run (engines before 2.0.0: none).
+    public var agents: [EvalAgentState]
+    enum CodingKeys: String, CodingKey { case engine, uv, docker, providers, agents, pricesChecked = "prices_checked", places = "where" }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         engine = try c.decode(Engine.self, forKey: .engine); uv = try c.decodeIfPresent(String.self, forKey: .uv)
         docker = try c.decode(String.self, forKey: .docker); providers = try c.decode([String: Provider].self, forKey: .providers)
         pricesChecked = try c.decodeIfPresent(String.self, forKey: .pricesChecked)
         places = try c.decodeIfPresent([String: Bool].self, forKey: .places) ?? ["local": true]
+        agents = (try? c.decodeIfPresent([EvalAgentState].self, forKey: .agents)) ?? []
     }
     public var readyProviders: [String] { providers.filter(\.value.ready).map(\.key).sorted() }
     /// The order the run sheet offers them: this Mac first.
@@ -147,6 +150,10 @@ public struct EvalBenchmark: Decodable, Equatable, Identifiable, Sendable {
     public var tasks: [Task]
     public var starter: [Starter]
     public var category: String
+    /// LAB-2063 (HP EV-3): "Expert questions · short answer · judged", code | judge | tests, start | own | agent.
+    public var madeOf: String?
+    public var gradedBy: String?
+    public var shelf: String?
     public var id: String { folder }
     public var name: String { title ?? folder }
     /// Questions a first run uses: 50, or all of a smaller set (your own 20-question set is priced and run at 20).
@@ -159,8 +166,8 @@ public struct EvalBenchmark: Decodable, Equatable, Identifiable, Sendable {
     /// Shelf picks first (LAB-1974); the benchmark's first task otherwise.
     public var defaultTask: String { starter.min { $0.rank < $1.rank }?.task ?? tasks.first?.name ?? folder }
     enum CodingKeys: String, CodingKey {
-        case folder, title, group, description, arxiv, tags, extra, sandbox, internet, tasks, starter, category
-        case supportsK8s = "supports_k8s"
+        case folder, title, group, description, arxiv, tags, extra, sandbox, internet, tasks, starter, category, shelf
+        case supportsK8s = "supports_k8s", madeOf = "made_of", gradedBy = "graded_by"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -177,6 +184,9 @@ public struct EvalBenchmark: Decodable, Equatable, Identifiable, Sendable {
         tasks = try c.decodeIfPresent([Task].self, forKey: .tasks) ?? []
         starter = try c.decodeIfPresent([Starter].self, forKey: .starter) ?? []
         category = try c.decodeIfPresent(String.self, forKey: .category) ?? (group ?? "Other")
+        madeOf = try? c.decodeIfPresent(String.self, forKey: .madeOf)
+        gradedBy = try? c.decodeIfPresent(String.self, forKey: .gradedBy)
+        shelf = try? c.decodeIfPresent(String.self, forKey: .shelf)
     }
 }
 
@@ -224,10 +234,19 @@ public struct EvalEstimate: Decodable, Equatable, Sendable {
     public var sandbox: Part?
     public var pricesChecked: String?
     public var note: String?
+    /// LAB-2067 (HP EV-1): an agent on a seat costs a share of the seat's five-hour window, not dollars.
+    public var agent: String?
+    public var seat: String?
+    public var seatShare: Double?
+    public var seatBasis: String?
+    public var seatUsed: Double?
+    public var seatLimit: Double?
+    public var seatFits: Bool?
     enum CodingKeys: String, CodingKey {
-        case task, model, calls, usd, note, grader, sandbox
+        case task, model, calls, usd, note, grader, sandbox, agent, seat
         case tokensPerSample = "tokens_per_sample", tokenBasis = "token_basis", pricesChecked = "prices_checked"
         case modelUSD = "model_usd", capCheckUSD = "cap_check_usd"
+        case seatShare = "seat_share", seatBasis = "seat_basis", seatUsed = "seat_used", seatLimit = "seat_limit", seatFits = "seat_fits"
     }
     /// One line for the run sheet: "model $0.10 · grader $0.03 · sandbox $0.0004".
     public var breakdown: String {
@@ -249,7 +268,30 @@ public struct EvalRunRow: Decodable, Equatable, Identifiable, Sendable {
     public var created: String?
     public var finished: String?
     public var progress: String
-    public var isActive: Bool { status == "running" || status == "queued" }
+    /// LAB-2067 (HP EV-2): who runs, why it stopped (the last line of the error) and what to do; a waiting seat's reason.
+    public var agent: String?
+    public var seat: String?
+    public var waiting: String?
+    public var error: String?
+    public var hint: String?
+    public var contestant: EvalContestant?
+    public var setName: String?
+    public var setVersion: Int?
+    public var taskRef: String?
+    /// QA (M9): the owner pressed Run anyway on this seat run (its seat's use was unknown).
+    public var seatUnknownOk: Bool?
+    enum CodingKeys: String, CodingKey {
+        case id, task, model, limit, epochs, status, created, finished, progress, agent, seat, waiting, error, hint, contestant
+        case setName = "set_name", setVersion = "set_version", taskRef = "task_ref", seatUnknownOk = "seat_unknown_ok"
+    }
+    /// Waiting because the seat's use is unknown or stale: Run offers Run anyway (agent_runner.UNKNOWN_WAIT).
+    public var waitsForUnknownSeat: Bool { status == "waiting" && (waiting ?? "").hasPrefix("seat use unknown") && seatUnknownOk != true }
+    public init(id: String, task: String? = nil, model: String? = nil, limit: Int? = nil, epochs: Int? = nil, status: String? = nil,
+                created: String? = nil, finished: String? = nil, progress: String = "", error: String? = nil) {
+        self.id = id; self.task = task; self.model = model; self.limit = limit; self.epochs = epochs; self.status = status
+        self.created = created; self.finished = finished; self.progress = progress; self.error = error
+    }
+    public var isActive: Bool { status == "running" || status == "queued" || status == "waiting" }
     public var canResume: Bool { status == "interrupted" || status == "cancelled" || status == "failed" }
     /// "12/50" → 0.24; nil when unknown.
     public var fraction: Double? {
@@ -335,8 +377,17 @@ public struct EvalResult: Decodable, Equatable, Identifiable, Sendable {
     public var error: String?
     public var metrics: [EvalMetric]
     public var judgeAgreement: EvalJudgeAgreement?
+    /// LAB-2061 (HP EV-2): agent, model, model on this Mac, or the baseline; and your set's name and version.
+    public var contestant: EvalContestant?
+    public var agent: String?
+    public var setName: String?
+    public var setVersion: Int?
+    /// LAB-2069: what Run again runs (your set's task file, or the benchmark task).
+    public var taskRef: String?
+    public var whereRun: String?
     enum CodingKeys: String, CodingKey {
-        case id, task, model, status, started, finished, epochs, seed, temperature, cost, error, metrics
+        case id, task, model, status, started, finished, epochs, seed, temperature, cost, error, metrics, contestant, agent
+        case setName = "set_name", setVersion = "set_version", taskRef = "task_ref", whereRun = "where_run"
         case judgeAgreement = "judge_agreement"
         case limitN = "limit_n", samplesDone = "samples_done", samplesTotal = "samples_total", inputTokens = "input_tokens"
         case outputTokens = "output_tokens", estCost = "est_cost", inspectEvals = "inspect_evals"
@@ -370,10 +421,20 @@ public struct EvalSample: Decodable, Equatable, Identifiable, Sendable {
     public var inputTokens: Int?
     public var outputTokens: Int?
     public var error: String?
+    /// LAB-2069 (HP EV-10): the code check, the judge and you, side by side; the case's issue and title.
+    public var issue: String?
+    public var title: String?
+    public var code: EvalVerdict?
+    public var judge: EvalVerdict?
+    public var you: EvalVerdict?
+    public var judgeItem: EvalJudgeItemRef?
+    public var disagree: Bool?
+    public var labelled: Bool?
     public var id: String { "\(sampleID)#\(epoch)" }
     enum CodingKeys: String, CodingKey {
         case sampleID = "id", epoch, score, answer, target, input, output, explanation, time, error
         case inputTokens = "input_tokens", outputTokens = "output_tokens"
+        case issue, title, code, judge, you, disagree, labelled, judgeItem = "judge_item"
     }
 }
 
@@ -454,7 +515,12 @@ public enum EvalStats {
         public var n: Int                // paired questions, or the smaller run when unpaired
         public var paired: Bool
         public var verdict: Verdict
+        /// Fewer than `minVerdictN` shared questions (unpaired: answers in the smaller run): no winner is called.
+        public var tooFew: Bool = false
     }
+
+    /// QA (M9 stage 2): the fewest shared questions a verdict needs; the engine's MIN_VERDICT_N.
+    public static let minVerdictN = 10
 
     /// Paired difference over the questions both runs answered (each question's attempts averaged first): the
     /// right test when two models saw the same questions. Unpaired (Welch-style) when they share none.
@@ -470,7 +536,9 @@ public enum EvalStats {
             let n = Double(d.count), mean = d.reduce(0, +) / n
             let sd = (d.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / (n - 1)).squareRoot()
             let half = 1.96 * sd / n.squareRoot()
-            return Comparison(diff: mean, lo: mean - half, hi: mean + half, n: d.count, paired: true, verdict: verdict(mean - half, mean + half))
+            let few = d.count < minVerdictN
+            return Comparison(diff: mean, lo: mean - half, hi: mean + half, n: d.count, paired: true,
+                              verdict: few ? .noise : verdict(mean - half, mean + half), tooFew: few)
         }
         let xa = Array(ma.values), xb = Array(mb.values)
         guard xa.count >= 2, xb.count >= 2 else { return nil }
@@ -481,8 +549,9 @@ public enum EvalStats {
         let (m1, v1) = mv(xa), (m2, v2) = mv(xb)
         let se = (v1 / Double(xa.count) + v2 / Double(xb.count)).squareRoot()
         let diff = m1 - m2
+        let few = min(xa.count, xb.count) < minVerdictN
         return Comparison(diff: diff, lo: diff - 1.96 * se, hi: diff + 1.96 * se, n: min(xa.count, xb.count), paired: false,
-                          verdict: verdict(diff - 1.96 * se, diff + 1.96 * se))
+                          verdict: few ? .noise : verdict(diff - 1.96 * se, diff + 1.96 * se), tooFew: few)
     }
 
     static func verdict(_ lo: Double, _ hi: Double) -> Comparison.Verdict { lo > 0 ? .aBetter : (hi < 0 ? .bBetter : .noise) }
@@ -553,4 +622,14 @@ public enum EvalGlossary {
     ]
 
     public static func entry(_ id: String) -> Entry? { all.first { $0.id == id } }
+}
+
+/// LAB-2072: Evals is announced as a draft. One place for the words, so the rail tag, the menu and the banner on every
+/// Evals tab agree; flip `isDraft` when the Evals redesign (LAB-2061) ships.
+public enum EvalsDraft {
+    public static let isDraft = true
+    public static let tag = "Draft"
+    public static let menuTitle = "Evals · Draft"
+    public static let banner = "Draft · coming soon"
+    public static let detail = "Evals is being redesigned. What you see may change, and results are for trying out only."
 }

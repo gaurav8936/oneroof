@@ -109,7 +109,9 @@ final class LearnDeckTests: XCTestCase {
         guard !root.isEmpty, FileManager.default.fileExists(atPath: root + "/content/catalog.json") else { throw XCTSkip("deck repository not set") }
         let d = try XCTUnwrap(LearnDeck.parse(try Data(contentsOf: URL(fileURLWithPath: root + "/content/catalog.json")), root: root))
         XCTAssertFalse(d.bands.isEmpty)
-        XCTAssertEqual(d.bands.reduce(0) { $0 + (d.lists[$1.id]?.count ?? 0) }, d.count)
+        // LAB-2057 · LAB-2058: every card is on a band, on the whole-system Start here list, or on a shelf (Papers).
+        XCTAssertEqual(d.bands.reduce(0) { $0 + (d.lists[$1.id]?.count ?? 0) } + d.startHere.count + d.shelves.reduce(0) { $0 + $1.cards.count }, d.count)
+        XCTAssertTrue(Set(d.dial).isDisjoint(with: d.shelves.flatMap(\.cards)), "no paper on the dial")
         for b in d.bands { XCTAssertGreaterThan(d.lists[b.id]?.count ?? 0, b.key.count, "band \(b.id) holds only its start-here cards") }
     }
 

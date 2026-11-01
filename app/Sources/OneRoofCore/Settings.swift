@@ -85,6 +85,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// LAB-1907: One Roof's approval card over a terminal prompt. Hidden (default): every agent shows its own choices
     /// on screen and takes a click or a key there; the card covered them. Kept, off, in case it is wanted back.
     public var terminalApprovalCard: Bool
+    /// LAB-2061: the redesigned Evals place (Overview · Your evals · Explore · Run · Results · Learn). On by default in
+    /// 2.0.0; off shows the 1.9.37 Evals (Catalog · Runs · Results · Learn), so nothing is out of reach during the build.
+    public var evalsRedesign: Bool
     /// One Roof 1.x v2 window (LAB-ONEROOF-UI-REDESIGN). Off: the classic 0.5 layout. On by default from 1.6.0.
     public var ui2: Bool
     /// True once the owner picked a window (Classic layout / Use the new window). Until then 1.6.0 moves them to v2.
@@ -134,6 +137,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         stepReview = false
         alwaysShowComposer = false
         terminalApprovalCard = false
+        evalsRedesign = true
         captionsModel = true
         scheduledRuns = false
         tintRows = true
@@ -215,6 +219,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         stepReview = try c.decodeIfPresent(Bool.self, forKey: .stepReview) ?? fresh.stepReview
         alwaysShowComposer = try c.decodeIfPresent(Bool.self, forKey: .alwaysShowComposer) ?? fresh.alwaysShowComposer
         terminalApprovalCard = try c.decodeIfPresent(Bool.self, forKey: .terminalApprovalCard) ?? fresh.terminalApprovalCard
+        evalsRedesign = try c.decodeIfPresent(Bool.self, forKey: .evalsRedesign) ?? fresh.evalsRedesign
         ui2 = try c.decodeIfPresent(Bool.self, forKey: .ui2) ?? fresh.ui2
         ui2Chosen = try c.decodeIfPresent(Bool.self, forKey: .ui2Chosen) ?? false
         if !ui2Chosen { ui2 = true }   // 1.6.0: the new window by default, unless the owner chose the classic one

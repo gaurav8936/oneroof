@@ -61,7 +61,7 @@ struct DecisionsView: View {
 
     var body: some View {
         Group {
-            if v2 && showRules { V2RulesPage(model: model) { showRules = false } } else { queue }
+            if v2 && showRules { V2ActionLogPage(model: model, win: win) { showRules = false } } else { queue }
         }
         .onDisappear { showRules = false }                                     // back to the queue next time
         .onChange(of: model.needsPick) { _, id in if let id { selected = id } }   // self-test: show this entry
@@ -660,10 +660,4 @@ struct DecisionsView: View {
     }
 }
 
-extension AppModel {
-    var decisionRuleCount: Int { store?.decisionRules().count ?? 0 }
-
-    func removeRule(pattern: String, repo: String) {
-        for r in store?.decisionRules() ?? [] where r.pattern == pattern && r.repo == repo { store?.deleteRule(id: r.id) }
-    }
-}
+// AppModel.decisionRuleCount / removeRule: UI/V2/V2ActionLog.swift (LAB-2048).

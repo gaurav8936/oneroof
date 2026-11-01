@@ -10,7 +10,7 @@ extension AppDelegate {
     var isV2Window: Bool { main?.isV2 == true }
 
     static let v2Renames: [String: String] = [
-        "Overview": "Home", "Resources": "Machine", "Decisions": "Needs You", "Work: Projects and Roadmap": "Work",
+        "Overview": "Home", "Decisions": "Inbox", "Work: Projects and Roadmap": "Projects",   // LAB-2039/2049: Resources keeps its name
         "Toggle Sidebar": "Sessions Column", "Toggle Plan Panel": "Plan", "File Browser": "Files Tab", "Review Changes": "Changes",
         "Focus: Terminal Only": "Focus: Step On", "Focus Terminal": "Sessions",
     ]
@@ -35,10 +35,21 @@ extension AppDelegate {
         for i in view.items where i.submenu != nil && i.title.hasSuffix(" Theme") && i.title != "Terminal Theme" { view.removeItem(i) }
         // Sessions (⌘L) opens the Sessions place on the terminal, as Focus Terminal did.
         if let s = view.items.first(where: { $0.title == "Sessions" }) { s.action = #selector(v2OpenSessions(_:)); s.target = self }
+        // LAB-2047 · LAB-2044: View › Action Log (no default key; the owner can set one) and History (⌃⌘9) under Inbox.
+        if let inbox = view.items.firstIndex(where: { $0.title == "Inbox" }) {
+            let log = NSMenuItem(title: "Action Log", action: #selector(v2OpenActionLog(_:)), keyEquivalent: "")
+            log.target = self
+            let history = NSMenuItem(title: "History", action: #selector(v2OpenHistory(_:)), keyEquivalent: "9")
+            history.keyEquivalentModifierMask = [.command, .control]
+            history.target = self
+            view.insertItem(log, at: inbox + 1)
+            view.insertItem(history, at: inbox + 2)
+        }
         guard let anchor = view.items.firstIndex(where: { $0.title == "Focus: Step On" }) else { return }
         var at = anchor
+        // LAB-2044: Single · Grid · Wall only; Scroll is the History place now (⌃⌥⌘4 is free).
         let layouts: [(String, Int, Selector)] = [("Single", 1, #selector(v2LayoutSingle(_:))), ("Grid", 2, #selector(v2LayoutGrid(_:))),
-                                                  ("Wall", 3, #selector(v2LayoutWall(_:))), ("Scroll", 4, #selector(v2LayoutScroll(_:)))]   // LAB-1831
+                                                  ("Wall", 3, #selector(v2LayoutWall(_:)))]
         for (title, n, action) in layouts {
             let mi = NSMenuItem(title: title, action: action, keyEquivalent: String(n))
             mi.keyEquivalentModifierMask = [.command, .option, .control]
@@ -46,7 +57,7 @@ extension AppDelegate {
             view.insertItem(mi, at: at); at += 1
         }
         view.insertItem(.separator(), at: at)
-        // LAB-1829: the rail (Home · Needs you · Sessions …) folds away and comes back, as a drag of its edge does.
+        // LAB-1829: the rail (Home · Inbox · Sessions …) folds away and comes back, as a drag of its edge does.
         let rail = NSMenuItem(title: "Rail", action: #selector(v2ToggleRail(_:)), keyEquivalent: "")
         rail.target = self
         view.insertItem(rail, at: at + 1)
@@ -62,6 +73,12 @@ extension AppDelegate {
     }
 
     @objc func v2ToggleRail(_ sender: Any?) { if isV2Window { main.v2ToggleRail() } }
+    @objc func v2OpenHistory(_ sender: Any?) { if isV2Window { main.v2Open(.history) } }   // LAB-2044
+    @objc func v2OpenActionLog(_ sender: Any?) {   // LAB-2047
+        guard isV2Window else { return }
+        main.v2Page = nil
+        main.win.openActionLog()
+    }
 
     @objc func v2OpenSessions(_ sender: Any?) {
         if isV2Window { main.v2Open(.sessions) }
@@ -69,7 +86,6 @@ extension AppDelegate {
     }
     @objc func v2LayoutSingle(_ sender: Any?) { if isV2Window { main.win.layout = .single } }
     @objc func v2LayoutWall(_ sender: Any?) { if isV2Window { main.win.layout = .wall } }
-    @objc func v2LayoutScroll(_ sender: Any?) { if isV2Window { main.win.layout = .scroll } }   // LAB-1831
     @objc func v2LayoutGrid(_ sender: Any?) {
         guard isV2Window else { return }
         main.win.layout = .grid

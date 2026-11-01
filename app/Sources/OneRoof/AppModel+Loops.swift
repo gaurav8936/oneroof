@@ -19,6 +19,9 @@ final class LoopInboxState: ObservableObject {
     @Published var busy: Set<String> = []
 
     let io = DispatchQueue(label: "oneroof.loops.inbox")
+    /// LAB-2042 · self-test only (ONEROOF_SELFTEST_INBOX): loop items shown as if a loop had filed them.
+    private(set) var selfTestSeed: [LoopInbox.Item] = []
+    func seedForSelfTest(_ extra: [LoopInbox.Item]) { selfTestSeed = extra; items += extra.filter { e in !items.contains { $0.id == e.id } } }
 
     /// The store the inbox reads: Built-in and kit-file loops only for their titles (no repo lookup on this path).
     static func store() -> LoopStore {
@@ -38,9 +41,10 @@ final class LoopInboxState: ObservableObject {
             let s = Self.store()
             let loops = s.all()
             let staged = Self.ledger(s.root)?.outcomes(status: "staged", limit: 300) ?? []
-            let next = LoopInbox.items(loops: loops, staged: staged)
+            let found = LoopInbox.items(loops: loops, staged: staged)
             DispatchQueue.main.async {
                 guard let self else { return }
+                let next = found + self.selfTestSeed   // LAB-2042: ONEROOF_SELFTEST_INBOX's loop item (self-test only)
                 if self.items != next { self.items = next; done?() }
             }
         }

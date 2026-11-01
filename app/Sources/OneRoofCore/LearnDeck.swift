@@ -95,6 +95,12 @@ public struct LearnDeck: Sendable {
 
     public var count: Int { cards.count }
 
+    /// LAB-2057 · LAB-2058 (deck 0.4.5+): cards that sit on no band. `startHere` is the whole-system Start here list
+    /// (four bands, fifteen tracks, seven building blocks); `shelves` are off-dial shelves such as Papers, each with its
+    /// cards in catalog order. They are searchable but never on the dial (the Radio carries the four bands only).
+    public var startHere: [String] = []
+    public var shelves: [(id: String, title: String, cards: [String])] = []
+
     /// The four bands of the dial, read from the catalog's `bands` (LAB-1257: the deck repository's manual.yaml is their
     /// only source). Empty for an older deck that has none.
     public var bands: [DeckBand] = []
@@ -219,8 +225,16 @@ public struct LearnDeck: Sendable {
             lists[b.id] = key + order.filter { partOf[$0] == b.id && seen.insert($0).inserted }
         }
         let dial = bands.flatMap { lists[$0.id] ?? [] }
-        return LearnDeck(root: root, version: j["version"] as? String ?? "", cards: cards, tracks: tracks, suits: suits, paths: paths,
-                         partOf: partOf, lists: lists, dial: dial, bands: bands, trackNames: trackNames, kinds: kinds, themes: themes)
+        var deck = LearnDeck(root: root, version: j["version"] as? String ?? "", cards: cards, tracks: tracks, suits: suits, paths: paths,
+                             partOf: partOf, lists: lists, dial: dial, bands: bands, trackNames: trackNames, kinds: kinds, themes: themes)
+        let onDial = Set(dial)
+        deck.startHere = strs(j["start_here"]).filter { cards[$0] != nil && !onDial.contains($0) }
+        deck.shelves = (j["shelves"] as? [[String: Any]] ?? []).compactMap { sh in
+            guard let id = sh["id"] as? String else { return nil }
+            let ks = strs(sh["tracks"]).flatMap { tracks[$0]?.cards ?? [] }.filter { cards[$0] != nil && !onDial.contains($0) }
+            return (id, sh["title"] as? String ?? id, ks)
+        }
+        return deck
     }
 
     // MARK: Lookups
@@ -242,7 +256,7 @@ public struct LearnDeck: Sendable {
     public func search(_ query: String) -> [String] {
         let words = query.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
         guard !words.isEmpty else { return [] }
-        return dial.filter { k in
+        return (dial + startHere + shelves.flatMap(\.cards)).filter { k in
             guard let c = cards[k] else { return false }
             let hay = ([c.title, c.subtitle, c.description, c.slug] + c.triggers).joined(separator: " ").lowercased()
             return words.allSatisfy { hay.contains($0) }
