@@ -108,7 +108,11 @@ def merge(out, prev_version):
     bp = (first.get('baseline') or {}).get('path')
     base = json.loads(pathlib.Path(bp).read_text()) if bp and pathlib.Path(bp).exists() else {}
     scen = dict(base.get('scenarios', {})); scen.update(median(p_scen))
-    gest = dict(base.get('gestures', {})); gest.update(median(p_gest))
+    # LAB-2115: only gestures the stored baseline already had are re-judged against the previous release. A gesture new
+    # in this release (a step the previous app may not even run: 2.0.0 has no scrollgesture, so its "fling" scrolls
+    # nothing and reads 0) has no fair A/B; it is held to its absolute budget only, as the first comparison did.
+    known = set(base.get('gestures', {}))
+    gest = dict(base.get('gestures', {})); gest.update({g: v for g, v in median(p_gest).items() if g in known})
     noise = dict(scenarios=spread(p_scen, {s: v for s, v in c_scen.items() if s in re_scen}),
                  gestures=spread(p_gest, c_gest_runs))
     ab_base = dict(version=f'{prev_version} (A/B, same run)', date=first.get('date'), quick=first.get('quick'),
