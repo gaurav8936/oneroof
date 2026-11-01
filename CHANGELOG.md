@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.9.37 — Your own evals: questions from your repo's real bugs, a model as judge with its agreement measured, a second framework beside Inspect (draft, staged for after 1.9.36)
+## 1.9.37 — Your own evals: questions from your repo's real bugs, a model as judge with its agreement measured, a second framework beside Inspect (31 Oct 2026)
 
 - **Your evals** (LAB-1995). `roof eval evalset build --repo <repo>` turns a repo's own fix history into a versioned
   question set: each question is a real bug report (the Linear issue) and the source files as they were before the fix,
