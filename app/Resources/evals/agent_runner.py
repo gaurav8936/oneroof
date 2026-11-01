@@ -259,16 +259,28 @@ def clean_env() -> dict:
 
 
 # Read is denied here for Claude Code even inside --restricted (belt and braces): the secrets and settings folders.
-DENY_READ = ["~/Projects/_common/access_admin/**", "~/.config/**", "~/.ssh/**", "~/Library/**", "~/.aws/**", "~/.gnupg/**",
+# Your own secrets folders go in <evals folder>/deny-read.txt (one path or glob per line, # for comments), kept on
+# this Mac only, so the public app names none of them.
+DENY_READ = ["~/.config/**", "~/.ssh/**", "~/Library/**", "~/.aws/**", "~/.gnupg/**",
              "~/.claude/**", "~/.claude-2/**", "~/.codex/**", "~/.netrc", "~/.docker/**", "~/.kube/**"]
 CODEX_OFF = ["hooks", "plugins", "apps", "browser_use", "computer_use"]
+
+
+def deny_read() -> list[str]:
+    """DENY_READ plus the paths in <evals folder>/deny-read.txt (this Mac's own secrets folders)."""
+    base = Path(os.environ.get("ONEROOF_EVALS_DIR") or Path.home() / "Library/Application Support/One Roof/evals")
+    try:
+        extra = [ln.strip() for ln in (base / "deny-read.txt").read_text().splitlines()]
+    except OSError:
+        extra = []
+    return DENY_READ + [p for p in extra if p and not p.startswith("#") and p not in DENY_READ]
 
 
 def claude_settings() -> str:
     """The per-run --settings JSON: no hooks at all, Read denied outside the case on the secrets folders, and no tool
     that writes, runs code or reaches the web."""
     return json.dumps({"disableAllHooks": True,
-                       "permissions": {"deny": [f"Read({p})" for p in DENY_READ]
+                       "permissions": {"deny": [f"Read({p})" for p in deny_read()]
                                        + ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch"]}})
 
 

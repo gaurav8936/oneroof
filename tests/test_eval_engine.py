@@ -1395,8 +1395,19 @@ class SeatGate(unittest.TestCase):
         self.assertEqual(cc[cc.index("--permission-prompts") + 1], "none")
         st = json.loads(cc[cc.index("--settings") + 1])
         self.assertIs(st["disableAllHooks"], True)
-        for p in ("~/Projects/_common/access_admin/**", "~/.config/**", "~/.ssh/**", "~/Library/**"):
+        for p in ("~/.config/**", "~/.ssh/**", "~/Library/**"):
             self.assertIn(f"Read({p})", st["permissions"]["deny"])
+        # This Mac's own secrets folders come from <evals>/deny-read.txt, never from the public code.
+        evals = Path(os.environ.get("ONEROOF_EVALS_DIR") or self.tmp)
+        evals.mkdir(parents=True, exist_ok=True)
+        (evals / "deny-read.txt").write_text("# mine\n~/secrets/**\n")
+        old = os.environ.get("ONEROOF_EVALS_DIR"); os.environ["ONEROOF_EVALS_DIR"] = str(evals)
+        try:
+            st2 = json.loads(self.ar.command("claude_code", "claude", "q", out, case)[cc.index("--settings") + 1])
+            self.assertIn("Read(~/secrets/**)", st2["permissions"]["deny"])
+        finally:
+            if old is None: os.environ.pop("ONEROOF_EVALS_DIR", None)
+            else: os.environ["ONEROOF_EVALS_DIR"] = old
         self.assertIn("Bash", st["permissions"]["deny"])
         cx = self.ar.command("codex_cli", "codex", "q", out, case)
         for flag in ("--ignore-user-config", "--ignore-rules", "--ephemeral"):

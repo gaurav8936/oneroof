@@ -182,7 +182,7 @@ final class HistoryQueryTests: XCTestCase {
 
     func test_LAB2046_handoffsAndReleasesFromToolCalls() {
         let text = """
-        ⏺ Write(/Users/me/Projects/_common/docs/next-session-handoff/2026-10-31_handoff.txt)
+        ⏺ Write(/Users/someone/work/next-steps/2026-10-31_handoff.txt)
           ⎿  Wrote 40 lines
         ⏺ Bash(bash ../_common/scripts/release/oneroof-release.sh 1.9.37)
           ⎿  Error: Exit code 1
