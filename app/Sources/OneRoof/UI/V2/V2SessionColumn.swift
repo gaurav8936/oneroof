@@ -235,7 +235,7 @@ private struct V2SessionList: View {
                     .foregroundStyle(on ? t.onAccent.color : (c == .needs && n > 0 ? t.needsText.color : t.text2.color))
                     .lineLimit(1).fixedSize()
                     .padding(.horizontal, 8).frame(height: 22)
-                    .background(Capsule().fill(on ? t.text.color : t.surface.color))
+                    .background(Capsule().fill(on ? t.accent.color : t.surface.color))   // LAB-2139: t.text is light in dark looks
             }
             .buttonStyle(.plain)
             .help(c.meaning)

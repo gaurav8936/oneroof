@@ -348,7 +348,13 @@ struct RiverCanvas: View {
                     var c = ctx
                     c.translateBy(x: x + 2, y: y - 10)
                     c.rotate(by: .degrees(-32))
-                    c.draw(Text((m.tone == .bad ? "✕ " : "") + m.label).font(.system(size: 11, weight: m.tone == .bad ? .semibold : .regular))
+                    // LAB-2139: a slanted label rises and runs right; cut it to the room above and to the right (≈6.5 pt a
+                    // character at 11 pt), so "Cost watch" or a long loop name never runs off the canvas.
+                    let room = min((y - 10) / 0.53, (size.width - x - 4) / 0.85)
+                    let full = (m.tone == .bad ? "✕ " : "") + m.label
+                    let fit = max(4, Int(room / 6.5))
+                    let shown = full.count > fit ? String(full.prefix(fit - 1)) + "…" : full
+                    c.draw(Text(shown).font(.system(size: 11, weight: m.tone == .bad ? .semibold : .regular))
                             .foregroundColor(m.tone == .bad ? tokens.needsText.color : tokens.text.color),
                            at: .zero, anchor: .leading)
                 }

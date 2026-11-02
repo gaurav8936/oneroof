@@ -31,7 +31,7 @@ extension LoopKinds {
 
     /// Loops with no kind (yours, or library loops whose catalog names none): drawn only when it has loops.
     public static let otherFamily = Family(id: "other", title: "Other", kinds: [],
-                                           blurb: "Loops with no kind set: yours made in One Roof or ae, and library loops whose catalog names none.")
+                                           blurb: "Loops with no kind set: yours made in One Roof or in loop files, and library loops whose catalog names none.")
 
     /// The family a kind belongs to (nil for an unknown or missing kind: Other).
     public static func family(ofKind id: String?) -> Family? {
