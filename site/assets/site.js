@@ -8,7 +8,7 @@ const LAUNCH = {
   releaseDate: 'Sun 25 Oct 2026',
   downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-2.0.3.zip',
   repo: 'https://github.com/gaurav8936/oneroof',
-  blogUrl: 'https://gabblegrid.ai/blog/one-workspace',
+  blogUrl: 'https://console.zibajoon.com/blog/chorus-coding',
 };
 
 // Which app screenshot goes with each page theme (file names in shots/).
