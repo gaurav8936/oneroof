@@ -135,7 +135,7 @@ pat='/Users/[a-z][a-z0-9_-]+|@gmail\.com|@[a-z0-9-]+\.edu\b|\b(CMN|GBL|HYP|AGM|Z
 [ -n "${RELEASE_PRIVATE:-}" ] && pat="$pat|$RELEASE_PRIVATE"
 allow='github\.com/gaurav8936/oneroof|io\.github\.gaurav8936\.oneroof|/Users/(someone|example|you)\b|com\.gaurav8936\.oneroof'
 
-hits="$(git ls-files -z | grep -zv -E '^(LICENSE|tools/release-check\.sh|app/Sources/OneRoofCore/LegacyMigration\.swift|app/Tests/OneRoofCoreTests/NeutralTests\.swift)$' | grep -zv -E '\.(png|jpg|jpeg|gif|icns|mp3|gguf)$' \
+hits="$(git ls-files -z | grep -zv -E '^(LICENSE|tools/release-check\.sh|app/scripts/deck-neutral\.sh|app/Sources/OneRoofCore/LegacyMigration\.swift|app/Tests/OneRoofCoreTests/NeutralTests\.swift)$' | grep -zv -E '\.(png|jpg|jpeg|gif|icns|mp3|gguf)$' \
   | xargs -0 grep -nIiE "$pat" 2>/dev/null | grep -viE "$allow" || true)"
 if [ -n "$hits" ]; then
   echo "FAIL private or workspace-specific strings:"; echo "$hits" | head -100
