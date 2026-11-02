@@ -8,7 +8,7 @@ Woodpecker (`.woodpecker/pages.yaml`) publishes this folder to GitHub Pages on e
 | `index.html` | the page (the released state is written into the HTML, so it works without JavaScript) |
 | `assets/style.css` | layout and the three themes (Porcelain, Graphite, Blueprint) as CSS variables |
 | `assets/site.js` | launch config, theme switcher, smooth anchors, visit counter |
-| `shots/` | app screenshots, `<view>-<daylight\|graphite\|midnight>.png` for the themed ones |
+| `shots/` | app screenshots (2.0 window, 1600 px wide, taken on a fresh profile with demo data); `home-<daylight\|graphite\|midnight>.png` follows the page theme |
 | `og.png` | social card, 1200×630 |
 | `assets/favicon.png`, `assets/apple-touch-icon.png` | from `app/Resources/AppIcon.icns` |
 
@@ -26,11 +26,11 @@ At the top of `assets/site.js`:
 ```js
 const LAUNCH = { released: true, version: '2.0.3', releaseDate: 'Sun 25 Oct 2026',
   downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-2.0.3.zip',
-  repo: 'https://github.com/gaurav8936/oneroof', blogUrl: 'https://gabblegrid.ai/blog/one-workspace' };
+  repo: 'https://github.com/gaurav8936/oneroof', blogUrl: 'https://console.zibajoon.com/blog/chorus-coding' };
 ```
 
 For a new release, change `version` and `downloadUrl` there and the matching text in `index.html` (search for
-`0.4.0`), so the page reads right with or without JavaScript. `released: false` switches the page to its
+the current version), so the page reads right with or without JavaScript. `released: false` switches the page to its
 "launching soon" state (Star on GitHub, release date).
 
 ## Removing the Gatekeeper note
