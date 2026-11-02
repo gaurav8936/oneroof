@@ -74,8 +74,7 @@ struct EvalsYourEvalsTab: View {
                 }
                 EvalsLabel("Start a new one").padding(.top, 12).padding(.bottom, 4)
                 startRow("arrow.triangle.branch", "From a repo's fixed bugs") { sheet = .fromRepo }
-                startRow("square.stack.3d.up", "From past sessions") { sheet = .fromSessions }
-                startRow("doc.text", "From a file of questions") { sheet = .fromFile }
+                // LAB-2170: "From past sessions" (LAB-2079) and "From a file of questions" (LAB-2078) return when built.
                 startRow("scalemass", "A judge for prose answers") { sheet = .judge }
             }
         }

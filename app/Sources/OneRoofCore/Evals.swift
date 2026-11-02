@@ -646,6 +646,6 @@ public enum EvalsDraft {
     public static let isDraft = true
     public static let tag = "Draft"
     public static let menuTitle = "Evals · Draft"
-    public static let banner = "Draft · coming soon"
-    public static let detail = "Evals is being redesigned. What you see may change, and results are for trying out only."
+    public static let banner = "Draft"   // LAB-2170: was "Draft · coming soon", for a page that is already here
+    public static let detail = "Evals is new and still changing. Use its scores to try things out, not to decide."
 }
