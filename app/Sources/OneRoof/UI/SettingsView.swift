@@ -98,7 +98,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Menu-bar extra", isOn: $model.settings.menuBarExtra)
                 Toggle("Redesigned Evals (Overview · Your evals · Explore · Run · Results · Learn)", isOn: $model.settings.evalsRedesign)
-                    .help("Off: the 1.9.37 Evals (Catalog · Runs · Results · Learn). LAB-2061.")
+                    .help("Off: the earlier Evals (Catalog · Runs · Results · Learn).")
             }
             Section("Layout · 1.x") {
                 LabeledContent("Classic layout") {
