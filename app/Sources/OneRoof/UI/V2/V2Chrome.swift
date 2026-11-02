@@ -144,7 +144,7 @@ struct V2PlaceButton: View {
                     Text(EvalsDraft.tag.uppercased()).ui(labelled ? 7.5 : 6.5, .bold).foregroundStyle(t.onAccent.color)
                         .lineLimit(1).fixedSize()
                         .padding(.horizontal, 3).padding(.vertical, 1)
-                        .background(Capsule().fill(t.statusColor(.needsYou).color))
+                        .background(Capsule().fill(t.accent.color))   // LAB-2170: the same blue as the banner, not the needs-you colour
                         .offset(x: labelled ? 16 : 10, y: labelled ? -5 : -7)
                         .accessibilityHidden(true)
                 }

@@ -181,7 +181,7 @@ struct LoopsView: View {
                         .accessibilityLabel("Loops view")
                 } else {
                     RoofButton(gallery ? "‹ Loops" : "Gallery") { gallery.toggle(); selected = nil }
-                        .help("The kinds of loops, what each produces, and a real sample of each (LAB-1922)")
+                        .help("The kinds of loops, what each produces, and a real sample of each")   // LAB-1922
                 }
                 RoofButton("+ New loop", .primary) { editing = LoopDraft.new() }
             }
