@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.0.3 — Ready for anyone: a safe first run, a setup guide, a readable Home (1 Nov 2026)
+
+- **New users start every agent in Manual** (LAB-2169). On a new Mac each agent asks before it edits a file or runs a
+  command until you choose Auto or Full in Settings › Permissions. If you used One Roof before, nothing changes: your
+  agents keep the mode they had.
+- **Setup never uses your home folder** (LAB-2167). If there is no `~/Projects`, Setup asks you to choose the folder
+  that holds your code or press **Create ~/Projects**, and only then goes on. One Roof never lists your home folder's
+  contents as repos, so macOS no longer asks about Desktop, Documents or Downloads. Labels name your real folder.
+- **A setup guide in Help** (LAB-2141). Help › One Roof Help › Setup guide explains every setup step and every setting
+  that changes what One Roof does: where it starts, what changes if you change it, and which choices act on their own,
+  use your agent accounts, run on a schedule, go online or change another program's files.
+- **Home's overnight timeline reads at a glance** (LAB-2198). The strip shows only dots (hover one for its name and
+  time). Under it: **What went wrong** (each failure once), **What to do next** (up to three steps, with buttons) and
+  **Ran fine** (repeats folded, such as "Cost watch ×12").
+- **Projects without Linear** (LAB-2168) shows only the Connect Linear card, with no error above it.
+- **Evals** (LAB-2170): the Draft banner is one calm line, the badge is blue instead of the "needs you" red, and two
+  menu entries that only led to "coming later" are hidden.
+- **Small fixes from a full visual check** (LAB-2139) of every place in Daylight, Graphite and Midnight at 1280, 1440
+  and 1700 wide: Evals tabs no longer wrap at 1280, the selected filter chip is readable in dark looks, Home's memory
+  headline agrees with Resources, and long names no longer run off the timeline or Resources.
+- **Privacy** (LAB-2140, LAB-2164): the app and its bundled Agentic Engineering deck carry no build paths, personal
+  names, e-mail addresses or private folder names, and the release check now fails if any appear. No keys or tokens
+  were ever in the app or the repository.
+
 ## 2.0.1 — Walkthrough fixes: smooth History, a cleaner Inbox, performance budgets on every place (1 Nov 2026)
 
 - **History scrolls smoothly** (LAB-2105). A hard fling deep into History froze for up to 1.1 s; now the longest pause
