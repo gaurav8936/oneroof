@@ -107,7 +107,7 @@ struct WorkView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            if let e = model.linearError {
+            if model.linear.hasKey, let e = model.linearError {   // LAB-2168
                 VStack(alignment: .leading, spacing: 6) {
                     Text(e).font(.system(size: 11)).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
                     RoofButton("Try again", .secondary) { reloadAll() }

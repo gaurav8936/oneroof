@@ -133,11 +133,14 @@ def linear_issue(key: str, token: str) -> dict | None:
 # ── build ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 def candidates(repo: str, days: int, stats: dict | None = None) -> list[dict]:
     """Fix commits, newest first: subject with an issue key, one to three source files changed (tests aside)."""
-    log = git(repo, "log", "--no-merges", f"--since={days} days ago", "--format=%x00%H%x1f%P%x1f%cs%x1f%s", "--name-only")
+    # The commit's day in UTC (%ct), like a set's "built" stamp: the committer's local day (%cs) is a day behind it
+    # every evening west of UTC, so "fixed since that version" missed fixes made that evening (LAB-2199).
+    log = git(repo, "log", "--no-merges", f"--since={days} days ago", "--format=%x00%H%x1f%P%x1f%ct%x1f%s", "--name-only")
     out = []
     for block in log.split("\x00")[1:]:
         head, _, names = block.partition("\n")
-        sha, parents, day, subject = head.split("\x1f", 3)
+        sha, parents, stamp, subject = head.split("\x1f", 3)
+        day = datetime.fromtimestamp(int(stamp), timezone.utc).strftime("%Y-%m-%d")
         m = KEY.match(subject)
         if not m or not parents or " " in parents.strip():
             continue

@@ -100,12 +100,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var handOffAt: Int
     /// Seat routing (NEW-6): a review step goes to a different model family from the one that wrote the code.
     public var reviewOtherFamily: Bool
-    /// LAB-1600: Settings › Permissions, one mode per agent (AgentKind raw value). Missing = Auto.
+    /// LAB-1600: Settings › Permissions, one mode per agent (AgentKind raw value). Missing = PermissionMode.defaultMode.
     public var permissionModes: [String: PermissionMode]
     /// LAB-1935: the owner's own flags for one agent's mode, keyed "<agent>.<mode>" (e.g. "agy.full"); missing = the
     /// mode's standard flags. Edited in Settings › Permissions, with Reset.
     public var permissionFlags: [String: String]
-    /// LAB-1935: one-time moves of the permission defaults already applied (1 = Antigravity to Full, 10-31).
+    /// LAB-1935: one-time moves of the permission defaults already applied (1 = Antigravity to Full, 10-31; 2 = the old
+    /// defaults written into the profile before new profiles moved to Manual, LAB-2169, 11-01).
     public var permissionDefaultsVersion: Int
     /// LAB-1998: agents (AgentMark raw values) the owner took out of the bottom bar in Settings › Seats & accounts.
     /// Every agent that is set up on this Mac shows there unless it is listed here.
@@ -130,7 +131,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         reviewOtherFamily = true
         permissionModes = [:]
         permissionFlags = [:]
-        permissionDefaultsVersion = 1
+        permissionDefaultsVersion = 2
         dockHidden = []
         accounts = []
         removedAccounts = []
@@ -239,6 +240,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if permissionDefaultsVersion < 1 {
             if (permissionModes[AgentKind.agy.rawValue] ?? .auto) == .auto { permissionModes[AgentKind.agy.rawValue] = .full }
             permissionDefaultsVersion = 1
+        }
+        // LAB-2169 (owner 11-01): new profiles start in Manual; a profile saved before that keeps its Auto / Full.
+        if permissionDefaultsVersion < 2 {
+            for a in AgentKind.allCases where a.isAgent && !a.isHosted && permissionModes[a.rawValue] == nil {
+                permissionModes[a.rawValue] = PermissionMode.previousDefault(for: a)
+            }
+            permissionDefaultsVersion = 2
         }
         projectsPath = try c.decodeIfPresent(String.self, forKey: .projectsPath) ?? fresh.projectsPath
         learnFolders = try c.decodeIfPresent([String].self, forKey: .learnFolders) ?? fresh.learnFolders

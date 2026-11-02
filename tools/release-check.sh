@@ -16,6 +16,10 @@ bad=0
 
 # A built app must hold no path or name of the machine that built it: home folders, zig's default cache, hostname.
 HOST="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
+WORKSPACE_WORDS='gabblegrid|hypothesys|agencium|mindmesh|labs-data|labs-agentic-engineering|access_admin|ganarasi'
+CONTENT_WORDS='access_admin|ganarasi|internal\.agencium\.com'
+# The builder's login name and the local part of the git e-mail (both found at run time, never written here).
+OWNER_WORDS="$(id -un)$(e="$(git config user.email 2>/dev/null | cut -d@ -f1 | sed 's/\./\\./g')"; [ -n "$e" ] && printf '|%s@' "$e")"
 scan_app() {   # scan_app <path.app> → 0 clean, 1 hits (printed)
   local app="$1" exe hits n=0
   exe="$app/Contents/MacOS/OneRoof"
@@ -30,6 +34,16 @@ scan_app() {   # scan_app <path.app> → 0 clean, 1 hits (printed)
   hits="$(grep -rlaE '/Users/[A-Za-z0-9._-]|\.cache/zig' "$app" ; grep -rlaiF -- "$HOST" "$app")"
   [ -n "$hits" ] && { echo "FAIL build-machine paths in bundle files:"; echo "$hits" | sed "s|^$app/||" | sort -u | head -20; n=1; }
   [ "$n" = 0 ] && echo "ok   no build-machine paths in $(basename "$app") ($(find "$app" -type f | wc -l | tr -d ' ') files)"
+  # LAB-2140 · the executables name none of the author's workspace folders or handles (a "/Users/" check misses a
+  # path built from NSHomeDirectory(), e.g. ".../labs/labs-data/..."). The Learn hub's address is allowed.
+  local ex; ex="$(for b in "$app"/Contents/MacOS/*; do strings -a "$b"; done | grep -iE "$WORKSPACE_WORDS" | sort -u)"
+  if [ -n "$ex" ]; then echo "FAIL workspace names in the executables:"; echo "$ex" | head -20; n=1
+  else echo "ok   no workspace names in the executables"; fi
+  # LAB-2164 · bundled content (the deck, help, Learn) names no author login, e-mail, live branch, key folder or internal
+  # host; bundle.sh gives the deck neutral words (scripts/deck-neutral.sh). Product names are public and allowed here.
+  ex="$(grep -rlaiE "$CONTENT_WORDS|$OWNER_WORDS" "$app/Contents/Resources" 2>/dev/null | sed "s|^$app/Contents/Resources/||")"
+  if [ -n "$ex" ]; then echo "FAIL author names in $(echo "$ex" | wc -l | tr -d ' ') bundled content file(s):"; echo "$ex" | head -10; n=1
+  else echo "ok   no author names in bundled content"; fi
   local files=(); while IFS= read -r -d '' f; do files+=("$f"); done < <(find "$app" -type f -print0)
   scan_tracker "$(basename "$app")" "${files[@]}" || n=1
   scan_datasets "$app" || n=1
@@ -121,7 +135,7 @@ pat='/Users/[a-z][a-z0-9_-]+|@gmail\.com|@[a-z0-9-]+\.edu\b|\b(CMN|GBL|HYP|AGM|Z
 [ -n "${RELEASE_PRIVATE:-}" ] && pat="$pat|$RELEASE_PRIVATE"
 allow='github\.com/gaurav8936/oneroof|io\.github\.gaurav8936\.oneroof|/Users/(someone|example|you)\b|com\.gaurav8936\.oneroof'
 
-hits="$(git ls-files -z | grep -zv -E '^(LICENSE|tools/release-check\.sh|app/Sources/OneRoofCore/LegacyMigration\.swift|app/Tests/OneRoofCoreTests/NeutralTests\.swift)$' | grep -zv -E '\.(png|jpg|jpeg|gif|icns|mp3|gguf)$' \
+hits="$(git ls-files -z | grep -zv -E '^(LICENSE|tools/release-check\.sh|app/scripts/deck-neutral\.sh|app/Sources/OneRoofCore/LegacyMigration\.swift|app/Tests/OneRoofCoreTests/NeutralTests\.swift)$' | grep -zv -E '\.(png|jpg|jpeg|gif|icns|mp3|gguf)$' \
   | xargs -0 grep -nIiE "$pat" 2>/dev/null | grep -viE "$allow" || true)"
 if [ -n "$hits" ]; then
   echo "FAIL private or workspace-specific strings:"; echo "$hits" | head -100

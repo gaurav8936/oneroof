@@ -16,7 +16,7 @@ struct SetupView: View {
     @State private var tools: [CheckResult] = []
     @State private var error: String?
     /// v2 Setup step: 0 agents, 1 folders and tools, 2 kit, look and Linear.
-    @State private var step = 0
+    @State private var step = Int(ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_SETUPSTEP"] ?? "") ?? 0   // LAB-2167: captures
 
     struct AgentRow: Identifiable {
         var id: String { command }
@@ -28,6 +28,9 @@ struct SetupView: View {
 
     private var projectsInUse: String { Workspace.resolveProjects(setting: projects) }
     private var sharedInUse: String { Workspace.resolveShared(setting: shared, projects: projectsInUse) }
+    /// LAB-2167: Setup goes on only with a real projects folder, never the home folder.
+    private var projectsOK: Bool { Workspace.folderExists(projectsInUse) && !Workspace.isHome(projectsInUse) }
+    private var suggestedProjects: String { (NSHomeDirectory() as NSString).appendingPathComponent("Projects") }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,10 +62,13 @@ struct SetupView: View {
                 if model.settings.ui2 {
                     Text("Step \(step + 1) of 3").font(.callout).foregroundStyle(.secondary)
                     if step > 0 { Button("Back") { step -= 1 }.controlSize(.large) }
-                    if step < 2 { Button("Continue") { step += 1 }.keyboardShortcut(.defaultAction).controlSize(.large) }
+                    if step < 2 {
+                        Button("Continue") { step += 1 }.keyboardShortcut(.defaultAction).controlSize(.large)
+                            .disabled(step == 1 && !projectsOK)
+                    }
                     else { Button("Open One Roof") { start() }.keyboardShortcut(.defaultAction).controlSize(.large) }
                 } else {
-                    Button("Start") { start() }.keyboardShortcut(.defaultAction).controlSize(.large)
+                    Button("Start") { start() }.keyboardShortcut(.defaultAction).controlSize(.large).disabled(!projectsOK)
                 }
             }
             .padding(.horizontal, 24).padding(.vertical, 14)
@@ -73,10 +79,19 @@ struct SetupView: View {
 
     @ViewBuilder private var projectsSection: some View {
         Section("Projects folder") {
-            folderRow(text: $projects, placeholder: Workspace.defaultProjectsRoot().tilde,
-                      message: "Choose the folder that holds your repos")
-            note("Agents start here; a session can start in one of its repos instead. In use: \(projectsInUse.tilde)",
-                 warn: !Workspace.folderExists(projectsInUse))
+            folderRow(text: $projects, placeholder: projectsOK ? projectsInUse.tilde : "Choose a folder",
+                      message: "Choose the folder that holds your repos") {
+                if !projectsOK && !Workspace.folderExists(suggestedProjects) {
+                    Button("Create ~/Projects") { createProjects() }
+                }
+            }
+            if projectsOK {
+                note("Agents start here; a session can start in one of its repos instead. In use: \(projectsInUse.tilde)", warn: false)
+            } else {
+                note(Workspace.isHome(projectsInUse)
+                     ? "Choose the folder that holds your code, or create ~/Projects. Not your home folder: agents would start there."
+                     : "Not found: \(projectsInUse.tilde). Choose another folder or create ~/Projects.", warn: true)
+            }
         }
     }
 
@@ -91,13 +106,14 @@ struct SetupView: View {
             } else {
                 folderRow(text: $shared, placeholder: Workspace.resolveShared(setting: "", projects: projectsInUse).tilde,
                           message: "Choose the folder with your shared rules, handoffs and gotchas") {
-                    if !Workspace.folderExists(sharedInUse) {
+                    if !Workspace.folderExists(sharedInUse) && projectsOK {   // LAB-2167: never ~/_common in the home folder
                         Button("Create it") { create(sharedInUse) }
                     }
                     Button("Skip") { sharedSkipped = true; shared = "" }
                 }
                 note(Workspace.folderExists(sharedInUse) ? "In use: \(sharedInUse.tilde)"
-                     : "Not found: \(sharedInUse.tilde). Create it, choose another folder, or skip.",
+                     : projectsOK ? "Not found: \(sharedInUse.tilde). Create it, choose another folder, or skip."
+                     : "Choose the projects folder first, or skip this.",
                      warn: !Workspace.folderExists(sharedInUse))
             }
         }
@@ -193,6 +209,11 @@ struct SetupView: View {
         panel.canCreateDirectories = true
         panel.message = message
         return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+
+    private func createProjects() {
+        do { try FileManager.default.createDirectory(atPath: suggestedProjects, withIntermediateDirectories: true); projects = suggestedProjects; error = nil }
+        catch { self.error = "Could not create \(suggestedProjects.tilde): \(error.localizedDescription)" }
     }
 
     private func create(_ path: String) {

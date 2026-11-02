@@ -195,12 +195,12 @@ struct ResourcesView: View {
                 Hairline()
                 if let app = s.app.first {
                     let kids = s.app.count - 1
-                    ownRow(name: "One Roof app", note: kids > 0 ? "with \(kids) helper\(kids == 1 ? "" : "s") (terminal attach, tools)" : nil,
+                    ownRow(name: "One Roof app", note: kids > 0 ? "with \(kids) helper\(kids == 1 ? "" : "s") (terminal attach)" : nil,
                            pid: app.pid, cpu: s.appCPU, memory: s.appFootprint, started: app.started, headroom: nil)
                 }
                 if let d = s.daemon {
                     Hairline().padding(.leading, 14)
-                    ownRow(name: "roofd daemon", note: "starts and keeps the sessions", pid: d.pid, cpu: d.cpu, memory: d.footprint,
+                    ownRow(name: "roofd daemon", note: "keeps sessions running", pid: d.pid, cpu: d.cpu, memory: d.footprint,
                            started: d.started, headroom: s.daemonHeadroom)
                 } else {
                     Hairline().padding(.leading, 14)
