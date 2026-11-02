@@ -50,6 +50,7 @@ struct Segmented<T: Hashable>: View {
                 Button { withAnimation(Motion.fast) { selection = value } } label: {
                     HStack(spacing: 4) {
                         Text(label).ui(12.5, .medium).foregroundStyle(on ? t.text.color : t.text2.color)
+                            .lineLimit(1).fixedSize()   // LAB-2139: "Overvie/w" at 1280
                         if let b = badge(value) { Text(b).ui(12.5, .semibold).foregroundStyle(t.needsText.color) }
                     }
                     .padding(.vertical, 5).padding(.horizontal, 11)

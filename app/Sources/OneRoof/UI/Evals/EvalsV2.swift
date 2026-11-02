@@ -136,7 +136,7 @@ struct EvalsViewV2: View {
                           badge: { $0 == .run ? board.runs.filter(\.isActive).count.nonZeroText : nil })
                     .accessibilityLabel("Evals tabs")
                 if board.doctor?.engine.ready == true && nav.tab != .run {
-                    RoofButton("+ New run", .primary) { nav.go(.run) }
+                    RoofButton("+ New run", .primary) { nav.go(.run) }.fixedSize()   // LAB-2139: not "+ Ne…" at 1280
                         .help("Choose what to run and on whom; the cost shows before anything starts")
                 }
             }
