@@ -21,7 +21,7 @@
 
 <p align="center"><sub>Open source · MIT · native macOS app · macOS 14 or later · one download, plus your agents</sub></p>
 
-<p align="center"><img src="site/shots/overview-daylight.png" alt="One Roof Home: three windows of sessions from five agents, what each needs, and a live feed" width="960"></p>
+<p align="center"><img src="site/shots/home-daylight.png" alt="One Roof Home: the lead story, Decide now, and a timeline of what ran overnight" width="960"></p>
 
 <p align="center"><b>The players:</b> Claude Code · Codex · Kimi · Gemini · Antigravity · OpenCode · Goose<br>
 <sub>Up to two Claude accounts and one of each other agent, found automatically. Claude and Codex show live usage,
@@ -92,7 +92,6 @@ We ran five subscriptions across 27 repos for weeks and wrote down everything th
 What you asked, what it's doing right now, and steps 3 of 4. Finished steps fold into one-line chapters; the live
 step stays a real terminal. Subagents sit beside it with their own captions.
 
-<img src="site/shots/session-daylight.png" alt="A session: what you asked, steps, chapters and subagents" width="960">
 
 ### Everything that needs you, with the reason in front of you. <sub>Inbox · ⌘I</sub>
 Every agent waiting on you, one dark block each, newest at the top, answered in place: why it wants to do it, what it touches, the risk, what happens if you say
@@ -101,7 +100,7 @@ with its own answers. A turn that finished waits here too, with what the agent s
 keep it going without opening the terminal; paste a screenshot into a reply and the agent reads it. Nothing is approved for you, and nothing covers the terminal: you can
 always answer there instead.
 
-<img src="site/shots/decisions-daylight.png" alt="The Inbox (was Needs you): Kimi asks to use the network, with its reason, risk and all four of its own options; finished turns wait in the list" width="960">
+<img src="site/shots/inbox.png" alt="The Inbox: a permission prompt and a question, each with the agent's own options as buttons" width="960">
 
 ### Open-source agents, on your own API key. <sub>OpenCode · Goose</sub>
 OpenCode and Goose run beside the others in the same terminals, Inbox and handoffs. Pick a hosted model (tested
@@ -112,42 +111,32 @@ per session and in total: a session stops before it spends past it. Your key nev
 Planned, Next, Working, Needs you, Ready, Tonight: every session across every window on one board. Drag a card to
 Next, or drop it on Tonight to run at 2 AM, nightly or on demand.
 
-<img src="site/shots/board-daylight.png" alt="Board: every session as a card by status" width="960">
 
 ### See the agents your agents start. <sub>Subagents · ⇧⌘A</sub>
 A timeline of every subagent: who asked it what, the model, tokens, how long it took and what it's doing now.
 
-<img src="site/shots/subagents-daylight.png" alt="Subagents timeline" width="960">
 
 ### Say what should happen. It works out who does it. <sub>New session · ⌘N</sub>
 One Roof works out whether this is a session, a ticket, a defect or a project, finds similar tickets, and puts the
 router's suggestion on top with its reason. Launch now, queue it next, or schedule it for tonight. The routing is your
 rules plus each seat's remaining usage; an optional on-device model (Qwen3 1.7B, Apache-2.0) sorts the task into a kind in about 0.15 s.
 
-<img src="site/shots/newsession.png" alt="New work sheet with the suggested agent and account" width="960">
 
 ### Still a real terminal, with each panel in its own theme. <sub>Workspace</sub>
 Sessions, files, terminal and plan side by side, built on Ghostty's renderer, with ⌘D and ⇧⌘D to split panes.
 Agents keep running when you quit the app. Each panel can be light, mid-grey or dark on its own.
 
-<img src="site/shots/workspace.png" alt="Workspace: sessions, files, terminal and plan" width="960">
 
 ### Edit, run and review without leaving. <sub>Editor · Review changes</sub>
 Edit and run, with problems listed beside the code. Lines an agent changed carry its colour. Review the diff, comment
 on a line to send it back to the agent, then commit.
 
-| | |
-|---|---|
-| <img src="site/shots/editor.png" alt="Editor" width="470"> | <img src="site/shots/review.png" alt="Review changes" width="470"> |
 
 ### Your roadmap and a coach, built in. <sub>Work · Learn</sub>
 Work shows your projects and tickets by phase, with the session working on each one. Learn is an
 agentic-engineering coach: the narrated Agentic Engineering deck (every card and skill) and two
 optional hooks, all packaged from the deck's own repository at build time. Listen in the app, or send a skill straight to a session.
 
-| | |
-|---|---|
-| <img src="site/shots/work.png" alt="Work" width="470"> | <img src="site/shots/learn.png" alt="Learn" width="470"> |
 
 <sub>Screens show a busy, real-world workspace. Your own sessions, repos and tickets appear in their place.</sub>
 
