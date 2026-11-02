@@ -23,6 +23,8 @@ extension AppModel {
     /// seconds (LAB-1255: 1.9.2 fetched them once, so a renamed or new project never showed until relaunch; issues have
     /// had this since LAB-546). Also refreshed when a window comes to the front and when the New session sheet opens.
     func loadWorkstreams(force: Bool = false, maxAge: TimeInterval = 30) {
+        // LAB-2168: no key, no fetch: a fresh profile shows only the Connect Linear card, never a "no key" error.
+        guard linear.hasKey else { if linearError != nil { linearError = nil }; return }
         guard LinearClient.isStale(loaded: !workstreams.isEmpty, fetchedAt: workstreamsFetchedAt, force: force, maxAge: maxAge),
               !linearLoading else { return }
         linearLoading = true

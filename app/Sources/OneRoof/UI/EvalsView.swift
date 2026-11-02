@@ -948,14 +948,13 @@ struct EvalsDraftBanner: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(EvalsDraft.tag.uppercased()).ui(10, .bold).foregroundStyle(t.onAccent.color)
                 .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Capsule().fill(t.statusColor(.needsYou).color))
-            Text(EvalsDraft.banner).ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
+                .background(Capsule().fill(t.accent.color))   // LAB-2170: a draft is news, not something that needs you
             Text(EvalsDraft.detail).ui(TypeScale.body).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(t.surface.color))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(t.statusColor(.needsYou).color, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(t.border.color, lineWidth: 1))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(EvalsDraft.banner + ". " + EvalsDraft.detail)
     }

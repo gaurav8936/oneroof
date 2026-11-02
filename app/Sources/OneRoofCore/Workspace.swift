@@ -50,6 +50,15 @@ public enum Workspace {
         return (projects as NSString).appendingPathComponent("_common")
     }
 
+    /// LAB-2167: true when `path` is the home folder itself. One Roof never lists it as a projects folder: walking it
+    /// opens Desktop, Documents and Downloads, and macOS asks the person for each.
+    public static func isHome(_ path: String, home: String = NSHomeDirectory()) -> Bool {
+        !path.isEmpty && (path as NSString).standardizingPath == (home as NSString).standardizingPath
+    }
+
+    /// LAB-2167: the projects folder as people read it ("~/Projects", "~/code").
+    public static var projectsLabel: String { (projectsRoot as NSString).abbreviatingWithTildeInPath }
+
     /// True when `path` is an existing folder.
     public static func folderExists(_ path: String) -> Bool {
         var dir: ObjCBool = false
@@ -202,6 +211,7 @@ public enum Workspace {
     public static func listRepos(root: String = projectsRoot) -> [String] {
         let fm = FileManager.default
         var out: [String] = []
+        guard !isHome(root) else { return [] }   // LAB-2167
         guard let domains = try? fm.contentsOfDirectory(atPath: root) else { return [] }
         for d in domains.sorted() where !d.hasPrefix(".") {
             let dp = (root as NSString).appendingPathComponent(d)

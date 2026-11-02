@@ -145,6 +145,34 @@ public enum HomeFrontPage {
         public var decide: [DecideRow]
         public var moreWaiting: Int
         public var river: River
+        /// LAB-2198: the river's words, read top to bottom (what went wrong, what to do, what ran fine).
+        public var digest: Digest = Digest()
+    }
+
+    /// LAB-2198 · the overnight river in words. The strip shows only dots; these lists carry the names, so failures
+    /// can't be lost among repeats.
+    public struct WrongRow: Equatable, Sendable, Identifiable {
+        public var id: String
+        public var at: Date
+        public var kind: String          // "Loop", "Session", "Release"
+        public var name: String
+        public var reason: String
+    }
+
+    public struct Recommendation: Equatable, Sendable, Identifiable {
+        public var id: String
+        public var text: String
+        public var actions: [Action]
+    }
+
+    public struct Digest: Equatable, Sendable {
+        public var wrong: [WrongRow] = []
+        public var next: [Recommendation] = []
+        /// "Cost watch ×7", "Security audit ×2", "Docs drift"… (loops, then sessions), most runs first.
+        public var fine: [String] = []
+        public var fineTotal = 0
+        public var total = 0
+        public init() {}
     }
 
     // MARK: Window
@@ -189,13 +217,13 @@ public enum HomeFrontPage {
         let decide = i.asks.prefix(4).map(decideRow)
         let river = makeRiver(start: w.start, end: w.end, runs: runs, moments: moments, asks: i.asks, calendar: calendar)
         return Page(masthead: masthead, windowLine: windowLine, ticker: ticker, lead: lead, side: side, decide: Array(decide),
-                    moreWaiting: max(0, i.asks.count - 4), river: river)
+                    moreWaiting: max(0, i.asks.count - 4), river: river, digest: digest(runs: runs, moments: moments))
     }
 
     /// A seat figure older than 6 hours is left out (SeatUsage.stale, measured from `now` so the page is testable).
     static func stale(_ s: SeatUsage, _ now: Date) -> Bool { now.timeIntervalSince(s.updated) > 6 * 3600 }
 
-    static func plural(_ n: Int, _ w: String) -> String { "\(n) \(w)\(n == 1 ? "" : "s")" }
+    public static func plural(_ n: Int, _ w: String) -> String { "\(n) \(w)\(n == 1 ? "" : "s")" }
 
     // MARK: Ticker
 
@@ -301,7 +329,9 @@ public enum HomeFrontPage {
         }
         // 8. The Mac.
         if let m = i.mac, m.pressure != .normal || m.swapUsed > 4 << 30 {
-            out.append(Story(kicker: "MAC", headline: m.pressure == .critical ? "The Mac is out of memory" : "The Mac is short of memory",
+            out.append(Story(kicker: "MAC", headline: m.pressure == .critical ? "The Mac is out of memory"
+                                       : m.pressure == .normal ? "The Mac is using a lot of swap"   // LAB-2139: Resources says normal
+                                       : "The Mac is short of memory",
                              body: "\(m.used >> 30) of \(m.total >> 30) GB in use, \(m.swapUsed >> 30) GB swapped. Resources shows what holds it.",
                              tone: m.pressure == .critical ? .bad : .warn, actions: [Action("Open Resources", .machine)]))
         } else if let d = i.diskFree, d < 20_000_000_000 {
@@ -408,6 +438,75 @@ public enum HomeFrontPage {
             t = t.addingTimeInterval(3600)
         }
         return River(start: start, end: end, lanes: lanes, ticks: ticks)
+    }
+
+    // MARK: Digest (LAB-2198)
+
+    /// What went wrong (newest first: each failing loop once, with how many times in a row; each session's errors once;
+    /// failed releases), up to three recommendations built from those, and the runs that went fine, folded by name.
+    public static func digest(runs: [LoopRun], moments: [Moment]) -> Digest {
+        var d = Digest()
+        var wrong: [WrongRow] = []
+        var next: [Recommendation] = []
+        // Loops: the failures of each loop, and whether its last runs failed in a row.
+        let byLoop = Dictionary(grouping: runs, by: \.loop)
+        for (loop, rs) in byLoop {
+            let sorted = rs.sorted { $0.started < $1.started }
+            let bad = sorted.filter { isBad($0.result) }
+            guard let last = bad.last else { continue }
+            let streak = sorted.reversed().prefix { isBad($0.result) }.count
+            let times = bad.count == 1 ? "failed" : bad.count == 2 ? "failed twice" : "failed \(bad.count) times"
+            let reason = times + (streak >= 2 ? " in a row" : "") + (last.summary.isEmpty ? " (\(last.result))" : ": " + short(last.summary, 60))
+            wrong.append(WrongRow(id: "l" + loop, at: last.started, kind: "Loop", name: last.title, reason: reason))
+            let text = streak >= 2
+                ? "\(last.title) failed the same way \(streak) times in a row and will fail again unless its approach or check changes."
+                : sorted.last.map { isBad($0.result) } == true
+                    ? "\(last.title) failed on its last run. Run it again, or look at what it did."
+                    : "\(last.title) failed once, then ran fine. Worth a look at the failed run."
+            next.append(Recommendation(id: "l" + loop, text: text,
+                                       actions: streak >= 1
+                                           ? [Action("Open the loop", .loops(loop), primary: true), Action("Run it again", .runLoopAgain(loop))]
+                                           : [Action("Open the loop", .loops(loop), primary: true)]))
+        }
+        // Sessions: errors, once per session.
+        let errors = moments.filter { $0.kind == .error }
+        for (session, ms) in Dictionary(grouping: errors, by: \.session) {
+            guard let last = ms.max(by: { $0.at < $1.at }) else { continue }
+            let name = session.isEmpty ? "A session" : session
+            wrong.append(WrongRow(id: "s" + session, at: last.at, kind: "Session", name: name,
+                                  reason: (ms.count == 1 ? "error" : "\(ms.count) errors") + (last.text.isEmpty ? "" : ": " + short(last.text, 60))))
+        }
+        if !errors.isEmpty {
+            let names = Set(errors.map { $0.session.isEmpty ? "A session" : $0.session }).sorted()
+            let who = names.count == 1 ? names[0] : names.count == 2 ? "\(names[0]) and \(names[1])" : "\(names[0]) and \(names.count - 1) others"
+            next.append(Recommendation(id: "sessions", text: "\(who) hit \(errors.count == 1 ? "an error" : "errors"). Check whether the work finished or needs picking up.",
+                                       actions: [Action("Open History", .history, primary: true)]))
+        }
+        // Releases that failed.
+        for m in moments where m.kind == .releaseFailed {
+            wrong.append(WrongRow(id: "r\(m.at.timeIntervalSince1970)", at: m.at, kind: "Release", name: releaseName(m.text), reason: "failed"))
+            next.append(Recommendation(id: "r\(m.at.timeIntervalSince1970)", text: "The release \(releaseName(m.text)) failed. Nothing was published; see why before trying again.",
+                                       actions: [Action("Open History", .history, primary: true)]))
+        }
+        d.wrong = wrong.sorted { $0.at > $1.at }
+        // Loops first (they repeat), then sessions, then releases; at most three.
+        d.next = Array(next.prefix(3))
+        // What ran fine, folded by name.
+        var counts: [String: Int] = [:]
+        var order: [String] = []
+        func add(_ name: String) { if counts[name] == nil { order.append(name) }; counts[name, default: 0] += 1 }
+        for r in runs.sorted(by: { $0.started < $1.started }) where !isBad(r.result) { add(r.title) }
+        for m in moments.sorted(by: { $0.at < $1.at }) where [.finding, .done, .handoffWritten, .rotated, .releaseFinished].contains(m.kind) {
+            add(m.session.isEmpty ? m.kind.rawValue : m.session)
+        }
+        d.fineTotal = counts.values.reduce(0, +)
+        // Most runs first; equal counts keep the order they first ran in.
+        d.fine = order.enumerated().sorted { a, b in
+            let ca = counts[a.element] ?? 0, cb = counts[b.element] ?? 0
+            return ca != cb ? ca > cb : a.offset < b.offset
+        }.map { (counts[$0.element] ?? 0) > 1 ? "\($0.element) ×\(counts[$0.element] ?? 0)" : $0.element }
+        d.total = d.fineTotal + runs.filter { isBad($0.result) }.count + errors.count + moments.filter { $0.kind == .releaseFailed }.count
+        return d
     }
 
     /// Merge marks closer than `mergeGap`: the worst tone wins, labels join ("a · b" or "a +2").

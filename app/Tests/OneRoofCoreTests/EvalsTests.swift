@@ -256,7 +256,8 @@ final class EvalsDraftTests: XCTestCase {
         XCTAssertTrue(EvalsDraft.isDraft)
         XCTAssertTrue(EvalsDraft.menuTitle.hasPrefix("Evals"))
         XCTAssertTrue(EvalsDraft.menuTitle.contains(EvalsDraft.tag))
-        XCTAssertTrue(EvalsDraft.banner.lowercased().contains("coming soon"))
+        XCTAssertTrue(EvalsDraft.banner.contains(EvalsDraft.tag))
+        XCTAssertFalse(EvalsDraft.banner.lowercased().contains("coming soon"))   // LAB-2170: Evals is already here
         XCTAssertFalse(EvalsDraft.detail.isEmpty)
     }
 }

@@ -66,13 +66,16 @@ if [ -n "$AE_DECK_REPO" ] && git -C "$AE_DECK_REPO" rev-parse -q --verify "$AE_D
   git -C "$AE_DECK_REPO" cat-file -e "$AE_DECK_REF:kit/loops" 2>/dev/null && PARTS+=(kit/loops)
   git -C "$AE_DECK_REPO" archive "$AE_DECK_REF" "${PARTS[@]}" | tar -x --exclude 'content/course' -C "$DECK"
   rm -rf "$DECK/content/course"
+  # LAB-2164: the public copy names no author login, e-mail, live branch or key folder (the repository keeps them).
+  bash scripts/deck-neutral.sh "$DECK"
   printf '%s\n' "$AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")" > "$DECK/.deck-ref"
   echo "deck: $(find "$DECK/skills" -name SKILL.md | wc -l | tr -d ' ') skills, $(find "$DECK/skills" -name '*.mp3' | wc -l | tr -d ' ') clips from the deck repository at $AE_DECK_REF $(git -C "$AE_DECK_REPO" rev-parse --short "$AE_DECK_REF")"
   # LAB-1834 · Learn is the shared Agentic Engineering page (the one copy every site shows, from the blog hub): save it next to
   # the deck so Learn works offline (scripts/learn-fetch.py; ONEROOF_GGAE_DIR uses a local embed build for test builds). A
   # failed or empty fetch fails the build. ONEROOF_LEARN_SKIP=1 (local test builds only) saves no page; Learn then says so.
   if [ "${ONEROOF_LEARN_SKIP:-}" = 1 ]; then echo "learn: ONEROOF_LEARN_SKIP=1, the shared page is not saved (Learn says it is not in this build)"
-  else python3 scripts/learn-fetch.py "$DECK" "$APP/Contents/Resources/agentic_engineering/learn"; fi
+  else python3 scripts/learn-fetch.py "$DECK" "$APP/Contents/Resources/agentic_engineering/learn"
+       bash scripts/deck-neutral.sh "$APP/Contents/Resources/agentic_engineering/learn"; fi   # LAB-2164: the saved cards too
 else
   echo "deck: ONEROOF_AE_DECK_REPO not set to a checkout with $AE_DECK_REF; bundling without the deck"
 fi

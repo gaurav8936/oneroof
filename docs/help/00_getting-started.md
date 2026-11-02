@@ -1,6 +1,6 @@
 # One Roof help: getting started
 
-**Status:** LIVE · **Date:** 2026-10-20
+**Status:** LIVE · **Date:** 2026-11-01
 
 > **One line:** install One Roof, finish the first-run setup, and have your first agent session running in about five minutes; this page is also the index of every help page.
 
@@ -20,17 +20,18 @@ You also need:
 
 ## First-run setup
 
-On a fresh install One Roof opens a setup window. You can open it again any time with **One Roof › Setup…**, and change every answer later in Settings (⌘,).
+On a fresh install One Roof opens a setup window in three steps: agents, folders and tools, then the kit, your look and Linear. You can open it again any time with **One Roof › Setup…**, and change every answer later in Settings (⌘,). What each choice does, and what changes if you change it: [Setup guide](00_setup-guide.md).
 
 ![The first-run setup window: projects folder, shared folder, agentic engineering folder, required tools and the agents found on this Mac](img/setup.png)
 
 | Step | What to choose |
 |---|---|
-| Projects folder | The folder that holds your repos. The default projects folder is `~/Projects` if it exists, otherwise your home folder. Agents start here. |
+| Projects folder | The folder that holds your repos. It starts as `~/Projects` when that folder exists; otherwise Setup asks you to choose one or create `~/Projects`. Agents start here. |
 | Shared folder | Where your rules, handoffs and gotchas live. The default is `_common` inside your projects folder. **Create it** makes the folder for you. You can skip this step. |
 | Agentic engineering | Bundled with the app: the narrated Agentic Engineering deck with every skill and the hooks, plus One Roof's routing rules. Nothing to choose. |
 | Agents detected | Which of `claude`, `codex`, `kimi`, `gemini` and `agy` are installed, and whether each is signed in. Nothing to do here except notice what is missing. |
-| Linear API key | Optional. Only needed for the Work view and tickets ([Work and tickets](04_work-and-tickets.md)). It is saved to `~/.config/oneroof/linear-api-key`. |
+| Look | Daylight, Graphite or Midnight for every panel at once. |
+| Linear API key | Optional. Only needed for Projects and tickets ([Work and tickets](04_work-and-tickets.md)). It is saved to `~/.config/oneroof/linear-api-key`. |
 
 ## What One Roof is
 
@@ -70,6 +71,7 @@ Agents start in your projects folder, so they all share one memory and one set o
 
 | Page | What it covers |
 |---|---|
+| [Setup guide](00_setup-guide.md) | Every setup and Settings choice: what it does, where it starts, what changes if you change it |
 | [Sessions](01_sessions.md) | The sessions panel: states, stickers, colours, pins, rename, the session menu, the plan panel, pop-out windows |
 | [New session](02_planning-a-session.md) | The New session sheet: team, project and issue pickers, agent cards, models, roles, resuming a conversation, the start folder, When |
 | [Objectives](03_objectives.md) | Write an objective, watch the planner, edit and approve the plan, follow the run |
@@ -82,5 +84,10 @@ Agents start in your projects folder, so they all share one memory and one set o
 | [Review, split panes and session rows](10_review-split-panes-and-session-rows.md) | Review changes, split panes, branch and diff on rows, the unread dot, reopen a closed session |
 | [Roof windows](11_roof-windows.md) | Every live session of one repo or project in its own window |
 | [Resources](12_resources.md) | Memory and CPU of One Roof itself: overall, per window and per session |
+| [Issue quality bar](13_issue-quality-bar.md) | What a Linear issue must say before an agent can work on it |
+| [Loops](14_loops.md) | Work that repeats until a check passes, or runs every night |
+| [Notifications and run terminals](15_notifications-and-run-terminals.md) | When One Roof tells you something, and running a printed command next to its agent |
+| [Permissions](16_permissions.md) | Manual, Plan, Auto and Full for each agent, with the flags each one passes |
+| [Evals](17_evals.md) | Measuring your agents and models, on your work and on public benchmarks |
 
 The Help menu inside One Roof opens these pages (One Roof Help), How Do I…?, the keyboard shortcuts, the release notes and the README.

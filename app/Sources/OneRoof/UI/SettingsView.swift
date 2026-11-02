@@ -98,7 +98,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Menu-bar extra", isOn: $model.settings.menuBarExtra)
                 Toggle("Redesigned Evals (Overview · Your evals · Explore · Run · Results · Learn)", isOn: $model.settings.evalsRedesign)
-                    .help("Off: the 1.9.37 Evals (Catalog · Runs · Results · Learn). LAB-2061.")
+                    .help("Off: the earlier Evals (Catalog · Runs · Results · Learn).")
             }
             Section("Layout · 1.x") {
                 LabeledContent("Classic layout") {
@@ -434,7 +434,7 @@ struct SettingsView: View {
     /// session sheet can pick another for one session; arguments that set a mode win. Loops keep their own setting.
     private var permissions: some View {
         Form {
-            Text("How much each agent may do without asking. Auto lets routine work run; Full never asks. Antigravity starts in Full, the others in Auto. Every new session starts in its agent's mode; the New session sheet can change it for one session, and arguments that set a mode win. Type your own flags to replace a mode's flags; Reset puts the standard ones back. Loops and objective steps keep their own setting.")
+            Text("How much each agent may do without asking. Auto lets routine work run; Full never asks. A new profile starts every agent in Manual (asks before it acts); pick Auto or Full here. Every new session starts in its agent's mode; the New session sheet can change it for one session, and arguments that set a mode win. Type your own flags to replace a mode's flags; Reset puts the standard ones back. Loops and objective steps keep their own setting; the objective planner uses Claude's mode.")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(AgentKind.allCases.filter(\.isAgent)) { agent in
                 Section(agent.displayName) {

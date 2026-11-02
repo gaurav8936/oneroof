@@ -933,7 +933,7 @@ final class AppModel: ObservableObject {
     }
 
     /// A new session, in `window` (the window that asked for it) or the window in front (LAB-705).
-    /// LAB-1600: a new agent session takes its agent's permission mode from Settings › Permissions (Auto by default),
+    /// LAB-1600: a new agent session takes its agent's permission mode from Settings › Permissions (Manual for a new profile, LAB-2169),
     /// unless it was given one (New session sheet, objective step) or its own arguments already set one.
     func createPlanned(_ s: Session, launchNow: Bool, in window: WindowState? = nil) {
         var s = s

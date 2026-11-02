@@ -24,7 +24,7 @@ struct SearchView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(t.secondaryText.color)
-                TextField("Search text in \(wholeWorkspace ? "every repo under ~/Projects" : "this session's repo")", text: $query)
+                TextField("Search text in \(wholeWorkspace ? "every repo under \(Workspace.projectsLabel)" : "this session's repo")", text: $query)
                     .textFieldStyle(.plain).font(.system(size: 14)).focused($focused)
                     .onSubmit { run() }
                 if searching { ProgressView().controlSize(.small) }
