@@ -94,7 +94,7 @@ struct HomeFrontPageView: View {
         }
         .padding(.top, 18)
         rule(2).padding(.top, 26)
-        river(p.river).padding(.top, 12)
+        river(p.river, p.digest).padding(.top, 12)
     }
 
     private func rule(_ h: CGFloat) -> some View {
@@ -168,19 +168,26 @@ struct HomeFrontPageView: View {
 
     // MARK: Overnight river
 
-    private func river(_ r: HomeFrontPage.River) -> some View {
+    private func river(_ r: HomeFrontPage.River, _ d: HomeFrontPage.Digest) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("OVERNIGHT · WHAT RAN, WHEN").font(.system(size: 11.5, weight: .bold, design: .monospaced)).tracking(2).foregroundStyle(t.text.color)
+            HStack(alignment: .firstTextBaseline) {
+                Text("OVERNIGHT · WHAT RAN, WHEN").font(.system(size: 11.5, weight: .bold, design: .monospaced)).tracking(2).foregroundStyle(t.text.color)
+                Spacer()
+                if !r.isEmpty {
+                    Text(HomeFrontPage.plural(d.total, "run") + (d.wrong.isEmpty ? " · all fine" : " · \(d.wrong.count) went wrong"))
+                        .ui(TypeScale.small).foregroundStyle(d.wrong.isEmpty ? t.text2.color : t.needsText.color)
+                }
+            }
             if r.isEmpty {
                 Text("Nothing ran in this window. Loop runs, your sessions' findings and releases show here as dots on a timeline.")
                     .ui(TypeScale.body).foregroundStyle(t.text2.color)
             } else {
+                // LAB-2198: the strip is dots only (hover one for its name and time); the words are in the lists below.
                 HStack(alignment: .top, spacing: 0) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(r.lanes) { l in
                             Button { perform(laneTarget(l.name)) } label: {
-                                Text(l.name).ui(TypeScale.small).foregroundStyle(t.text2.color).frame(height: Self.laneH, alignment: .bottomLeading)
-                                    .padding(.bottom, 0)
+                                Text(l.name).ui(TypeScale.small).foregroundStyle(t.text2.color).frame(height: Self.laneH, alignment: .leading)
                             }
                             .buttonStyle(.plain).help("Open \(laneTargetName(l.name))")
                             .accessibilityLabel("\(l.name). Open \(laneTargetName(l.name))")
@@ -192,11 +199,67 @@ struct HomeFrontPageView: View {
                         .accessibilityElement()
                         .accessibilityLabel(riverSummary(r))
                 }
+                digestLists(d)
             }
         }
     }
 
-    static let laneH: CGFloat = 68
+    @ViewBuilder private func digestLists(_ d: HomeFrontPage.Digest) -> some View {
+        if !d.wrong.isEmpty {
+            digestHeading("WHAT WENT WRONG", tone: t.needsText)
+            ForEach(d.wrong) { w in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("✕").ui(12, .bold).foregroundStyle(t.needsText.color).frame(width: 12)
+                    Text(Self.clock(w.at)).ui(12, mono: true).foregroundStyle(t.text2.color).frame(width: 44, alignment: .leading)
+                    Text(w.kind).ui(12).foregroundStyle(t.text2.color).frame(width: 60, alignment: .leading)
+                    Text(w.name).ui(13, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                    Text(w.reason).ui(13).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        if !d.next.isEmpty {
+            digestHeading("WHAT TO DO NEXT", tone: t.text)
+            ForEach(Array(d.next.enumerated()), id: \.element.id) { n, rec in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("\(n + 1).").ui(13, .semibold).foregroundStyle(t.text2.color).frame(width: 18, alignment: .trailing)
+                    Text(rec.text).ui(13).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    ForEach(Array(rec.actions.enumerated()), id: \.offset) { _, a in
+                        RoofButton(a.title, a.primary ? .primary : .secondary) { perform(a.target) }.fixedSize()
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        if !d.fine.isEmpty {
+            digestHeading(d.wrong.isEmpty ? "ALL RAN FINE" : "RAN FINE", tone: t.statusDone)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("✓").ui(12, .bold).foregroundStyle(t.statusDone.color).frame(width: 12)
+                Text(Self.foldFine(d.fine)).ui(13).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                RoofButton("Show all", .secondary) { perform(.history) }.fixedSize()
+            }
+        }
+    }
+
+    private func digestHeading(_ s: String, tone: RGB) -> some View {
+        Text(s).font(.system(size: 10.5, weight: .bold, design: .monospaced)).tracking(1.5).foregroundStyle(tone.color)
+            .padding(.top, 10).accessibilityAddTraits(.isHeader)
+    }
+
+    /// The first eight names, then "and N more".
+    static func foldFine(_ names: [String]) -> String {
+        let head = names.prefix(8).joined(separator: " · ")
+        return names.count > 8 ? head + " · and \(names.count - 8) more" : head
+    }
+
+    static func clock(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f.string(from: d)
+    }
+
+    static let laneH: CGFloat = 30   // LAB-2198: no slanted labels, so the lanes are close
 
     private func riverSummary(_ r: HomeFrontPage.River) -> String {
         r.lanes.map { l in
@@ -326,47 +389,73 @@ struct HomeFrontPageView: View {
     }
 }
 
-/// The river's dots and slanted labels, drawn in one Canvas (cheap to redraw, no view per dot).
+/// The river's dots, drawn in one Canvas (cheap to redraw, no view per dot). LAB-2198: no labels on the strip; hovering
+/// near a dot shows its name and time.
 struct RiverCanvas: View {
     let river: HomeFrontPage.River
     let tokens: ThemeTokens
     let laneH: CGFloat
+    @State private var hover: (mark: HomeFrontPage.Mark, point: CGPoint)?
 
     var body: some View {
-        Canvas { ctx, size in
-            let w = size.width - 40   // room for the last label's slant
-            for (li, lane) in river.lanes.enumerated() {
-                let y = CGFloat(li) * laneH + laneH - 10
-                var line = Path(); line.move(to: CGPoint(x: 0, y: y)); line.addLine(to: CGPoint(x: w, y: y))
-                ctx.stroke(line, with: .color(tokens.separator.color), lineWidth: 1)
-                for m in lane.marks {
-                    let x = CGFloat(m.x) * w
-                    let r: CGFloat = m.tone == .bad ? 7 : m.count > 1 ? 6 : 5
-                    let dot = Path(ellipseIn: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
-                    ctx.fill(dot, with: .color(colour(m.tone).color))
-                    guard m.shown else { continue }
-                    var c = ctx
-                    c.translateBy(x: x + 2, y: y - 10)
-                    c.rotate(by: .degrees(-32))
-                    // LAB-2139: a slanted label rises and runs right; cut it to the room above and to the right (≈6.5 pt a
-                    // character at 11 pt), so "Cost watch" or a long loop name never runs off the canvas.
-                    let room = min((y - 10) / 0.53, (size.width - x - 4) / 0.85)
-                    let full = (m.tone == .bad ? "✕ " : "") + m.label
-                    let fit = max(4, Int(room / 6.5))
-                    let shown = full.count > fit ? String(full.prefix(fit - 1)) + "…" : full
-                    c.draw(Text(shown).font(.system(size: 11, weight: m.tone == .bad ? .semibold : .regular))
-                            .foregroundColor(m.tone == .bad ? tokens.needsText.color : tokens.text.color),
-                           at: .zero, anchor: .leading)
+        GeometryReader { geo in
+            let w = max(1, geo.size.width - 12)
+            Canvas { ctx, size in
+                for (li, lane) in river.lanes.enumerated() {
+                    let y = Self.y(li, laneH)
+                    var line = Path(); line.move(to: CGPoint(x: 0, y: y)); line.addLine(to: CGPoint(x: w, y: y))
+                    ctx.stroke(line, with: .color(tokens.separator.color), lineWidth: 1)
+                    for m in lane.marks {
+                        let x = CGFloat(m.x) * w
+                        let r: CGFloat = m.tone == .bad ? 7 : m.count > 1 ? 6 : 5
+                        ctx.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)), with: .color(colour(m.tone).color))
+                    }
+                }
+                let ty = CGFloat(river.lanes.count) * laneH + 12
+                for tk in river.ticks {
+                    let anchor: UnitPoint = tk.x < 0.03 ? .leading : tk.x > 0.97 ? .trailing : .center
+                    ctx.draw(Text(tk.label).font(.system(size: 10.5, design: .monospaced)).foregroundColor(tokens.text2.color),
+                             at: CGPoint(x: CGFloat(tk.x) * w, y: ty), anchor: anchor)
                 }
             }
-            let ty = CGFloat(river.lanes.count) * laneH + 12
-            for tk in river.ticks {
-                // The first and last labels keep inside the canvas (00:00 was clipped at the left edge).
-                let anchor: UnitPoint = tk.x < 0.03 ? .leading : tk.x > 0.97 ? .trailing : .center
-                ctx.draw(Text(tk.label).font(.system(size: 10.5, design: .monospaced)).foregroundColor(tokens.text2.color),
-                         at: CGPoint(x: CGFloat(tk.x) * w, y: ty), anchor: anchor)
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let p): hover = nearest(p, w)
+                case .ended: hover = nil
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if let h = hover {
+                    Text(label(h.mark))
+                        .font(.system(size: 11.5, weight: h.mark.tone == .bad ? .semibold : .regular))
+                        .foregroundStyle(h.mark.tone == .bad ? tokens.needsText.color : tokens.text.color)
+                        .lineLimit(1).fixedSize()
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(tokens.surface.color))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(tokens.separator.color))
+                        // Beside the dot, kept inside the strip near the right edge.
+                        .offset(x: min(h.point.x + 10, max(0, geo.size.width - 280)), y: max(0, h.point.y - 32))
+                        .allowsHitTesting(false)
+                }
             }
         }
+    }
+
+    static func y(_ lane: Int, _ laneH: CGFloat) -> CGFloat { CGFloat(lane) * laneH + laneH / 2 }
+
+    private func nearest(_ p: CGPoint, _ w: CGFloat) -> (mark: HomeFrontPage.Mark, point: CGPoint)? {
+        let li = Int(p.y / laneH)
+        guard river.lanes.indices.contains(li) else { return nil }
+        let y = Self.y(li, laneH)
+        let best = river.lanes[li].marks.min { abs(CGFloat($0.x) * w - p.x) < abs(CGFloat($1.x) * w - p.x) }
+        guard let m = best, abs(CGFloat(m.x) * w - p.x) <= 12 else { return nil }
+        return (m, CGPoint(x: CGFloat(m.x) * w, y: y))
+    }
+
+    private func label(_ m: HomeFrontPage.Mark) -> String {
+        let at = river.start.addingTimeInterval(m.x * river.end.timeIntervalSince(river.start))
+        let f = DateFormatter(); f.dateFormat = "HH:mm"
+        return (m.tone == .bad ? "✕ " : "") + f.string(from: at) + " · " + m.label
     }
 
     private func colour(_ k: HomeFrontPage.Tone) -> RGB {
