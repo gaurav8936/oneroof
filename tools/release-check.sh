@@ -17,6 +17,7 @@ bad=0
 # A built app must hold no path or name of the machine that built it: home folders, zig's default cache, hostname.
 HOST="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
 WORKSPACE_WORDS='gabblegrid|hypothesys|agencium|mindmesh|labs-data|labs-agentic-engineering|access_admin|ganarasi'
+CONTENT_WORDS='access_admin|ganarasi|internal\.agencium\.com'
 # The builder's login name and the local part of the git e-mail (both found at run time, never written here).
 OWNER_WORDS="$(id -un)$(e="$(git config user.email 2>/dev/null | cut -d@ -f1 | sed 's/\./\\./g')"; [ -n "$e" ] && printf '|%s@' "$e")"
 scan_app() {   # scan_app <path.app> → 0 clean, 1 hits (printed)
@@ -38,9 +39,11 @@ scan_app() {   # scan_app <path.app> → 0 clean, 1 hits (printed)
   local ex; ex="$(for b in "$app"/Contents/MacOS/*; do strings -a "$b"; done | grep -iE "$WORKSPACE_WORDS" | sort -u)"
   if [ -n "$ex" ]; then echo "FAIL workspace names in the executables:"; echo "$ex" | head -20; n=1
   else echo "ok   no workspace names in the executables"; fi
-  # The packaged Agentic Engineering deck comes from its own repo; report what it still names (warning until it is clean).
-  ex="$(grep -rlaiE "$WORKSPACE_WORDS|$OWNER_WORDS" "$app/Contents/Resources" 2>/dev/null | sed "s|^$app/Contents/Resources/||")"
-  [ -n "$ex" ] && echo "warn workspace names in $(echo "$ex" | wc -l | tr -d ' ') bundled content file(s), e.g. $(echo "$ex" | head -1)"
+  # LAB-2164 · bundled content (the deck, help, Learn) names no author login, e-mail, live branch, key folder or internal
+  # host; bundle.sh gives the deck neutral words (scripts/deck-neutral.sh). Product names are public and allowed here.
+  ex="$(grep -rlaiE "$CONTENT_WORDS|$OWNER_WORDS" "$app/Contents/Resources" 2>/dev/null | sed "s|^$app/Contents/Resources/||")"
+  if [ -n "$ex" ]; then echo "FAIL author names in $(echo "$ex" | wc -l | tr -d ' ') bundled content file(s):"; echo "$ex" | head -10; n=1
+  else echo "ok   no author names in bundled content"; fi
   local files=(); while IFS= read -r -d '' f; do files+=("$f"); done < <(find "$app" -type f -print0)
   scan_tracker "$(basename "$app")" "${files[@]}" || n=1
   scan_datasets "$app" || n=1
