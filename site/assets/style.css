@@ -138,6 +138,9 @@ section[id] { scroll-margin-top: 72px; }
 .shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .hero-shot { padding-bottom: 36px; }
 .shot-hero { border: 0; box-shadow: 0 0 0 1px var(--line), 0 30px 70px rgba(10,14,22,.18); }
+/* Demo video (LAB-2212): 16:9, framed like a screenshot */
+.video { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--line); aspect-ratio: 16 / 9; background: #1c1c1e; }
+.video iframe { display: block; width: 100%; height: 100%; border: 0; }
 .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 16px; }
 
 /* Agents */
