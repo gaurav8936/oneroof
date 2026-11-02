@@ -301,7 +301,9 @@ public enum HomeFrontPage {
         }
         // 8. The Mac.
         if let m = i.mac, m.pressure != .normal || m.swapUsed > 4 << 30 {
-            out.append(Story(kicker: "MAC", headline: m.pressure == .critical ? "The Mac is out of memory" : "The Mac is short of memory",
+            out.append(Story(kicker: "MAC", headline: m.pressure == .critical ? "The Mac is out of memory"
+                                       : m.pressure == .normal ? "The Mac is using a lot of swap"   // LAB-2139: Resources says normal
+                                       : "The Mac is short of memory",
                              body: "\(m.used >> 30) of \(m.total >> 30) GB in use, \(m.swapUsed >> 30) GB swapped. Resources shows what holds it.",
                              tone: m.pressure == .critical ? .bad : .warn, actions: [Action("Open Resources", .machine)]))
         } else if let d = i.diskFree, d < 20_000_000_000 {

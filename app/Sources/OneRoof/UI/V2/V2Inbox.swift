@@ -266,7 +266,7 @@ struct V2InboxPage: View {
     private var emptyState: some View {
         let working = model.sessionItems.filter { $0.liveAgent != nil }.count
         return VStack(spacing: 8) {
-            Text("Nothing waits on you.").ui(20, .semibold).foregroundStyle(t.text.color)
+            Text("Nothing waits for you.").ui(20, .semibold).foregroundStyle(t.text.color)
             Text(working == 0 ? "When an agent asks you something, it shows up here, ready to answer."
                  : "\(working) session\(working == 1 ? "" : "s") working. When one asks you something, it shows up here.")
                 .ui(13.5).foregroundStyle(t.text2.color)
