@@ -283,6 +283,10 @@ bash tests/run.sh      # 74 checks in a throwaway HOME with fake agents: no real
 
 CI (Woodpecker) runs them on Linux and macOS.
 
+## Author
+
+Built by Gaurav Narasimhan · [About](https://console.zibajoon.com/about) · [Blog](https://console.zibajoon.com/blog) · [X @gaurav_sf](https://x.com/gaurav_sf) · [LinkedIn](https://www.linkedin.com/in/gauravnarasimhan/) · [Demo video](https://youtu.be/POorMcHkzHE)
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
