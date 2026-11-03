@@ -29,7 +29,9 @@ Inbox. In the morning, Home tells you what ran overnight, what went wrong and wh
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with anything that breaks or reads badly; see
 > [CONTRIBUTING.md](CONTRIBUTING.md).
 
-<p align="center"><img src="site/shots/home-daylight.png" alt="One Roof Home: the lead story, Decide now, and a timeline of what ran overnight" width="960"></p>
+<p align="center"><a href="https://youtu.be/POorMcHkzHE"><img src="site/shots/one-roof-demo.gif" alt="One Roof demo: Home, All windows, the Inbox and a running session" width="960"></a></p>
+
+<p align="center"><a href="https://youtu.be/POorMcHkzHE"><b>▶ Watch the full 2:46 demo on YouTube</b></a></p>
 
 **Works with:** Claude Code · Codex · Gemini CLI · Kimi · Antigravity · plain shells
 
