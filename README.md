@@ -9,7 +9,12 @@ Inbox. In the morning, Home tells you what ran overnight, what went wrong and wh
 <p align="center">
   <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac (.zip)</b></a> ·
   <a href="https://gaurav8936.github.io/oneroof/">Website</a> ·
+  <a href="https://youtu.be/POorMcHkzHE">Demo video</a> ·
   <a href="https://console.zibajoon.com/blog/chorus-coding">Chorus coding</a> (the idea behind it) ·
+  <a href="https://console.zibajoon.com/blog">Blog</a> ·
+  <a href="https://console.zibajoon.com/about">About me</a> ·
+  <a href="https://x.com/gaurav_sf">X</a> ·
+  <a href="https://www.linkedin.com/in/gauravnarasimhan/">LinkedIn</a> ·
   <a href="docs/help/00_getting-started.md">Getting started</a> ·
   <a href="docs/help/00_setup-guide.md">Setup guide</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
