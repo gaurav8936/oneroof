@@ -1,15 +1,18 @@
 <h1 align="center">One Roof</h1>
 
-<h3 align="center">Many coding agents. One place to keep up. You stay in charge.</h3>
+<h3 align="center">The agents aren't the bottleneck anymore. You are.</h3>
 
-<p align="center">One Roof is for chorus coding: several sessions of Claude Code, Codex, Gemini CLI, Kimi and
-Antigravity working together on the same job. Every session is a real terminal. Everything they ask you lands in one
-Inbox. In the morning, Home tells you what ran overnight, what went wrong and what to do next. Free and open source.</p>
+<p align="center">One Roof is a new kind of place to build with agents. One place to keep up. You stay in charge. Not an IDE, not a terminal. Run Claude Code, Codex, Gemini CLI, Kimi and Antigravity side by side, each one the real tool. Your sessions keep running when you close the window, update the app, or even if the background service crashes, so no agent loses its work. Everything they ask lands in one Inbox, answered with a click. Each morning, Home shows what ran overnight, what broke and what to do next. Learn and Resources are built in. Free and open source.</p>
 
 <p align="center">
   <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac (.zip)</b></a> ·
   <a href="https://gaurav8936.github.io/oneroof/">Website</a> ·
+  <a href="https://youtu.be/POorMcHkzHE">Demo video</a> ·
   <a href="https://console.zibajoon.com/blog/chorus-coding">Chorus coding</a> (the idea behind it) ·
+  <a href="https://console.zibajoon.com/blog">Blog</a> ·
+  <a href="https://console.zibajoon.com/about">About me</a> ·
+  <a href="https://x.com/gaurav_sf">X</a> ·
+  <a href="https://www.linkedin.com/in/gauravnarasimhan/">LinkedIn</a> ·
   <a href="docs/help/00_getting-started.md">Getting started</a> ·
   <a href="docs/help/00_setup-guide.md">Setup guide</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
@@ -36,7 +39,7 @@ Inbox. In the morning, Home tells you what ran overnight, what went wrong and wh
 **Works with:** Claude Code · Codex · Gemini CLI · Kimi · Antigravity · plain shells
 
 One Roof finds the agent command-line tools on your Mac and the accounts you are signed in to. It does not replace
-them: each session runs the real tool in a real terminal, and you can always type straight into it. Optional:
+them: each session runs the real tool, and you can always type straight into it. Optional:
 OpenCode and Goose on a hosted model with your own API key and a spending cap.
 
 ## The idea: chorus coding
