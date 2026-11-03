@@ -127,6 +127,8 @@ enum SelfTestScript {
                     s.hostedConnectionID = id
                     s.model = m.settings.hostedConnections.first(where: { $0.id == id })?.model
                     s.permissionMode = .manual
+                } else if f.count > 5, !f[5].isEmpty {
+                    s.account = f[5]   // LAB-2212: `plan name|claude|repo|opening|1|Claude2`: the session's account
                 }
                 m.createPlanned(s, launchNow: f[4] == "1")
             } else { log(out, "  bad plan line") }
@@ -295,6 +297,38 @@ enum SelfTestScript {
             delay = 1.5
         case "activate":   // LAB-1591: make an open window (by name) the active one, so the next plan lands in it
             if let w = m.windows.first(where: { $0.name == arg }) { m.activeWindowId = w.id } else { log(out, "  no window \(arg)") }
+        case "frame":   // LAB-2212: `frame x y w h`: the active window's frame (screen points, top-left origin), brought to the front
+            let v = arg.split(separator: " ").compactMap { Double($0) }
+            if v.count == 4, let w = m.activeWindowId.flatMap(MainWindowController.forWorkspace)?.window ?? app.main.window {
+                let top = (w.screen ?? NSScreen.main)?.frame.maxY ?? 0
+                w.setFrame(NSRect(x: v[0], y: top - v[1] - v[3], width: v[2], height: v[3]), display: true)
+                w.makeKeyAndOrderFront(nil)
+            } else { log(out, "  bad frame") }
+            delay = 1
+        case "front":   // LAB-2212: bring the active window to the front (the next scene is filmed there)
+            (m.activeWindowId.flatMap(MainWindowController.forWorkspace)?.window ?? app.main.window)?.makeKeyAndOrderFront(nil)
+            delay = 0.6
+        case "film":   // LAB-2212: `film start x y w h fps` (frames of this app's windows in that region → <out>-film/) · `film stop`
+            let p = arg.split(separator: " ").map(String.init)
+            if p.first == "start", p.count == 6, let n = Optional(p[1...].compactMap { Double($0) }), n.count == 5 {
+                SelfTestFilm.begin(dir: out + "-film", region: CGRect(x: n[0], y: n[1], width: n[2], height: n[3]), fps: n[4])
+            } else if p.first == "stop" { SelfTestFilm.end() } else { log(out, "  bad film") }
+        case "projects":   // LAB-2212: the Projects fixture (a read-only fake Linear, SelfTestProjects) in a script run
+            SelfTestProjects.install(m); m.loadWorkstreams(force: true); delay = 2
+        case "workselect":   // LAB-2212: `workselect <project code or name part>`: Projects shows that project
+            if let w = m.workstreams.first(where: { $0.wsId == arg || $0.name.contains(arg) }) { SelfTest.workSelect = w.id; m.loadIssues(w, force: true) }
+            else { log(out, "  no project \(arg)") }
+            delay = 1.5
+        case "homemode":   // LAB-2212: `homemode front|windows|subagents`: Home's segmented control, as a click sets it
+            Prefs.viewState.set(arg, forKey: "home.mode"); delay = 0.8
+        case "learngo":   // LAB-2212: `learngo #ae/band/context`: the Learn page at that screen
+            MainActor.assumeIsolated { LearnSharedController.current?.go(arg) }; delay = 2
+        case "loop":   // LAB-2212: `loop <id>`: open that loop's details on the Loops page
+            m.openLoop(arg); delay = 1.5
+        case "windowname":   // LAB-2212: rename the active window, as Window › Rename Window… does
+            m.active.rename(arg); delay = 0.5
+        case "cue":   // LAB-2212: a timestamped marker in the log, so the recording can be cut per scene
+            log(out, "CUE \(arg) \(Date().timeIntervalSince1970)")
         case "place":   // LAB-1592: open a place in the active window (home, needsYou, sessions, work, machine, loops, learn)
             if let p = Place(rawValue: arg == "inbox" ? "needsYou" : arg) { app.main.v2Open(p) } else { log(out, "  bad place") }   // LAB-2043: `place inbox` too
             delay = 1

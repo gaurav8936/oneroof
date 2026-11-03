@@ -1,0 +1,21 @@
+{
+  "voice_note": "LAB-2212: one line per chapter, read by OpenAI TTS (tts.py). Chapter length = narration + pauses. Opening (owner 11-02): the chorus coding post first, no app until 'started'.",
+  "lines": {
+    "hook": "An agent that gets each step right ninety-nine percent of the time finishes a fifty-step task correctly only sixty-one percent of the time. Handing everything to one agent, and walking away, doesn't work.",
+    "chorus": "So I work with a chorus of agents. Several coding agents on the same work, each doing the part it does best, and one checking another. I call it chorus coding.",
+    "reasons": "One agent can't do it all, for four reasons. Cost: most work doesn't need the most expensive model. Capacity: one subscription runs out. Quality: different agents are best at different jobs. And independent checks: an agent shouldn't grade its own work.",
+    "started": "It started on a Friday in October. Twenty-two terminal tabs, five windows, one laptop. Every tab looked the same, agents sat waiting for answers, and context got lost. So I built a roof over my agents.",
+    "home": "This is One Roof. Start the day on Home. It reads the night for you: which loops ran, what failed, and what to do next, before you open a single terminal.",
+    "windows": "All windows is the heart of it. Every window, every session, and a live feed of what each agent finished, found, or got stuck on.",
+    "inbox": "Everything the agents ask you lands in one Inbox, the urgent ones first. Each agent's own options become buttons. One click answers, and nothing is ever approved for you.",
+    "session": "Each session is the real agent, in a real terminal. Claude works through its plan, and you can always type straight into it.",
+    "newsession": "Starting a session takes seconds. Pick the agent and the account, the Linear project and the issue, and say what done looks like.",
+    "projects": "That's the method. You plan in Linear, and you execute here, with many kinds of agents. Tickets come in, sessions go out, and the results are written back. No spreadsheets.",
+    "resources": "Even two or three agents can clog a laptop. Resources shows what every session and every app is using, what's hanging, and lets you act on it right here.",
+    "loops": "Loops run on their own, with the app open or closed. About twenty-five come ready to run: to watch, check, improve and report, each with its own limits and gates.",
+    "learn": "There is a lot to learn. Learn organizes it around context, loops, evidence and procedure, and the people worth hearing. Every card is narrated, so it keeps playing while you work.",
+    "evals": "Evals is still a draft. It goes beyond benchmarks: it helps you measure your own agents, on your own work, with questions built from your repo's real bugs.",
+    "history": "And History keeps the important moments of every session, so you always know what happened while you were away.",
+    "end": "One Roof. Many coding agents, one place to keep up, and you stay in charge. Free and open source."
+  }
+}

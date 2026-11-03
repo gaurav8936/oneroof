@@ -26,11 +26,17 @@ Standard library only; a dev tool, never shipped in the app.
 import json, os, random, re, select, shutil, subprocess, sys, termios, time, tty
 
 AGENT = os.path.basename(sys.argv[0]).lower()
-if AGENT not in ("claude", "codex", "kimi", "gemini"):
+if AGENT not in ("claude", "codex", "kimi", "gemini", "agy"):
     AGENT = os.environ.get("SIM_AGENT", "claude")
 RNG = random.Random((os.environ.get("SIM_SEED") or "") + os.getcwd())
 LOG = os.environ.get("SIM_LOG")          # one line per event, for the driver's report
 ESC = "\x1b"
+
+
+def shown_cwd():
+    """The folder as the screen shows it; LAB-2212: SIM_CWD_FROM → SIM_CWD_TO for public demos (no real path)."""
+    cwd, src, dst = os.getcwd(), os.environ.get("SIM_CWD_FROM"), os.environ.get("SIM_CWD_TO")
+    return dst + cwd[len(src):] if src and dst and cwd.startswith(src) else cwd
 
 BUILTIN = """
 work 2
@@ -106,25 +112,26 @@ def hook(event, **extra):
 
 # ---------------------------------------------------------------- drawing per CLI
 
-BULLET = {"claude": "⏺", "codex": "•", "kimi": "•", "gemini": "✦"}[AGENT]
+BULLET = {"claude": "⏺", "codex": "•", "kimi": "•", "gemini": "✦", "agy": "◆"}[AGENT]
 
 
 def banner():
     w = min(width(), 70)
     name = {"claude": "Claude Code (stand-in)", "codex": "OpenAI Codex (stand-in)", "kimi": "Kimi Code (stand-in)",
-            "gemini": "Gemini CLI (stand-in)"}[AGENT]
+            "gemini": "Gemini CLI (stand-in)", "agy": "Antigravity (stand-in)"}[AGENT]
     out("╭" + "─" * (w - 2) + "╮\r\n")
     out(("│ ✻ Welcome to " + name).ljust(w - 1) + "│\r\n")
-    out(("│   cwd: " + os.getcwd())[: w - 1].ljust(w - 1) + "│\r\n")
+    out(("│   cwd: " + shown_cwd())[: w - 1].ljust(w - 1) + "│\r\n")
     out("╰" + "─" * (w - 2) + "╯\r\n\r\n")
 
 
 def input_box(text=""):
     """The idle input box; the cursor waits after the prompt marker."""
     w = width()
-    mark = {"claude": "❯", "codex": "›", "kimi": ">", "gemini": ">"}[AGENT]
+    mark = {"claude": "❯", "codex": "›", "kimi": ">", "gemini": ">", "agy": ">"}[AGENT]
     hint = {"claude": "  ? for shortcuts", "codex": "  ⏎ send   ⌃J newline   ⌃C quit",
-            "kimi": "  ctrl-x: toggle mode", "gemini": "  ~/scratch    no sandbox    gemini-stand-in"}[AGENT]
+            "kimi": "  ctrl-x: toggle mode", "gemini": "  ~/scratch    no sandbox    gemini-stand-in",
+            "agy": "  Antigravity · gemini-3-pro · /help"}[AGENT]
     out("─" * w + "\r\n")
     out(f"{mark} {text}\r\n")
     out("─" * w + "\r\n")
@@ -146,6 +153,8 @@ def working_line(n):
         return f"• Working ({secs}s • esc to interrupt)"
     if AGENT == "kimi":
         return f"{f} Thinking..."
+    if AGENT == "agy":
+        return f"{f} Working… ({secs}s · esc to stop)"
     return f"{f} Generating witty retort (esc to cancel, {secs}s)"
 
 
@@ -160,7 +169,7 @@ def permission_screen(kind, what, desc):
             # option wrapped over several lines, "Esc to cancel · Tab to amend" under it.
             rule = "╌" * width()
             lines = ["─" * width(), " Bash command", f" {desc}", rule, f" {what}", rule, " Do you want to proceed?"]
-            opts = ["Yes", "Yes, and always allow access to\r\n      " + os.getcwd() + " from\r\n      this project", "No"]
+            opts = ["Yes", "Yes, and always allow access to\r\n      " + shown_cwd() + " from\r\n      this project", "No"]
         return lines, opts, "❯"
     if AGENT == "codex":
         if kind == "edit":
@@ -172,9 +181,17 @@ def permission_screen(kind, what, desc):
         return lines, opts, "›"
     if AGENT == "kimi":
         q = "▶ Edit this file?" if kind == "edit" else "▶ Run this command?"
-        lines = [q, f"cwd: {os.getcwd()}", (f"path: {what}" if kind == "edit" else f"$ {what}"), ""]
+        lines = [q, f"cwd: {shown_cwd()}", (f"path: {what}" if kind == "edit" else f"$ {what}"), ""]
         opts = ["Approve once", "Approve for this session", "Reject", "Reject with feedback"]
         return lines, opts, "▶"
+    if AGENT == "agy":
+        # LAB-2212: Antigravity CLI, as Decisions.antigravity reads it: the ask, the command or path, then the question
+        # with its choices inline. marker None = no numbered menu (wait_choice takes y / a / n).
+        if kind == "edit":
+            lines = ["Antigravity wants to edit a file:", f"  {what}", "", "Apply these edits? (y)es / (a)lways / (n)o"]
+        else:
+            lines = ["Antigravity wants to run a command:", f"  `{what}`", "", "Run this command? (y)es / (a)lways / (n)o"]
+        return lines, ["Yes", "Always", "No"], None
     # gemini
     tool = "Edit" if kind == "edit" else "Shell"
     q = "Apply this change?" if kind == "edit" else f"Allow execution of: '{what.split()[0]}'?"
@@ -186,7 +203,7 @@ def permission_screen(kind, what, desc):
 def draw_menu(head, opts, marker, sel, hint):
     for l in head:
         out(l + "\r\n")
-    for i, o in enumerate(opts):
+    for i, o in enumerate(opts if marker else []):
         lead = f" {marker} " if i == sel else "   "
         out(f"{lead}{i + 1}. {o}\r\n")
     if hint:
@@ -301,7 +318,7 @@ def play(turn, keys, prompt):
             draw_menu(head, opts, marker, 0, hint)
             hook("Notification", message="Claude needs your permission", notification_type="permission_prompt")
             log("ask", f"permission {what}")
-            start_row = len(head) + sum(1 + o.count("\r\n") for o in opts) + (2 if hint else 0)
+            start_row = len(head) + (sum(1 + o.count("\r\n") for o in opts) if marker else 0) + (2 if hint else 0)
 
             def redraw(sel, head=head, opts=opts, marker=marker, hint=hint, rows=start_row):
                 out(f"\x1b[{rows}A\r\x1b[J"); draw_menu(head, opts, marker, sel, hint)
