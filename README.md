@@ -2,7 +2,7 @@
 
 <h3 align="center">The agents aren't the bottleneck anymore. You are.</h3>
 
-<p align="center">One Roof is a new kind of place to build with agents. One place to keep up. You stay in charge. Not an IDE, not a terminal. Run Claude Code, Codex, Gemini CLI, Kimi and Antigravity side by side, each one the real tool. Your sessions keep running when you close the window, update the app, or even if the background service crashes, so no agent loses its work. Everything they ask lands in one Inbox, answered with a click. Each morning, Home shows what ran overnight, what broke and what to do next. Learn and Resources are built in. Free and open source.</p>
+<p align="center">One Roof is a new kind of way to build with agents: one place to keep up, and you stay in charge. It isn't an IDE, nor is it a terminal. It's the place your whole team of agents works, from Claude Code and Codex to Gemini, Kimi and Antigravity, with everything they ask, run, learn and cost in one view. Free and open source.</p>
 
 <p align="center">
   <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac (.zip)</b></a> ·
