@@ -2,7 +2,7 @@
 
 <h3 align="center">The agents aren't the bottleneck anymore. You are.</h3>
 
-<p align="center">One Roof is a new kind of way to build with agents: one place to keep up, and you stay in charge. It isn't an IDE, nor is it a terminal. It's the place your whole team of agents works, from Claude Code and Codex to Gemini, Kimi and Antigravity, with everything they ask, run, learn and cost in one view. Free and open source.</p>
+<p align="center">One Roof is a new kind of way to build with agents: one place to keep up, and you stay in charge. It isn't an IDE, nor is it a terminal. It's the place your whole team of agents works, from Claude Code and Codex to Gemini, Kimi and Antigravity, with everything they ask, run, learn and cost. Free and open source.</p>
 
 <p align="center">
   <a href="https://github.com/gaurav8936/oneroof/releases/latest"><b>⬇ Download for Mac (.zip)</b></a> ·
