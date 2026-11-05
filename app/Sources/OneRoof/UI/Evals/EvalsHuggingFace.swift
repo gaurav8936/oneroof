@@ -85,7 +85,7 @@ final class HFAccount: ObservableObject {
         testing = true
         io.async { [weak self] in
             guard let self else { return }
-            self.loadToken()
+            self.loadToken(prompt: true)
             self.lock.lock(); let t = self.token; self.lock.unlock()
             guard let t, let url = URL(string: "https://huggingface.co/api/whoami-v2") else {
                 DispatchQueue.main.async { self.testing = false; self.testResult = "Not signed in." }
@@ -106,14 +106,18 @@ final class HFAccount: ObservableObject {
         }
     }
 
-    private func loadToken() {
+    /// Read the token. Quiet (the default: at launch and for every engine call) never shows macOS's Keychain password
+    /// prompt, so a build the item doesn't trust (a test or candidate build, signed ad hoc) gets no token and gated sets
+    /// stay locked. Only the owner's own Test press may prompt. `signedIn` comes from the item's existence, which needs
+    /// no access to the secret.
+    private func loadToken(prompt: Bool = false) {
         lock.lock()
         if loaded { lock.unlock(); return }
-        loaded = true
         lock.unlock()
-        let t = Self.keychainRead()
-        lock.lock(); token = t; lock.unlock()
-        DispatchQueue.main.async { [weak self] in self?.signedIn = t != nil }
+        let (t, locked) = Self.keychainRead(prompt: prompt)
+        let exists = t != nil || locked || Self.keychainHasItem()
+        lock.lock(); token = t; if !locked { loaded = true }; lock.unlock()
+        DispatchQueue.main.async { [weak self] in self?.signedIn = exists }
     }
 
     // MARK: Keychain (generic password, this app only)
@@ -122,13 +126,28 @@ final class HFAccount: ObservableObject {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
 
-    private static func keychainRead() -> String? {
+    /// (token, locked): locked = the item exists but reading it would need the owner's Keychain password.
+    private static func keychainRead(prompt: Bool) -> (String?, Bool) {
         var q = query()
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
+        if !prompt { q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
-        return String(data: d, encoding: .utf8)
+        let rc = SecItemCopyMatching(q as CFDictionary, &out)
+        if rc == errSecInteractionNotAllowed || rc == errSecAuthFailed { return (nil, true) }
+        guard rc == errSecSuccess, let d = out as? Data else { return (nil, false) }
+        return (String(data: d, encoding: .utf8), false)
+    }
+
+    /// The item's attributes only (no secret), so macOS never asks for the Keychain password.
+    private static func keychainHasItem() -> Bool {
+        var q = query()
+        q[kSecReturnAttributes as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        var out: CFTypeRef?
+        let rc = SecItemCopyMatching(q as CFDictionary, &out)
+        return rc == errSecSuccess || rc == errSecInteractionNotAllowed
     }
 
     private static func keychainSave(_ token: String) -> Bool {

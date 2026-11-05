@@ -1164,7 +1164,7 @@ def status_row(r: dict, d: Path) -> dict:
                                        "seat", "waiting", "where", "seat_unknown_ok")},
                 progress=progress(d), error=last, hint=(r.get("hint") or hint_for(err)) if last else None,
                 contestant=contestant(r.get("model"), r.get("agent")), set_name=sname, set_version=sver,
-                task_ref=r.get("task_ref"), stamp=stamp_of(r), status_note=status_note(r))
+                task_ref=r.get("task_ref"), stamp=stamp_of(r), status_note=status_note(r), stuck=stuck(r))
 
 
 def progress(d: Path) -> str:
@@ -1556,7 +1556,20 @@ def setup_label(st: dict) -> str:
     return base + (", with your rules" if st.get("rules") == "on" else "")
 
 
+def stuck(r: dict) -> bool:
+    """QA m10: a seat run waiting with its seat's use unknown for longer than the expiry (agent_runner.EXPIRE_HOURS),
+    old runs included: a run started before LAB-2237's guard never expires by itself (no waiting_since)."""
+    if r.get("status") != "waiting" or not str(r.get("waiting") or "").startswith("seat use unknown"):
+        return False
+    ar = _sibling("agent_runner")
+    return ar.hours_since(r.get("waiting_since") or r.get("started") or r.get("created")) >= ar.EXPIRE_HOURS
+
+
 def status_note(r: dict) -> str | None:
+    if stuck(r):
+        since = str(r.get("waiting_since") or r.get("started") or r.get("created") or "")[:10]
+        return (f"stuck: waiting since {since} without knowing the seat's use (over "
+                f"{_sibling('agent_runner').EXPIRE_HOURS:g} h); cancel it, or press Run anyway")
     if r.get("status") == "waiting":
         w = r.get("waiting") or ""
         return "seat use unknown" if w.startswith("seat use unknown") else (w or None)
