@@ -45,15 +45,22 @@ final class HFAccount: ObservableObject {
         EvalEngine.extraEnvironment = { [weak self] args in self?.engineEnvironment(args) ?? [:] }
     }
 
-    /// The token only for a command that can read gated data (EvalEngine.hfCommands); every other call gets none.
-    func engineEnvironment(_ args: [String] = ["run"]) -> [String: String] {
-        if EvalEngine.needsHFToken(args) { loadToken() }
+    /// The token only for a command on a gated dataset (EvalEngine.needsHFToken); every other call gets none, even once
+    /// the token is loaded (2.0.5 review P1).
+    func engineEnvironment(_ args: [String] = []) -> [String: String] {
+        let needs = EvalEngine.needsHFToken(args, taskOfRun: { [weak self] id in self?.runTask(id) })
+        if needs { loadToken() }
         lock.lock(); defer { lock.unlock() }
         var e: [String: String] = [:]
-        if let token { e["HF_TOKEN"] = token }
+        if needs, let token { e["HF_TOKEN"] = token }
         e["ONEROOF_HF_ACCEPTED"] = EvalGate.acceptedEnv(acceptedSnapshot)
         return e
     }
+
+    /// Run id → task, from the queue (resume / run-anyway name only the run). Set by EvalsBoard on every refresh.
+    private var runTasks: [String: String] = [:]
+    func setRunTasks(_ m: [String: String]) { lock.lock(); runTasks = m; lock.unlock() }
+    private func runTask(_ id: String) -> String? { lock.lock(); defer { lock.unlock() }; return runTasks[id] }
 
     func status(_ s: EvalDataSource?) -> EvalGate.Status { EvalGate.status(s, signedIn: signedIn, accepted: accepted) }
 

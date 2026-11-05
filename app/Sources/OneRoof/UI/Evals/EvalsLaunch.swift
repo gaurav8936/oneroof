@@ -91,20 +91,20 @@ struct EvalsLaunchView: View {
         let graders = k == .oneShot ? board.judges.map { _ in "Grading our notes" } : []
         let ls = loops.rows.filter { $0.place.jobKind == k }.sorted { ($0.runs, $0.title) > ($1.runs, $1.title) }
         return VStack(alignment: .leading, spacing: 8) {
-            chipRow("Tasks", Array(Set(tasks + graders)).sorted().map { ($0, false, true, nil as String?) })
-            chipRow("Loops", ls.prefix(8).map { ($0.title, true, $0.runs > 0, "\($0.countLine) in 30 days · good run: \($0.goodRun)") },
+            chipRow("Tasks", k, Array(Set(tasks + graders)).sorted().map { ($0, false, true, nil as String?) })
+            chipRow("Loops", k, ls.prefix(8).map { ($0.title, true, $0.runs > 0, "\($0.countLine) in 30 days · good run: \($0.goodRun)") },
                     more: ls.count > 8 ? ls.count - 8 : 0)
         }
     }
 
-    private func chipRow(_ label: String, _ items: [(String, Bool, Bool, String?)], more: Int = 0) -> some View {
+    private func chipRow(_ label: String, _ kind: EvalJobKind, _ items: [(String, Bool, Bool, String?)], more: Int = 0) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(label.uppercased()).ui(10.5, .bold).tracking(0.6).foregroundStyle(t.text2.color).frame(width: 52, alignment: .leading)
-            EvalsFlow(spacing: 6) { chipItems(label, items, more: more) }
+            EvalsFlow(spacing: 6) { chipItems(label, kind, items, more: more) }
         }
     }
 
-    @ViewBuilder private func chipItems(_ label: String, _ items: [(String, Bool, Bool, String?)], more: Int) -> some View {
+    @ViewBuilder private func chipItems(_ label: String, _ kind: EvalJobKind, _ items: [(String, Bool, Bool, String?)], more: Int) -> some View {
             if items.isEmpty {
                 Text(label == "Loops" ? (loops.loaded ? "none of this kind" : "reading the loops…") : "none yet").ui(TypeScale.caption).foregroundStyle(t.text3.color)
             }
@@ -120,7 +120,7 @@ struct EvalsLaunchView: View {
                 .help(help ?? name)
             }
             if more > 0 {
-                Button { nav.open(.segment(label == "Loops" ? (items.isEmpty ? .oneShot : nav.lastKind) : .oneShot, .loopRuns)) } label: {
+                Button { nav.open(.segment(kind, .loopRuns)) } label: {   // this sheet's loops (2.0.5 review P2)
                     Text("+\(more) more").ui(12, .semibold).foregroundStyle(t.accentText.color)
                 }.buttonStyle(.plain)
             }
@@ -336,7 +336,7 @@ final class EvalsLoopsStore: ObservableObject {
             let all = LoopStore().all()
             var runs: [LoopLedger.Run] = []
             var err: String?
-            do { runs = try LoopLedger().runs(from: Date().addingTimeInterval(-30 * 86_400), to: Date().addingTimeInterval(3_600), limit: 5_000) }
+            do { runs = try LoopLedger().runs(from: Date().addingTimeInterval(-30 * 86_400), to: Date().addingTimeInterval(3_600), limit: 1_000_000) }   // whole window: counts, never a display cap
             catch { err = "The loops' outcome ledger could not be read: \(error)" }
             let rows = EvalLoopRuns.summarize(loops: all, runs: runs)
             DispatchQueue.main.async { self.rows = rows; self.error = err; self.loaded = true }

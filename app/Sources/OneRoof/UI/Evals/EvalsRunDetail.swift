@@ -556,7 +556,7 @@ struct EvalsRunDetailPage: View {
 
     private func compareWith() {
         guard let r = result else { return }
-        nav.showResults(key: r.setName.map { "\($0)@v\(r.setVersion ?? 1)" } ?? (r.task ?? ""), compareA: r.id)
+        nav.showResults(key: r.setName.map { "\($0)@v\(r.setVersion ?? 1)" } ?? (r.task ?? ""), compareA: r.id, kind: EvalJobKind.of(r))
     }
 
     /// ⌘[ back is the shell's; W and ↑/↓ act on the list when it has focus.

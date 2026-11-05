@@ -69,7 +69,14 @@ struct EvalsSegmentPage: View {
         switch screen {
         case .oneShotPublic: return EvalsV3Answers.publicOneShot
         case .agentPublic: return EvalsV3Answers.publicAgent
-        case .oneShotOurs, .agentOurs: return EvalsV3Answers.ours(boards, kind: kind)
+        case .oneShotOurs, .agentOurs:
+            // Say "no finished tests" only once every task's setups were read (2.0.5 review P2).
+            let sets = EvalsAStore.ownSets(board)
+            if sets.contains(where: { store.boards[$0.name] == nil }) { return "Reading every setup's latest test on our tasks…" }
+            let failed = sets.filter { if case .failure? = store.boards[$0.name] { return true }; return false }
+            let ans = EvalsV3Answers.ours(boards, kind: kind)
+            if !failed.isEmpty { return (boards.isEmpty ? "" : ans + " ") + "\(EvalsAWords.count(failed.count, "task")) could not be read; see below." }
+            return ans
         case .oneShotLoops, .agentLoops:
             if !loops.loaded { return "Reading the loops and their runs…" }
             return EvalLoopRuns.answer(loops.rows.filter { $0.place.jobKind == kind }, kind: kind)

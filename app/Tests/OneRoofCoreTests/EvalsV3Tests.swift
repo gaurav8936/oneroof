@@ -151,10 +151,25 @@ final class EvalsV3AnswerTests: XCTestCase {
 final class EvalsHFTokenScopeTests: XCTestCase {
     /// LAB-2246 (reopened): only commands that read gated data get the token (and so read the Keychain).
     func test_LAB2246_token_only_for_gated_commands() {
-        for c in ["run", "resume", "run-anyway", "items", "item"] { XCTAssertTrue(EvalEngine.needsHFToken([c, "x"]), c) }
+        // Only a gated dataset, never our tasks or open benchmarks (2.0.5 review P1).
+        XCTAssertTrue(EvalEngine.needsHFToken(["run", "inspect_evals/hle", "--model", "x"], gated: ["hle", "xstest"]))
+        XCTAssertTrue(EvalEngine.needsHFToken(["items", "hle"], gated: ["hle"]))
+        XCTAssertTrue(EvalEngine.needsHFToken(["item", "xstest_v1", "3"], gated: ["xstest"]))
+        XCTAssertFalse(EvalEngine.needsHFToken(["items", "gsm8k"], gated: ["hle"]))
+        XCTAssertFalse(EvalEngine.needsHFToken(["run", "/x/own_oneroof_v2.py", "--agent", "claude_code"], gated: ["hle"]))
+        XCTAssertTrue(EvalEngine.needsHFToken(["resume", "r1"], gated: ["hle"], taskOfRun: { $0 == "r1" ? "hle" : nil }))
+        XCTAssertFalse(EvalEngine.needsHFToken(["run-anyway", "r2"], gated: ["hle"], taskOfRun: { _ in "own_oneroof_v2" }))
         for c in ["doctor", "catalog", "results", "overview", "leaderboard", "samples", "estimate", "power", "xray", "changes"] {
-            XCTAssertFalse(EvalEngine.needsHFToken([c]), c)
+            XCTAssertFalse(EvalEngine.needsHFToken([c, "hle"], gated: ["hle"]), c)
         }
         XCTAssertFalse(EvalEngine.needsHFToken([]))
+        XCTAssertFalse(EvalSources.gatedFolders.isEmpty)
+    }
+
+    /// 2.0.5 review P2: an older own_<set> run with no set name is ours, not public.
+    func test_review_legacy_own_run_is_not_public_evidence() throws {
+        let rs = try JSONDecoder().decode([EvalResult].self, from: Data(#"[{"id": "o", "task": "own_oneroof_v1", "model": "a/b", "status": "done", "metrics": []}]"#.utf8))
+        let e = EvalEvidence.count(results: rs, runs: [], loops: [], kind: .oneShot)
+        XCTAssertEqual(e.publicTests, 0); XCTAssertEqual(e.ours, 1)
     }
 }

@@ -166,7 +166,9 @@ final class EvalsNav: ObservableObject {
     func openRun(_ id: String, sample: String? = nil, only: [String]? = nil, other: String? = nil) {
         route = .oneTest(run: id, sample: sample, only: only, other: other)
     }
-    func showResults(key: String, compareA: String? = nil) {
+    /// `kind`: the run's kind of job, so Compare with… opens that kind's Our tests (2.0.5 review P1), not the last one seen.
+    func showResults(key: String, compareA: String? = nil, kind: EvalJobKind? = nil) {
+        if let kind { lastKind = kind }
         resultsMode = .byEval; resultsKey = key; self.compareA = compareA; go(.compare)
     }
     func openLesson(_ id: String) { lesson = id; lessonsPart = .lessons; sheet = .lessons }
