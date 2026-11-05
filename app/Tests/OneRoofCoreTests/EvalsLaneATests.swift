@@ -226,10 +226,12 @@ final class EvalsLaneATests: XCTestCase {
          {"id": "C-3-x", "epoch": 1, "score": null}]
         """#)
         let sq = EvalsASquares.fromSamples(xs)
+        // review fix 4 (one attempts policy): A-1 is right on 1 of its 2 attempts = 0.5 (part filled), not "right"
         XCTAssertEqual(sq.map(\.id), ["A-1-x", "B-2-x", "C-3-x"])
-        XCTAssertEqual(sq.map(\.right), [true, false, nil])
+        XCTAssertEqual(sq.map(\.right), [false, false, nil])
+        XCTAssertEqual(sq.map(\.score), [0.5, 0, nil])
         let s = EvalsAOneTest.score(sq)!
-        XCTAssertEqual(s.right, 1); XCTAssertEqual(s.n, 2)
+        XCTAssertEqual(s.right, 0.5); XCTAssertEqual(s.n, 2)
         XCTAssertNil(EvalsAOneTest.score([]))
     }
 
@@ -358,7 +360,7 @@ final class EvalsLaneATests: XCTestCase {
          {"at": "2026-11-02T10:00:00Z", "who": "you", "what": "CLAUDE.md changed", "path": "CLAUDE.md", "commit": "7b0b2bd", "tested": null}]
         """#)
         XCTAssertEqual(cs.map(EvalsAChanges.who), ["Vendor", "You"])
-        XCTAssertEqual(cs.map(EvalsAChanges.status), ["tested before only", "not tested"])
+        XCTAssertEqual(cs.map(EvalsAChanges.status), ["tested before only", "no comparable before/after tests"])
         XCTAssertFalse(EvalsAChanges.canTell([try fix()]))   // no stamped agent test yet: "We can't tell yet"
         var lb = try fix(); lb.rows[0].stamp?.recorded = true; lb.rows[0].status = "done"
         XCTAssertTrue(EvalsAChanges.canTell([lb]))

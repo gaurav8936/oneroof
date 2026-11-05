@@ -17,6 +17,8 @@ struct EvalsCompareView: View {
     @State private var compared: EvalCompareResult?
     @State private var compareError: String?
     @State private var focusRow = 0
+    /// The grid's rules mode (review P2 #8): off (clean) by default, so layer-2 rows never hold rules-on results.
+    @State private var gridRules = false
     @FocusState private var listFocused: Bool
 
     enum Mode: String, CaseIterable { case setups = "By setup", grid = "Agent × model" }
@@ -151,7 +153,7 @@ struct EvalsCompareView: View {
                     HStack {
                         EvalsASquaresLegend(floorText: lb.floor.map { "\($0.text)" + ($0.rule.flatMap { r in r.split(separator: ":", maxSplits: 1).dropFirst().first.map { " (\($0.trimmingCharacters(in: .whitespaces)))" } } ?? "") })
                         Spacer()
-                        if let s = lb.standIn { Text("stand-in model: \(s.right) of \(s.n)").ui(TypeScale.caption).foregroundStyle(t.text3.color) }
+                        if let s = lb.standIn { Text("stand-in model: \(EvalScoreText.count(s.right)) of \(s.n)").ui(TypeScale.caption).foregroundStyle(t.text3.color) }
                     }
                     .padding(.horizontal, 14).padding(.vertical, 9)
                 }
@@ -187,7 +189,7 @@ struct EvalsCompareView: View {
             VStack(alignment: .leading, spacing: 2) {
                 if r.isDone, let right = r.right, let n = r.n {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(right)").ui(24, .bold).foregroundStyle(t.text.color)
+                        Text(EvalScoreText.count(right)).ui(24, .bold).foregroundStyle(t.text.color)
                             .evalHover(.score, EvalHover.score(score: r.share ?? 0, n: n))
                         Text("of \(n)").ui(TypeScale.small).foregroundStyle(t.text2.color)
                     }
@@ -321,12 +323,23 @@ struct EvalsCompareView: View {
     // MARK: Agent × model grid (v1 screen 2)
 
     private func grid(_ lb: EvalSetupLeaderboard) -> some View {
-        let g = EvalsAGrid.build(lb)
+        let g = EvalsAGrid.build(lb, rules: gridRules)
         let cols = g.columns.isEmpty ? [EvalsAGrid.cliDefault] : g.columns
         return Card(padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Rows are who does the work, columns are the model. The gap between a model on its own and the agent below it is what the agent adds: reading the repo, tools, retries.")
-                    .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(gridRules
+                         ? "Rows are who does the work, columns are the model. Agent rows here ran with our rules on: the gap to the model on its own is the agent plus our rules."
+                         : "Rows are who does the work, columns are the model. The gap between a model on its own and the agent below it is what the agent adds: reading the repo, tools, retries.")
+                        .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Picker("Our rules", selection: $gridRules) {
+                        Text("Rules off (clean)").tag(false)
+                        Text("Rules on").tag(true)
+                    }
+                    .pickerStyle(.segmented).frame(width: 240)
+                    .help("Agent rows show only tests with our rules off, or only with them on; never both in one row")
+                }
                 ScrollView(.horizontal) {
                     Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                         GridRow {
@@ -384,20 +397,26 @@ struct EvalsCompareView: View {
             Text(EvalsACompare.statusText(r)).ui(TypeScale.caption).foregroundStyle(t.evalsATone(.cantTell).ink.color)
                 .padding(8).frame(width: 150, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                 .background(box.strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-        } else {
-            Button { testCell(agent: agent, model: model, lb: lb) } label: {
+        } else if let choice = EvalsAGrid.choice(agent: agent, column: model, rules: gridRules, lb: lb) {
+            Button { testCell(choice, lb: lb) } label: {
                 Text("not run · Test ›").ui(TypeScale.caption).foregroundStyle(t.accentText.color)
                     .padding(8).frame(width: 150, alignment: .leading)
                     .background(box.strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
             }
-            .buttonStyle(.plain).help("Set up a test, pre-filled with this setup on this task")
+            .buttonStyle(.plain).help("Set up a test, pre-filled with \(choice.label) on this task")
+        } else {
+            Text("not available").ui(TypeScale.caption).foregroundStyle(t.text3.color)
+                .padding(8).frame(width: 150, alignment: .leading)
+                .background(box.strokeBorder(t.separator.color, style: StrokeStyle(lineWidth: 1, dash: [2, 3])))
+                .help(agent.map { "\(EvalAgents.name($0))'s CLI can't be asked for \(model)" } ?? "Pick a model to test on its own")
         }
     }
 
-    private func testCell(agent: String?, model: String, lb: EvalSetupLeaderboard) {
+    /// Set up a test pre-filled with exactly this cell's setup: the agent with the column's model and the grid's rules
+    /// (review P2 #7), or the model on its own.
+    private func testCell(_ choice: EvalSetupChoice, lb: EvalSetupLeaderboard) {
         guard let file = Self.taskFile(lb, board: board) else { return }
-        let model2 = lb.rows.first { ($0.stamp?.model ?? "") == model }.flatMap(EvalsACompare.providerModel) ?? model
-        let u = agent.map { EvalsAUntested(label: $0, agent: $0, model: nil) } ?? EvalsAUntested(label: model, agent: nil, model: model == EvalsAGrid.cliDefault ? nil : model2)
+        let u = EvalsAUntested(label: choice.label, agent: choice.agent, model: choice.model, rules: choice.rules)
         nav.test(EvalsACompare.plan([u], taskFile: file, cases: lb.n ?? lb.cases.count))
     }
 

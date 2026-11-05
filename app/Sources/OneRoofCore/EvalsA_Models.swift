@@ -289,11 +289,16 @@ public struct EvalsASquare: Equatable, Identifiable, Sendable {
     public var issue: String
     public var title: String?
     public var right: Bool?
+    /// The attempts policy: the mean over this bug's attempts (0–1); a square between 0 and 1 is drawn part filled.
+    public var score: Double?
     /// Before/after: the bug flipped between the two tests (drawn with a ring).
     public var flipped = false
-    public init(id: String, issue: String, title: String? = nil, right: Bool?, flipped: Bool = false) {
+    public init(id: String, issue: String, title: String? = nil, right: Bool?, score: Double? = nil, flipped: Bool = false) {
         self.id = id; self.issue = issue; self.title = title; self.right = right; self.flipped = flipped
+        self.score = score ?? right.map { $0 ? 1 : 0 }
     }
+    /// Right on some attempts, not all.
+    public var isPartial: Bool { (score ?? 0) > 0 && (score ?? 1) < 1 }
 }
 
 public enum EvalsASquares {
@@ -301,27 +306,46 @@ public enum EvalsASquares {
     /// count: the squares left of it are what a guess gets.
     public static func ordered(cases: [EvalSetupLeaderboard.Case], perCase: [EvalSetupRow.CaseRight]) -> [EvalsASquare] {
         let all = inCaseOrder(cases: cases, perCase: perCase)
-        func g(_ s: EvalsASquare) -> Int { s.right == true ? 0 : s.right == false ? 1 : 2 }
+        func g(_ s: EvalsASquare) -> Int { s.score == nil ? 3 : s.right == true ? 0 : s.isPartial ? 1 : 2 }
         return all.enumerated().sorted { (g($0.element), $0.offset) < (g($1.element), $1.offset) }.map(\.element)
     }
 
     /// The set's order (before/after rows line up bug for bug). Cases the row never mentions are not answered.
     public static func inCaseOrder(cases: [EvalSetupLeaderboard.Case], perCase: [EvalSetupRow.CaseRight]) -> [EvalsASquare] {
-        let by = Dictionary(perCase.map { ($0.id, $0.right) }, uniquingKeysWith: { a, _ in a })
+        let by = Dictionary(perCase.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let base = cases.isEmpty ? perCase.map { EvalSetupLeaderboard.Case(id: $0.id, issue: nil, title: nil) } : cases
-        return base.map { c in EvalsASquare(id: c.id, issue: c.issue ?? issue(c.id), title: c.title == c.id ? nil : c.title, right: by[c.id] ?? nil) }
+        return base.map { c in EvalsASquare(id: c.id, issue: c.issue ?? issue(c.id), title: c.title == c.id ? nil : c.title,
+                                            right: by[c.id]?.right ?? nil, score: by[c.id]?.score) }
     }
 
-    /// From one run's samples (first attempt per case), right first.
+    /// From one run's samples, right first. The attempts policy (as the engine's leaderboard): a bug's score is the mean
+    /// over its attempts, right when every attempt was.
     public static func fromSamples(_ xs: [EvalSample]) -> [EvalsASquare] {
-        var first: [String: EvalSample] = [:]
-        var order: [String] = []
+        let cases = caseScores(xs)
+        return ordered(cases: cases.map { EvalSetupLeaderboard.Case(id: $0.id, issue: $0.issue, title: $0.title) },
+                       perCase: cases.map { EvalSetupRow.CaseRight(id: $0.id, right: $0.score.map { $0 >= 1 }, score: $0.score) })
+    }
+    /// Per bug, in first-seen order: the mean of its scored attempts (nil when none is scored).
+    public static func caseScores(_ xs: [EvalSample]) -> [(id: String, issue: String?, title: String?, score: Double?)] {
+        var order: [String] = [], first: [String: EvalSample] = [:], vals: [String: [Double]] = [:]
         for s in xs {
-            if let o = first[s.sampleID] { if s.epoch < o.epoch { first[s.sampleID] = s } } else { first[s.sampleID] = s; order.append(s.sampleID) }
+            if first[s.sampleID] == nil { first[s.sampleID] = s; order.append(s.sampleID) }
+            if let v = s.score { vals[s.sampleID, default: []].append(min(max(v, 0), 1)) }
         }
-        let cases = order.map { id in EvalSetupLeaderboard.Case(id: id, issue: first[id]?.issue, title: first[id]?.title) }
-        let per = order.map { id in EvalSetupRow.CaseRight(id: id, right: first[id]?.score.map { $0 >= 1 }) }
-        return ordered(cases: cases, perCase: per)
+        return order.map { id in
+            let v = vals[id] ?? []
+            return (id, first[id]?.issue, first[id]?.title, v.isEmpty ? nil : v.reduce(0, +) / Double(v.count))
+        }
+    }
+    /// Squares in the given order from per-case results (several attempts of one bug: their mean).
+    public static func fromCaseResults(_ xs: [EvalCaseResult], order: [String]) -> [EvalsASquare] {
+        var vals: [String: [Double]] = [:]
+        for x in xs { if let r = x.right { vals[x.id, default: []].append(r ? 1 : 0) } }
+        return order.map { id in
+            let v = vals[id] ?? []
+            let sc = v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
+            return EvalsASquare(id: id, issue: issue(id), right: sc.map { $0 >= 1 }, score: sc)
+        }
     }
 
     /// "LAB-2088" from "LAB-2088-4e2a7a8".
@@ -359,15 +383,24 @@ public struct EvalsAUntested: Equatable, Identifiable, Sendable {
     public var label: String
     public var agent: String?
     public var model: String?
-    public var id: String { agent ?? model ?? label }
-    public init(label: String, agent: String?, model: String?) { self.label = label; self.agent = agent; self.model = model }
+    /// An agent with our rules on (the full setup).
+    public var rules: Bool
+    public var id: String { (agent.map { $0 + ":" + (model ?? "default") + (rules ? ":on" : ":off") }) ?? model ?? label }
+    public init(label: String, agent: String?, model: String?, rules: Bool = false) {
+        self.label = label; self.agent = agent; self.model = model; self.rules = rules && agent != nil
+    }
+    /// The setup the sheet pre-fills: an agent on its seat with this model (nil = CLI default) and rules, or the model alone.
+    public var choice: EvalSetupChoice? {
+        if let a = agent { return .seat(a, model: model, rules: rules) }
+        return model.map { EvalSetupChoice.model($0) }
+    }
 }
 
 public enum EvalsACompare {
     /// One line of meaning on top of Compare, chosen by rule from the ranked rows, the floor and the layers.
     public static func headline(_ lb: EvalSetupLeaderboard) -> String {
         let ranked = lb.ranked
-        guard let best = ranked.first(where: \.isDone), let r = best.right, let n = best.n else {
+        guard let best = ranked.first(where: \.isDone), let r = best.right.map(EvalScoreText.count), let n = best.n else {
             let w = ranked.first(where: \.isActive)
             return "No setup has finished this task yet." + (w.map { " \($0.label) is \($0.status)" + ($0.statusNote.map { ": \($0)" } ?? "") + "." } ?? "")
         }
@@ -440,9 +473,13 @@ public enum EvalsACompare {
     }
 
     /// Set up a test, pre-filled with the untested setups on this task (nothing starts until Start).
+    /// Each untested setup is carried whole (agent + model + rules) in `setups`, so the sheet never falls back to the CLI
+    /// default for an agent whose model was chosen (review P2 #7); the 2.0.3 fields stay filled for old readers.
     public static func plan(_ xs: [EvalsAUntested], taskFile: String, cases: Int) -> EvalRunPlan {
-        EvalRunPlan(tasks: [taskFile], models: xs.compactMap(\.model), limit: max(cases, 1), cap: 2.0,
-                    agents: xs.compactMap(\.agent))
+        var p = EvalRunPlan(tasks: [taskFile], models: xs.filter { $0.agent == nil }.compactMap(\.model), limit: max(cases, 1), cap: 2.0,
+                            agents: xs.compactMap(\.agent))
+        p.setups = xs.compactMap(\.choice)
+        return p
     }
 
     /// The paired difference from `compare <A> <B>` (unpaired runs share no bugs: never a winner).
@@ -470,7 +507,11 @@ public struct EvalsAGrid: Equatable, Sendable {
     public var columns: [String]
     public var rows: [Row]
 
-    public static func build(_ lb: EvalSetupLeaderboard) -> EvalsAGrid {
+    /// Rules mode is a dimension of the grid (review P2 #8): `rules` false (the default, "off (clean)") shows only agent
+    /// runs with no rules, so a layer-2 row never holds a rules-on result; true shows the full setups (layer 3). The model
+    /// row is the same in both. Each cell is that setup's LATEST finished run (else its latest live one), never the
+    /// highest score.
+    public static func build(_ lb: EvalSetupLeaderboard, rules: Bool = false) -> EvalsAGrid {
         func agentOf(_ r: EvalSetupRow) -> String? {
             if let a = r.stamp?.agent { return a }
             if r.setupId.hasPrefix("model:") { return nil }
@@ -482,23 +523,46 @@ public struct EvalsAGrid: Equatable, Sendable {
             if r.setupId.hasPrefix("model:") { return p.dropFirst().joined(separator: ":") }
             return p.count > 1 && p[1] != "default" ? p[1] : cliDefault
         }
-        // Latest per (agent, model): finished first, else the live one.
         var cells: [String: [String: EvalSetupRow]] = [:]
         var columns: [String] = []
-        for r in lb.ranked where !["failed"].contains(r.status) {
-            let a = agentOf(r) ?? "", m = modelOf(r)
+        // finished before live, newest first inside each: the first row a cell sees is the one it keeps
+        let order = lb.rows.enumerated().sorted { x, y in
+            let (a, b) = (x.element, y.element)
+            if a.isDone != b.isDone { return a.isDone }
+            let (sa, sb) = (a.started ?? "", b.started ?? "")
+            return sa != sb ? sa > sb : x.offset < y.offset
+        }.map(\.element)
+        for r in order where !["failed"].contains(r.status) {
+            let a = agentOf(r)
+            if a != nil && (r.layer == .full) != rules { continue }
+            let m = modelOf(r)
             if !columns.contains(m) { columns.append(m) }
-            if cells[a]?[m] == nil { cells[a, default: [:]][m] = r }
+            if cells[a ?? ""]?[m] == nil { cells[a ?? "", default: [:]][m] = r }
         }
         columns.sort { ($0 == cliDefault ? 1 : 0, $0) < ($1 == cliDefault ? 1 : 0, $1) }
+        let layer = rules ? "layer 3 · with our rules" : "layer 2 · rules off (clean)"
         var rows = [Row(title: "Model on its own", sub: "layer 1 · API, no tools", agent: nil, cells: cells[""] ?? [:])]
         for a in EvalsAWords.seatAgents {
-            rows.append(Row(title: a.name, sub: "layer 2 · on your \(a.seat) seat", agent: a.key, cells: cells[a.key] ?? [:]))
+            rows.append(Row(title: a.name, sub: "\(layer) · on your \(a.seat) seat", agent: a.key, cells: cells[a.key] ?? [:]))
         }
-        for (a, c) in cells where !a.isEmpty && !EvalsAWords.seatAgents.contains(where: { $0.key == a }) {
-            rows.append(Row(title: a, sub: "layer 2", agent: a, cells: c))
+        for (a, c) in cells.sorted(by: { $0.key < $1.key }) where !a.isEmpty && !EvalsAWords.seatAgents.contains(where: { $0.key == a }) {
+            rows.append(Row(title: a, sub: layer, agent: a, cells: c))
         }
         return EvalsAGrid(columns: columns, rows: rows)
+    }
+
+    /// The setup an empty cell tests (review P2 #7): an agent row carries the column's model (the CLI default column: no
+    /// model) and the grid's rules mode; nil when that agent's CLI cannot be asked for that model (the cell is disabled,
+    /// never silently the default). The model row: the model alone, with its provider.
+    public static func choice(agent: String?, column: String, rules: Bool, lb: EvalSetupLeaderboard) -> EvalSetupChoice? {
+        guard let a = agent else {
+            guard column != cliDefault else { return nil }
+            let m = lb.rows.first { $0.layer == .model && ($0.stamp?.model ?? "") == column }.flatMap(EvalsACompare.providerModel) ?? column
+            return .model(m)
+        }
+        if column == cliDefault { return .seat(a, model: nil, rules: rules) }
+        guard EvalSetupChoice.supports(agent: a, model: column) else { return nil }
+        return .seat(a, model: EvalSetupChoice.cliModel(column), rules: rules)
     }
 }
 
@@ -522,12 +586,13 @@ public enum EvalsAOneTest {
         return "\(which) a file the fix changed, so it's marked wrong. Checked automatically, no model involved."
     }
 
-    /// "8 of 10" and the Wilson range from one run's first attempts.
-    public static func score(_ xs: [EvalsASquare]) -> (right: Int, n: Int, lo: Double, hi: Double)? {
-        let answered = xs.filter { $0.right != nil }
+    /// "8 of 10" (or "7.5 of 10") and the Wilson range, by the attempts policy: right = the sum of the bug scores, the range
+    /// Wilson on that accuracy with n = the bugs (CONTRACT §3 note).
+    public static func score(_ xs: [EvalsASquare]) -> (right: Double, n: Int, lo: Double, hi: Double)? {
+        let answered = xs.filter { $0.score != nil }
         guard !answered.isEmpty else { return nil }
-        let r = answered.filter { $0.right == true }.count, n = answered.count
-        let w = EvalStats.wilson(Double(r) / Double(n), n: n)
+        let r = answered.reduce(0) { $0 + ($1.score ?? 0) }, n = answered.count
+        let w = EvalStats.wilson(r / Double(n), n: n)
         return (r, n, w.lo, w.hi)
     }
 }
@@ -631,7 +696,8 @@ public enum EvalsAChanges {
         if c.testedBoth { return "tested before and after" }
         if c.tested?.before != nil { return "tested before only" }
         if c.tested?.after != nil { return "tested after only" }
-        return "not tested"
+        // review fix 3: the engine pairs only comparable runs (same task version, agent, models, rules mode)
+        return "no comparable before/after tests"
     }
     /// No stamped test (recorded agent / full layer) yet: the page says "We can't tell yet".
     public static func canTell(_ boards: [EvalSetupLeaderboard]) -> Bool {
@@ -644,6 +710,21 @@ public enum EvalsAChanges {
         case .cantTell, .tooFewShared: return diff > 0 ? "Probably helped, not proven" : diff < 0 ? "Probably hurt, not proven" : "No change seen"
         default: return "Not run yet"
         }
+    }
+    /// The floor (share) of the task version the pair's runs were on: the board that holds either run (review P2 #5).
+    public static func floor(before: String?, after: String?, boards: [EvalSetupLeaderboard]) -> Double? {
+        let ids = Set([before, after].compactMap { $0 })
+        return boards.first { b in b.rows.contains { r in r.run.map(ids.contains) ?? false } }?.floor?.share
+    }
+    /// One side of the before/after pair: its right answers (attempts policy) and its own Wilson range.
+    public static func side(_ label: String, _ xs: [EvalsASquare]) -> EvalVerdicts.Side {
+        guard let s = EvalsAOneTest.score(xs) else { return EvalVerdicts.Side(label: label, right: nil, n: nil, lo: nil, hi: nil, done: false) }
+        return EvalVerdicts.Side(label: label, right: s.right, n: s.n, lo: s.lo, hi: s.hi)
+    }
+    /// The before/after verdict by rule: the paired compare, each side's Wilson bounds, and the floor of the pair's task
+    /// version, so a winner that only matches a blind guess says so.
+    public static func verdict(before: [EvalsASquare], after: [EvalsASquare], compare: EvalCompareResult?, floor: Double?) -> EvalVerdicts.Verdict {
+        EvalVerdicts.compare(side("After", after), side("Before", before), paired: compare.map(EvalsACompare.paired), floor: floor)
     }
     /// "3 bugs flipped to right, 1 flipped to wrong."
     public static func flipLine(toRight: Int, toWrong: Int) -> String {

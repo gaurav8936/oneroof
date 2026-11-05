@@ -468,6 +468,10 @@ struct EvalsSetupSheet: View {
                 Text(c.stampPreview(taskVersion: version, rulesHash: rules?.hash, rulesFiles: c.rules ? rules?.files ?? [] : []))
                     .ui(TypeScale.micro).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             }
+            if plan.repeatRulesHash != nil, choices.contains(where: \.rules) {   // review P2 #6: a rules-on repeat
+                Text(EvalSetupChoice.repeatRulesNote(old: plan.repeatRulesHash, now: rules?.hash))
+                    .ui(TypeScale.micro, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+            }
             Text("This is what lets Changes compare before and after.").ui(TypeScale.micro).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
         }
         .padding(10).frame(maxWidth: .infinity, alignment: .leading)
@@ -584,6 +588,7 @@ struct EvalsSetupSheet: View {
         plan.agents = cs.filter(\.isSeat).compactMap(\.agent)
         plan.apiAgents = cs.filter { $0.agent != nil && !$0.isSeat }.compactMap { c in c.model.map { (c.agent ?? "") + "@" + $0 } }
         plan.models = cs.filter { $0.agent == nil }.compactMap(\.model)
+        plan.setups = cs   // the exact setups (seat model, rules) travel with the plan (nav.workPlan, Test again)
     }
 
     /// Any change re-estimates, debounced 300 ms; the rules hash is read for the task's repo.
