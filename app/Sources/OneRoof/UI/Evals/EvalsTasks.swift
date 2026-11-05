@@ -35,7 +35,7 @@ struct EvalsTasksView: View {
             .padding(.bottom, 20)
         }
         .onAppear { load(); takeNew() }
-        .onChange(of: nav.newRequest) { _, _ in takeNew() }   // "+ New ▾" › New task from fixed bugs / New grader
+        .onChange(of: nav.newRequest) { _, _ in takeNew() }   // "New test or task ▾" › New task from fixed bugs / New grader
         .onChange(of: board.judges) { _, _ in loadTrust() }
         .onChange(of: board.sets) { _, _ in loadNext() }
         .sheet(item: $sheet) { s in sheetView(s).themed(t.name) }
@@ -204,8 +204,9 @@ struct EvalsTasksView: View {
                 Button { nav.openGrader(j.name) } label: {
                     HStack(spacing: 10) {
                         Text("The grader for \"\(gradedTitle(j))\"").ui(TypeScale.small, .semibold).foregroundStyle(t.text.color)
-                        Text(tr.map { "agrees \(EvalJudgeTrust.pct($0.agreement)) · \(EvalGraderWords.verdictTitle($0).lowercased()) · \($0.labelled) of \($0.items) labelled by you" } ?? "reading…")
+                        Text(tr.map(EvalGraderWords.agreesLine) ?? "reading…")
                             .ui(TypeScale.small).foregroundStyle(tr?.ready == true ? t.text2.color : t.needsText.color)
+                            .evalHoverIf(tr.map { (.agreement, EvalGraderWords.agreementHover($0)) })   // QA m14
                         Spacer()
                         Text("Check the grader ›").ui(TypeScale.small).foregroundStyle(t.accentText.color)
                     }

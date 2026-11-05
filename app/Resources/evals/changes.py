@@ -9,8 +9,9 @@
            recorded run stamps of that agent (run.json "stamp", recorded: true), and the CLI versions `roof eval doctor`
            saw (<evals folder>/agents-seen.json).
 Each row says which finished agent runs test it ("tested"): the latest before and earliest after that are COMPARABLE
-(recorded stamps, same task + version, agent, CLI version, models and rules mode, differing only in what changed); with
-no such pair, "after" is null (and "before" the run to repeat, if one is eligible): "no comparable before/after tests".
+(recorded stamps, same task + version, agent, CLI version, models and rules mode, all known, differing only in what
+changed; a rules commit only when the runs' rules hashes are the states just before and just after it, and several rules
+commits between the two runs are returned as one pair with "spans", credited to none); with no such pair, "after" is null (and "before" the run to repeat, if one is eligible): "no comparable before/after tests".
 Real data only: an empty list is a valid answer. No repo is changed; nothing is sent anywhere.
 """
 from __future__ import annotations
@@ -169,7 +170,56 @@ def same_repo(a: str | None, b: str | None) -> bool:
 
 # The setup parts a before/after pair must share (review P1 #3). The one the change is about may (must) differ.
 SETUP_KEYS = ("task", "task_version", "agent", "agent_version", "model_requested", "model", "rules", "rules_hash")
+# Re-review #3: parts that must be KNOWN on both runs. Two runs that both lack one are not "equal", they are unproven.
+# (model_requested may be null: that is the CLI default, a real choice; rules_hash is checked per dimension.)
+ESSENTIAL = ("task", "task_version", "agent", "agent_version", "model", "rules")
 RULE_FILES = ("CLAUDE.md", "AGENTS.md", "CLAUDE.local.md")
+RULE_SPECS = [f":(glob)**/{n}" for n in RULE_FILES]
+
+
+def _runner():
+    """agent_runner, for rules_state: the same hash function a run's capture uses (path order, first 7 hex)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("agent_runner", Path(__file__).resolve().parent / "agent_runner.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+_AR = None
+_STATE: dict = {}
+_LOG: dict = {}
+
+
+def rules_hash_at(repo: str, rev: str) -> str | None:
+    """The rules hash of the repo at a revision (`<commit>^` for the state just before a commit; a root commit's
+    parent is the empty rules set). None = unreadable."""
+    global _AR
+    key = (repo, rev)
+    if key not in _STATE:
+        _AR = _AR or _runner()
+        if rev.endswith("^") and git(repo, "rev-parse", "--verify", "--quiet", rev + "{commit}").strip() == "":
+            _STATE[key] = _AR.EMPTY_RULES_HASH   # a root commit: before it there were no rules
+        else:
+            st = _AR.rules_state(repo, rev)
+            _STATE[key] = st[0] if st else None
+    return _STATE[key]
+
+
+def rules_commits(repo: str) -> list[tuple]:
+    """(short sha, full sha, committed at as UTC ISO) of every commit that touched a rules file, oldest first."""
+    if repo not in _LOG:
+        out = git(repo, "log", "--no-merges", "--reverse", f"--format=%H{SEP}%cI", "--", *RULE_SPECS)
+        rows = []
+        for line in out.splitlines():
+            sha, _, when = line.partition(SEP)
+            try:
+                when = iso(datetime.fromisoformat(when))
+            except ValueError:
+                pass
+            rows.append((sha[:7], sha, when))
+        _LOG[repo] = rows
+    return _LOG[repo]
 
 
 def _dimension(row: dict) -> str | None:
@@ -182,15 +232,21 @@ def _dimension(row: dict) -> str | None:
     return "rules" if row.get("who") == "you" and path.rsplit("/", 1)[-1] in RULE_FILES else None
 
 
+def _known(v) -> bool:
+    return v is not None and v != ""
+
+
 def _eligible(run: dict, row: dict, dim: str) -> bool:
     st = run["stamp"]
     if row.get("_agent") and run["agent"] != row["_agent"]:
         return False
-    if dim == "rules":
-        return st.get("rules") == "on" and bool(st.get("rules_hash"))
+    if not all(_known(st.get(k)) for k in ESSENTIAL):   # re-review #3: missing evidence is never compatibility
+        return False
+    if dim == "rules":   # re-review P2: "recorded" (a string, the empty set's hash included), not truthy
+        return st.get("rules") == "on" and isinstance(st.get("rules_hash"), str)
     if dim == "model":   # the CLI default's resolution changed: only runs on the CLI default, resolved, show it
-        return not st.get("model_requested") and st.get("model_source") == "cli_default_resolved" and bool(st.get("model"))
-    return bool(st.get(dim))
+        return not st.get("model_requested") and st.get("model_source") == "cli_default_resolved"
+    return True
 
 
 def _key(run: dict, dim: str) -> tuple:
@@ -198,12 +254,44 @@ def _key(run: dict, dim: str) -> tuple:
     return tuple(st.get(k) for k in SETUP_KEYS if k != ("rules_hash" if dim == "rules" else dim))
 
 
+def _pair(b: dict, a: dict) -> dict:
+    """A before/after pair, with the task and task version both runs were on (the same: they are comparable), so the
+    app reads that version's blind-guess floor (re-review #5), never the latest board's."""
+    return {"before": b["id"], "after": a["id"], "task": b["stamp"].get("task"), "task_version": b["stamp"].get("task_version")}
+
+
+def _rules_pair(row: dict, before: list, after: list, repo: str) -> dict | None:
+    """Re-review #3 (P1): a rules pair is credited to a commit only when the before run's captured rules are the state
+    just BEFORE that commit (`<commit>^`) and the after run's are the state just AFTER it (`<commit>`), and no other
+    rules commit falls between the two runs. When several do, the pair covers all of them: it is returned with
+    "spans" (each commit's short sha, oldest first), never credited to one of them. Exact pairs win over spans."""
+    commit = (row.get("commit") or "")[:7]
+    log = rules_commits(repo)
+    span = None
+    for a in after:   # earliest after first, then the latest comparable before it
+        for b in reversed(before):
+            if _key(a, "rules") != _key(b, "rules") or a["stamp"]["rules_hash"] == b["stamp"]["rules_hash"]:
+                continue
+            between = [(c, full) for c, full, when in log if b["started"] < when <= a["started"]]
+            if commit not in [c for c, _ in between]:
+                continue
+            if rules_hash_at(repo, between[0][1] + "^") != b["stamp"]["rules_hash"] or \
+                    rules_hash_at(repo, between[-1][1]) != a["stamp"]["rules_hash"]:
+                continue
+            if len(between) == 1:
+                return _pair(b, a)
+            span = span or dict(_pair(b, a), spans=[c for c, _ in between])
+    return span
+
+
 def tested(row: dict, runs: list[dict], repo: str | None) -> dict:
     """The before/after pair for a change: the latest run before it and the earliest after it that are COMPARABLE —
-    both recorded, same frozen task and task version, same agent, CLI version, requested and answering model and rules
-    mode — differing only in what the change changed (the rules hash; the CLI version; the default model), and for a
-    vendor change, the old value before and the new one after. No such pair: the latest eligible run before is kept as
-    the one to repeat, and "after" is null; nothing eligible: both null ("no comparable before/after tests")."""
+    both recorded, every essential part KNOWN (task, task version, agent, CLI version, answering model, rules mode),
+    same requested model — differing only in what the change changed. A rules commit: the before run's rules hash must
+    be the state just before the commit and the after run's the state just after (several rules commits between the
+    runs = one pair with "spans", credited to none). A vendor change: the old value before and the new one after. No
+    such pair: the latest eligible run before is kept as the one to repeat, and "after" is null; nothing eligible: both
+    null ("no comparable before/after tests")."""
     dim = _dimension(row)
     if dim is None:
         return {"before": None, "after": None}
@@ -212,11 +300,15 @@ def tested(row: dict, runs: list[dict], repo: str | None) -> dict:
     old, new = row.get("_old"), row.get("_new")
     before = [r for r in pool if r["started"] < at and (old is None or r["stamp"].get(dim) == old)]
     after = [r for r in pool if r["started"] >= at and (new is None or r["stamp"].get(dim) == new)]
-    for a in after:   # earliest after first, then the latest comparable before it
-        for b in reversed(before):
-            if _key(a, dim) == _key(b, dim) and \
-                    a["stamp"].get("rules_hash" if dim == "rules" else dim) != b["stamp"].get("rules_hash" if dim == "rules" else dim):
-                return {"before": b["id"], "after": a["id"]}
+    if dim == "rules":
+        pair = _rules_pair(row, before, after, repo) if repo else None
+        if pair:
+            return pair
+    else:
+        for a in after:   # earliest after first, then the latest comparable before it
+            for b in reversed(before):
+                if _key(a, dim) == _key(b, dim) and a["stamp"].get(dim) != b["stamp"].get(dim):
+                    return _pair(b, a)
     return {"before": before[-1]["id"] if before else None, "after": None}
 
 

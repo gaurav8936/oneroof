@@ -53,7 +53,7 @@ Six tabs: Overview · Compare · Changes · Real history · Our tasks · Public 
 | Second Draft banner on drill-downs | drill-downs | One Draft tag by the title | Removed | every screen |
 | Your evals: Judges list with trust and labels to go | Your evals sidebar | Our tasks › the grader banner on its task + Check the grader | Moved | Our tasks |
 | Your evals: From past sessions / From a file of questions (coming) | Your evals sidebar | Our tasks › the two + New task tiles marked coming | Kept | Our tasks |
-| Your evals: A judge for prose answers | Your evals sidebar | + New ▾ › New grader | Moved | Our tasks |
+| Your evals: A judge for prose answers | Your evals sidebar | New test or task ▾ › New grader | Moved | Our tasks |
 | Explore: Judges shelf | Explore | A public benchmark › Judges shelf (opens Check the grader) | Kept | A public benchmark |
 | Explore: Run this… | Explore › benchmark | A public benchmark › Test a model on it… (Set up a test pre-filled) | Kept | A public benchmark |
 | Run: where its code runs (Docker, Modal, cloud sandboxes) | Run tab | Set up a test › 3 How many › Where its code runs | Kept | Set up a test |

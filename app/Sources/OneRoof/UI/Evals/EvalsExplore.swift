@@ -116,7 +116,7 @@ struct EvalsExploreTab: View {
                         if filter.shelf == .judges {
                             ForEach(board.judges) { j in judgeRow(j) }
                             if board.judges.isEmpty {
-                                Text("No graders yet: make one from + New ▾ › New grader.").ui(TypeScale.small).foregroundStyle(t.text3.color)
+                                Text("No graders yet: make one from " + EvalsNewMenu.path("New grader") + ".").ui(TypeScale.small).foregroundStyle(t.text3.color)
                             }
                         } else {
                             ForEach(shown) { b in row(b, on: b.id == selected(c, shown)?.id, runs: runCount(b)).id(b.id) }
@@ -160,8 +160,7 @@ struct EvalsExploreTab: View {
     }
 
     private func runCount(_ b: EvalBenchmark) -> Int {
-        let names = Set(b.tasks.map { EvalBenchmark.taskLabel($0.name) })
-        return board.results.filter { names.contains($0.task ?? "") }.count
+        EvalFinished.runs(taskNames: Set(b.tasks.map { EvalBenchmark.taskLabel($0.name) }), board.results).count   // QA m7: one count
     }
 
     private func row(_ b: EvalBenchmark, on: Bool, runs: Int) -> some View {
@@ -170,7 +169,10 @@ struct EvalsExploreTab: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(b.shortName).ui(TypeScale.row, on ? .semibold : .medium).foregroundStyle(t.text.color).lineLimit(1).help(b.name)
                     Spacer()
-                    if let n = b.questionCount { Text(n.formatted()).ui(TypeScale.caption, mono: true).foregroundStyle(t.text3.color) }
+                    if let n = b.questionCount {
+                        Text(n.formatted()).ui(TypeScale.caption, mono: true).foregroundStyle(t.text3.color)
+                            .evalHover(.n, EvalHover.questions(n))   // QA m14
+                    }
                 }
                 if let m = b.madeOf {
                     Text(m).ui(11.5).foregroundStyle(t.text2.color).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -274,8 +276,7 @@ struct EvalsBenchmarkPage: View {
     }
 
     private var myRuns: [EvalResult] {
-        let names = Set(benchmark.tasks.map { EvalBenchmark.taskLabel($0.name) })
-        return board.results.filter { names.contains($0.task ?? "") && $0.status == "done" }
+        EvalFinished.runs(taskNames: Set(benchmark.tasks.map { EvalBenchmark.taskLabel($0.name) }), board.results)
     }
 
     private func load() {

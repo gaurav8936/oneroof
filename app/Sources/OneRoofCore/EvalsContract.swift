@@ -266,7 +266,15 @@ public struct EvalChange: Decodable, Equatable, Identifiable, Sendable {
     public struct Tested: Decodable, Equatable, Sendable {
         public var before: String?
         public var after: String?
-        public init(before: String? = nil, after: String? = nil) { self.before = before; self.after = after }
+        /// Re-review #3: several rules commits fell between the two runs, so the pair covers all of them (short shas,
+        /// oldest first) and is credited to none. nil = the pair isolates this one change.
+        public var spans: [String]?
+        /// The task and task version both runs were on: the floor is read for that version (re-review #5).
+        public var task: String?
+        public var taskVersion: Int?
+        public init(before: String? = nil, after: String? = nil, spans: [String]? = nil, task: String? = nil, taskVersion: Int? = nil) {
+            self.before = before; self.after = after; self.spans = spans; self.task = task; self.taskVersion = taskVersion
+        }
     }
     public var at: String
     public var who: Who
@@ -277,6 +285,10 @@ public struct EvalChange: Decodable, Equatable, Identifiable, Sendable {
     public var id: String { at + "|" + what }
     /// Not tested yet / tested before only / before and after.
     public var testedBoth: Bool { tested?.before != nil && tested?.after != nil }
+    /// A before/after pair that covers several changes together (re-review #3): it can't tell which one moved the score.
+    public var isSpan: Bool { testedBoth && (tested?.spans?.count ?? 0) > 1 }
+    /// A before/after pair for this change alone: the only kind Changes draws as "did this change help?".
+    public var testedAlone: Bool { testedBoth && !isSpan }
     public var date: Date? { ISO8601DateFormatter().date(from: at) }
 }
 

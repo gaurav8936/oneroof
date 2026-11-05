@@ -417,7 +417,8 @@ public struct EvalSetList: Decodable, Equatable, Sendable {
         public var repoPath: String?
         public var id: String { name }
         public var kindTitle: String { kind == "triage" ? "bug triage" : kind == "fix-locator" ? "fix locator" : kind }
-        public var checkedBy: String { kind == "triage" ? "judged" : "checked by code" }
+        /// Every own set is scored by code (triage too: names a file the fix changed); the grader is a separate study.
+        public var checkedBy: String { "checked by code" }
         /// "oneroof · fix locator".
         public var title: String { "\(repo) · \(kindTitle)" }
     }

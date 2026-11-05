@@ -71,6 +71,9 @@ struct EvalsOneTestPage: View {
     }
     private var setupRow: EvalSetupRow? { lb?.rows.first { $0.run == runID } }
     private var stamp: EvalStamp? { setupRow?.stamp ?? store.stamps[runID]?.stamp }
+    private var againState: EvalRunPlan.AgainState {
+        EvalRunPlan.againState(hasResult: result != nil, stamp: stamp, stampsRead: setupRow?.stamp != nil ? true : store.stampsRead)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -166,8 +169,19 @@ struct EvalsOneTestPage: View {
                     Spacer(minLength: 8)
                     RoofButton("Compare with…") { compareWith() }.disabled(result?.status != "done")
                         .help("Compare, with this test picked; pick a second for the paired verdict")
-                    RoofButton("Test again") { if let r = result { nav.test(EvalRunPlan.again(r, stamp: stamp)) } }.disabled(result == nil)
-                        .help("Set up a test, pre-filled with the same settings; nothing starts until Start")
+                    VStack(alignment: .trailing, spacing: 2) {
+                        RoofButton("Test again") { if let r = result, let p = EvalRunPlan.again(r, stamp: stamp, state: againState) { nav.test(p) } }
+                            .disabled(againState == .reading)
+                            .help(againState == .reading ? "Reading this test's setup (model, rules) first"
+                                  : "Set up a test, pre-filled with the same settings; nothing starts until Start")
+                        // re-review #6: never a silent CLI-default / rules-off repeat
+                        if againState == .reading {
+                            Text(EvalRunPlan.againReading).ui(TypeScale.micro).foregroundStyle(t.text3.color)
+                        } else if againState == .unreadable {
+                            Text(EvalRunPlan.againUnreadable).ui(TypeScale.micro).foregroundStyle(t.needsText.color)
+                                .frame(maxWidth: 220, alignment: .trailing).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
                 extras
             }
@@ -450,7 +464,7 @@ struct EvalsOneTestPage: View {
             let calls = tr.messages.reduce(0) { $0 + $1.toolCalls.count }
             if calls > 0 { f.append("\(calls) tool call\(calls == 1 ? "" : "s") folded") }
         }
-        if let i = s.inputTokens, let o = s.outputTokens { f.append("\(i.formatted()) tokens in, \(o.formatted()) out") }
+        if let tok = EvalSampleTokens.text(input: s.inputTokens, output: s.outputTokens) { f.append(tok) }   // QA m11
         if let tm = s.time { f.append(String(format: "%.1f s", tm)) }
         return f.joined(separator: " · ")
     }

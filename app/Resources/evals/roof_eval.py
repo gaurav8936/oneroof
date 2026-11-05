@@ -119,6 +119,20 @@ AGENTS = ["claude_code", "codex_cli", "gemini_cli", "kimi_code", "opencode", "an
 AGENT_DEFAULT_TOKENS = {"input": 300000, "output": 15000}             # grader cost varies per answer and is not capped mid-run, so the pre-run check pads it
 
 
+def db_retry(fn):
+    """A reader of evals.db retries once on sqlite3.OperationalError (QA blocker: a read that met a rebuild mid-swap)."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapped(*a, **k):
+        try:
+            return fn(*a, **k)
+        except sqlite3.OperationalError:
+            time.sleep(0.2)
+            return fn(*a, **k)
+    return wrapped
+
+
 def where_ready(where: str) -> bool:
     if where == "local":
         return True
@@ -535,6 +549,7 @@ def history(task: str) -> list[sqlite3.Row]:
             return []   # an index from before this version: rebuilt by the next `index`
 
 
+@db_retry
 def grader_usage(task: str, model: str) -> tuple[dict, str]:
     """Tokens per answer of the OTHER models a benchmark called (its grader), from earlier runs of the task."""
     runs = history(task)
@@ -946,8 +961,7 @@ def work(rid: str, env: dict | None = None, retry_log: str | None = None) -> int
         rc = p.wait()
     index()
     # The log decides: Inspect can exit 0 with every call failed (e.g. a rejected key) and status 'error'.
-    with sqlite3.connect(DB) as db:
-        row = db.execute("SELECT log_status, error FROM runs WHERE id=?", (rid,)).fetchone()
+    row = _log_status(rid)
     log_status, err = row if row else (None, None)
     status = final_status(rc, log_status, (d / "CANCEL").exists())
     if status != "done" and not err:
@@ -1092,6 +1106,12 @@ def cmd_run_anyway(argv):
 def latest_log(d: Path) -> Path | None:
     logs = sorted(d.glob("*.eval"), key=lambda p: p.stat().st_mtime)
     return logs[-1] if logs else None
+
+
+@db_retry
+def _log_status(rid: str):
+    with sqlite3.connect(DB) as db:
+        return db.execute("SELECT log_status, error FROM runs WHERE id=?", (rid,)).fetchone()
 
 
 def cmd_resume(argv):
@@ -1246,10 +1266,47 @@ def set_of(task_ref: str) -> tuple:
     return (m.group(1), int(m.group(2))) if m else (None, None)
 
 
+def _runs_newest_mtime(dirs: list[Path]) -> float:
+    """The newest change to any file in a run's folder (run.json, its Inspect logs, its answers): an index built after
+    it holds every run."""
+    newest = 0.0
+    for d in dirs:
+        for f in [d, *d.iterdir()] if d.is_dir() else []:
+            try:
+                newest = max(newest, f.stat().st_mtime)
+            except OSError:
+                pass
+    return newest
+
+
 def index() -> int:
-    """Rebuild evals.db from the run folders and their Inspect logs (the logs are the truth)."""
+    """Rebuild evals.db from the run folders and their Inspect logs (the logs are the truth).
+
+    QA blocker (2.0.4): the screens start several engine calls at once (overview, a leaderboard per task, changes, xray),
+    and each used to rebuild into ONE shared evals.tmp, unlinking and replacing each other's half-written file ("disk
+    I/O error", "0 finished runs"). Now one rebuild at a time (an fcntl lock on evals.db.lock), each into its own temp
+    file (pid + random suffix), swapped in atomically. A caller that had to wait reuses the index the other one just
+    built when it is newer than both its own call and every run, instead of rebuilding again."""
+    import fcntl
     EVALS.mkdir(parents=True, exist_ok=True)
-    dirs = sorted(p.parent for p in RUNS.glob("*/run.json")) if RUNS.exists() else []
+    asked = time.time()
+    with open(EVALS / "evals.db.lock", "a+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            waited = False
+        except OSError:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            waited = True
+        dirs = sorted(p.parent for p in RUNS.glob("*/run.json")) if RUNS.exists() else []
+        if waited and DB.exists():
+            built = DB.stat().st_mtime
+            if built >= asked and built > _runs_newest_mtime(dirs):
+                return len(dirs)
+        return _rebuild(dirs)
+
+
+def _rebuild(dirs: list[Path]) -> int:
+    """index()'s body, under its lock."""
     logs = {d: latest_log(d) for d in dirs}
     heads = {}
     paths = [str(p) for p in logs.values() if p]
@@ -1268,36 +1325,50 @@ def index() -> int:
         known = [mu["cost"] for mu in h.get("usage", []) if mu["cost"] is not None]
         if h.get("cost") is None and known:
             h["cost"] = sum(known)
-    tmp = DB.with_suffix(".tmp")
-    tmp.unlink(missing_ok=True)
-    with sqlite3.connect(tmp) as db:
-        db.executescript(SCHEMA)
-        for d in dirs:
-            r = read_json(d / "run.json", {})
-            h = heads.get(str(logs[d]), {}) if logs[d] else (r.get("summary") or {})   # lm-eval runs: no Inspect log
-            pk = h.get("packages") or {}
-            sname, sver = set_of(r.get("task_ref") or "")
-            db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
-                r.get("id"), r.get("task"), h.get("task_version"), r.get("model"), r.get("status"),
-                h.get("started") or r.get("started"), h.get("finished") or r.get("finished"), r.get("limit"),
-                r.get("epochs"), r.get("seed"), r.get("temperature"), r.get("max_cost"),
-                (r.get("estimate") or {}).get("usd"), h.get("cost"), h.get("input_tokens"), h.get("output_tokens"),
-                h.get("samples_total"), h.get("samples_done"), h.get("dataset"), h.get("dataset_size"),
-                pk.get("inspect_ai"), pk.get("inspect_evals"), str(logs[d]) if logs[d] else r.get("results_file"),
-                r.get("framework") or "inspect",
-                h.get("status"), redact(h.get("error") or r.get("error")), r.get("where") or "local", h.get("sample_seconds"), r.get("agent"),
-                sname, sver))
-            for sid, ep, v in h.get("samples") or []:
-                db.execute("INSERT OR REPLACE INTO sample_scores VALUES (?,?,?,?)", (r.get("id"), sid, ep, v))
-            for mu in h.get("usage", []):
-                db.execute("INSERT OR REPLACE INTO model_usage VALUES (?,?,?,?,?)",
-                           (r.get("id"), mu["model"], mu["input_tokens"], mu["output_tokens"], mu["cost"]))
-            for s in h.get("scores", []):
-                for m, v in s["metrics"].items():
-                    if isinstance(v, (int, float)):
-                        db.execute("INSERT OR REPLACE INTO scores VALUES (?,?,?,?)", (r.get("id"), s["scorer"], m, v))
-    tmp.replace(DB)
+    tmp = DB.with_name(f"{DB.name}.{os.getpid()}.{random.randrange(1 << 32):08x}.tmp")   # this caller's own file
+    try:
+        _write_index(tmp, dirs, logs, heads)
+        tmp.replace(DB)
+    finally:
+        tmp.unlink(missing_ok=True)
     return len(dirs)
+
+
+def _write_index(tmp: Path, dirs: list[Path], logs: dict, heads: dict):
+    db = sqlite3.connect(tmp)
+    try:
+        _fill_index(db, dirs, logs, heads)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _fill_index(db, dirs: list[Path], logs: dict, heads: dict):
+    db.executescript(SCHEMA)
+    for d in dirs:
+        r = read_json(d / "run.json", {})
+        h = heads.get(str(logs[d]), {}) if logs[d] else (r.get("summary") or {})   # lm-eval runs: no Inspect log
+        pk = h.get("packages") or {}
+        sname, sver = set_of(r.get("task_ref") or "")
+        db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+            r.get("id"), r.get("task"), h.get("task_version"), r.get("model"), r.get("status"),
+            h.get("started") or r.get("started"), h.get("finished") or r.get("finished"), r.get("limit"),
+            r.get("epochs"), r.get("seed"), r.get("temperature"), r.get("max_cost"),
+            (r.get("estimate") or {}).get("usd"), h.get("cost"), h.get("input_tokens"), h.get("output_tokens"),
+            h.get("samples_total"), h.get("samples_done"), h.get("dataset"), h.get("dataset_size"),
+            pk.get("inspect_ai"), pk.get("inspect_evals"), str(logs[d]) if logs[d] else r.get("results_file"),
+            r.get("framework") or "inspect",
+            h.get("status"), redact(h.get("error") or r.get("error")), r.get("where") or "local", h.get("sample_seconds"), r.get("agent"),
+            sname, sver))
+        for sid, ep, v in h.get("samples") or []:
+            db.execute("INSERT OR REPLACE INTO sample_scores VALUES (?,?,?,?)", (r.get("id"), sid, ep, v))
+        for mu in h.get("usage", []):
+            db.execute("INSERT OR REPLACE INTO model_usage VALUES (?,?,?,?,?)",
+                       (r.get("id"), mu["model"], mu["input_tokens"], mu["output_tokens"], mu["cost"]))
+        for s in h.get("scores", []):
+            for m, v in s["metrics"].items():
+                if isinstance(v, (int, float)):
+                    db.execute("INSERT OR REPLACE INTO scores VALUES (?,?,?,?)", (r.get("id"), s["scorer"], m, v))
 
 
 def interval(value: float, n: int | None, stderr: float | None, bounded: bool) -> tuple[float, float, str]:
@@ -1335,6 +1406,7 @@ def stderr_for(s: dict, scores: list[dict]) -> float | None:
     return plain[0]["value"] if len(plain) == 1 else None
 
 
+@db_retry
 def results_for(rid: str | None = None) -> list[dict]:
     if not DB.exists():
         index()
@@ -2444,7 +2516,7 @@ def overview(since: str | None = None) -> dict:
         key = ("set", name, s["version"])
         cards.append({"key": f"{name}@v{s['version']}", "set": name, "version": s["version"], "kind": s.get("kind"),
                       "title": eval_title(key, sets), "cases": s.get("count"),
-                      "checked_by": "judged" if s.get("kind") == "triage" else "code",
+                      "checked_by": "code",   # QA m12: triage too is scored by code (fix_located), as leaderboard says
                       "task_file": s.get("task_file"),
                       "floor": {"right": s.get("baseline_frequent_files"), "of": s.get("count")},
                       "rows": leaderboard_rows(groups.get(key, []))})

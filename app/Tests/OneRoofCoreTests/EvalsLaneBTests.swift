@@ -147,7 +147,8 @@ final class EvalsLaneBTests: XCTestCase {
         XCTAssertEqual(EvalRulesHash.files(lsTree: ls), ["app/CLAUDE.md", "docs/CLAUDE.local.md", "templates/shared/AGENTS.md", "templates/workspace/CLAUDE.md"])
         // sha256 over the files' bytes in path order, first 7 hex (python: hashlib.sha256(b"# A\n" + b"# B\n").hexdigest()[:7])
         XCTAssertEqual(EvalRulesHash.short([Data("# A\n".utf8), Data("# B\n".utf8)]), "ffae83f")
-        XCTAssertNil(EvalRulesHash.short([]))
+        XCTAssertEqual(EvalRulesHash.short([]), EvalRulesHash.empty)   // re-review P2: matches the engine's empty rules set
+        XCTAssertEqual(EvalRulesHash.empty, "e3b0c44")
     }
 
     // MARK: Our tasks · One task
@@ -228,7 +229,12 @@ final class EvalsLaneBTests: XCTestCase {
         XCTAssertEqual(EvalGraderWords.subtitle(items: 40, model: tr.judgeModel, version: 1, n: 30),
                        "Grades 40 notes · grading model gpt-5-mini · v1 · checked against 30 held-back labels")
         let b = try XCTUnwrap(EvalGraderWords.banner(tr))
-        XCTAssertTrue(b.hasPrefix("It passes 47 % of notes that should fail."))
+        XCTAssertTrue(b.hasPrefix("It passes 47 % of notes that should fail (by another model's labels)."), b)
+        // QA m5: Our tasks says whose labels the agreement is against
+        XCTAssertEqual(EvalGraderWords.agreesLine(tr), "agrees 70 % with another model's labels · not trusted yet · \(tr.labelled) of \(tr.items) labelled by you")
+        var mine = tr; mine.reference = "you"
+        XCTAssertTrue(EvalGraderWords.agreesLine(mine).hasPrefix("agrees 70 % with your labels"))
+        XCTAssertEqual(EvalGraderWords.agreementHover(tr), "Agrees with another model's labels (they never count as yours) on 21 of 30 held-back notes. Label 10 notes yourself before trusting its marks.")   // QA m14
         XCTAssertTrue(b.contains("still checked by code"))
         XCTAssertTrue(b.hasSuffix("Label 10 notes yourself to check it."))
     }

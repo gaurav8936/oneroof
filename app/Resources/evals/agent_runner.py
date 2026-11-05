@@ -371,33 +371,60 @@ def agent_version(binary: str | None) -> str | None:
 
 
 # ── rules on / off (EV-1) ─────────────────────────────────────────────────────────────────────────────────────────
+def rule_files_at(repo: str | None, rev: str = "HEAD") -> list[str] | None:
+    """The instruction files tracked at a revision of the repo (any folder), sorted; None = the revision cannot be read."""
+    if not repo or not Path(repo, ".git").exists():
+        return None
+    r = git(repo, "ls-tree", "-r", "--name-only", rev)
+    return sorted(p for p in r.stdout.splitlines() if p.rsplit("/", 1)[-1] in RULE_NAMES) if r.returncode == 0 else None
+
+
 def rule_files_at_head(repo: str | None) -> list[str]:
     """The instruction files tracked at the repo's HEAD (any folder), sorted."""
-    if not repo or not Path(repo, ".git").exists():
-        return []
-    r = git(repo, "ls-tree", "-r", "--name-only", "HEAD")
-    return sorted(p for p in r.stdout.splitlines() if p.rsplit("/", 1)[-1] in RULE_NAMES) if r.returncode == 0 else []
+    return rule_files_at(repo, "HEAD") or []
+
+
+# Re-review P2: "rules on" with no rules files is a real, recorded state. Its hash is the hash of no bytes (sha256 of
+# the empty string, first 7 hex) with rules_files [], never null (null = not recorded).
+EMPTY_RULES_HASH = "e3b0c44"
+
+
+def rules_state(repo: str | None, rev: str = "HEAD") -> tuple | None:
+    """(rules_hash, [(path, bytes)]) of the instruction files at a revision: sha256 over their bytes, in path order,
+    first 7 hex (EMPTY_RULES_HASH when there are none). The ONE function both a run's capture and `changes` use, so a
+    run's recorded hash can be checked against the state before and after a commit. None = the revision is unreadable."""
+    import hashlib
+    paths = rule_files_at(repo, rev)
+    if paths is None:
+        return None
+    h, files = hashlib.sha256(), []
+    for path in paths:
+        b = subprocess.run(["git", "-C", repo, "show", f"{rev}:{path}"], capture_output=True)
+        if b.returncode != 0:
+            continue
+        h.update(b.stdout)
+        files.append((path, b.stdout))
+    return h.hexdigest()[:7], files
 
 
 def capture_rules(repo: str | None, d: Path) -> dict:
     """Rules "on": the HEAD's instruction files copied into <run>/rules (so every case gets the same bytes, even if
-    HEAD moves during the run). Returns the stamp's rules_hash (first 7 hex of sha256 over their bytes, in path order),
-    rules_commit and rules_files."""
-    import hashlib
-    files, h = [], hashlib.sha256()
+    HEAD moves during the run). Returns the stamp's rules_hash (rules_state: first 7 hex of sha256 over their bytes, in
+    path order; EMPTY_RULES_HASH with rules_files [] when HEAD has none), rules_commit and rules_files. No repo (or an
+    unreadable HEAD) = not recorded: rules_hash null."""
     commit = None
+    state = None
     if repo and Path(repo, ".git").exists():
         c = git(repo, "rev-parse", "--short=7", "HEAD")
         commit = c.stdout.strip() or None if c.returncode == 0 else None
-        for path in rule_files_at_head(repo):
-            b = subprocess.run(["git", "-C", repo, "show", f"HEAD:{path}"], capture_output=True)
-            if b.returncode != 0:
-                continue
-            (d / "rules").mkdir(parents=True, exist_ok=True)
-            safe_write(d / "rules", path, b.stdout)
-            h.update(b.stdout)
-            files.append(path)
-    return {"rules_hash": h.hexdigest()[:7] if files else None, "rules_commit": commit, "rules_files": files}
+        state = rules_state(repo, "HEAD")
+    if state is None:
+        return {"rules_hash": None, "rules_commit": commit, "rules_files": []}
+    rules_hash, files = state
+    for path, data in files:
+        (d / "rules").mkdir(parents=True, exist_ok=True)
+        safe_write(d / "rules", path, data)
+    return {"rules_hash": rules_hash, "rules_commit": commit, "rules_files": [p for p, _ in files]}
 
 
 class UnsafePath(RuntimeError):

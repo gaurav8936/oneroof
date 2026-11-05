@@ -163,11 +163,11 @@ struct EvalsRealHistoryView: View {
                     Text("No agent name").ui(TypeScale.section, .bold).foregroundStyle(t.text.color)
                     Text("\(u.commits) commits" + (u.lines.map { " · \($0.formatted()) lines" } ?? "")).ui(TypeScale.small).foregroundStyle(t.text2.color)
                 }
-                ZStack(alignment: .leading) {
-                    EvalsAHatch().frame(height: 24)
-                    Text("Probably Codex, Kimi and hand edits: can't be split by agent").ui(TypeScale.caption, .semibold).foregroundStyle(t.text2.color)
-                        .padding(.horizontal, 8)
-                }
+                Text(EvalsAHistory.untaggedLine).ui(TypeScale.caption, .semibold).foregroundStyle(t.text2.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    .background(EvalsAHatch())
                 Text("No agent in Co-Authored-By or author, so these commits are never credited to an agent. For the record: \(EvalHistoryRow.pct(u.fixup)) followed by a fix, \(EvalHistoryRow.pct(u.churn)) rewritten in \(horizon) days, \(EvalHistoryRow.pct(u.revert)) reverted.")
                     .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 Text("To read them: have every agent sign its commits. LAB-2241: sessions One Roof starts set ONEROOF_AGENT, and the commit hook adds Co-Authored-By with the agent's name.")

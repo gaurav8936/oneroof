@@ -27,7 +27,12 @@ struct EvalsAllResultsView: View {
                 } else {
                     Card(padding: 12) {
                         VStack(alignment: .leading, spacing: 8) {
-                            ScrollView(.horizontal) { grid(g) }
+                            // QA m6: the last column was cut off with no cue; the bar always shows, and it says so
+                            ScrollView(.horizontal, showsIndicators: true) { grid(g).padding(.trailing, 12).padding(.bottom, 12) }
+                                .scrollIndicators(.visible, axes: .horizontal)
+                            if g.columns.count > 6 {
+                                Text("\(g.columns.count) columns: scroll sideways for all of them.").ui(TypeScale.caption).foregroundStyle(t.text2.color)
+                            }
                             Text("Blue columns are our tasks; the rest are public. A grader column shows how often the grader agrees with your labels, not a score.")
                                 .ui(TypeScale.caption).foregroundStyle(t.text3.color)
                         }
@@ -93,7 +98,7 @@ struct EvalsAllResultsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("Every test").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
-                    Text("\(g.finished) finished across \(g.tasks) task\(g.tasks == 1 ? "" : "s") · newest first").ui(TypeScale.small).foregroundStyle(t.text2.color)
+                    Text(EvalFinished.text(board.results) + " · newest first").ui(TypeScale.small).foregroundStyle(t.text2.color)
                 }
                 ForEach(shown) { r in runRow(r); Divider() }
                 if runs.count > shown.count {
