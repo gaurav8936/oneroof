@@ -63,7 +63,10 @@ public struct EvalLessonBook: Decodable, Equatable, Sendable {
 public enum EvalLessons {
     public static let knownRoutes = ["overview", "your-evals", "your-evals/judge", "explore", "explore/anatomy",
                                      "explore/questions", "explore/scores", "run", "results", "results/compare",
-                                     "results/all-by-all", "results/run"]
+                                     "results/all-by-all", "results/run",
+                                     // 2.0.5 (LAB-2261): v3 pages by their self-test names, and One Roof › Loops
+                                     "launch", "oneshot-public", "oneshot-ours", "oneshot-loops", "agent-ours", "agent-loops",
+                                     "agent-public", "loops"]
 
     /// A question's "Lesson:" line (from the benchmark's anatomy) → the lesson it is about.
     public static func forMarking(_ text: String) -> String {

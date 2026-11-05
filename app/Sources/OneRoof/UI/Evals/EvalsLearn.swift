@@ -257,6 +257,9 @@ enum EvalsLearnStore {
 
     /// A lesson's "Where this shows up" link (EvalLessons.knownRoutes).
     static func go(_ route: String, nav: EvalsNav, board: EvalsBoard) {
+        // 2.0.5 (LAB-2261): a v3 page by its self-test name; "loops" opens One Roof › Loops.
+        if route == "loops" { nav.sheet = nil; nav.openLoops(nil); return }
+        if let v3 = EvalsV3Screen.allCases.first(where: { $0.selfTestName == route }) { nav.open(v3); return }
         // 2.0.3 route keys (lessons.json, EvalLessons.knownRoutes) → their 2.0.4 homes.
         switch route {
         case "overview": nav.go(EvalsTabV2.overview)
@@ -288,7 +291,7 @@ struct EvalsTryIt: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(widget == "harness" || widget == "golden" || widget == "frozen" ? "Picture it" : "Try it")
+                    Text(Self.pictures.contains(widget) ? "Picture it" : "Try it")
                         .ui(TypeScale.body, .bold).foregroundStyle(t.text.color)
                     Text(prompt).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 }
@@ -297,6 +300,9 @@ struct EvalsTryIt: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+
+    /// The widgets that are a picture, not maths to play with.
+    static let pictures: Set<String> = ["harness", "golden", "frozen", "jobKinds", "loopRuns"]
 
     private var prompt: String {
         switch widget {
@@ -314,6 +320,8 @@ struct EvalsTryIt: View {
         case "cost": return "What each solved task costs."
         case "golden": return "How a fix in your history becomes a question."
         case "frozen": return "What happens when the set changes."
+        case "jobKinds": return "Two kinds of job, and what tests each."
+        case "loopRuns": return "What a loop's runs can show, and what they can't yet."
         case "saturation": return "How much room is left above the best score?"
         case "contamination": return "An old benchmark and a fresh one of the same kind."
         default: return ""
@@ -349,6 +357,14 @@ struct EvalsTryIt: View {
                                             ("Build v2", "v1's cases plus the fixes since, previewed first"),
                                             ("v2 · frozen", "A new version with its own results"),
                                             ("Compare", "Only runs on the same version, side by side")])
+        case "jobKinds": StepsPicture(steps: [("One-shot job", "One prompt to a model, one answer. Tested as the model alone"),
+                                              ("Public tests", "Others' questions on the same model: context for one-shot jobs"),
+                                              ("Agent job", "Claude Code or Codex on our code, with our rules, skills and tools"),
+                                              ("Our tests", "The only fair test of an agent job: our tasks, rules on (or clean to compare)")])
+        case "loopRuns": StepsPicture(steps: [("A run", "Every round of a loop, from its outcome ledger"),
+                                              ("Ran · failed · dry", "Counted today, for every loop that uses a model"),
+                                              ("A good run", "By kind: right and read · verdicts match · gaps real · spoke up · change stayed in"),
+                                              ("Not recorded", "Until each run is judged; loops with no model are not judged here")])
         default: EmptyView()
         }
     }

@@ -332,16 +332,67 @@ final class EvalsLaneBTests: XCTestCase {
         for s in EvalsScreen.allCases { XCTAssertNotNil(EvalsScreen.selfTest(s.selfTestName), s.selfTestName) }
     }
 
-    func test_LAB2242_the_coverage_doc_lists_every_row() throws {
+    private func repoDoc(_ name: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("docs/evals-v2-coverage.md")
-        let doc = try String(contentsOf: url, encoding: .utf8)
+            .deletingLastPathComponent().appendingPathComponent("docs/" + name)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// LAB-2261: the map now lives in docs/evals-v3-coverage.md (every row, both releases); the 2.0.4 page stays as it was.
+    func test_LAB2242_the_coverage_doc_lists_every_row() throws {
+        let doc = try repoDoc("evals-v3-coverage.md")
         for r in EvalsCoverage.rows {
             XCTAssertTrue(doc.contains("| \(r.feature) | \(r.was) | \(r.home) | \(r.status.rawValue) |"), r.feature)
         }
         for n in EvalsCoverage.oldSelfTestNames { XCTAssertTrue(doc.contains("`\(n)`"), n) }
         XCTAssertFalse(doc.contains("/Users/"), "public repo: no private paths")
+        // The 2.0.4 page is unchanged: it still lists every 2.0.3 → 2.0.4 row.
+        let v2 = try repoDoc("evals-v2-coverage.md")
+        for r in EvalsCoverage.v2Rows {
+            XCTAssertTrue(v2.contains("| \(r.feature) | \(r.was) | \(r.home) | \(r.status.rawValue) |"), r.feature)
+        }
     }
+
+    // MARK: Coverage map v3 (LAB-2261)
+
+    func test_LAB2261_every_2_0_4_element_has_a_2_0_5_home_and_every_v3_screen_is_one() {
+        let v3 = EvalsCoverage.v3Rows
+        XCTAssertTrue(v3.allSatisfy { $0.release == .v3 })
+        XCTAssertTrue(EvalsCoverage.v2Rows.allSatisfy { $0.release == .v2 && ($0.screen == nil || $0.v3 != nil) })
+        XCTAssertEqual(v3.filter { $0.status != .added }.count, 330)   // the 2.0.4 inventory: 330 elements, one row each
+        XCTAssertEqual(EvalsCoverage.rows.count, v3.count + EvalsCoverage.v2Rows.count)
+        XCTAssertEqual(EvalsCoverage.rows.count, Set(EvalsCoverage.rows.map(\.id)).count, "one row per feature, across both releases")
+        XCTAssertFalse(v3.contains { $0.status == .removed }, "nothing from 2.0.4 is removed")
+        for r in v3 { XCTAssertFalse(r.home.isEmpty, r.feature); XCTAssertFalse(r.home.contains("|"), r.feature) }
+        let homes = Set(EvalsCoverage.rows.compactMap(\.v3))
+        for s in EvalsV3Screen.allCases { XCTAssertTrue(homes.contains(s), s.rawValue) }
+        // The six 2.0.4 tabs, each at its 2.0.5 home.
+        func home(_ f: String) -> String? { v3.first { $0.feature == f }?.home }
+        XCTAssertEqual(v3.first { $0.feature == "Header: six tabs" }?.v3, .launch)
+        XCTAssertTrue(home("Compare: task cards")?.contains("One-shot jobs › Our tests and Agent jobs › Our tests") == true)
+        XCTAssertEqual(v3.first { $0.feature == "Compare: Agent × model grid" }?.v3, .agentOurs)
+        XCTAssertTrue(home("Changes: intro line")?.hasPrefix("Agent jobs › Changes") == true)
+        XCTAssertTrue(home("Real history: repo picker (several repos, Add a repo, Back to our tasks' repos)")?.hasPrefix("Agent jobs › Real history") == true)
+        XCTAssertEqual(v3.first { $0.feature == "Overview: question 3, what git says" }?.v3, .realHistory)
+        XCTAssertTrue(home("Public benchmarks: headline")?.contains("Public agent benchmarks") == true)
+        // The 2.0.5 additions.
+        let added = v3.filter { $0.status == .added }.map(\.feature).joined(separator: " | ")
+        for k in ["Two kinds of job", "Evidence bars", "Loop runs", "no model", "Breadcrumb", "⌃⌥0–8", "Lesson: One-shot jobs and agent jobs",
+                  "Lesson: Loop runs as evidence", "the commits behind a count"] {
+            XCTAssertTrue(added.contains(k), k)
+        }
+        XCTAssertFalse(added.lowercased().contains("keychain"), "the Keychain fix is not a coverage row")
+    }
+
+    func test_LAB2261_the_v3_doc_lists_every_selftest_name_and_where_each_old_one_opens() throws {
+        let doc = try repoDoc("evals-v3-coverage.md")
+        for s in EvalsV3Screen.allCases { XCTAssertTrue(doc.contains("`\(s.selfTestName)`"), s.selfTestName) }
+        for n in EvalsCoverage.oldSelfTestNames + EvalsCoverage.v204SelfTestNames {
+            let to = try XCTUnwrap(EvalsV3Screen.selfTest(n), n)
+            XCTAssertTrue(doc.contains("| `\(n)` | \(to.screen.selfTestName)"), n)
+        }
+    }
+
     // MARK: Real history commit lists (LAB-2254)
 
     func test_LAB2254_commit_list_decodes_the_engine_answer_and_names_itself() throws {
