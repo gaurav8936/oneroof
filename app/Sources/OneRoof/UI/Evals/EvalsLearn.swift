@@ -138,8 +138,8 @@ struct EvalsLearnV2: View {
                         Text(r.rangeText).ui(TypeScale.small).foregroundStyle(r.small ? t.needsText.color : t.text.color)
                             .frame(width: 130, alignment: .leading)
                             .evalHover(.range, EvalHover.range(score: r.score, n: r.n, lo: r.lo, hi: r.hi))
-                        Button { nav.openRun(r.run) } label: { Text("open ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
-                            .buttonStyle(.plain).accessibilityLabel("Open \(r.title)")
+                        RoofButton("Open ›") { nav.openRun(r.run) }.fixedSize()
+                            .accessibilityLabel("Open \(r.title)")
                     }
                 }
                 if let s = ex.sentence {

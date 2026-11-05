@@ -154,17 +154,15 @@ struct EvalsLaunchView: View {
         }
     }
 
-    /// D9: the 2.0.4 Overview's other two questions, and every result at once, one click from here.
+    /// D9: the 2.0.4 Overview's three questions (answer, what a test records today, "To answer it properly"), kept whole,
+    /// and every result at once, one click from here.
     private var answers: some View {
-        HStack(alignment: .top, spacing: 12) {
-            EvalsGoTile(title: "Did my last change help?", detail: "Your rule and skill changes from git, and vendor changes, with before / after tests.",
-                        symbol: "arrow.triangle.branch") { nav.open(.changes) }
-            EvalsGoTile(title: "What does git say about our real work?", detail: "How often each agent's commits needed a fix, were rewritten or reverted.",
-                        symbol: "clock.arrow.circlepath") { nav.open(.realHistory) }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Three questions, answered from our own runs").ui(TypeScale.title, .bold).foregroundStyle(t.text.color).padding(.top, 8)
+            EvalsOverviewTab(board: board, nav: nav, embedded: true)
             EvalsGoTile(title: "Every result, one grid", detail: "Every model and agent on every task, every test, export to CSV or JSON.",
                         symbol: "square.grid.3x3") { nav.open(.allResults) }
         }
-        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
