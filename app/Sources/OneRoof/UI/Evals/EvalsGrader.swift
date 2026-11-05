@@ -20,7 +20,7 @@ struct EvalsGraderView: View {
         if let n = name ?? board.judges.first?.name {
             EvalsGraderPage(board: board, nav: nav, name: n, first: first)
         } else {
-            Text(board.judges.isEmpty ? "No grader yet: make one from + New ▾ › New grader." : "Reading your graders…")
+            Text(board.judges.isEmpty ? "No grader yet: make one from " + EvalsNewMenu.path("New grader") + "." : "Reading your graders…")
                 .ui(TypeScale.body).foregroundStyle(t.text2.color).padding(24)
         }
     }

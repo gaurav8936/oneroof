@@ -22,6 +22,8 @@ struct EvalsChangesView: View {
         var toWrong: [String]
         var compare: EvalCompareResult?
         var error: String?
+        /// The blind-guess floor of the pair's own task version, read by task + version (re-review #5).
+        var floor: EvalsAChanges.Floor = .reading
     }
 
     var body: some View {
@@ -105,7 +107,7 @@ struct EvalsChangesView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(EvalsAChanges.status(c)).ui(TypeScale.caption).foregroundStyle(c.testedBoth ? t.diffAddText.color : t.text2.color).frame(width: 150, alignment: .leading)
+            Text(EvalsAChanges.status(c)).ui(TypeScale.caption).foregroundStyle(c.testedAlone ? t.diffAddText.color : t.text2.color).frame(width: 150, alignment: .leading)
             Button { testBeforeAfter(c) } label: { Text("Test before & after").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color) }
                 .buttonStyle(.plain).help("Set up a test pre-filled with the same setup and task; nothing starts until Start")
         }
@@ -140,7 +142,7 @@ struct EvalsChangesView: View {
                     squaresRow("Before", p.before)
                     squaresRow("After", p.after)
                     EvalsASquaresLegend(ring: true)
-                    verdictLine(p, floor: EvalsAChanges.floor(before: p.change.tested?.before, after: p.change.tested?.after, boards: boards))
+                    verdictLine(p, floor: p.floor)
                 } else {
                     Text("When a change has a stamped test on each side, it shows here: the same frozen bugs before and after, every bug that flipped outlined, and a verdict chosen by rule from the paired range (“probably helped, not proven” while the range still includes no change). Nothing is drawn until real tests exist.")
                         .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
@@ -158,7 +160,7 @@ struct EvalsChangesView: View {
         }
     }
 
-    private func verdictLine(_ p: Pair, floor: Double?) -> some View {
+    private func verdictLine(_ p: Pair, floor: EvalsAChanges.Floor) -> some View {
         // review P2 #5: the floor of the pair's task version and each side's own Wilson bounds go into the rule
         let v = EvalsAChanges.verdict(before: p.before, after: p.after, compare: p.compare, floor: floor)
         let lead = EvalsAChanges.lead(diff: p.compare?.diff ?? 0, verdict: v)
@@ -174,7 +176,8 @@ struct EvalsChangesView: View {
 
     /// The newest change with a test on both sides: its two runs' cases and the paired compare.
     private func loadPair() {
-        guard case .success(let cs)? = store.changes, let c = cs.first(where: \.testedBoth),
+        // a pair that covers several changes together is never drawn as one change's before/after (re-review #3)
+        guard case .success(let cs)? = store.changes, let c = cs.first(where: \.testedAlone),
               let before = c.tested?.before, let after = c.tested?.after else { pair = nil; return }
         board.caseResults(run: before) { b in
             board.caseResults(run: after) { a in
@@ -183,6 +186,14 @@ struct EvalsChangesView: View {
                 func sq(_ xs: [EvalCaseResult]) -> [EvalsASquare] { EvalsASquares.fromCaseResults(xs, order: order) }
                 let f = EvalsASquares.flips(before: sq(b), after: sq(a))
                 pair = Pair(change: c, before: f.before, after: f.after, toRight: f.toRight, toWrong: f.toWrong)
+                if let q = EvalsAChanges.floorQuery(c) {   // the floor of the pair's task version, never the latest board's
+                    board.ask(q, EvalSetupLeaderboard.self, timeout: 120) { r in
+                        guard pair?.change == c else { return }
+                        if case .success(let lb) = r { pair?.floor = EvalsAChanges.floor(of: c, board: lb) } else { pair?.floor = .unknown }
+                    }
+                } else {
+                    pair?.floor = .unknown
+                }
                 board.ask(["compare", after, before], EvalCompareResult.self, timeout: 120) { r in
                     switch r {
                     case .success(let x): pair?.compare = x

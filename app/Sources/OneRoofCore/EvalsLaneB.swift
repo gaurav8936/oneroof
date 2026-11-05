@@ -188,12 +188,27 @@ public enum EvalGraderWords {
         if need > 0 { s.append("Label \(need) note\(need == 1 ? "" : "s") yourself to check it.") }
         return s.joined(separator: " ")
     }
+    /// The labels the grader is measured against came from a model, not from you (QA m5).
+    public static func byModel(_ tr: EvalJudgeTrust) -> Bool { tr.reference != "you" && tr.reference != "owner" }
+    /// Our tasks' grader line: "agrees 70 % with another model's labels · not trusted yet · 0 of 40 labelled by you".
+    public static func agreesLine(_ tr: EvalJudgeTrust) -> String {
+        "agrees \(EvalJudgeTrust.pct(tr.agreement)) " + (byModel(tr) ? "with another model's labels" : "with your labels")
+            + " · \(verdictTitle(tr).lowercased()) · \(tr.labelled) of \(tr.items) labelled by you"
+    }
+    /// The hover card on that line (QA m14): what the agreement is measured on, and against whose labels.
+    public static func agreementHover(_ tr: EvalJudgeTrust) -> String {
+        guard tr.agreement != nil else { return "Agreement with labels: not measured yet." }
+        let who = byModel(tr) ? "another model's labels (they never count as yours)" : "your labels"
+        return "Agrees with \(who) on \(ofText(tr.agreement, tr.n)) held-back notes. Label 10 notes yourself before trusting its marks."
+    }
     /// The Our tasks banner: "The grading model isn't trusted yet. It passes 47 % of notes that should fail. Label 10
     /// notes yourself to check it." nil when it is trusted.
     public static func banner(_ tr: EvalJudgeTrust) -> String? {
         guard !tr.ready else { return nil }
         var s = "It is a separate study of these notes; the score above is still checked by code."
-        if let tnr = tr.tnr, tnr < 0.7 { s = "It passes \(pct(1 - tnr)) of notes that should fail. " + s }
+        if let tnr = tr.tnr, tnr < 0.7 {
+            s = "It passes \(pct(1 - tnr)) of notes that should fail" + (byModel(tr) ? " (by another model's labels)" : "") + ". " + s
+        }
         let need = max(0, 10 - (tr.heldBackYours ?? 0))
         if need > 0 { s += " Label \(need) notes yourself to check it." }
         return s
@@ -403,6 +418,13 @@ public struct EvalSetupChoice: Hashable, Identifiable, Sendable {
         }
     }
     /// The sheet's note when a rules-on test is repeated: the repeat reads the rules at HEAD now, not the old copy.
+    /// QA m4: the sheet never opens on an invalid default ("Start 0 tests"). Our own task with a seat agent installed:
+    /// that agent on its CLI default model, rules off; anything else (a public benchmark, no agent): the free stand-in
+    /// model on its own, which every task takes and which costs nothing.
+    public static func defaults(task: String?, seatAgents: [String]) -> (layer: EvalStamp.Layer, choices: [EvalSetupChoice]) {
+        if let t = task, EvalRunPlan.isOwnSet(t), let a = seatAgents.first { return (.agentModel, [.seat(a)]) }
+        return (.model, [.model("mockllm/model")])
+    }
     public static func repeatRulesNote(old: String?, now: String?) -> String {
         let was = (old?.isEmpty == false) ? " @ \(old!)" : ""
         let new = now.map { " @ \($0)" } ?? " (hash read at start)"
@@ -427,9 +449,11 @@ public enum EvalCanTell {
 
 /// The rules hash the stamp records (CONTRACT §1): sha256 of the rules files' concatenated bytes, first 7 hex.
 public enum EvalRulesHash {
+    /// The engine's rules_state hash: sha256 over the files' bytes in path order, first 7 hex. No files = `empty`
+    /// (re-review P2: "rules on, no rules files" is a recorded state, not "not recorded").
+    public static let empty = "e3b0c44"
     public static func short(_ blobs: [Data]) -> String? {
         let all = blobs.reduce(Data(), +)
-        guard !blobs.isEmpty else { return nil }
         return SHA256.hash(data: all).map { String(format: "%02x", $0) }.joined().prefix(7).description
     }
     /// The instruction file names the engine copies when rules are on (agent_runner RULE_NAMES).
@@ -515,7 +539,7 @@ public enum EvalsCoverage {
         // 2.0.3 parts not named above
         r("Your evals: Judges list with trust and labels to go", "Your evals sidebar", "Our tasks › the grader banner on its task + Check the grader", .ourTasks, .moved),
         r("Your evals: From past sessions / From a file of questions (coming)", "Your evals sidebar", "Our tasks › the two + New task tiles marked coming", .ourTasks, .kept),
-        r("Your evals: A judge for prose answers", "Your evals sidebar", "+ New ▾ › New grader", .ourTasks, .moved),
+        r("Your evals: A judge for prose answers", "Your evals sidebar", "New test or task ▾ › New grader", .ourTasks, .moved),
         r("Explore: Judges shelf", "Explore", "A public benchmark › Judges shelf (opens Check the grader)", .oneBenchmark, .kept),
         r("Explore: Run this…", "Explore › benchmark", "A public benchmark › Test a model on it… (Set up a test pre-filled)", .oneBenchmark, .kept),
         r("Run: where its code runs (Docker, Modal, cloud sandboxes)", "Run tab", "Set up a test › 3 How many › Where its code runs", .setup, .kept),
