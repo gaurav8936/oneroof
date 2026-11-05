@@ -258,11 +258,23 @@ public struct EvalBenchmarkSummaryRow: Equatable, Identifiable, Sendable {
                 return va != vb ? va < vb : (a.primary?.n ?? 0) < (b.primary?.n ?? 0)
             }
             let agent = b.shelf == "agent" || b.tags.contains("agent") || mine.contains { $0.contestant?.kind == .agent }
-            var text = "\(mine.count) run\(mine.count == 1 ? "" : "s")"
-            if let r = best, let v = r.primary?.value, let n = r.primary?.n, !agent {
-                let who = r.contestant.map { $0.kind == .local ? String(($0.model ?? $0.name).split(separator: "/").last ?? "") + " on this Mac"
-                                                                : EvalTaskWords.model($0.model ?? $0.name) } ?? EvalTaskWords.model(r.model ?? "?")
-                text = "\(who) \(Int((v * Double(n)).rounded())) of \(n)"
+            // QA m8: always a score, or plainly "no finished score" — never a bare run count.
+            func who(_ r: EvalResult) -> String {
+                guard let c = r.contestant else { return EvalTaskWords.model(r.model ?? "?") }
+                switch c.kind {
+                case .agent: return c.name
+                case .local: return String((c.model ?? c.name).split(separator: "/").last ?? "") + " on this Mac"
+                default: return EvalTaskWords.model(c.model ?? c.name)
+                }
+            }
+            let runs = "\(mine.count) run\(mine.count == 1 ? "" : "s")"
+            var text = "no finished score · \(runs)"
+            if let r = best, let v = r.primary?.value, let n = r.primary?.n {
+                text = "\(who(r)) \(Int((v * Double(n)).rounded())) of \(n)"
+            } else if let r = mine.filter({ $0.status == "done" && $0.primary?.value != nil })
+                        .max(by: { ($0.primary?.value ?? 0) < ($1.primary?.value ?? 0) }), let v = r.primary?.value {
+                // Another scale (NIAH's mean on 10): the value and its metric, never "N of M".
+                text = "\(who(r)) \(String(format: "%.3g", v)) (\(r.primary?.metric ?? "score"))"
             }
             out.append(EvalBenchmarkSummaryRow(id: b.id, name: b.name, tests: b.madeOf ?? b.category, layer: agent ? .agentModel : .model,
                                                bestRun: text, bestN: best?.primary?.n, bestScore: best?.primary?.value, runs: mine.count))

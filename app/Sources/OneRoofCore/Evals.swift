@@ -304,9 +304,11 @@ public struct EvalRunRow: Decodable, Equatable, Identifiable, Sendable {
     public var taskRef: String?
     /// QA (M9): the owner pressed Run anyway on this seat run (its seat's use was unknown).
     public var seatUnknownOk: Bool?
+    /// QA m10: waiting with the seat's use unknown for longer than the expiry (old runs too); not counted as running.
+    public var stuck: Bool?
     enum CodingKeys: String, CodingKey {
         case id, task, model, limit, epochs, status, created, finished, progress, agent, seat, waiting, error, hint, contestant
-        case setName = "set_name", setVersion = "set_version", taskRef = "task_ref", seatUnknownOk = "seat_unknown_ok"
+        case setName = "set_name", setVersion = "set_version", taskRef = "task_ref", seatUnknownOk = "seat_unknown_ok", stuck
     }
     /// Waiting because the seat's use is unknown or stale: Run offers Run anyway (agent_runner.UNKNOWN_WAIT).
     public var waitsForUnknownSeat: Bool { status == "waiting" && (waiting ?? "").hasPrefix("seat use unknown") && seatUnknownOk != true }
@@ -315,7 +317,7 @@ public struct EvalRunRow: Decodable, Equatable, Identifiable, Sendable {
         self.id = id; self.task = task; self.model = model; self.limit = limit; self.epochs = epochs; self.status = status
         self.created = created; self.finished = finished; self.progress = progress; self.error = error
     }
-    public var isActive: Bool { status == "running" || status == "queued" || status == "waiting" }
+    public var isActive: Bool { (status == "running" || status == "queued" || status == "waiting") && stuck != true }
     public var canResume: Bool { status == "interrupted" || status == "cancelled" || status == "failed" }
     /// "12/50" → 0.24; nil when unknown.
     public var fraction: Double? {
