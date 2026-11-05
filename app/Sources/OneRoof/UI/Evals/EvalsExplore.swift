@@ -435,10 +435,15 @@ struct EvalsBenchmarkPage: View {
                         Text(r.contestant?.name ?? EvalModels.short(r.model ?? "?")).ui(TypeScale.small, mono: true).foregroundStyle(t.text.color)
                             .lineLimit(1).frame(width: 200, alignment: .leading)
                         if let k = r.contestant?.kind { EvalsKindTag(kind: k) }
-                        Text("n=\(r.primary?.n ?? r.samplesDone ?? 0)").ui(TypeScale.caption, mono: true).foregroundStyle(t.text2.color).frame(width: 50, alignment: .leading)
+                        let n = r.primary?.n ?? r.samplesDone ?? 0
+                        Text("n=\(n)").ui(TypeScale.caption, mono: true).foregroundStyle(t.text2.color).frame(width: 50, alignment: .leading)
+                            .evalHover(.n, EvalLessonMath.rangeNote(n: n))   // QA m14: every number links to its lesson
                         if let p = r.primary, let v = p.value {
+                            let wilson = p.ciMethod == "wilson"
                             Text(evalFormat(v, p)).ui(TypeScale.small, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 60, alignment: .trailing)
+                                .evalHoverIf(wilson ? (.score, EvalHover.score(score: v, n: p.n)) : (.stderr, "\(p.label): \(evalFormat(v, p)), not a share of right answers."))
                             EvalIntervalBar(metric: p).frame(width: 140, height: 6)
+                                .evalHoverIf(wilson ? p.ci95.flatMap { c in c.count == 2 ? (.range, EvalHover.range(score: v, n: p.n ?? n, lo: c[0], hi: c[1])) : nil } : nil)
                         }
                         Spacer()
                         Text(r.cost.map { $0 > 0 ? String(format: "$%.4f", $0) : "free" } ?? (r.isFree ? "free" : "–"))

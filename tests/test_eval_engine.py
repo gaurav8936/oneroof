@@ -47,6 +47,18 @@ class Unit(unittest.TestCase):
         self.assertEqual(self.e.task_ref("/x/tiny_task.py"), "/x/tiny_task.py")
         self.assertEqual(self.e.task_name("/x/tiny_task.py"), "tiny_task")
 
+    def test_m10_old_unknown_seat_wait_is_stuck_not_running(self):
+        # A run from before LAB-2237's guard: no waiting_since, started days ago. Flagged stuck, with what to do.
+        w = "seat use unknown: One Roof cannot see how much of C1's 5-hour window is used"
+        old = {"status": "waiting", "waiting": w, "waiting_since": None, "started": "2026-11-01T16:30:58Z"}
+        self.assertTrue(self.e.stuck(old))
+        self.assertIn("stuck: waiting since 2026-11-01", self.e.status_note(old))
+        fresh = dict(old, started=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        self.assertFalse(self.e.stuck(fresh))
+        self.assertEqual(self.e.status_note(fresh), "seat use unknown")
+        self.assertFalse(self.e.stuck(dict(old, waiting="waiting for seat C1: 95 % of its 5-hour window used")))
+        self.assertFalse(self.e.stuck(dict(old, status="running")))
+
     def test_wilson_interval_is_honest_at_zero_and_small_n(self):
         lo, hi, how = self.e.interval(0.0, 5, 0.0, True)
         self.assertEqual(how, "wilson")
@@ -1606,7 +1618,7 @@ class SetupBoard(unittest.TestCase):
         d.mkdir(parents=True)
         (d / "run.json").write_text(json.dumps({"id": "wait", "task": "own_demo_v2", "task_ref": self.tf, "model": "seat/C1",
                                                 "agent": "claude_code", "seat": "C1", "runner": "seat", "status": "waiting",
-                                                "pid": os.getpid(), "created": "2026-11-01T16:30:58Z",
+                                                "pid": os.getpid(), "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),   # fresh: not stuck (m10)
                                                 "waiting": "seat use unknown: One Roof cannot see …"}))
         self.e.index()
         lb = self.board()
