@@ -39,7 +39,7 @@ struct EvalsCompareView: View {
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(sets) { s in taskCard(s) }
                     Spacer(minLength: 8)
-                    RoofButton("All results ›", .plain) { nav.route = .allResults }
+                    RoofButton("All results ›") { nav.route = .allResults }   // LAB-2255: a button you can see
                         .help("Every task × every setup, every test, export")
                 }
                 content
@@ -222,10 +222,10 @@ struct EvalsCompareView: View {
                                 .evalHover(.costPerRight, EvalHover.costPerRight(c))
                         }
                         if let run = r.run {
-                            Button { nav.openRun(run) } label: {
-                                Text("\(EvalsAWords.day(r.started)) · bug by bug ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color)
+                            HStack(spacing: 8) {   // LAB-2255: the way into One test is a button, not a text link
+                                RoofButton("See each bug ›") { nav.openRun(run) }.fixedSize()
+                                Text(EvalsAWords.day(r.started)).ui(TypeScale.caption).foregroundStyle(t.text3.color)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 } else if r.isActive {
