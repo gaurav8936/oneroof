@@ -10,6 +10,8 @@ import OneRoofCore
 struct EvalsCompareView: View {
     @ObservedObject var board: EvalsBoard
     @ObservedObject var nav: EvalsNav
+    /// v3 (2.0.5): the segment page's kind of job: only that kind's setups; the agent × model grid only on agent jobs.
+    var kind: EvalJobKind? = nil
     @ObservedObject private var store = EvalsAStore.shared
     @Environment(\.theme) private var t
     @State private var view: Mode = .setups
@@ -124,11 +126,11 @@ struct EvalsCompareView: View {
     @ViewBuilder private func loaded(_ lb: EvalSetupLeaderboard) -> some View {
         Text(EvalsACompare.headline(lb)).ui(17, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
         HStack {
-            Segmented(options: Mode.allCases.map { ($0, $0.rawValue) }, selection: $view).fixedSize()
+            if kind != .oneShot { Segmented(options: Mode.allCases.map { ($0, $0.rawValue) }, selection: $view).fixedSize() }
             Spacer()
             if let v = lb.version { Text("v\(v) · frozen bugs, the same for every setup").ui(TypeScale.caption).foregroundStyle(t.text3.color) }
         }
-        switch view {
+        switch kind == .oneShot ? .setups : view {
         case .setups: setups(lb)
         case .grid: grid(lb)
         }
@@ -138,7 +140,7 @@ struct EvalsCompareView: View {
     // MARK: By setup
 
     private func setups(_ lb: EvalSetupLeaderboard) -> some View {
-        let rows = lb.ranked
+        let rows = lb.ranked.filter { kind == nil || EvalJobKind.of($0) == kind }
         return VStack(alignment: .leading, spacing: 12) {
             Card(padding: 0) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -424,7 +426,7 @@ struct EvalsCompareView: View {
 
     @ViewBuilder private func untested(_ lb: EvalSetupLeaderboard) -> some View {
         let others = sets.compactMap(board)
-        let xs = EvalsACompare.untested(lb, others: others)
+        let xs = EvalsACompare.untested(lb, others: others).filter { kind == nil || EvalJobKind.of($0) == kind }
         if !xs.isEmpty {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
