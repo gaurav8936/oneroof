@@ -37,7 +37,7 @@ public enum EvalEngine {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: py)
         p.arguments = [s] + args
-        p.environment = environment(ProcessInfo.processInfo.environment, extra: extraEnvironment?() ?? [:])
+        p.environment = environment(ProcessInfo.processInfo.environment, extra: extraEnvironment?(args) ?? [:])
         let out = Pipe(), err = Pipe()
         p.standardOutput = out; p.standardError = err
         do { try p.run() } catch { return Output(code: 126, stdout: Data(), stderr: "\(error)") }
@@ -60,8 +60,15 @@ public enum EvalEngine {
         return env
     }
 
-    /// LAB-2117 · the user's own Hugging Face sign-in (token from the Keychain, accepted gated sets), set by the app.
-    nonisolated(unsafe) public static var extraEnvironment: (() -> [String: String])?
+    /// LAB-2117 · the user's own Hugging Face sign-in (token from the Keychain, accepted gated sets), set by the app. Gets
+    /// the command's arguments: the token is read only for a command that can touch gated data (`needsHFToken`).
+    nonisolated(unsafe) public static var extraEnvironment: (([String]) -> [String: String])?
+
+    /// LAB-2246 (reopened 11-05): the only engine commands that read gated Hugging Face data (`hf_locked` in
+    /// roof_eval.py: run → its worker, resume, run-anyway, and the question browser items / item). Every other call
+    /// (doctor, catalog, results …) never touches the Keychain.
+    public static let hfCommands: Set<String> = ["run", "resume", "run-anyway", "items", "item"]
+    public static func needsHFToken(_ args: [String]) -> Bool { args.first.map(hfCommands.contains) ?? false }
 
     /// LAB-2117 · the engine's environment for Hugging Face: only the token the user signed in with in One Roof is passed
     /// (an inherited HF_TOKEN or a cached `hf auth login` token is never reused: HF_TOKEN_PATH points at a file that

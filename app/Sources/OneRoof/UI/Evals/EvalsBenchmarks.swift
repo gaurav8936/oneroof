@@ -10,18 +10,22 @@ struct EvalsBenchmarksView: View {
     @ObservedObject var board: EvalsBoard
     @ObservedObject var nav: EvalsNav
     @Environment(\.theme) private var t
+    /// v3 (2.0.5): One-shot › Public tests shows the model benchmarks; Agent › Public agent benchmarks the agent ones
+    /// (D3: outside the agent bar). nil = every benchmark (E6.1 on its own). `embedded`: the segment page draws the headline.
+    var layer: EvalStamp.Layer? = nil
+    var embedded = false
     @State private var published: [String: EvalPublishedScores] = [:]
 
-    private var rows: [EvalBenchmarkSummaryRow] { EvalBenchmarkSummaryRow.rows(catalog: board.catalog?.benchmarks ?? [], results: board.results) }
+    private var rows: [EvalBenchmarkSummaryRow] {
+        EvalBenchmarkSummaryRow.rows(catalog: board.catalog?.benchmarks ?? [], results: board.results)
+            .filter { r in layer.map { $0 == .model ? r.layer == .model : r.layer != .model } ?? true }
+    }
     private var total: Int { board.catalog?.benchmarks.filter { !$0.isOwn }.count ?? 0 }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Public benchmarks test the model, and sometimes the agent. They never test your full setup: only your own tasks can.")
-                    .ui(TypeScale.section, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
-                Text("Use them to check a model is set up right, to compare with published scores, and to learn how evals work. They are context: never the answer on the Overview.")
-                    .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                if !embedded { headline }
                 table
                 uses
             }
@@ -31,6 +35,13 @@ struct EvalsBenchmarksView: View {
         .onAppear(perform: loadPublished)
         .onChange(of: board.results) { _, _ in loadPublished() }
         .onChange(of: board.catalog) { _, _ in loadPublished() }
+    }
+
+    @ViewBuilder private var headline: some View {
+                Text("Public benchmarks test the model, and sometimes the agent. They never test your full setup: only your own tasks can.")
+                    .ui(TypeScale.section, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+                Text("Use them to check a model is set up right, to compare with published scores, and to learn how evals work. They are context: never the answer on their own.")
+                    .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
     }
 
     private func loadPublished() {
@@ -48,7 +59,8 @@ struct EvalsBenchmarksView: View {
                 if board.catalog == nil {
                     Text(board.busy ?? "Reading the benchmarks…").ui(TypeScale.small).foregroundStyle(t.text2.color).padding(14)
                 } else if rows.isEmpty {
-                    Text("No public benchmark has been run on this Mac yet. Smoke test below runs 5 free questions.")
+                    Text(layer != nil && layer != .model ? "No public agent benchmark has been run on this Mac yet."
+                         : "No public benchmark has been run on this Mac yet. Smoke test below runs 5 free questions.")
                         .ui(TypeScale.small).foregroundStyle(t.text2.color).padding(14)
                 } else {
                     Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 0) {
@@ -64,7 +76,7 @@ struct EvalsBenchmarksView: View {
                                 }
                                 .buttonStyle(.plain).help("Open \(r.name): how it works, its questions, published scores, your runs")
                                 Text(r.tests).ui(TypeScale.small).foregroundStyle(t.text.color).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                                Text(r.layer == .model ? "The model" : "Agent using a model").ui(TypeScale.caption).foregroundStyle(t.text2.color)
+                                Text(r.layer == .model ? "The model" : "Agent, out of the box").ui(TypeScale.caption).foregroundStyle(t.text2.color)
                                 Text(r.bestRun).ui(TypeScale.small).foregroundStyle(t.text.color).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                                     .evalHoverIf(r.bestScore.flatMap { s in r.bestN.map { n in
                                         let w = EvalStats.wilson(s, n: n)
@@ -92,7 +104,26 @@ struct EvalsBenchmarksView: View {
 
     // MARK: Three uses
 
-    private var uses: some View {
+    @ViewBuilder private var uses: some View {
+        if let l = layer, l != .model { agentUses } else { modelUses }
+    }
+
+    /// D3: the agent benchmarks' own uses (no smoke test: they need an agent, a sandbox and a key).
+    private var agentUses: some View {
+        let agents = board.catalog?.benchmarks.filter { !$0.isOwn && $0.isAgentTask } ?? []
+        return HStack(alignment: .top, spacing: 12) {
+            use("See how an agent does out of the box", "Other people's code and tests, none of our files. Useful to compare agents and models in general.",
+                "Browse the \(agents.count) agent benchmarks ›") {
+                nav.openBenchmark(agents.first { $0.isStarter }?.id ?? agents.first?.id ?? "swe_bench")
+            }
+            use("Test the agent as we use it", "Only our own tasks run the agent on our code with our setup.", "Agent jobs › Our tests ›") {
+                nav.open(.agentOurs)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var modelUses: some View {
         HStack(alignment: .top, spacing: 12) {
             use("Check a new model is wired up", "5 GSM8K questions, free on the stand-in or a model on this Mac.", "Smoke test ›") {
                 nav.test(EvalFirstEval.freePlan)
@@ -112,7 +143,7 @@ struct EvalsBenchmarksView: View {
             Text(title).ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
             Text(line).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 2)
-            Button(action: go) { Text(action).ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
+            RoofButton(action, action: go).fixedSize()   // LAB-2255: a button you can see, not a text link
         }
         .padding(14).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(t.surface.color))
