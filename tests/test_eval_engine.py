@@ -1832,6 +1832,20 @@ class ChangesComparablePairs(unittest.TestCase):
         self.run_json("good", "2026-11-03T06:00:00Z", rules_hash=H("r1\n"))     # differs only in the rules
         self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": "before", "after": "good", "task": "own_x_v2", "task_version": 2})
 
+    def test_shallow_boundary_parent_is_unknown_not_empty(self):
+        """Final second-model pass: in a shallow clone the boundary commit's parent exists but can't be read. That must
+        be "unknown", not "no rules before it", or a pair spanning two rules edits gets credited to the last one."""
+        git_commit(self.repo, "rules again", {"CLAUDE.md": "r2\n"}, "2026-11-05T12:00:00+00:00")
+        shallow = tempfile.mkdtemp(prefix="roof-changes-shallow-")
+        self.addCleanup(shutil.rmtree, shallow, True)
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "file://" + self.repo, shallow + "/c"], check=True)
+        spec = importlib.util.spec_from_file_location("changes_shallow", EVALS_DIR / "changes.py")
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        tip = subprocess.run(["git", "-C", shallow + "/c", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        self.assertIsNone(m.rules_hash_at(shallow + "/c", tip + "^"))                   # boundary: unknown
+        root = subprocess.run(["git", "-C", self.repo, "rev-list", "--max-parents=0", "HEAD"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(m.rules_hash_at(self.repo, root + "^"), EMPTY)                 # a true root: empty set
+
     def test_vendor_pairs_differ_only_in_the_vendor_change(self):
         dflt = dict(model_requested=None, model_source="cli_default_resolved", rules="off", rules_hash=None)
         self.run_json("v30", "2026-11-01T00:00:00Z", **dflt)
