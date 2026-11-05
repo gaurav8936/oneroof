@@ -30,11 +30,18 @@ struct EvalsYourEvalsTab: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .onAppear { reload(); loadTrust() }
+        .onAppear { reload(); loadTrust(); takeNew() }
+        .onChange(of: nav.newRequest) { _, _ in takeNew() }   // 2.0.4 "+ New ▾" › New task from fixed bugs / New grader
         .onChange(of: nav.set) { _, _ in version = nil; reload() }
         .onChange(of: board.sets) { _, _ in if detail == nil { reload() } }
         .onChange(of: board.judges) { _, _ in loadTrust() }
         .sheet(item: $sheet) { s in sheetView(s).themed(t.name) }
+    }
+
+    private func takeNew() {
+        guard let r = nav.newRequest else { return }
+        nav.newRequest = nil
+        sheet = r == .task ? .fromRepo : .judge
     }
 
     private func reload() {

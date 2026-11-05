@@ -196,7 +196,7 @@ struct EvalsExploreTab: View {
     }
 
     private func judgeRow(_ j: EvalJudgeList.Judge) -> some View {
-        Button { nav.tab = .yourEvals; nav.route = .judge(name: j.name, first: nil) } label: {
+        Button { nav.route = .judge(name: j.name, first: nil) } label: {
             VStack(alignment: .leading, spacing: 3) {
                 Text(j.name.replacingOccurrences(of: "_", with: " ") + " judge").ui(TypeScale.row, .medium).foregroundStyle(t.text.color)
                 Text("\(j.items) answers · \(j.labelled) labelled by you").ui(11.5).foregroundStyle(t.text2.color)

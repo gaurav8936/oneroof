@@ -1,6 +1,8 @@
 import SwiftUI
 import OneRoofCore
 
+/// LAB-2242: screen lane A owns this file (E1.1 Overview: layer diagram from `board.overview?.layers` (CONTRACT §7) + three
+/// questions); rewrite in place. Today: 2.0.3's Overview below.
 /// LAB-2062 · Overview, the tab Evals opens on: "how are my agents doing on my work?" without a click. One scorecard per
 /// eval of yours (then benchmarks run twice or more), what changed since the last run, what is running, and one suggested
 /// next eval. Everything from `roof eval overview --json`; nothing is computed here.
@@ -140,10 +142,10 @@ struct EvalsOverviewTab: View {
         let tg = s.target
         switch tg.tab {
         case "your-evals":
-            if let j = tg.judge { nav.tab = .yourEvals; nav.route = .judge(name: j, first: nil) }
+            if let j = tg.judge { nav.route = .judge(name: j, first: nil) }
             else { nav.set = tg.set; nav.openBuild = tg.set != nil; nav.go(.yourEvals) }
         case "run": nav.run(EvalRunPlan(tasks: [tg.task ?? "gsm8k"], models: [], limit: tg.limit ?? 20, epochs: tg.epochs))
-        case "learn": nav.go(.learn)
+        case "learn": nav.go(EvalsLegacyTab.learn)
         default: break
         }
     }
