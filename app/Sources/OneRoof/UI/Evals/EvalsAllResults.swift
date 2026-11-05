@@ -4,6 +4,8 @@ import OneRoofCore
 /// LAB-2242 · E2.3 All results: for when you want everything at once (Compare stays the simple view). The latest finished
 /// result per (who answered, task) — our tasks first, in blue, then public benchmarks; a grader column is agreement with
 /// your labels, not a score; dashed under 30 answers — then every test, newest first, and Export CSV · JSON (`export`).
+/// LAB-2261 (v3 E4.2): every test and every grid row carry their kind — one-shot · agent · public model · public agent.
+/// The export is built by the engine (`roof eval export`), so its `kind` field is the engine's to add.
 struct EvalsAllResultsView: View {
     @ObservedObject var board: EvalsBoard
     @ObservedObject var nav: EvalsNav
@@ -49,6 +51,7 @@ struct EvalsAllResultsView: View {
         Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 6) {
             GridRow {
                 Text("").frame(width: 250)
+                Text("Kind").ui(TypeScale.caption, .semibold).foregroundStyle(t.text2.color).frame(width: 92, alignment: .leading)
                 ForEach(g.columns) { c in
                     Text(c.title).ui(TypeScale.caption, .semibold).foregroundStyle(c.own ? t.accentText.color : t.text2.color)
                         .lineLimit(2).multilineTextAlignment(.center).frame(width: 118, height: 30)
@@ -59,6 +62,7 @@ struct EvalsAllResultsView: View {
             ForEach(g.rows, id: \.self) { row in
                 GridRow {
                     Text(row).ui(TypeScale.small, mono: true).foregroundStyle(t.text.color).frame(width: 250, alignment: .leading).lineLimit(1).truncationMode(.middle)
+                    kindMark(EvalResultKind.row(Array((g.cells[row] ?? [:]).values))).frame(width: 92, alignment: .leading)
                     ForEach(g.columns) { c in cell(g.cell(row, c.key), column: c) }
                 }
             }
@@ -100,6 +104,12 @@ struct EvalsAllResultsView: View {
                     Text("Every test").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
                     Text(EvalFinished.text(board.results) + " · newest first").ui(TypeScale.small).foregroundStyle(t.text2.color)
                 }
+                HStack(spacing: 12) {
+                    Text("When").frame(width: 96, alignment: .leading)
+                    Text("Kind").frame(width: 92, alignment: .leading)
+                    Text("Task · who answered").frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .ui(TypeScale.micro, .semibold).foregroundStyle(t.text3.color)
                 ForEach(shown) { r in runRow(r); Divider() }
                 if runs.count > shown.count {
                     RoofButton("Show all \(runs.count)", .plain) { showAll = true }
@@ -110,24 +120,42 @@ struct EvalsAllResultsView: View {
     }
 
     private func runRow(_ r: EvalResult) -> some View {
-        Button { nav.openRun(r.id) } label: {
-            HStack(spacing: 12) {
-                Text(EvalModels.when(r.started)).ui(TypeScale.caption, mono: true).foregroundStyle(t.text3.color).frame(width: 96, alignment: .leading)
-                Text("\(title(r)) · \(EvalsAAllGrid.rowKey(r))").ui(TypeScale.small, .medium).foregroundStyle(t.text.color)
-                    .frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
-                Text(r.status == "done" ? scoreText(r) : (r.status ?? "")).ui(TypeScale.small, mono: true)
-                    .foregroundStyle(r.status == "done" ? t.text.color : t.needsText.color).frame(width: 110, alignment: .trailing)
-                if let j = r.judgeAgreement {
-                    Text(j.short).ui(TypeScale.caption).foregroundStyle(j.trustworthy ? t.text2.color : t.needsText.color).lineLimit(1).frame(width: 150, alignment: .leading)
-                        .evalHover(.agreement, EvalHover.agreement(j))
+        HStack(spacing: 12) {
+            Button { nav.openRun(r.id) } label: {
+                HStack(spacing: 12) {
+                    Text(EvalModels.when(r.started)).ui(TypeScale.caption, mono: true).foregroundStyle(t.text3.color).frame(width: 96, alignment: .leading)
+                    kindMark(EvalResultKind.of(r)).frame(width: 92, alignment: .leading)
+                    Text("\(title(r)) · \(EvalsAAllGrid.rowKey(r))").ui(TypeScale.small, .medium).foregroundStyle(t.text.color)
+                        .frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
+                    Text(r.status == "done" ? scoreText(r) : (r.status ?? "")).ui(TypeScale.small, mono: true)
+                        .foregroundStyle(r.status == "done" ? t.text.color : t.needsText.color).frame(width: 110, alignment: .trailing)
+                    if let j = r.judgeAgreement {
+                        Text(j.short).ui(TypeScale.caption).foregroundStyle(j.trustworthy ? t.text2.color : t.needsText.color).lineLimit(1).frame(width: 150, alignment: .leading)
+                            .evalHover(.agreement, EvalHover.agreement(j))
+                    }
+                    Text((r.model ?? "").hasPrefix("seat/") ? "seat" : EvalsAWords.dollars(r.cost)).ui(TypeScale.small, mono: true).foregroundStyle(t.text2.color).frame(width: 70, alignment: .trailing)
                 }
-                Text((r.model ?? "").hasPrefix("seat/") ? "seat" : EvalsAWords.dollars(r.cost)).ui(TypeScale.small, mono: true).foregroundStyle(t.text2.color).frame(width: 70, alignment: .trailing)
-                Text("open ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            RoofButton("Open") { nav.openRun(r.id) }.help("Open this test, bug by bug")   // LAB-2255: a button, not a text link
         }
-        .buttonStyle(.plain)
+    }
+
+    /// One-shot · agent · public model · public agent, in the job kind's tag colours (EvalsJobTag); public is outlined.
+    @ViewBuilder private func kindMark(_ k: EvalResultKind?) -> some View {
+        if let k {
+            Text(k.title).ui(TypeScale.micro, .semibold).foregroundStyle(t.jobTag(k.jobKind).ink.color).lineLimit(1)
+                .padding(.horizontal, 7).padding(.vertical, 2)
+                .background(Capsule().fill(k.isPublic ? t.control.color : t.jobTag(k.jobKind).fill.color))
+                .overlay(Capsule().strokeBorder(k.isPublic ? t.jobTag(k.jobKind).ink.color.opacity(0.5) : .clear))
+                .help(k.isPublic ? "A public benchmark, \(k.jobKind == .agent ? "an agent using a model" : "the model answering once")"
+                      : k.jobKind == .agent ? "Our task, an agent using a model" : "Our task, the model answering once")
+                .accessibilityLabel("Kind: \(k.title)")
+        } else {
+            Text("·").ui(TypeScale.small).foregroundStyle(t.text3.color)
+        }
     }
 
     private func title(_ r: EvalResult) -> String {
