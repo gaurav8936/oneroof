@@ -3,7 +3,8 @@ import SwiftUI
 import OneRoofCore
 
 /// LAB-2242 · E5.1 Our tasks (screen lane B): one card per task set — plain name, engine name · version · frozen date,
-/// how it is checked (both kinds by code), its real bugs, who has been tested on it per layer, and the next version or
+/// how it is checked (both kinds by code), its real bugs, how it has been tested (LAB-2261, v3 D5: a kind chip — a task is
+/// testable both ways — and "tested as" chips: model · agent clean · agent with our rules), and the next version or
 /// the grader's trust — then "+ New task" (from fixed bugs; past sessions and a file of questions are coming) and every
 /// grader. Replaces 2.0.3's Your evals sidebar (NO_REGRESSION). Engine: `evalset list`, `judge list|trust`,
 /// `evalset build --dry-run` (the next version's real count), `results` (stamps: rules on = full setup).
@@ -105,7 +106,12 @@ struct EvalsTasksView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(EvalTaskWords.title(kind: s.kind)), \(s.count) real bugs; open it")
-            HStack(spacing: 8) { ForEach(chips, id: \.layer) { chip($0) } }.padding(.top, 12)
+            HStack(spacing: 8) {
+                kindChip
+                Text("tested as").ui(TypeScale.caption).foregroundStyle(t.text3.color)
+                ForEach(chips, id: \.layer) { chip($0) }
+            }
+            .padding(.top, 12)
             if let j, let tr, let banner = EvalGraderWords.banner(tr) {
                 graderBanner(j, banner)
             } else {
@@ -118,14 +124,29 @@ struct EvalsTasksView: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
     }
 
+    /// A task is testable both ways: a model answering once, or an agent working in the repo.
+    private var kindChip: some View {
+        HStack(spacing: 4) {
+            ForEach(EvalJobKind.allCases) { k in
+                Text(k.short).ui(TypeScale.micro, .semibold).foregroundStyle(t.jobTag(k).ink.color)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Capsule().fill(t.jobTag(k).fill.color))
+            }
+        }
+        .help("Testable both ways: one-shot (a model answers once from the report) or agent (an agent and its model work in the repo)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Kind: one-shot or agent")
+    }
+
     private func chip(_ c: EvalTaskCoverage.Chip) -> some View {
-        (Text(c.title + " ").fontWeight(.semibold).foregroundColor(t.text.color)
+        (Text(c.testedAs + " ").fontWeight(.semibold).foregroundColor(t.text.color)
          + Text(c.text).foregroundColor(c.isGap ? t.needsText.color : c.tested > 0 ? t.diffAddText.color : c.isActiveOnly ? t.accentText.color : t.text2.color))
             .ui(TypeScale.caption)
             .padding(.horizontal, 10).padding(.vertical, 4)
             .background(Capsule().fill(t.control.color))
             .overlay(Capsule().strokeBorder(t.separator.color))
-            .help(c.layer == .full ? "Your full setup = an agent with your rules on. No test has recorded one yet." : "\(c.title): \(c.text) on this version")
+            .help(c.layer == .full && c.isGap ? "Agent with our rules = an agent with our CLAUDE.md / AGENTS.md on. No test has recorded one yet."
+                  : "Tested as \(c.testedAs) (\(c.kind.short.lowercased())): \(c.text) on this version")
     }
 
     @ViewBuilder private func footer(_ s: EvalSetList.Entry) -> some View {
@@ -144,9 +165,9 @@ struct EvalsTasksView: View {
                 .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 if let p = next[s.name], p.total > 0 {
-                    link("Preview v\(p.nextVersion)") { nav.openBuild = true; nav.openTask(s.name) }
+                    RoofButton("Preview v\(p.nextVersion)") { nav.openBuild = true; nav.openTask(s.name) }.fixedSize()
                 }
-                link("See the \(s.count) bugs") { nav.openTask(s.name) }
+                RoofButton("See the \(s.count) bugs") { nav.openTask(s.name) }.fixedSize()
             }
         }
     }
@@ -157,17 +178,12 @@ struct EvalsTasksView: View {
              + Text(text).foregroundColor(t.text.color))
                 .ui(TypeScale.small).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            link("Check the grader") { nav.openGrader(j.name) }
-            link("Start labelling") { nav.openGrader(j.name) }
+            RoofButton("Check the grader") { nav.openGrader(j.name) }.fixedSize()
+            RoofButton("Start labelling") { nav.openGrader(j.name) }.fixedSize()
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(t.needsText.color.opacity(0.12))
         .padding(.horizontal, -16).padding(.bottom, -16).padding(.top, 12)
-    }
-
-    private func link(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Text(title).ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color) }
-            .buttonStyle(.plain).fixedSize()
     }
 
     // MARK: + New task · graders
@@ -201,18 +217,21 @@ struct EvalsTasksView: View {
                 .ui(TypeScale.small).foregroundStyle(t.text2.color)
             ForEach(board.judges) { j in
                 let tr = trust[j.name]
-                Button { nav.openGrader(j.name) } label: {
-                    HStack(spacing: 10) {
-                        Text("The grader for \"\(gradedTitle(j))\"").ui(TypeScale.small, .semibold).foregroundStyle(t.text.color)
-                        Text(tr.map(EvalGraderWords.agreesLine) ?? "reading…")
-                            .ui(TypeScale.small).foregroundStyle(tr?.ready == true ? t.text2.color : t.needsText.color)
-                            .evalHoverIf(tr.map { (.agreement, EvalGraderWords.agreementHover($0)) })   // QA m14
-                        Spacer()
-                        Text("Check the grader ›").ui(TypeScale.small).foregroundStyle(t.accentText.color)
+                HStack(spacing: 10) {
+                    Button { nav.openGrader(j.name) } label: {
+                        HStack(spacing: 10) {
+                            Text("The grader for \"\(gradedTitle(j))\"").ui(TypeScale.small, .semibold).foregroundStyle(t.text.color)
+                            Text(tr.map(EvalGraderWords.agreesLine) ?? "reading…")
+                                .ui(TypeScale.small).foregroundStyle(tr?.ready == true ? t.text2.color : t.needsText.color)
+                                .evalHoverIf(tr.map { (.agreement, EvalGraderWords.agreementHover($0)) })   // QA m14
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 6).padding(.horizontal, 10).contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    RoofButton("Check the grader") { nav.openGrader(j.name) }.fixedSize()   // LAB-2255: a button, not a text link
                 }
-                .buttonStyle(.plain).hoverHighlight()
+                .padding(.vertical, 6).padding(.horizontal, 10).hoverHighlight()
             }
         }
     }
