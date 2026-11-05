@@ -198,8 +198,12 @@ def rules_hash_at(repo: str, rev: str) -> str | None:
     key = (repo, rev)
     if key not in _STATE:
         _AR = _AR or _runner()
-        if rev.endswith("^") and git(repo, "rev-parse", "--verify", "--quiet", rev + "{commit}").strip() == "":
-            _STATE[key] = _AR.EMPTY_RULES_HASH   # a root commit: before it there were no rules
+        if rev.endswith("^") and git(repo, "rev-parse", "--verify", "--quiet", rev + "^{commit}").strip() == "":
+            # The parent can't be read. Only a commit with no parent at all proves "no rules before it"; a parent that
+            # exists but isn't here (a shallow clone's boundary) or a git failure is unknown, never the empty set.
+            head = git(repo, "cat-file", "-p", rev[:-1])
+            is_root = bool(head) and not any(l.startswith("parent ") for l in head.split("\n\n", 1)[0].splitlines())
+            _STATE[key] = _AR.EMPTY_RULES_HASH if is_root else None
         else:
             st = _AR.rules_state(repo, rev)
             _STATE[key] = st[0] if st else None
