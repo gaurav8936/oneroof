@@ -272,7 +272,7 @@ final class EvalsLaneBTests: XCTestCase {
         """#.utf8))
         let rows = EvalBenchmarkSummaryRow.rows(catalog: cat, results: results)
         XCTAssertEqual(rows.map(\.name), ["GSM8K", "Humanity's Last Exam", "SWE-bench Verified mini"])   // not run: left out
-        XCTAssertEqual(rows.map(\.bestRun), ["Haiku 5 of 5", "Haiku 2 of 2", "2 runs"])
+        XCTAssertEqual(rows.map(\.bestRun), ["Haiku 5 of 5", "Haiku 2 of 2", "Codex · claude-haiku-5-5 0 of 2"])   // QA m8: a score
         XCTAssertEqual(rows.map(\.layer), [.model, .model, .agentModel])
         XCTAssertEqual(rows[0].tests, "Grade-school maths word problems")
         XCTAssertEqual(EvalBenchmarkSummaryRow.smallNote(rows),
@@ -282,7 +282,9 @@ final class EvalsLaneBTests: XCTestCase {
         XCTAssertEqual(EvalBenchmarkSummaryRow.published(nil), "—")
         // A score that is not a proportion (NIAH's 9.9 on 10) never reads as "99 of 10".
         let niah = try JSONDecoder().decode([EvalResult].self, from: Data(#"[{"id": "n1", "task": "niah", "status": "done", "model": "anthropic/claude-haiku-5-5", "metrics": [{"scorer": "s", "metric": "mean", "value": 9.9, "n": 10, "ci_method": "t"}], "contestant": {"kind": "model", "id": "h", "name": "claude-haiku-5-5"}}]"#.utf8))
-        XCTAssertEqual(EvalBenchmarkSummaryRow.rows(catalog: [try bench("niah", title: "NIAH", madeOf: "m")], results: niah).map(\.bestRun), ["1 run"])
+        XCTAssertEqual(EvalBenchmarkSummaryRow.rows(catalog: [try bench("niah", title: "NIAH", madeOf: "m")], results: niah).map(\.bestRun), ["Haiku 9.9 (mean)"])
+        let unfinished = try JSONDecoder().decode([EvalResult].self, from: Data(#"[{"id": "n2", "task": "niah", "status": "failed", "model": "anthropic/claude-haiku-5-5", "metrics": [], "contestant": {"kind": "model", "id": "h", "name": "claude-haiku-5-5"}}]"#.utf8))
+        XCTAssertEqual(EvalBenchmarkSummaryRow.rows(catalog: [try bench("niah", title: "NIAH", madeOf: "m")], results: unfinished).map(\.bestRun), ["no finished score · 1 run"])
     }
 
     // MARK: Coverage map
