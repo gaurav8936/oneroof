@@ -31,12 +31,17 @@ struct EvalsQuestionsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            EvalsDrillHeader(crumb: "Evals  Explore › \(bench?.name ?? benchmark) › Questions", back: "Catalog", title: bench?.name ?? benchmark,
-                             meta: meta, onBack: { nav.back() }) {
+            // LAB-2220: the shell draws "‹ Public benchmarks  A public benchmark"; this row is the benchmark and its parts.
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Text(bench?.name ?? benchmark).ui(18, .bold).foregroundStyle(t.text.color).lineLimit(1)
+                Text(meta).ui(TypeScale.small).foregroundStyle(t.text2.color).lineLimit(1)
+                Spacer(minLength: 12)
                 EvalsTextTabs(options: tabs, selection: Binding(get: { EvalsNav.ExploreTab.questions }, set: { tab in
-                    nav.exploreTab = tab; nav.benchmark = benchmark; nav.back()
+                    nav.openBenchmark(benchmark, task: task, part: tab)
                 }))
             }
+            .padding(.horizontal, 20).padding(.bottom, 10)
+            .overlay(alignment: .bottom) { Rectangle().fill(t.separator.color).frame(height: 1) }
             if let s = source { EvalsSourceLine(source: s).padding(.horizontal, 20).padding(.top, 8) }
             if let s = source, hf.status(s).locked {
                 EvalsLockCard(name: bench?.name ?? task, source: s, status: hf.status(s)).padding(24)
@@ -67,8 +72,8 @@ struct EvalsQuestionsPage: View {
     }
 
     private var tabs: [(EvalsNav.ExploreTab, String)] {
-        var o: [(EvalsNav.ExploreTab, String)] = [(.anatomy, "Anatomy"), (.questions, "Questions")]
-        if bench?.isOwn != true { o.append((.scores, "Scores")) }
+        var o: [(EvalsNav.ExploreTab, String)] = [(.anatomy, "How it works"), (.questions, "Questions")]
+        if bench?.isOwn != true { o.append((.scores, "Published scores")) }
         o.append((.runs, "Your runs \(info?.runs?.count ?? 0)"))
         return o
     }
@@ -87,7 +92,7 @@ struct EvalsQuestionsPage: View {
                     .ui(TypeScale.small).foregroundStyle(t.text2.color)
                 HStack {
                     RoofButton(info?.alreadyOnMac == true ? "Load" : "Download", .primary) { load(download: true) }
-                    RoofButton("Not now") { nav.back() }
+                    RoofButton("Not now") { nav.openBenchmark(benchmark, task: task, part: .anatomy) }
                 }
             }
         }

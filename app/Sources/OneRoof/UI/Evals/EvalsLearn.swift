@@ -120,12 +120,12 @@ struct EvalsLearnV2: View {
         let ex = EvalLessonExamples.pick(l.id, results: board.results)
         return Card(padding: 14) {
             VStack(alignment: .leading, spacing: 7) {
-                EvalsLabel("In your runs")
+                EvalsLabel("In your tests")
                 if ex.rows.isEmpty {
                     HStack(spacing: 6) {
-                        Text("No runs on this Mac show this yet.").ui(TypeScale.small).foregroundStyle(t.text3.color)
+                        Text("No tests on this Mac show this yet.").ui(TypeScale.small).foregroundStyle(t.text3.color)
                         if l.id != "first-eval" {
-                            Button { open("first-eval") } label: { Text("Your first eval, free ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
+                            Button { open("first-eval") } label: { Text("Your first test, free ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
                                 .buttonStyle(.plain)
                         }
                     }
@@ -157,7 +157,7 @@ struct EvalsLearnV2: View {
         let cur = EvalFirstEval.current(steps)
         return Card(padding: 14) {
             VStack(alignment: .leading, spacing: 9) {
-                Text("Your first eval, free").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
+                Text("Your first test, free").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
                 ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
                     let isCur = cur == i + 1
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -176,7 +176,7 @@ struct EvalsLearnV2: View {
                             .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(t.accent.color))
                     }
                     .buttonStyle(.plain)
-                    .help(c == 1 ? "Run pre-filled: GSM8K × 5 on the free stand-in, cap $0" : c == 4 ? "Run pre-filled: the same 5 on Claude Haiku, cap $0.05" : "")
+                    .help(c == 1 ? "Set up a test, pre-filled: GSM8K × 5 on the free stand-in, stop at $0" : c == 4 ? "Set up a test, pre-filled: the same 5 on Claude Haiku, stop at $0.05" : "")
                 } else {
                     Text("All four steps done.").ui(TypeScale.small, .semibold).foregroundStyle(t.diffAddText.color)
                 }
@@ -257,19 +257,20 @@ enum EvalsLearnStore {
 
     /// A lesson's "Where this shows up" link (EvalLessons.knownRoutes).
     static func go(_ route: String, nav: EvalsNav, board: EvalsBoard) {
+        // 2.0.3 route keys (lessons.json, EvalLessons.knownRoutes) → their 2.0.4 homes.
         switch route {
         case "overview": nav.go(EvalsTabV2.overview)
-        case "your-evals": nav.go(.yourEvals)
+        case "your-evals": if let s = board.sets.first?.name { nav.openTask(s) } else { nav.go(EvalsTabV2.ourTasks) }
         case "your-evals/judge":
-            if let j = board.judges.first?.name { nav.route = .judge(name: j, first: nil) } else { nav.go(.yourEvals) }
-        case "explore", "explore/anatomy": nav.exploreTab = .anatomy; nav.go(.explore)
-        case "explore/questions": nav.exploreTab = .questions; nav.go(.explore)
-        case "explore/scores": nav.exploreTab = .scores; nav.go(.explore)
-        case "run": nav.go(.run)
-        case "results/all-by-all": nav.resultsMode = .allByAll; nav.go(.results)
+            if let j = board.judges.first?.name { nav.openGrader(j) } else { nav.go(EvalsTabV2.ourTasks) }
+        case "explore", "explore/anatomy": nav.openBenchmark(nav.benchmark ?? "gsm8k", part: .anatomy)
+        case "explore/questions": nav.openBenchmark(nav.benchmark ?? "gsm8k", part: .questions)
+        case "explore/scores": nav.openBenchmark(nav.benchmark ?? "gsm8k", part: .scores)
+        case "run": nav.test(nil)
+        case "results/all-by-all": nav.route = .allResults
         case "results/run":
-            if let r = board.results.first(where: { $0.status == "done" }) { nav.openRun(r.id) } else { nav.go(.results) }
-        default: nav.resultsMode = .byEval; nav.go(.results)   // results, results/compare
+            if let r = board.results.first(where: { $0.status == "done" }) { nav.openRun(r.id) } else { nav.go(EvalsTabV2.compare) }
+        default: nav.go(EvalsTabV2.compare)   // results, results/compare
         }
     }
 }
