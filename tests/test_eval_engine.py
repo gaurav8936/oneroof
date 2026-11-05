@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -2165,6 +2166,13 @@ class ReviewContainment(unittest.TestCase):
         self.assertFalse((Path(self.tmp) / "escape.md").exists())
 
 
+def _kill9(pid):
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 class ReviewCancel(unittest.TestCase):
     """Second-model review P1 #2: a cancel stops and reaps the agent CLI before the worktree is removed or the seat lock
     released, also when the CLI ignores SIGTERM, and also when the cancel lands before the child's pid is recorded."""
@@ -2201,8 +2209,16 @@ class ReviewCancel(unittest.TestCase):
             os.kill(pid, 0)
         except ProcessLookupError:
             return False
-        r = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
-        return bool(r.stdout.strip()) and not r.stdout.strip().startswith("Z")
+        stat = Path(f"/proc/{pid}/stat")                       # Linux CI (debian-slim has no ps): state is field 3
+        if stat.exists():
+            try:
+                return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+            except (OSError, IndexError):
+                return False
+        if shutil.which("ps"):
+            r = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+            return bool(r.stdout.strip()) and not r.stdout.strip().startswith("Z")
+        return True
 
     def lock_free(self):
         import fcntl
@@ -2224,7 +2240,7 @@ class ReviewCancel(unittest.TestCase):
                     break
             time.sleep(0.1)
         cli = int(self.pidfile.read_text())
-        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(cli)], capture_output=True))
+        self.addCleanup(_kill9, cli)
         self.assertTrue(self.alive(cli))
         c = subprocess.run([sys.executable, str(ENGINE), "cancel", rid, "--json"], capture_output=True, text=True, env=self.env)
         self.assertTrue(json.loads(c.stdout)["cancelled"], c.stdout)
@@ -2268,7 +2284,7 @@ class ReviewCancel(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             ar.answer_case(r, d, cases[0], 1, "fix-locator")
         cli = int(self.pidfile.read_text())
-        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(cli)], capture_output=True))
+        self.addCleanup(_kill9, cli)
         self.assertFalse(self.alive(cli), "the agent CLI outlived the stop")
         self.assertIsNone(json.loads((d / "run.json").read_text()).get("child"))
 
