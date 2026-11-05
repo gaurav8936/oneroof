@@ -393,30 +393,160 @@ def capture_rules(repo: str | None, d: Path) -> dict:
             b = subprocess.run(["git", "-C", repo, "show", f"HEAD:{path}"], capture_output=True)
             if b.returncode != 0:
                 continue
-            dest = d / "rules" / path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(b.stdout)
+            (d / "rules").mkdir(parents=True, exist_ok=True)
+            safe_write(d / "rules", path, b.stdout)
             h.update(b.stdout)
             files.append(path)
     return {"rules_hash": h.hexdigest()[:7] if files else None, "rules_commit": commit, "rules_files": files}
 
 
+class UnsafePath(RuntimeError):
+    """A rules path that goes through a symlink, leaves the case folder, or is not a plain name."""
+
+
+def _dir_fd(root: Path, parts: list[str], create: bool) -> int:
+    """An fd for root/parts..., opened one component at a time with O_NOFOLLOW (review P1): a symlink anywhere on the
+    way (the root included) is refused, never followed, so nothing outside the case folder can be reached by a path that
+    looks like it is inside. Missing folders are made (create) one level at a time, again without following."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        fd = os.open(str(root), flags)
+    except OSError as e:
+        raise UnsafePath(f"{root} is not a plain folder ({e.strerror})")
+    try:
+        for part in parts:
+            if part in ("", ".", "..") or "/" in part:
+                raise UnsafePath(f"bad path component {part!r}")
+            try:
+                nfd = os.open(part, flags, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o755, dir_fd=fd)
+                nfd = os.open(part, flags, dir_fd=fd)
+            except OSError as e:   # ELOOP (a symlink) or ENOTDIR (a file): refused
+                raise UnsafePath(f"{part} is a symlink or not a folder ({e.strerror})")
+            os.close(fd)
+            fd = nfd
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def safe_write(root: Path, rel: str, data: bytes) -> Path:
+    """Write `data` at root/rel without following any symlink: every folder on the way is opened no-follow (a symlinked
+    one is refused), a symlink or file already at the destination is unlinked (the link itself, never its target), and the
+    file is created O_EXCL | O_NOFOLLOW. The resolved destination is checked to stay inside root."""
+    parts = Path(rel).parts
+    if not parts or Path(rel).is_absolute():
+        raise UnsafePath(f"bad rules path {rel!r}")
+    fd = _dir_fd(root, list(parts[:-1]), create=True)
+    try:
+        name = parts[-1]
+        if name in ("", ".", ".."):
+            raise UnsafePath(f"bad rules path {rel!r}")
+        try:
+            st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        except FileNotFoundError:
+            st = None
+        if st is not None:
+            import stat as _stat
+            if _stat.S_ISDIR(st.st_mode):
+                raise UnsafePath(f"{rel} is a folder")
+            os.unlink(name, dir_fd=fd)
+        out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=fd)
+        with os.fdopen(out, "wb") as f:
+            f.write(data)
+    finally:
+        os.close(fd)
+    dest = root / rel
+    real_root = os.path.realpath(root)
+    if os.path.commonpath([real_root, os.path.realpath(dest)]) != real_root:   # belt and braces
+        raise UnsafePath(f"{rel} resolves outside {root}")
+    return dest
+
+
+def remove_rule_files(folder: Path) -> None:
+    """Rules off: every instruction file in the case folder is removed. The walk never follows a symlinked folder (so a
+    folder that links outside the case is never entered), and a rules file that is a symlink is unlinked itself, never
+    its target. .git is skipped."""
+    if folder.is_symlink() or not folder.is_dir():
+        return
+    for top, dirs, files in os.walk(folder, followlinks=False):
+        dirs[:] = [x for x in dirs if x != ".git" and not os.path.islink(os.path.join(top, x))]
+        rel = os.path.relpath(top, folder)
+        names = [x for x in files if x in RULE_NAMES]
+        if not names:
+            continue
+        fd = _dir_fd(folder, [] if rel == "." else rel.split(os.sep), create=False)
+        try:
+            for x in names:
+                try:
+                    os.unlink(x, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+        finally:
+            os.close(fd)
+    # a symlinked folder or file named like a rules file (not walked into): the link itself goes
+    for top, dirs, _ in os.walk(folder, followlinks=False):
+        dirs[:] = [x for x in dirs if x != ".git"]
+        for x in dirs:
+            p = os.path.join(top, x)
+            if x in RULE_NAMES and os.path.islink(p):
+                os.unlink(p)
+
+
 def prepare_rules(folder: Path, d: Path, rules: str) -> list[str]:
     """Rules off: every instruction file is removed from the case worktree, so the agent reads none. Rules on: the
-    same, then the run's captured HEAD copies are put in. Returns the files the agent can read."""
-    for p in list(folder.rglob("*")) if folder.is_dir() else []:
-        if p.name in RULE_NAMES and ".git" not in p.relative_to(folder).parts and (p.is_file() or p.is_symlink()):
-            p.unlink(missing_ok=True)
+    same, then the run's captured HEAD copies are put in, never through a symlink (review P1: a pre-fix commit can have
+    a folder that is a symlink to somewhere outside the case; that copy is refused and the case says why). Returns the
+    files the agent can read."""
+    remove_rule_files(folder)
     given = []
-    if rules == "on" and (d / "rules").is_dir():
-        for src in sorted((d / "rules").rglob("*")):
-            if src.is_file():
-                rel = src.relative_to(d / "rules")
-                dest = folder / rel
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, dest)
-                given.append(str(rel))
-    return given
+    src_root = d / "rules"
+    if rules == "on" and src_root.is_dir() and not src_root.is_symlink():
+        for top, dirs, files in os.walk(src_root, followlinks=False):
+            dirs[:] = sorted(x for x in dirs if not os.path.islink(os.path.join(top, x)))
+            for name in sorted(files):
+                src = Path(top) / name
+                if src.is_symlink() or not src.is_file():
+                    continue
+                rel = str(src.relative_to(src_root))
+                try:
+                    safe_write(folder, rel, src.read_bytes())
+                except UnsafePath as e:
+                    raise RuntimeError(f"rules file {rel} not copied: {e}")
+                given.append(rel)
+    return sorted(given)
+
+
+CHILD_GRACE = float(os.environ.get("ONEROOF_CHILD_GRACE") or 3)
+
+
+def stop_child(p: subprocess.Popen, grace: float | None = None) -> None:
+    """Stop an agent CLI started with start_new_session (it leads its own group, pgid = pid) and reap it: SIGTERM to the
+    group, SIGKILL to the group after `grace` seconds if the leader is still there, then SIGKILL again for anything left in
+    the group (a grandchild that outlived the leader), and wait. Returns only when the leader is reaped."""
+    grace = CHILD_GRACE if grace is None else grace
+    def group(sig):
+        try:
+            os.killpg(p.pid, sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    if p.poll() is None:
+        group(signal.SIGTERM)
+        try:
+            p.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            pass
+    group(signal.SIGKILL)
+    while True:
+        try:
+            p.wait()
+            return
+        except KeyboardInterrupt:   # a second stop while reaping: finish reaping first
+            continue
 
 
 def kill_group(pid: int, sig) -> None:
@@ -495,18 +625,25 @@ def answer_case(r: dict, d: Path, case: dict, epoch: int, kind: str) -> dict:
         if how == "worktree" or rules == "on":
             row["rules_files"] = prepare_rules(folder, d, rules)
         prompt = SYSTEM.get(kind, SYSTEM["fix-locator"]) + "\n\n" + question(case)
-        p = subprocess.Popen(command(r["agent"], binary, prompt, out_file, folder, r.get("model_requested"), rules),
-                             cwd=str(folder), env=clean_env(),
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
-                             start_new_session=True)   # its own process group: a timeout or cancel stops its children too
-        set_status(d, child=p.pid, child_group=True)
+        # Review P1 (cancel): a cancel that lands while the child is being started is held until its pid is known (and
+        # recorded), then acted on; whatever happens next, the finally stops the child's whole group (SIGTERM, SIGKILL
+        # after CHILD_GRACE) and reaps it BEFORE the record is cleared, the worktree removed or the seat lock released.
+        p = None
         try:
+            with _held_stop():
+                p = subprocess.Popen(command(r["agent"], binary, prompt, out_file, folder, r.get("model_requested"), rules),
+                                     cwd=str(folder), env=clean_env(),
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
+                                     start_new_session=True)   # its own process group: a timeout or cancel stops its children too
+                set_status(d, child=p.pid, child_group=True)
             so, se = p.communicate(timeout=CASE_TIMEOUT)
         except subprocess.TimeoutExpired:
-            kill_group(p.pid, signal.SIGKILL)
+            stop_child(p)
             so, se = p.communicate()
             raise RuntimeError(f"no answer within {CASE_TIMEOUT // 60} minutes")
         finally:
+            if p is not None:
+                stop_child(p)
             set_status(d, child=None)
         text, seen = parse_output(r["agent"], so, out_file.read_text() if out_file.exists() else None)
         out_file.unlink(missing_ok=True)
@@ -632,8 +769,33 @@ def answers_of(d: Path) -> list[dict]:
     return rows
 
 
+_STOP = {"held": 0, "pending": False, "raised": False}
+
+
 def _stop(*_):
+    """SIGTERM (a cancel): stop like Ctrl-C, once. While a child is being started (held), the stop waits until its pid is
+    recorded, so the cleanup always knows which child to stop. A second SIGTERM while cleaning up is ignored (the cancel's
+    SIGKILL deadline is the backstop)."""
+    if _STOP["raised"]:
+        return
+    if _STOP["held"]:
+        _STOP["pending"] = True
+        return
+    _STOP["raised"] = True
     raise KeyboardInterrupt
+
+
+class _held_stop:
+    def __enter__(self):
+        _STOP["held"] += 1
+
+    def __exit__(self, *exc):
+        _STOP["held"] -= 1
+        if not _STOP["held"] and _STOP["pending"] and exc[0] is None:
+            _STOP["pending"] = False
+            _STOP["raised"] = True
+            raise KeyboardInterrupt
+        return False
 
 
 def work(rid: str) -> int:
@@ -641,6 +803,7 @@ def work(rid: str) -> int:
     d = RUNS / rid
     # LAB-2237: cancel sends SIGTERM to this worker's process group; stop like a cancel, so the finally below removes
     # the case worktrees and frees the seat.
+    _STOP.update(held=0, pending=False, raised=False)
     try:
         signal.signal(signal.SIGTERM, _stop)
     except ValueError:   # not the main thread (tests): cancel still works through the CANCEL file

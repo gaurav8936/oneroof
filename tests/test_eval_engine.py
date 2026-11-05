@@ -1271,7 +1271,7 @@ class Lessons(unittest.TestCase):
         self.assertEqual(len(ls), 16)
         self.assertEqual(len({x["id"] for x in ls}), 16)
         self.assertEqual([x["title"] for x in self.doc["sections"]], ["Start", "Reading a score", "How answers are marked",
-                                                                     "Agents vs models", "Your own evals", "Reading leaderboards"])
+                                                                     "Agents vs models", "Our own tasks", "Reading leaderboards"])   # lane B rename (2.0.4)
         order = [x["id"] for x in self.doc["sections"]]
         self.assertEqual([x["section"] for x in ls], sorted((x["section"] for x in ls), key=order.index))   # grouped in order
         for x in ls:
@@ -1630,6 +1630,45 @@ class SetupBoard(unittest.TestCase):
         w = {r["setup_id"]: r for r in self.board()["rows"]}["claude_code:default:off"]
         self.assertEqual(w["status"], "failed")
 
+    def two_attempts(self, rid, per_bug, started):
+        """A run of the 10 bugs × 2 attempts: per_bug[i] = (attempt 1 score, attempt 2 score)."""
+        d = Path(self.tmp) / "runs" / rid
+        d.mkdir(parents=True)
+        samples = [[i, e + 1, per_bug[n][e]] for n, i in enumerate(self.ids) for e in range(2)]
+        acc = sum(x[2] for x in samples) / len(samples)
+        (d / "run.json").write_text(json.dumps({
+            "id": rid, "task": "own_demo_v2", "task_ref": self.tf, "model": "anthropic/claude-opus-5-5", "status": "done",
+            "limit": 10, "epochs": 2, "started": started,
+            "summary": {"status": "success", "samples_done": 20, "started": started, "finished": started,
+                        "scores": [{"scorer": "s", "metrics": {"accuracy": acc}}], "samples": samples}}))
+
+    def test_attempts_policy_one_success_in_two_is_half(self):
+        # review P1 #4: 10 bugs × 2 attempts, one success each = 50 %, never 10/10
+        self.two_attempts("half", [(1.0, 0.0)] * 10, "2026-11-01T00:00:00Z")
+        self.e.index()
+        row = self.board()["rows"][0]
+        self.assertEqual((row["run"], row["right"], row["n"]), ("half", 5, 10))
+        self.assertEqual((row["lo"], row["hi"]), self.e.wilson(5, 10))           # Wilson on 50 %, n = the bugs
+        self.assertEqual([c["score"] for c in row["per_case"]], [0.5] * 10)
+        self.assertEqual([c["right"] for c in row["per_case"]], [False] * 10)    # right = every attempt right
+        mixed = [(1.0, 1.0)] * 7 + [(1.0, 0.0)] + [(0.0, 0.0)] * 2               # 7.5 of 10
+        self.two_attempts("mixed", mixed, "2026-11-02T00:00:00Z")
+        self.e.index()
+        row = self.board()["rows"][0]
+        self.assertEqual((row["run"], row["right"], row["n"]), ("mixed", 7.5, 10))
+        self.assertEqual([c["score"] for c in row["per_case"]], [1.0] * 7 + [0.5] + [0.0] * 2)
+        self.assertEqual([c["right"] for c in row["per_case"]], [True] * 7 + [False] * 3)
+        # the paired compare uses the same per-bug means: 7.5/10 vs 5/10 = +25 points
+        c = engine(self.tmp, "compare", "mixed", "half")
+        self.assertAlmostEqual(c["diff"], 0.25)
+        self.assertEqual(c["only_a"], self.ids[:7])
+        # one attempt: integers, as before
+        self.f.run("one", "own_demo_v2", "anthropic/claude-opus-5-5", self.sc(8), "2026-11-03T00:00:00Z", task_ref=self.tf)
+        self.e.index()
+        row = self.board()["rows"][0]
+        self.assertEqual((row["run"], row["right"], type(row["right"])), ("one", 8, int))
+        self.assertEqual([c["score"] for c in row["per_case"]], [1.0] * 8 + [0.0] * 2)
+
     def test_labels(self):
         st = lambda **k: dict({"agent": None, "agent_name": None, "model": None, "model_requested": None, "runs_on": "api:anthropic",
                                "rules": None}, **k)
@@ -1719,12 +1758,72 @@ class Changes(unittest.TestCase):
         skill = next(r for r in rows if r["what"].startswith("Skill"))
         self.assertEqual((skill["who"], skill["path"], skill["commit"]), ("you", "skills/where-are-we", self.c2))
         added = next(r for r in rows if r["what"] == "CLAUDE.md added")
-        self.assertEqual((added["at"], added["commit"], added["tested"]), ("2026-11-02T12:00:00Z", self.c1, {"before": "r1", "after": "r2"}))
+        # review P1 #3: r1 → r2 changed the CLI version AND the default model, and neither ran with rules on: no pair
+        self.assertEqual((added["at"], added["commit"], added["tested"]), ("2026-11-02T12:00:00Z", self.c1, {"before": None, "after": None}))
         v = next(r for r in rows if r["what"] == "Claude Code 2.1.30 → 2.1.31")
-        self.assertEqual((v["who"], v["path"], v["commit"], v["tested"]), ("vendor", None, None, {"before": "r1", "after": "r2"}))
+        self.assertEqual((v["who"], v["path"], v["commit"], v["tested"]), ("vendor", None, None, {"before": "r1", "after": None}))
         self.assertEqual(rows, sorted(rows, key=lambda r: (r["at"], r["what"]), reverse=True))   # newest first
         for r in rows:
             self.assertEqual(set(r), {"at", "who", "what", "path", "commit", "tested"})
+
+
+class ChangesComparablePairs(unittest.TestCase):
+    """Second-model review P1 #3: a change is "tested before and after" only by two runs that differ in nothing but what
+    the change changed (recorded stamps, same task + version, agent, CLI version, models, rules mode)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-changes-pairs-")
+        self.repo = tempfile.mkdtemp(prefix="roof-changes-pairs-repo-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        git_commit(self.repo, "code", {"src/a.py": "a\n"}, "2026-11-01T12:00:00+00:00")
+        git_commit(self.repo, "rules", {"CLAUDE.md": "r1\n"}, "2026-11-02T12:00:00+00:00")
+        git_commit(self.repo, "skill", {"skills/x/SKILL.md": "s\n"}, "2026-11-04T12:00:00+00:00")
+
+    def run_json(self, rid, started, recorded=True, agent="claude_code", **st):
+        stamp = dict({"recorded": recorded, "agent": agent, "agent_version": "2.1.30", "model": "claude-opus-5-5",
+                      "model_requested": "claude-opus-5-5", "model_source": "chosen", "rules": "on", "rules_hash": "aaaaaaa",
+                      "task": "own_x_v2", "task_version": 2}, **st)
+        d = Path(self.tmp) / "runs" / rid
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps({"id": rid, "agent": agent, "status": "done", "started": started,
+                                                "repo_path": self.repo, "stamp": stamp}))
+
+    def changes(self):
+        r = subprocess.run([sys.executable, str(EVALS_DIR / "changes.py"), "--repo", self.repo, "--days", "3650", "--json"],
+                           capture_output=True, text=True, env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        return {x["what"]: x for x in json.loads(r.stdout)}
+
+    def test_only_compatible_pairs(self):
+        self.run_json("before", "2026-11-01T18:00:00Z")
+        after = "2026-11-03T00:00:00Z"
+        self.run_json("codex", after, agent="codex_cli")                        # another agent
+        self.run_json("off", after, rules="off", rules_hash=None)               # rules off cannot see a CLAUDE.md edit
+        self.run_json("v3", after, task="own_x_v3", task_version=3, rules_hash="bbbbbbb")   # other frozen bugs
+        self.run_json("sonnet", after, model="claude-sonnet-5-5", model_requested="claude-sonnet-5-5", rules_hash="bbbbbbb")
+        self.run_json("cli", after, agent_version="2.1.31", rules_hash="bbbbbbb")            # the CLI changed too
+        self.run_json("unrec", after, recorded=False, rules_hash="bbbbbbb")     # derived stamp: proves nothing
+        self.run_json("same", after)                                            # same rules hash: did not see the change
+        rows = self.changes()
+        self.assertEqual(rows["CLAUDE.md added"]["tested"], {"before": "before", "after": None})
+        self.assertEqual(rows["Skill added: x"]["tested"], {"before": None, "after": None})   # no run loads skills
+        self.run_json("good", "2026-11-03T06:00:00Z", rules_hash="bbbbbbb")     # differs only in the rules
+        self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": "before", "after": "good"})
+
+    def test_vendor_pairs_differ_only_in_the_vendor_change(self):
+        dflt = dict(model_requested=None, model_source="cli_default_resolved", rules="off", rules_hash=None)
+        self.run_json("v30", "2026-11-01T00:00:00Z", **dflt)
+        self.run_json("v31-other-task", "2026-11-01T06:00:00Z", **dict(dflt, agent_version="2.1.31", task="own_y_v1", task_version=1))
+        rows = self.changes()
+        v = rows["Claude Code 2.1.30 → 2.1.31"]
+        self.assertEqual(v["tested"], {"before": "v30", "after": None})          # different task: not comparable
+        self.run_json("v31", "2026-11-01T12:00:00Z", **dict(dflt, agent_version="2.1.31"))
+        self.assertEqual(self.changes()["Claude Code 2.1.30 → 2.1.31"]["tested"], {"before": "v30", "after": "v31"})
+        # a default-model change that came with a CLI change is not attributed to the model alone
+        self.run_json("v32", "2026-11-02T00:00:00Z", **dict(dflt, agent_version="2.1.32", model="claude-sonnet-5-5"))
+        m = self.changes()["Claude Code's default model: claude-opus-5-5 → claude-sonnet-5-5"]
+        self.assertEqual(m["tested"]["after"], None)
 
 
 class Robustness(unittest.TestCase):
@@ -1822,6 +1921,198 @@ class Robustness(unittest.TestCase):
             self.assertIn(k, row)
         self.assertEqual(x["agents"]["Codex"]["fixup"], row["fixup"])
         self.assertEqual(x["window_days"], 60)
+
+
+class ReviewContainment(unittest.TestCase):
+    """Second-model review P1 #1: the rules copy (on) and the rules removal (off) never follow a symlink out of the case
+    folder. A crafted repo whose pre-fix commit has `docs` as a symlink to an outside folder, while HEAD has docs/AGENTS.md."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-contain-")
+        self.repo = tempfile.mkdtemp(prefix="roof-contain-repo-")
+        self.outside = Path(tempfile.mkdtemp(prefix="roof-contain-outside-"))
+        for x in (self.tmp, self.repo, str(self.outside)):
+            self.addCleanup(shutil.rmtree, x, True)
+        (self.outside / "AGENTS.md").write_text("outside agents\n")
+        (self.outside / "CLAUDE.md").write_text("outside claude\n")
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.es = sibling("evalset")
+        self.ar = sibling("agent_runner")
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        os.symlink(str(self.outside), Path(self.repo) / "docs")
+        git_commit(self.repo, "XYZ-1 · setup", {"src/alpha.py": "old alpha\n", "src/beta.py": "b\n"})
+        git_commit(self.repo, "XYZ-2 · fix: login button does nothing", {"src/alpha.py": "new alpha\n"})
+        git_commit(self.repo, "XYZ-3 · Fix: export is empty", {"src/beta.py": "b2\n"})
+        git_commit(self.repo, "XYZ-4 · rules", {"docs": None, "docs/AGENTS.md": "head rules\n", "CLAUDE.md": "head claude\n"})
+        cases, stats = self.es.build_cases(self.repo, 20, 30, None)
+        d, _ = self.es.write_set("demo", self.repo, cases, stats, 30)
+        self.task = str(self.es.task_file(d))
+        self.fake = Path(self.tmp) / "fake-claude"
+        self.fake.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.31 (Claude Code)'; exit 0; fi\n"
+                             "printf '%s' '{\"type\":\"result\",\"result\":\"src/alpha.py\"}'\n")
+        self.fake.chmod(0o755)
+        usage = Path(self.tmp) / "usage"
+        usage.mkdir()
+        (usage / "Claude1.json").write_text(json.dumps({"updated": time.time(), "rate_limits": {"five_hour": {"used_percentage": 9}}}))
+        self.env = dict(os.environ, ONEROOF_EVALS_DIR=self.tmp, ONEROOF_AGENT_BIN_CLAUDE_CODE=str(self.fake),
+                        ONEROOF_EVAL_WORKTREES=str(Path(self.tmp) / "worktrees"), ONEROOF_USAGE_DIR=str(usage))
+
+    def outside_intact(self):
+        self.assertEqual(sorted(x.name for x in self.outside.iterdir()), ["AGENTS.md", "CLAUDE.md"])
+        self.assertEqual((self.outside / "AGENTS.md").read_text(), "outside agents\n")
+        self.assertEqual((self.outside / "CLAUDE.md").read_text(), "outside claude\n")
+
+    def test_rules_on_never_writes_through_a_symlinked_folder(self):
+        r = subprocess.run([sys.executable, str(ENGINE), "run", self.task, "--agent", "claude_code", "--seat", "C1",
+                            "--rules", "on", "--json"], capture_output=True, text=True, env=self.env)
+        self.outside_intact()
+        self.assertTrue(r.stdout.strip(), r.stderr[-2000:])
+        rid = json.loads(r.stdout)["id"]
+        rows = [json.loads(x) for x in (Path(self.tmp) / "runs" / rid / "answers.jsonl").read_text().splitlines()]
+        self.assertTrue(rows)
+        self.assertTrue(all("not copied" in (a.get("error") or "") for a in rows), rows)   # the case says why
+
+    def test_rules_off_never_deletes_through_a_symlinked_folder(self):
+        r = subprocess.run([sys.executable, str(ENGINE), "run", self.task, "--agent", "claude_code", "--seat", "C1",
+                            "--json"], capture_output=True, text=True, env=self.env)
+        self.assertEqual(json.loads(r.stdout)["status"], "done", r.stdout)
+        self.outside_intact()
+
+    def test_unit_copy_and_removal(self):
+        case, run = Path(self.tmp) / "case", Path(self.tmp) / "run"
+        case.mkdir()
+        (case / "CLAUDE.md").write_text("pre-fix rules\n")
+        os.symlink(str(self.outside), case / "docs")
+        os.symlink(str(self.outside / "AGENTS.md"), case / "AGENTS.md")       # a rules file that is a link out
+        (run / "rules" / "docs").mkdir(parents=True)
+        (run / "rules" / "docs" / "AGENTS.md").write_text("head\n")
+        self.assertEqual(self.ar.prepare_rules(case, run, "off"), [])
+        self.assertFalse((case / "CLAUDE.md").exists())
+        self.assertFalse(os.path.lexists(case / "AGENTS.md"))                # the link went, not its target
+        self.outside_intact()
+        with self.assertRaises(RuntimeError) as e:
+            self.ar.prepare_rules(case, run, "on")
+        self.assertIn("symlink", str(e.exception))
+        self.outside_intact()
+        # a symlink at the destination itself is replaced by a plain file; the target is untouched
+        shutil.rmtree(run / "rules" / "docs")
+        (run / "rules" / "AGENTS.md").write_text("head agents\n")
+        os.symlink(str(self.outside / "AGENTS.md"), case / "AGENTS.md")
+        self.assertEqual(self.ar.prepare_rules(case, run, "on"), ["AGENTS.md"])
+        self.assertFalse((case / "AGENTS.md").is_symlink())
+        self.assertEqual((case / "AGENTS.md").read_text(), "head agents\n")
+        self.outside_intact()
+        with self.assertRaises(self.ar.UnsafePath):
+            self.ar.safe_write(case, "../escape.md", b"x")
+        self.assertFalse((Path(self.tmp) / "escape.md").exists())
+
+
+class ReviewCancel(unittest.TestCase):
+    """Second-model review P1 #2: a cancel stops and reaps the agent CLI before the worktree is removed or the seat lock
+    released, also when the CLI ignores SIGTERM, and also when the cancel lands before the child's pid is recorded."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-cancel-")
+        self.repo = tempfile.mkdtemp(prefix="roof-cancel-repo-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.es = sibling("evalset")
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        git_commit(self.repo, "XYZ-1 · setup", {"src/alpha.py": "old alpha\n", "src/beta.py": "b\n"})
+        git_commit(self.repo, "XYZ-2 · fix: login button does nothing", {"src/alpha.py": "new alpha\n"})
+        git_commit(self.repo, "XYZ-3 · Fix: export is empty", {"src/beta.py": "b2\n"})
+        cases, stats = self.es.build_cases(self.repo, 20, 30, None)
+        d, _ = self.es.write_set("demo", self.repo, cases, stats, 30)
+        self.task = str(self.es.task_file(d))
+        self.pidfile = Path(self.tmp) / "cli.pid"
+        # a CLI that ignores SIGTERM and would sit for 5 minutes
+        self.fake = Path(self.tmp) / "stubborn-claude"
+        self.fake.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.31 (Claude Code)'; exit 0; fi\n"
+                             f"trap '' TERM\necho $$ > {self.pidfile}\nexec sleep 300\n")
+        self.fake.chmod(0o755)
+        usage = Path(self.tmp) / "usage"
+        usage.mkdir()
+        (usage / "Claude1.json").write_text(json.dumps({"updated": time.time(), "rate_limits": {"five_hour": {"used_percentage": 9}}}))
+        self.wt = Path(self.tmp) / "worktrees"
+        self.env = dict(os.environ, ONEROOF_EVALS_DIR=self.tmp, ONEROOF_AGENT_BIN_CLAUDE_CODE=str(self.fake),
+                        ONEROOF_EVAL_WORKTREES=str(self.wt), ONEROOF_USAGE_DIR=str(usage), ONEROOF_CHILD_GRACE="1")
+
+    def alive(self, pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        r = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+        return bool(r.stdout.strip()) and not r.stdout.strip().startswith("Z")
+
+    def lock_free(self):
+        import fcntl
+        with open(Path(self.tmp) / "slots" / "seat-C1.lock", "a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return True
+            except OSError:
+                return False
+
+    def test_cancel_kills_a_cli_that_ignores_sigterm_before_the_seat_is_freed(self):
+        r = subprocess.run([sys.executable, str(ENGINE), "run", self.task, "--agent", "claude_code", "--seat", "C1",
+                            "--background", "--json"], capture_output=True, text=True, env=self.env)
+        rid = json.loads(r.stdout)["id"]
+        for _ in range(200):
+            if self.pidfile.exists() and self.pidfile.read_text().strip():
+                rj = json.loads((Path(self.tmp) / "runs" / rid / "run.json").read_text())
+                if rj.get("child"):
+                    break
+            time.sleep(0.1)
+        cli = int(self.pidfile.read_text())
+        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(cli)], capture_output=True))
+        self.assertTrue(self.alive(cli))
+        c = subprocess.run([sys.executable, str(ENGINE), "cancel", rid, "--json"], capture_output=True, text=True, env=self.env)
+        self.assertTrue(json.loads(c.stdout)["cancelled"], c.stdout)
+        # when cancel returns: the CLI is gone, and only then may the seat be free
+        self.assertFalse(self.alive(cli), "the agent CLI outlived the cancel")
+        for _ in range(100):
+            if self.lock_free():
+                break
+            time.sleep(0.1)
+        self.assertTrue(self.lock_free())
+        rj = json.loads((Path(self.tmp) / "runs" / rid / "run.json").read_text())
+        self.assertEqual(rj["status"], "cancelled")
+        self.assertIsNone(rj.get("child"))
+        self.assertEqual([x for x in self.wt.rglob("*") if x.is_dir() and x.name.endswith("-e1")], [])   # worktree gone
+
+    def test_worker_stops_the_cli_even_when_the_stop_lands_before_its_pid_is_recorded(self):
+        old = {k: os.environ.get(k) for k in ("ONEROOF_AGENT_BIN_CLAUDE_CODE", "ONEROOF_EVAL_WORKTREES", "ONEROOF_CHILD_GRACE")}
+        os.environ.update(ONEROOF_AGENT_BIN_CLAUDE_CODE=str(self.fake), ONEROOF_EVAL_WORKTREES=str(self.wt), ONEROOF_CHILD_GRACE="1")
+        def restore():
+            for k, v in old.items():
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        self.addCleanup(restore)
+        ar = sibling("agent_runner")
+        d = Path(self.tmp) / "runs" / "race"
+        d.mkdir(parents=True)
+        r = {"id": "race", "agent": "claude_code", "repo_path": self.repo, "rules": "off"}
+        (d / "run.json").write_text(json.dumps(r))
+        _, cases = ar.load_set(self.task)
+        real = ar.set_status
+        def stop_when_recording(dd, **kw):   # a cancel's SIGTERM lands while the pid is being recorded
+            out = real(dd, **kw)
+            if kw.get("child"):
+                for _ in range(50):
+                    if self.pidfile.exists() and self.pidfile.read_text().strip():
+                        break
+                    time.sleep(0.1)
+                ar._stop()
+            return out
+        ar.set_status = stop_when_recording
+        ar._STOP.update(held=0, pending=False, raised=False)
+        with self.assertRaises(KeyboardInterrupt):
+            ar.answer_case(r, d, cases[0], 1, "fix-locator")
+        cli = int(self.pidfile.read_text())
+        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(cli)], capture_output=True))
+        self.assertFalse(self.alive(cli), "the agent CLI outlived the stop")
+        self.assertIsNone(json.loads((d / "run.json").read_text()).get("child"))
 
 
 @unittest.skipUnless(os.environ.get("ROOF_EVAL_INTEGRATION") == "1", "set ROOF_EVAL_INTEGRATION=1")

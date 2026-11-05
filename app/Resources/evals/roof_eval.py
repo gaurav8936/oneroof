@@ -1022,10 +1022,25 @@ def cmd_cancel(argv):
         except OSError:
             pass
     if r.get("runner") == "seat":   # LAB-2237: the worker's whole process group stops, also while it waits
-        stop_group(r.get("pid"))
+        # Review P1: the worker stops and reaps its agent (SIGTERM, SIGKILL after its grace) before it frees the seat, so
+        # it gets time for that; then, whatever the worker managed, a child still on record is killed here too.
+        stop_group(r.get("pid"), wait=SEAT_CANCEL_WAIT)
+        cur = read_json(d / "run.json", {}) or {}
+        for pid in {r.get("child"), cur.get("child")} - {None}:
+            if pid_alive(pid) and not zombie(pid):
+                try:
+                    os.killpg(pid, signal.SIGKILL)
+                except OSError:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        pass
     if r.get("status") in ("queued", "running", "waiting", "interrupted") and not pid_alive(r.get("pid")):
         set_status(d, status="cancelled", finished=now(), waiting=None)
     out({"id": argv[0], "cancelled": True}, o["json"], f"cancel sent to {argv[0]}")
+
+
+SEAT_CANCEL_WAIT = 15.0
 
 
 def stop_group(pid, wait: float = 5.0) -> None:
@@ -1702,7 +1717,8 @@ def cmd_power(argv):
 
 
 def solved(means: dict) -> set:
-    return {k for k, v in means.items() if v is not None and v >= 0.5}
+    """Bugs right on every attempt (the attempts policy: a case is right when its score is 1)."""
+    return {k for k, v in means.items() if v is not None and v >= 1.0}
 
 
 def compare_runs(a: str, b: str) -> dict | None:
@@ -1852,11 +1868,30 @@ STATUS_RANK = {"done": 0, "running": 1, "waiting": 2, "queued": 3, "failed": 4, 
 LAYER_RANK = {"model": 0, "agent_model": 1, "full": 2}
 
 
-def wilson(right: int, n: int) -> tuple:
+def wilson(right: float, n: int) -> tuple:
+    """95 % Wilson range of right / n. `right` may be fractional (the attempts policy below)."""
     if not n:
         return None, None
     lo, hi, _ = interval(right / n, n, None, True)
     return round(lo, 4), round(hi, 4)
+
+
+# ONE attempts policy (review P1 #4), used for every number a setup shows: its squares, its count, its Wilson range,
+# its cost per right answer and the paired compare. A bug's score = the mean of its attempts (0..1: 1 of 2 right = 0.5).
+# "right" = the sum of the bug scores (fractional when attempts disagree: "7.5 of 10"), so right / n = the run's
+# accuracy, exactly the mean over every attempt that the engine's metric reports. A case is "right" (true) only when
+# every attempt was right (score 1); null = not answered. The 95 % range is Wilson on that accuracy with n = the bugs
+# (not bugs × attempts): attempts at the same bug are not independent, so counting them as n would make the range too
+# narrow; bugs are the unit the paired compare pairs on, so the range and the verdict use the same unit. With 1 attempt
+# the two are the same. (Inspect's own stderr treats every attempt as a sample; we do not use it for a bug set.)
+def bug_score(mean) -> float | None:
+    return None if mean is None else max(0.0, min(1.0, float(mean)))
+
+
+def num(x: float):
+    """8.0 → 8 (an int when whole), 7.5 → 7.5."""
+    x = round(float(x), 4)
+    return int(x) if x == int(x) else x
 
 
 def case_means(rid: str, d: Path) -> dict:
@@ -1928,9 +1963,12 @@ def leaderboard_by_setup(task: str, version: int | None = None) -> dict:
         stamp = stamp_of(r, task_version=x.get("task_version"))
         means = case_means(r["id"], f.parent)
         ids = order or sorted(means)
-        per_case = [{"id": i, "right": (None if means.get(i) is None else means[i] >= 0.5)} for i in ids]
-        answered = [c for c in per_case if c["right"] is not None]
-        right = sum(1 for c in answered if c["right"])
+        per_case = []
+        for i in ids:
+            sc = bug_score(means.get(i))
+            per_case.append({"id": i, "score": None if sc is None else round(sc, 4), "right": None if sc is None else sc >= 1.0})
+        answered = [c for c in per_case if c["score"] is not None]
+        right = num(sum(c["score"] for c in answered))
         done = status == "done"
         n = len(answered) if done else None
         lo, hi = wilson(right, n) if done else (None, None)

@@ -141,8 +141,8 @@ struct EvalsOneTestPage: View {
                     VStack(alignment: .leading, spacing: 2) {
                         if let s = sc {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("\(s.right)").ui(26, .bold).foregroundStyle(t.text.color)
-                                    .evalHover(.score, EvalHover.score(score: Double(s.right) / Double(max(s.n, 1)), n: s.n))
+                                Text(EvalScoreText.count(s.right)).ui(26, .bold).foregroundStyle(t.text.color)
+                                    .evalHover(.score, EvalHover.score(score: s.right / Double(max(s.n, 1)), n: s.n))
                                 Text("of \(s.n)").ui(TypeScale.small).foregroundStyle(t.text2.color)
                             }
                             if let v = verdict {
@@ -160,13 +160,13 @@ struct EvalsOneTestPage: View {
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(numbersLine(sc)).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-                            .evalHoverIf(sc.map { s in (.range, EvalHover.range(score: Double(s.right) / Double(max(s.n, 1)), n: s.n, lo: s.lo, hi: s.hi, unit: "bug")) })
+                            .evalHoverIf(sc.map { s in (.range, EvalHover.range(score: s.right / Double(max(s.n, 1)), n: s.n, lo: s.lo, hi: s.hi, unit: "bug")) })
                         EvalsAStampLine(stamp: stamp)
                     }
                     Spacer(minLength: 8)
                     RoofButton("Compare with…") { compareWith() }.disabled(result?.status != "done")
                         .help("Compare, with this test picked; pick a second for the paired verdict")
-                    RoofButton("Test again") { if let r = result { nav.test(EvalRunPlan.again(r)) } }.disabled(result == nil)
+                    RoofButton("Test again") { if let r = result { nav.test(EvalRunPlan.again(r, stamp: stamp)) } }.disabled(result == nil)
                         .help("Set up a test, pre-filled with the same settings; nothing starts until Start")
                 }
                 extras
@@ -176,7 +176,7 @@ struct EvalsOneTestPage: View {
     }
 
     /// "On new bugs, expect 5 to 9 · $0.256 in all · $0.032 per right answer · Nov 1 08:31 · seed 42".
-    private func numbersLine(_ sc: (right: Int, n: Int, lo: Double, hi: Double)?) -> String {
+    private func numbersLine(_ sc: (right: Double, n: Int, lo: Double, hi: Double)?) -> String {
         var f: [String] = []
         if let s = sc { f.append(EvalVerdicts.expect(lo: s.lo, hi: s.hi, n: s.n)) }
         if let r = result {

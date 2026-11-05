@@ -8,7 +8,9 @@
 "vendor" = the agent changed under you: the CLI version or the model its default resolved to, between consecutive
            recorded run stamps of that agent (run.json "stamp", recorded: true), and the CLI versions `roof eval doctor`
            saw (<evals folder>/agents-seen.json).
-Each row says which finished agent run came last before it and first after it ("tested"), so a re-test can be offered.
+Each row says which finished agent runs test it ("tested"): the latest before and earliest after that are COMPARABLE
+(recorded stamps, same task + version, agent, CLI version, models and rules mode, differing only in what changed); with
+no such pair, "after" is null (and "before" the run to repeat, if one is eligible): "no comparable before/after tests".
 Real data only: an empty list is a valid answer. No repo is changed; nothing is sent anywhere.
 """
 from __future__ import annotations
@@ -108,13 +110,15 @@ def stamped_runs() -> list[dict]:
 
 
 def all_agent_runs() -> list[dict]:
-    """Finished agent runs (recorded or not), oldest first: the candidates for "tested"."""
+    """Finished agent runs with a recorded stamp, oldest first: the only candidates for "tested" (review P1 #3: a run
+    without a recorded stamp cannot be shown to match anything)."""
     out = []
     for f in sorted(RUNS.glob("*/run.json")) if RUNS.is_dir() else []:
         r = read_json(f, {}) or {}
-        if r.get("status") == "done" and r.get("agent"):
+        st = r.get("stamp")
+        if r.get("status") == "done" and r.get("agent") and isinstance(st, dict) and st.get("recorded") is True:
             out.append({"id": r.get("id"), "agent": r.get("agent"), "started": r.get("started") or r.get("created") or "",
-                        "repo": r.get("repo_path")})
+                        "repo": r.get("repo_path"), "stamp": st})
     out.sort(key=lambda x: x["started"])
     return out
 
@@ -133,14 +137,14 @@ def vendor_changes(since: datetime) -> list[dict]:
             v = st.get("agent_version")
             if v and prev_v and v != prev_v[0]:
                 rows.append({"at": r["started"], "who": "vendor", "what": f"{name} {prev_v[0]} → {v}", "path": None,
-                             "commit": None, "_agent": agent, "_before": prev_v[1], "_after": r["id"]})
+                             "commit": None, "_agent": agent, "_dim": "agent_version", "_old": prev_v[0], "_new": v})
                 seen_pairs.add((agent, prev_v[0], v))
             if v:
                 prev_v = (v, r["id"])
             m = st.get("model") if st.get("model_source") == "cli_default_resolved" else None
             if m and prev_m and m != prev_m[0]:
                 rows.append({"at": r["started"], "who": "vendor", "what": f"{name}'s default model: {prev_m[0]} → {m}",
-                             "path": None, "commit": None, "_agent": agent, "_before": prev_m[1], "_after": r["id"]})
+                             "path": None, "commit": None, "_agent": agent, "_dim": "model", "_old": prev_m[0], "_new": m})
             if m:
                 prev_m = (m, r["id"])
     for agent, hist in (read_json(SEEN, {}) or {}).items():
@@ -149,7 +153,8 @@ def vendor_changes(since: datetime) -> list[dict]:
             if a.get("version") and b.get("version") and a["version"] != b["version"] \
                     and (agent, a["version"], b["version"]) not in seen_pairs:
                 rows.append({"at": b.get("at"), "who": "vendor", "what": f"{name} {a['version']} → {b['version']}",
-                             "path": None, "commit": None, "_agent": agent})
+                             "path": None, "commit": None, "_agent": agent, "_dim": "agent_version",
+                             "_old": a["version"], "_new": b["version"]})
                 seen_pairs.add((agent, a["version"], b["version"]))
     cut = iso(since)
     return [r for r in rows if (r.get("at") or "") >= cut]
@@ -162,15 +167,57 @@ def same_repo(a: str | None, b: str | None) -> bool:
         return False
 
 
+# The setup parts a before/after pair must share (review P1 #3). The one the change is about may (must) differ.
+SETUP_KEYS = ("task", "task_version", "agent", "agent_version", "model_requested", "model", "rules", "rules_hash")
+RULE_FILES = ("CLAUDE.md", "AGENTS.md", "CLAUDE.local.md")
+
+
+def _dimension(row: dict) -> str | None:
+    """What a change changes, as a stamp key: the rules (a CLAUDE.md / AGENTS.md edit, only seen by a rules-on run),
+    the CLI version or the default model (vendor). None = no run can show it (skills and settings: seat runs never load
+    them), so it is never "tested"."""
+    if row.get("_dim"):
+        return row["_dim"]
+    path = row.get("path") or ""
+    return "rules" if row.get("who") == "you" and path.rsplit("/", 1)[-1] in RULE_FILES else None
+
+
+def _eligible(run: dict, row: dict, dim: str) -> bool:
+    st = run["stamp"]
+    if row.get("_agent") and run["agent"] != row["_agent"]:
+        return False
+    if dim == "rules":
+        return st.get("rules") == "on" and bool(st.get("rules_hash"))
+    if dim == "model":   # the CLI default's resolution changed: only runs on the CLI default, resolved, show it
+        return not st.get("model_requested") and st.get("model_source") == "cli_default_resolved" and bool(st.get("model"))
+    return bool(st.get(dim))
+
+
+def _key(run: dict, dim: str) -> tuple:
+    st = run["stamp"]
+    return tuple(st.get(k) for k in SETUP_KEYS if k != ("rules_hash" if dim == "rules" else dim))
+
+
 def tested(row: dict, runs: list[dict], repo: str | None) -> dict:
-    if "_before" in row or "_after" in row:
-        return {"before": row.get("_before"), "after": row.get("_after")}
-    pool = [r for r in runs if r["agent"] == row["_agent"]] if row.get("_agent") else \
-        [r for r in runs if same_repo(r["repo"], repo)]
+    """The before/after pair for a change: the latest run before it and the earliest after it that are COMPARABLE —
+    both recorded, same frozen task and task version, same agent, CLI version, requested and answering model and rules
+    mode — differing only in what the change changed (the rules hash; the CLI version; the default model), and for a
+    vendor change, the old value before and the new one after. No such pair: the latest eligible run before is kept as
+    the one to repeat, and "after" is null; nothing eligible: both null ("no comparable before/after tests")."""
+    dim = _dimension(row)
+    if dim is None:
+        return {"before": None, "after": None}
     at = row.get("at") or ""
-    before = [r["id"] for r in pool if r["started"] < at]
-    after = [r["id"] for r in pool if r["started"] >= at]
-    return {"before": before[-1] if before else None, "after": after[0] if after else None}
+    pool = [r for r in runs if _eligible(r, row, dim) and (row.get("who") != "you" or same_repo(r["repo"], repo))]
+    old, new = row.get("_old"), row.get("_new")
+    before = [r for r in pool if r["started"] < at and (old is None or r["stamp"].get(dim) == old)]
+    after = [r for r in pool if r["started"] >= at and (new is None or r["stamp"].get(dim) == new)]
+    for a in after:   # earliest after first, then the latest comparable before it
+        for b in reversed(before):
+            if _key(a, dim) == _key(b, dim) and \
+                    a["stamp"].get("rules_hash" if dim == "rules" else dim) != b["stamp"].get("rules_hash" if dim == "rules" else dim):
+                return {"before": b["id"], "after": a["id"]}
+    return {"before": before[-1]["id"] if before else None, "after": None}
 
 
 def default_repos() -> list[str]:

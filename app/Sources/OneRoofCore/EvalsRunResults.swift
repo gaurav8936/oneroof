@@ -24,6 +24,11 @@ public struct EvalRunPlan: Identifiable, Equatable, Sendable {
     public var agents: [String]
     /// Agents on an API model, billed in dollars ("claude_code@anthropic/claude-haiku-5-5"), shown as Agent · API.
     public var apiAgents: [String]
+    /// 2.0.4: the exact setups to pre-fill (agent + model + rules), when known. They win over agents / apiAgents / models
+    /// in EvalSetupChoice.from, so a chosen seat model or rules mode is never dropped (review P2 #6, #7).
+    public var setups: [EvalSetupChoice] = []
+    /// A repeat of a rules-on test: the rules hash that test had (the repeat uses HEAD's rules now; the sheet says so).
+    public var repeatRulesHash: String?
 
     public init(id: UUID = UUID(), benchmark: EvalBenchmark? = nil, tasks: [String], models: [String] = ["mockllm/model"],
                 limit: Int = 50, epochs: Int? = nil, seed: Int? = 42, temperature: Double? = nil, cap: Double = 2.0,
@@ -486,6 +491,20 @@ public struct EvalSetAddResult: Decodable, Equatable, Sendable {
 // MARK: - Run again (LAB-2069): the same settings, through Run's estimate and cap
 
 extension EvalRunPlan {
+    /// Test again from the run's stamp (review P2 #6): the same agent, the model it asked for (nil = the CLI default) and
+    /// the same rules mode. A rules-on repeat records the old hash, so the sheet can say it uses HEAD's rules now.
+    public static func again(_ r: EvalResult, stamp: EvalStamp?) -> EvalRunPlan {
+        var p = again(r)
+        guard let st = stamp else { return p }
+        if let a = st.agent ?? r.agent, (st.runsOn ?? "").hasPrefix("seat:") || (r.model ?? "").hasPrefix("seat/") {
+            let on = st.rules == "on"
+            p.agents = [a]; p.apiAgents = []; p.models = []
+            p.setups = [.seat(a, model: st.modelRequested, rules: on)]
+            p.repeatRulesHash = on ? (st.rulesHash ?? "") : nil
+        }
+        return p
+    }
+
     public static func again(_ r: EvalResult) -> EvalRunPlan {
         let task = r.taskRef ?? r.task ?? "gsm8k"
         let model = r.model ?? "mockllm/model"

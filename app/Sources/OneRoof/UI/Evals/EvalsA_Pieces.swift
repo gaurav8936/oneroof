@@ -135,7 +135,7 @@ struct EvalsABugSquares: View {
             if let g = guess, g >= squares.count, g > 0 { tick }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(squares.filter { $0.right == true }.count) of \(squares.count) right" + (guess.map { ", a blind guess gets \($0)" } ?? ""))
+        .accessibilityLabel("\(EvalScoreText.count(squares.reduce(0) { $0 + ($1.score ?? 0) })) of \(squares.count) right" + (guess.map { ", a blind guess gets \($0)" } ?? ""))
     }
 
     private var tick: some View {
@@ -146,8 +146,16 @@ struct EvalsABugSquares: View {
     @ViewBuilder private func square(_ s: EvalsASquare) -> some View {
         let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
         let base = Group {
-            if s.right == nil {
+            if s.score == nil {
                 shape.strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+            } else if s.isPartial, let sc = s.score {
+                // right on some attempts: filled from the bottom by that share (the attempts policy)
+                shape.fill(t.surface2.color)
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(t.diffAddText.color).frame(height: size * CGFloat(sc))
+                    }
+                    .clipShape(shape)
+                    .overlay(shape.strokeBorder(t.separatorStrong.color, lineWidth: 1))
             } else {
                 shape.fill(s.right == true ? t.diffAddText.color : t.surface2.color)
                     .overlay(shape.strokeBorder(s.right == true ? .clear : t.separatorStrong.color, lineWidth: 1))
@@ -155,7 +163,7 @@ struct EvalsABugSquares: View {
         }
         .frame(width: size * 1.25, height: size)
         .overlay(s.flipped ? shape.inset(by: -2).stroke(t.accent.color, lineWidth: 2) : nil)
-        .help("\(s.issue)\(s.title.map { " · " + $0 } ?? ""): \(s.right == true ? "right" : s.right == false ? "wrong" : "not answered")" + (s.flipped ? " · changed" : ""))
+        .help("\(s.issue)\(s.title.map { " · " + $0 } ?? ""): \(s.isPartial ? "right on \(Int(((s.score ?? 0) * 100).rounded())) % of its attempts" : s.right == true ? "right" : s.score == nil ? "not answered" : "wrong")" + (s.flipped ? " · changed" : ""))
         if let open {
             Button { open(s) } label: { base.contentShape(Rectangle()) }.buttonStyle(.plain)
         } else {
