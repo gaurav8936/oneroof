@@ -28,8 +28,11 @@ Evals is still a draft (marked as one in the app), and nothing outside Evals cha
   versions. Lessons gained "Where everything went", a map from every 2.0.3 Evals feature to its new home.
 - **Fixes:** running Evals no longer writes Python cache files into the app (its signature stays valid, LAB-2219); a
   provider that stops answering now fails with its error instead of hanging (LAB-2236); a seat test waiting on
-  unknown seat use expires after 6 hours, and Cancel stops the agent's whole process group (LAB-2237); one Draft tag
-  instead of two banners (LAB-2220).
+  unknown seat use expires after 6 hours, and an older one is shown as stuck instead of running; Cancel stops the
+  agent's whole process group (LAB-2237); one Draft tag instead of two banners (LAB-2220); Public benchmarks shows
+  your best score, or "no finished score", instead of a run count.
+- **No more Keychain password prompts from test builds** (LAB-2246). One Roof reads your Hugging Face sign-in without
+  asking macOS for your password; only pressing Test may ask.
 
 ## 2.0.3 — Ready for anyone: a safe first run, a setup guide, a readable Home (1 Nov 2026)
 
