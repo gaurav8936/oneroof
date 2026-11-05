@@ -3,7 +3,7 @@ import SwiftUI
 import OneRoofCore
 
 /// LAB-2063 · Explore (Claude Design 1A-1 = HP E1.1): shelves and topics · benchmarks with what they are made of · one
-/// benchmark's page with Anatomy · Questions · Scores · Your runs. Replaces Catalog: search, Start here, No Docker needed,
+/// benchmark's page with How it works · Questions · Published scores · Your runs (2.0.4: A public benchmark, E6.2). Replaces Catalog: search, Start here, No Docker needed,
 /// category and Rescan all stay (NO_REGRESSION).
 struct EvalsExploreTab: View {
     @ObservedObject var board: EvalsBoard
@@ -43,7 +43,9 @@ struct EvalsExploreTab: View {
     }
 
     private func selected(_ c: EvalCatalog, _ shown: [EvalBenchmark]) -> EvalBenchmark? {
-        if let id = nav.benchmark, let b = shown.first(where: { $0.id == id || $0.tasks.contains { $0.name == id } }) { return b }
+        let match: (EvalBenchmark) -> Bool = { b in b.id == nav.benchmark || b.tasks.contains { $0.name == nav.benchmark } }
+        // 2.0.4: a benchmark opened from Public benchmarks shows even when the shelf filter hides it.
+        if nav.benchmark != nil, let b = shown.first(where: match) ?? c.benchmarks.first(where: match) { return b }
         return shown.first
     }
 
@@ -114,7 +116,7 @@ struct EvalsExploreTab: View {
                         if filter.shelf == .judges {
                             ForEach(board.judges) { j in judgeRow(j) }
                             if board.judges.isEmpty {
-                                Text("No judges yet: make one in Your evals › A judge for prose answers.").ui(TypeScale.small).foregroundStyle(t.text3.color)
+                                Text("No graders yet: make one from " + EvalsNewMenu.path("New grader") + ".").ui(TypeScale.small).foregroundStyle(t.text3.color)
                             }
                         } else {
                             ForEach(shown) { b in row(b, on: b.id == selected(c, shown)?.id, runs: runCount(b)).id(b.id) }
@@ -158,8 +160,7 @@ struct EvalsExploreTab: View {
     }
 
     private func runCount(_ b: EvalBenchmark) -> Int {
-        let names = Set(b.tasks.map { EvalBenchmark.taskLabel($0.name) })
-        return board.results.filter { names.contains($0.task ?? "") }.count
+        EvalFinished.runs(taskNames: Set(b.tasks.map { EvalBenchmark.taskLabel($0.name) }), board.results).count   // QA m7: one count
     }
 
     private func row(_ b: EvalBenchmark, on: Bool, runs: Int) -> some View {
@@ -168,7 +169,10 @@ struct EvalsExploreTab: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(b.shortName).ui(TypeScale.row, on ? .semibold : .medium).foregroundStyle(t.text.color).lineLimit(1).help(b.name)
                     Spacer()
-                    if let n = b.questionCount { Text(n.formatted()).ui(TypeScale.caption, mono: true).foregroundStyle(t.text3.color) }
+                    if let n = b.questionCount {
+                        Text(n.formatted()).ui(TypeScale.caption, mono: true).foregroundStyle(t.text3.color)
+                            .evalHover(.n, EvalHover.questions(n))   // QA m14
+                    }
                 }
                 if let m = b.madeOf {
                     Text(m).ui(11.5).foregroundStyle(t.text2.color).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -196,7 +200,7 @@ struct EvalsExploreTab: View {
     }
 
     private func judgeRow(_ j: EvalJudgeList.Judge) -> some View {
-        Button { nav.tab = .yourEvals; nav.route = .judge(name: j.name, first: nil) } label: {
+        Button { nav.openGrader(j.name) } label: {
             VStack(alignment: .leading, spacing: 3) {
                 Text(j.name.replacingOccurrences(of: "_", with: " ") + " judge").ui(TypeScale.row, .medium).foregroundStyle(t.text.color)
                 Text("\(j.items) answers · \(j.labelled) labelled by you").ui(11.5).foregroundStyle(t.text2.color)
@@ -207,7 +211,7 @@ struct EvalsExploreTab: View {
     }
 }
 
-/// One benchmark's page: eyebrow, title, summary, Run this…, and its four sub-tabs.
+/// One benchmark's page: eyebrow, title, summary, Test a model on it…, and its four sub-tabs.
 struct EvalsBenchmarkPage: View {
     @ObservedObject var board: EvalsBoard
     @ObservedObject var nav: EvalsNav
@@ -238,17 +242,17 @@ struct EvalsBenchmarkPage: View {
                         RoofButton("Locked · how to unlock") { NotificationCenter.default.post(name: .openEvalsSettings, object: nil) }
                             .help(EvalSources.lockedLine)
                     } else {
-                        RoofButton("Run this…", .primary) {
-                            nav.run(EvalRunPlan(benchmark: b, tasks: [b.defaultTask], limit: b.firstRunLimit))
+                        RoofButton("Test a model on it…", .primary) {
+                            nav.test(EvalRunPlan(benchmark: b, tasks: [b.defaultTask], limit: b.firstRunLimit))
                         }
-                        .help("Opens the run sheet with this benchmark; the cost shows before anything starts")
+                        .help("Opens Set up a test with this benchmark; what it can tell you and the cost show before anything starts")
                     }
                 }
                 Text(b.description).ui(TypeScale.body).foregroundStyle(t.text.color).lineLimit(5).fixedSize(horizontal: false, vertical: true)
                 if let src { EvalsSourceLine(source: src) }
                 if let src, gate.locked { EvalsLockCard(name: b.name, source: src, status: gate) }
                 EvalsTextTabs(options: tabs(runs: runs.count), selection: Binding(get: { nav.exploreTab }, set: { tab in
-                    if tab == .questions { nav.route = .questions(benchmark: b.id, task: b.defaultTask) } else { nav.exploreTab = tab }
+                    if tab == .questions { nav.openBenchmark(b.id, task: b.defaultTask, part: .questions) } else { nav.exploreTab = tab }
                 }))
                 Rectangle().fill(t.separator.color).frame(height: 1).padding(.top, -12)
                 switch nav.exploreTab {
@@ -264,16 +268,15 @@ struct EvalsBenchmarkPage: View {
     }
 
     private func tabs(runs: Int) -> [(EvalsNav.ExploreTab, String)] {
-        var o: [(EvalsNav.ExploreTab, String)] = [(.anatomy, "Anatomy"),
+        var o: [(EvalsNav.ExploreTab, String)] = [(.anatomy, "How it works"),
                                                   (.questions, "Questions" + (benchmark.questionCount.map { " \($0.formatted())" } ?? ""))]
-        if !benchmark.isOwn { o.append((.scores, "Scores")) }   // your own set has no published scores
+        if !benchmark.isOwn { o.append((.scores, "Published scores")) }   // your own set has no published scores
         o.append((.runs, "Your runs \(runs)"))
         return o
     }
 
     private var myRuns: [EvalResult] {
-        let names = Set(benchmark.tasks.map { EvalBenchmark.taskLabel($0.name) })
-        return board.results.filter { names.contains($0.task ?? "") && $0.status == "done" }
+        EvalFinished.runs(taskNames: Set(benchmark.tasks.map { EvalBenchmark.taskLabel($0.name) }), board.results)
     }
 
     private func load() {
@@ -333,7 +336,7 @@ struct EvalsBenchmarkPage: View {
             VStack(alignment: .leading, spacing: 8) {
                 EvalsLabel("On this Mac so far")
                 if latest.isEmpty {
-                    Text("Not run here yet. Run this… shows the cost first.").ui(TypeScale.small).foregroundStyle(t.text3.color)
+                    Text("Not run here yet. Test a model on it… shows the cost first.").ui(TypeScale.small).foregroundStyle(t.text3.color)
                 }
                 ForEach(latest) { r in
                     Button { nav.openRun(r.id) } label: {
@@ -416,7 +419,7 @@ struct EvalsBenchmarkPage: View {
                                     ("No-model floor", "\(s.floor.right) of \(s.floor.of) · \(evalsPct(Double(s.floor.right) / Double(max(s.floor.of, 1))))", nil),
                                     ("Best so far", s.best.map { "\(evalsPct($0.score)) · \($0.contestant)" } ?? "not run yet", nil)],
                             hover: { label, _ in label == "No-model floor" ? (.floor, EvalHover.floor(share: nil, right: s.floor.right, of: s.floor.of)) : nil })
-            RoofButton("Open in Your evals ›") { nav.set = s.name; nav.go(.yourEvals) }
+            RoofButton("Open in Our tasks ›") { nav.openTask(s.name) }
         } else {
             Text("Reading your set…").ui(TypeScale.small).foregroundStyle(t.text3.color)
         }

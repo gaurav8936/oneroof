@@ -27,9 +27,9 @@ final class EvalsLearnTests: XCTestCase {
         let b = book
         XCTAssertEqual(b.lessons.count, 16)   // agent decision 2026-11-01: the handover lists 16
         XCTAssertEqual(b.sections.map(\.title), ["Start", "Reading a score", "How answers are marked", "Agents vs models",
-                                                 "Your own evals", "Reading leaderboards"])
+                                                 "Our own tasks", "Reading leaderboards"])
         XCTAssertEqual(b.lessons.map(\.title), [
-            "Your first eval, free", "Accuracy and chance", "The 95 % range", "Standard error", "Is the difference real?",
+            "Your first test, free", "Accuracy and chance", "The 95 % range", "Standard error", "Is the difference real?",
             "pass@1 and pass@k", "Attempts per question", "Exact match and parsing", "Model judges and their limits",
             "Your labels as ground truth", "What the harness adds", "Cost per solved task", "Golden sets from repo history",
             "Why versions are frozen", "Saturation and headroom", "Contamination"])

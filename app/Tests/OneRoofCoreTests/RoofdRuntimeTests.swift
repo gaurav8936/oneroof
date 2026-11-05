@@ -115,4 +115,14 @@ final class RoofdRuntimeTests: XCTestCase {
         RoofdRuntime.addRendererDefault(&shell, agent: .shell)
         XCTAssertNil(shell["CLAUDE_CODE_NO_FLICKER"])
     }
+
+    /// LAB-2241: every agent session exports ONEROOF_AGENT as the agent's name (what the commit hook writes into
+    /// Co-Authored-By and the X-ray matches); a plain shell exports none.
+    func test_LAB2241_sessionsExportTheAgentName() {
+        XCTAssertEqual(AgentKind.claude.commitName, "Claude")
+        XCTAssertEqual(AgentKind.codex.commitName, "Codex")
+        XCTAssertEqual(AgentKind.agy.commitName, "Antigravity")
+        XCTAssertNil(AgentKind.shell.commitName)
+        for k in AgentKind.allCases where k.isAgent { XCTAssertEqual(k.commitName, k.displayName) }
+    }
 }

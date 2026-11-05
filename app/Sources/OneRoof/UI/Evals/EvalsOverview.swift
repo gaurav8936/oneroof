@@ -1,227 +1,290 @@
 import SwiftUI
 import OneRoofCore
 
-/// LAB-2062 · Overview, the tab Evals opens on: "how are my agents doing on my work?" without a click. One scorecard per
-/// eval of yours (then benchmarks run twice or more), what changed since the last run, what is running, and one suggested
-/// next eval. Everything from `roof eval overview --json`; nothing is computed here.
+/// LAB-2242 · E1.1 Overview, the tab Evals opens on: where do we stand? Two things only (v2 review §4):
+/// 1. the inside / outside layer picture — the ONE coverage display — with the counts from `overview.layers` (CONTRACT §7:
+///    our tasks vs public benchmarks, grader runs apart); before the 2.0.4 engine answers, the same counts from the run store;
+/// 2. the three questions (Which setup does our work best · Did my last change help · What does real history say), each
+///    with today's answer chosen by rule from real data (EvalsAQuestions), its evidence and "To answer it properly".
+/// 2.0.3's scorecards live on in Compare and All results; "what changed" in Changes; "running now" in the queue (Running · N)
+/// and question 1; the suggested next step under the cards; the How to walkthrough in Lessons › How to.
 struct EvalsOverviewTab: View {
     @ObservedObject var board: EvalsBoard
     @ObservedObject var nav: EvalsNav
+    @ObservedObject private var store = EvalsAStore.shared
     @Environment(\.theme) private var t
+    @AppStorage(EvalsRealHistoryView.reposKey, store: Prefs.viewState) private var reposPref = ""
+    @AppStorage(EvalsRealHistoryView.daysKey, store: Prefs.viewState) private var days = 60
+
+    private var repos: [String] { EvalsRealHistoryView.repos(reposPref, board: board) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("How your agents are doing on your work").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Path { p in p.move(to: .init(x: 0, y: 0)); p.addLine(to: .init(x: 0, y: 10)) }
-                            .stroke(t.text2.color, style: StrokeStyle(lineWidth: 1.2, dash: [2, 2])).frame(width: 2, height: 10)
-                        Text("dashed line = no-model floor").ui(TypeScale.caption).foregroundStyle(t.text3.color)
+                layerCard
+                questions
+                if let s = board.overview?.suggestion {
+                    Button { follow(s) } label: {
+                        (Text("Also suggested: ").foregroundColor(t.text2.color) + Text(s.text + " ›").foregroundColor(t.accentText.color))
+                            .ui(TypeScale.small).fixedSize(horizontal: false, vertical: true)
                     }
+                    .buttonStyle(.plain)
                 }
-                if let o = board.overview {
-                    if o.evals.isEmpty { firstEval } else {
-                        ForEach(o.evals) { c in EvalsScorecard(card: c, nav: nav) }
-                    }
-                    EvalsColumns(breakpoint: 900, side: 360) {
-                        changes(o)
-                    } aside: {
-                        VStack(alignment: .leading, spacing: 16) { running(o); suggestion(o) }
-                    }
-                } else if let e = board.overviewError {
-                    Card(padding: 14) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("The overview could not be read").ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
-                            Text(e).ui(TypeScale.small).foregroundStyle(t.needsText.color).textSelection(.enabled)
-                            RoofButton("Try again") { board.refreshOverview() }
-                        }
-                    }
-                } else {
-                    skeleton
+                if let e = board.overviewError {
+                    Text("The overview could not be read: " + e).ui(TypeScale.small).foregroundStyle(t.needsText.color).textSelection(.enabled)
                 }
             }
             .frame(maxWidth: 1240, alignment: .leading)
             .padding(.bottom, 20)
         }
+        .onAppear(perform: refresh)
+        .onChange(of: board.results) { _, _ in store.refreshBoards(board) }
+        .onChange(of: board.sets) { _, _ in refresh() }
     }
 
-    private var skeleton: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Reading…").ui(TypeScale.small).foregroundStyle(t.text3.color)
-            ForEach(0..<4, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: Radius.row, style: .continuous).fill(t.control.color).frame(height: 22)
-            }
-        }
-        .accessibilityLabel("Reading the overview")
+    private func refresh() {
+        store.refreshBoards(board)
+        store.refreshChanges(board)
+        store.refreshXRay(board, repos: repos, days: days)
     }
 
-    /// An empty profile: the free invitation, no numbers.
-    private var firstEval: some View {
-        Card(padding: 16) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("No results yet.").ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
-                    Text("Your first eval is free: 5 GSM8K questions on the stand-in model, which costs nothing.")
-                        .ui(TypeScale.body).foregroundStyle(t.text2.color)
-                }
-                Spacer()
-                RoofButton("Your first eval, free ›", .primary) {
-                    nav.run(EvalRunPlan(tasks: ["gsm8k"], models: ["mockllm/model"], limit: 5, cap: 0))
-                }
-            }
-        }
+    // MARK: 1 · The layer picture
+
+    private var layerData: (layers: [EvalOverviewLayer], graders: Int?, derived: Bool) {
+        if let l = board.overview?.layers { return (l, board.overview?.graderRuns, false) }
+        let bs = board.catalog?.benchmarks ?? []
+        let d = EvalsALayers.derive(results: board.results, runs: board.runs, benchmarks: board.catalog?.count ?? bs.count,
+                                    agentBenchmarks: EvalExploreFilter.count(bs, shelf: .agent))
+        return (d.layers, d.graders, true)
     }
 
-    private func changes(_ o: EvalOverview) -> some View {
-        Card(padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                EvalsLabel("What changed since last time")
-                if o.changes.isEmpty {
-                    Text("Nothing to compare yet: a contestant needs two runs on the same eval.").ui(TypeScale.small).foregroundStyle(t.text3.color)
-                }
-                ForEach(o.changes) { c in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(c.isNoise || c.delta >= 0 ? "●" : "▾").ui(TypeScale.caption)
-                            .foregroundStyle(c.isNoise ? t.text3.color : (c.delta < 0 ? t.needsText.color : t.diffAddText.color))
-                        Button { nav.openRun(c.runs[0]) } label: {
-                            Text(c.text).ui(TypeScale.body).foregroundStyle(c.isNoise ? t.text2.color : t.text.color)
-                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+    private var layerCard: some View {
+        let data = layerData
+        let bands = EvalsALayers.bands(data.layers)
+        return Card(padding: 16) {
+            EvalsColumns(breakpoint: 980, side: 250) {
+                VStack(alignment: .leading, spacing: 10) {
+                    GeometryReader { g in
+                        let half = g.size.width / 2
+                        HStack(spacing: 0) {
+                            Text("INSIDE · OUR OWN TASKS").ui(10.5, .semibold).tracking(0.6).foregroundStyle(t.accentText.color)
+                                .frame(width: half - 12, alignment: .trailing)
+                            Spacer().frame(width: 24)
+                            Text("OUTSIDE · PUBLIC BENCHMARKS").ui(10.5, .semibold).tracking(0.6).foregroundStyle(t.text3.color)
+                                .frame(width: half - 12, alignment: .leading)
                         }
-                        .buttonStyle(.plain)
-                        .help(String(format: "Paired difference %+.0f points, 95 %% range %+.0f to %+.0f · open the newer run",
-                                     c.delta * 100, c.ci95[0] * 100, c.ci95[1] * 100))
+                    }
+                    .frame(height: 14)
+                    ForEach(Array(bands.enumerated()), id: \.element.id) { i, b in
+                        band(b, width: [0.56, 0.78, 1.0][i])
+                    }
+                    HStack(spacing: 12) {
+                        if let g = EvalsALayers.graderLine(data.graders) { Text(g).ui(TypeScale.caption).foregroundStyle(t.text3.color) }
+                        if data.derived {
+                            Text("Counted from the run store (the engine's own layer counts come with 2.0.4).").ui(TypeScale.caption).foregroundStyle(t.text3.color)
+                        }
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func running(_ o: EvalOverview) -> some View {
-        Card(padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                EvalsLabel("Running now")
-                if o.running.isEmpty {
-                    Text("Nothing running.").ui(TypeScale.small).foregroundStyle(t.text3.color)
-                }
-                ForEach(o.running) { r in
-                    HStack(spacing: 8) {
-                        Text("\(r.task ?? "?") × \(r.contestant ?? r.model ?? "?")").ui(TypeScale.small, .medium).foregroundStyle(t.text.color).lineLimit(1)
-                        Spacer()
-                        Text(r.progress).ui(TypeScale.caption, mono: true).foregroundStyle(t.text2.color)
-                        Button("Cancel") { board.cancel(r.id) }.buttonStyle(.plain).foregroundStyle(t.accentText.color)
-                            .font(.system(size: TypeScale.caption))
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    @ViewBuilder private func suggestion(_ o: EvalOverview) -> some View {
-        if let s = o.suggestion {
-            Card(padding: 14) {
+            } aside: {
                 VStack(alignment: .leading, spacing: 8) {
-                    EvalsLabel("Suggested next")
-                    Button { follow(s) } label: {
-                        Text(s.text + " ›").ui(TypeScale.body, .semibold).foregroundStyle(t.accentText.color)
-                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    Text("How to read Evals").ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
+                    Text("Each layer adds one thing to the one above it. Test the same tasks at each layer to see what each part adds.")
+                    Text("Inside is what matters: our own bugs, our own work. Outside is context.")
+                    Text("The three questions below read from this picture: Compare works on any layer; Changes and Real history work on the base.")
+                    Button { nav.go(EvalsLegacyTab.howTo) } label: {
+                        Text("Your first test, step by step ›").ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color)
                     }
                     .buttonStyle(.plain)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 12)
+                .overlay(alignment: .leading) { Rectangle().fill(t.separator.color).frame(width: 1) }
             }
         }
     }
 
+    private func band(_ b: EvalsALayerBand, width frac: CGFloat) -> some View {
+        GeometryReader { g in
+            let w = g.size.width * frac
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                HStack(alignment: .top, spacing: 0) {
+                    Button { openInside(b.layer) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(b.kicker.uppercased()).ui(10, .semibold).tracking(0.5).foregroundStyle(t.text3.color)
+                            Text(b.layer.title).ui(TypeScale.body, .bold).foregroundStyle(t.text.color)
+                            Text(b.how).ui(TypeScale.caption).foregroundStyle(t.text2.color).lineLimit(1)
+                            Text(b.inside).ui(TypeScale.small, .semibold).foregroundStyle(insideInk(b.insideTone).color).lineLimit(1)
+                                .evalHover(.n, "\(b.layer.title), inside: \(b.inside). Tests on our own tasks; grader runs are counted apart.")
+                            Text(b.insideNote).ui(TypeScale.caption).foregroundStyle(t.text3.color).lineLimit(1)
+                        }
+                        .padding(10).frame(width: w / 2, alignment: .leading).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(b.layer == .full ? "Our tasks" : "Compare our tasks at this layer")
+                    Rectangle().fill(t.separatorStrong.color).frame(width: 1)
+                    Button { nav.go(.benchmarks) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Spacer(minLength: 0)
+                            Text(b.outside).ui(TypeScale.small, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                            Text(b.outsideNote).ui(TypeScale.caption).foregroundStyle(t.text3.color).lineLimit(1)
+                            Text("Open ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color)
+                        }
+                        .padding(10).frame(width: w / 2, alignment: .leading).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Public benchmarks, for context")
+                }
+                .frame(width: w)
+                .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).fill(t.surface2.color))
+                .overlay(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(t.separator.color))
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(height: 96)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(b.layer.title): inside \(b.inside); outside \(b.outside)")
+    }
+
+    private func insideInk(_ tone: EvalsALayerBand.Tone) -> RGB {
+        switch tone { case .measured: return t.text; case .waiting: return t.evalsATone(.cantTell).ink; case .gap: return t.needsText }
+    }
+
+    private func openInside(_ l: EvalStamp.Layer) {
+        if l == .full { nav.go(.ourTasks) } else { nav.go(.compare) }
+    }
+
+    // MARK: 2 · The three questions
+
+    private var questions: some View {
+        let boards = store.loaded(board)
+        let q1 = EvalsAQuestions.whichSetup(boards)
+        let changes: [EvalChange]? = { if case .success(let c)? = store.changes { return c }; return nil }()
+        let q2 = EvalsAQuestions.didMyChangeHelp(boards, changes: changes)
+        let xk = EvalsAStore.key(repos, days: days)
+        let rows: [EvalHistoryRow]? = { if case .success(let x)? = store.xray[xk] { return EvalHistoryRow.from(x) }; return nil }()
+        let xerr: String? = { if case .failure(let e)? = store.xray[xk] { return e.message }; return repos.isEmpty ? "Choose a repo in Real history to read its commits." : nil }()
+        let q3 = EvalsAQuestions.realHistory(rows, repos: repos.count, days: days, error: xerr)
+        return EvalsAFlow(breakpoint: 980) {
+            card(1, "Which setup does our work best?", open: { nav.go(.compare) }) {
+                EvalsAAnswerBlock(answer: boards.isEmpty && store.error(board) == nil && !board.sets.isEmpty
+                                  ? EvalsAAnswer(tone: .reading, headline: "Reading our tasks…", body: "Reading every setup's latest test on our tasks.") : q1.answer)
+                if let e = store.error(board), boards.isEmpty {
+                    Text("The setups could not be read: " + e).ui(TypeScale.caption).foregroundStyle(t.needsText.color).lineLimit(3)
+                }
+                if !q1.bars.isEmpty {
+                    EvalsLabel(q1.title)
+                    ForEach(q1.bars) { b in
+                        EvalsABarRow(bar: b, hover: b.value.map { v in (.score, EvalHover.score(score: v, n: boards.first?.n)) })
+                    }
+                }
+            } fix: { q1Fix(boards) }
+            card(2, "Did my last change help?", open: { nav.go(.changes) }) {
+                EvalsAAnswerBlock(answer: q2)
+                EvalsLabel("What a test records today")
+                ForEach(EvalsAQuestions.records(boards)) { r in
+                    HStack {
+                        Text(r.label).ui(TypeScale.small).foregroundStyle(t.text.color)
+                        Spacer()
+                        Text(r.state.rawValue).ui(TypeScale.small, .semibold)
+                            .foregroundStyle(r.state == .yes ? t.diffAddText.color : r.state == .partly ? t.evalsATone(.cantTell).ink.color : t.needsText.color)
+                    }
+                }
+            } fix: {
+                fix("LAB-2240 stamps every new test with agent · model · CLI version · rules on/off @ version. Then test the same setup before and after a change.",
+                    "Open Changes") { nav.go(.changes) }
+            }
+            card(3, "What does real history say?", open: { nav.go(.realHistory) }) {
+                EvalsAAnswerBlock(answer: q3.answer)
+                if !q3.bars.isEmpty {
+                    EvalsLabel(repos.map { ($0 as NSString).lastPathComponent }.joined(separator: " · ") + " · \(days) days · followed by a fix")
+                    ForEach(q3.bars) { b in
+                        EvalsABarRow(bar: b)
+                            .evalsALesson(EvalXRay.definitions["Followed by a fix"] ?? "", lesson: "golden-sets", nav: nav)
+                    }
+                }
+            } fix: {
+                fix("Sessions One Roof starts sign their commits (LAB-2241), so other agents can be read too. The model per commit needs LAB-2240.",
+                    "Open Real history") { nav.go(.realHistory) }
+            }
+        }
+    }
+
+    @ViewBuilder private func q1Fix(_ boards: [EvalSetupLeaderboard]) -> some View {
+        if let main = boards.first(where: { $0.rows.contains(where: \.isDone) }) ?? boards.first {
+            let agents = EvalsACompare.untested(main, others: []).filter { $0.agent != nil }
+            let waiting = main.rows.filter { $0.isActive && $0.layer != .model }
+            let title = main.title ?? main.task
+            if !agents.isEmpty, let file = EvalsCompareView.taskFile(main, board: board) {
+                let names = EvalsAWords.list(agents.map { $0.label.components(separatedBy: ",").first ?? $0.label })
+                fix("Run \(names) on “\(title)” (\(main.n ?? main.cases.count) bugs). On your seats: no API cost.",
+                    agents.count > 1 ? "Run both agents" : "Run \(agents[0].label.components(separatedBy: ",").first ?? "it")") {
+                    nav.test(EvalsACompare.plan(agents, taskFile: file, cases: main.n ?? main.cases.count))
+                }
+            } else if let w = waiting.first {
+                fix("\(w.label) is waiting (\(w.statusNote ?? w.status)). Open the queue and press Run anyway, or cancel it.", "Open the queue") { nav.sheet = .setup }
+            } else {
+                fix("Pick two setups in Compare: the paired verdict says whether the gap is real.", "Open Compare") { nav.go(.compare) }
+            }
+        } else {
+            fix("Build a task from your repo's fixed bugs, then test setups on it.", "Our tasks") { nav.go(.ourTasks) }
+        }
+    }
+
+    private func fix(_ text: String, _ button: String, _ action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            EvalsLabel("To answer it properly")
+            Text(text).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+            RoofButton(button, .primary, action: action)
+        }
+    }
+
+    private func card<Body: View, Fix: View>(_ n: Int, _ title: String, open: @escaping () -> Void,
+                                             @ViewBuilder _ content: () -> Body, @ViewBuilder fix: () -> Fix) -> some View {
+        let body = content(), fixView = fix()
+        return Card(padding: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("QUESTION \(n)").ui(10.5, .semibold).tracking(0.6).foregroundStyle(t.accentText.color)
+                Button(action: open) {
+                    Text(title).ui(TypeScale.title, .bold).foregroundStyle(t.text.color).multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(.plain).help("Open the tab that answers it")
+                body
+                Spacer(minLength: 0)
+                Divider()
+                fixView
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    /// 2.0.3's suggested next step, kept (its home is under the cards).
     private func follow(_ s: EvalOverview.Suggestion) {
         let tg = s.target
         switch tg.tab {
         case "your-evals":
-            if let j = tg.judge { nav.tab = .yourEvals; nav.route = .judge(name: j, first: nil) }
-            else { nav.set = tg.set; nav.openBuild = tg.set != nil; nav.go(.yourEvals) }
-        case "run": nav.run(EvalRunPlan(tasks: [tg.task ?? "gsm8k"], models: [], limit: tg.limit ?? 20, epochs: tg.epochs))
-        case "learn": nav.go(.learn)
+            if let j = tg.judge { nav.openGrader(j) } else { nav.set = tg.set; nav.openBuild = tg.set != nil; nav.go(.ourTasks) }
+        case "run": nav.test(EvalRunPlan(tasks: [tg.task ?? "gsm8k"], models: [], limit: tg.limit ?? 20, epochs: tg.epochs))
+        case "learn": nav.go(EvalsLegacyTab.learn)
         default: break
         }
     }
 }
 
-/// One eval's scorecard: contestants (agents first), score, the 95 % range with the floor, cost, $ per right, run date.
-struct EvalsScorecard: View {
-    let card: EvalOverview.Card
-    @ObservedObject var nav: EvalsNav
-    @Environment(\.theme) private var t
-    @FocusState private var focused: Bool
-    @State private var row = 0
-
+/// Side by side with equal heights when wide; stacked under `breakpoint` (no clipping at 1280).
+struct EvalsAFlow<Content: View>: View {
+    var breakpoint: CGFloat = 980
+    @ViewBuilder var content: () -> Content
+    @State private var width: CGFloat = 1200
     var body: some View {
-        let rows = Array(card.rows.prefix(6))
-        Card(padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Button { nav.go(.results) } label: {
-                        Text(card.header).ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
-                    }
-                    .buttonStyle(.plain).help("All results for this eval")
-                    if let f = card.floor, let r = f.right, let of = f.of {
-                        Text("floor \(r) of \(of)").ui(TypeScale.caption).foregroundStyle(t.text3.color)
-                            .evalHover(.floor, EvalHover.floor(share: nil, right: r, of: of))
-                    }
-                    Spacer()
-                    Button { nav.go(.results) } label: { Text("All results ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
-                        .buttonStyle(.plain)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    row(cells: ["Contestant", "Kind", "Score", "95 % range", "Cost", "$ / right", "Run"].map { AnyView(EvalsLabel($0)) })
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
-                        row(cells: [
-                            AnyView(Text(r.contestant).ui(TypeScale.small, mono: r.kind != .agent).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.middle)),
-                            AnyView(EvalsKindTag(kind: r.kind)),
-                            AnyView(Text(r.ciMethod == "wilson" || r.ciMethod == nil ? evalsPct(r.score) : String(format: "%.3f", r.score ?? 0))
-                                .ui(TypeScale.body, .semibold, mono: true).foregroundStyle(t.text.color)
-                                .evalHover(.score, EvalHover.score(score: r.score ?? 0, n: r.n))),
-                            AnyView(EvalsRangeBar(value: r.score ?? 0, lo: r.ci95?.first, hi: r.ci95?.last, floor: card.floorShare)
-                                .evalHover(.range, EvalsHoverText.range(r))),
-                            AnyView(Text(r.costText).ui(TypeScale.small, mono: true).foregroundStyle(t.text2.color)
-                                .evalHover(.cost, EvalHover.cost(r.costText))),
-                            AnyView(Text(r.usdPerRight.map { String(format: "$%.4f", $0) } ?? "–").ui(TypeScale.small, mono: true).foregroundStyle(t.text2.color)
-                                .evalHoverIf(r.usdPerRight.map { (.costPerRight, EvalHover.costPerRight($0)) })),
-                            AnyView(Button { nav.openRun(r.run) } label: {
-                                Text(EvalModels.when(r.date)).ui(TypeScale.caption, mono: true).foregroundStyle(t.accentText.color)
-                            }.buttonStyle(.plain).help("Open this run"))])
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(focused && i == row ? t.selection.color : .clear).padding(.horizontal, -4))
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-                if card.rows.count > 6 {
-                    Text("\(card.rows.count - 6) more in Results").ui(TypeScale.caption).foregroundStyle(t.text3.color)
-                }
-                if rows.isEmpty {
-                    Text("Not run yet. Run… it from Your evals; the cost shows first.").ui(TypeScale.small).foregroundStyle(t.text3.color)
-                }
+        Group {
+            if width >= breakpoint {
+                HStack(alignment: .top, spacing: 14) { content() }.fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(alignment: .leading, spacing: 14) { content() }
             }
         }
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(.upArrow) { row = max(row - 1, 0); return .handled }
-        .onKeyPress(.downArrow) { row = min(row + 1, max(rows.count - 1, 0)); return .handled }
-        .onKeyPress(.return) { if rows.indices.contains(row) { nav.openRun(rows[row].run) }; return .handled }
-        .accessibilityLabel("Scorecard: " + card.header)
-    }
-
-    /// Fixed columns, the same in every card (contestant · kind · score · range · cost · $ / right · run).
-    private func row(cells: [AnyView]) -> some View {
-        let widths: [CGFloat?] = [230, 96, 64, nil, 70, 80, 96]
-        return HStack(spacing: 12) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { i, c in
-                if let w = widths[i] { c.frame(width: w, alignment: .leading) } else { c.frame(minWidth: 120, maxWidth: .infinity, alignment: .leading) }
-            }
-        }
+        .background(GeometryReader { g in Color.clear.onAppear { width = g.size.width }.onChange(of: g.size.width) { _, w in width = w } })
     }
 }

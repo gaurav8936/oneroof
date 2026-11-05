@@ -349,6 +349,11 @@ public enum EvalHover {
         return "\(right) of \(n) answers marked right (\(p(score)))." + (EvalStats.isSmall(n) ? " Few answers: see the range." : "")
     }
 
+    /// A benchmark's question count (QA m14).
+    public static func questions(_ n: Int) -> String {
+        "\(n.formatted()) question\(n == 1 ? "" : "s") in this benchmark. A test can ask fewer; the fewer it asks, the wider a score's range."
+    }
+
     public static func canTell(points: Double) -> String {
         "About ±\(Int(points.rounded())) points: two contestants closer than that cannot be told apart on this run."
     }

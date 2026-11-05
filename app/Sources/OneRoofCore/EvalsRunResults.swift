@@ -24,6 +24,15 @@ public struct EvalRunPlan: Identifiable, Equatable, Sendable {
     public var agents: [String]
     /// Agents on an API model, billed in dollars ("claude_code@anthropic/claude-haiku-5-5"), shown as Agent · API.
     public var apiAgents: [String]
+    /// 2.0.4: the exact setups to pre-fill (agent + model + rules), when known. They win over agents / apiAgents / models
+    /// in EvalSetupChoice.from, so a chosen seat model or rules mode is never dropped (review P2 #6, #7).
+    public var setups: [EvalSetupChoice] = []
+    /// A repeat of a rules-on test: the rules hash that test had (the repeat uses HEAD's rules now; the sheet says so).
+    public var repeatRulesHash: String?
+    /// Test again of a seat test whose stamp could not be read (re-review #6): the agent is pre-filled, but its model and
+    /// rules mode are unknown, so the sheet flags both "pick again — not recorded" instead of quietly using the CLI
+    /// default with rules off.
+    public var notRecorded: Bool = false
 
     public init(id: UUID = UUID(), benchmark: EvalBenchmark? = nil, tasks: [String], models: [String] = ["mockllm/model"],
                 limit: Int = 50, epochs: Int? = nil, seed: Int? = 42, temperature: Double? = nil, cap: Double = 2.0,
@@ -483,9 +492,95 @@ public struct EvalSetAddResult: Decodable, Equatable, Sendable {
     public var message: String
 }
 
+// MARK: - Per-answer tokens (QA m11)
+
+/// One answer's token line. Inspect's per-sample input count leaves out cached prompt tokens, so a cached run reports
+/// "4 tokens in" for a prompt of thousands: an input under `minPlausibleInput` is not shown (the output is real).
+public enum EvalSampleTokens {
+    public static let minPlausibleInput = 20
+    public static func text(input: Int?, output: Int?) -> String? {
+        let i = input.flatMap { $0 >= minPlausibleInput ? $0 : nil }
+        switch (i, output) {
+        case let (i?, o?): return "\(i.formatted()) tokens in, \(o.formatted()) out"
+        case let (nil, o?): return "\(o.formatted()) tokens out"
+        case let (i?, nil): return "\(i.formatted()) tokens in"
+        default: return nil
+        }
+    }
+}
+
+// MARK: - One count of finished tests (QA: the subtitles disagreed, 38 vs 39, 16 vs 17 tasks)
+
+/// The one definition every subtitle uses, the same as the engine's overview `finished_runs` (done_runs): a test is
+/// finished when its status is "done"; the judge's own helper runs (labeller_*) are not tests. Its task = its set and
+/// version (own tasks) or its task name, so "tasks" means the same everywhere.
+public enum EvalFinished {
+    public static func isCounted(_ r: EvalResult) -> Bool { r.status == "done" && !(r.task ?? "").hasPrefix("labeller_") }
+    public static func taskKey(_ r: EvalResult) -> String { r.setName.map { "\($0)@v\(r.setVersion ?? 1)" } ?? (r.task ?? "?") }
+    public static func count(_ results: [EvalResult]) -> (tests: Int, tasks: Int) {
+        let done = results.filter(isCounted)
+        return (done.count, Set(done.map(taskKey)).count)
+    }
+    /// A benchmark's finished runs (its list badge and its "Your runs N" tab: one count, QA m7), newest first as given.
+    public static func runs(taskNames: Set<String>, _ results: [EvalResult]) -> [EvalResult] {
+        results.filter { isCounted($0) && taskNames.contains($0.task ?? "") }
+    }
+    /// "38 finished tests across 16 tasks".
+    public static func text(_ results: [EvalResult]) -> String {
+        let c = count(results)
+        return "\(c.tests) finished test\(c.tests == 1 ? "" : "s") across \(c.tasks) task\(c.tasks == 1 ? "" : "s")"
+    }
+}
+
 // MARK: - Run again (LAB-2069): the same settings, through Run's estimate and cap
 
 extension EvalRunPlan {
+    /// Test again from the run's stamp (review P2 #6): the same agent, the model it asked for (nil = the CLI default) and
+    /// the same rules mode. A rules-on repeat records the old hash, so the sheet can say it uses HEAD's rules now.
+    public static func again(_ r: EvalResult, stamp: EvalStamp?) -> EvalRunPlan {
+        var p = again(r)
+        guard let st = stamp else { return p }
+        if let a = st.agent ?? r.agent, (st.runsOn ?? "").hasPrefix("seat:") || (r.model ?? "").hasPrefix("seat/") {
+            let on = st.rules == "on"
+            p.agents = [a]; p.apiAgents = []; p.models = []
+            p.setups = [.seat(a, model: st.modelRequested, rules: on)]
+            p.repeatRulesHash = on ? (st.rulesHash ?? "") : nil
+        }
+        return p
+    }
+
+    /// Test again waits for the run's stamp (re-review #6): reading (the button is off: "reading the test…"), ready, or
+    /// unreadable (the stamps were read, or failed, and this run has none).
+    public enum AgainState: Equatable, Sendable { case reading, ready, unreadable }
+    /// - stamp: the run's stamp when known; stampsRead: nil while the stamps are being read, true once read, false if
+    ///   the read failed.
+    public static func againState(hasResult: Bool, stamp: EvalStamp?, stampsRead: Bool?) -> AgainState {
+        if hasResult, stamp != nil { return .ready }
+        guard hasResult, stampsRead != nil else { return .reading }
+        return .unreadable
+    }
+    public static let againReading = "reading the test…"
+    public static let againUnreadable = "This test's setup couldn't be read, so its model and rules aren't known: pick them again in the sheet."
+    public static let notRecordedNote = "Model: pick again — not recorded. Rules on or off: pick again — not recorded."
+    /// Test again when the stamp can't be read: the same agent (and task, size, epochs, seed), the model and rules flagged.
+    public static func againUnrecorded(_ r: EvalResult) -> EvalRunPlan {
+        var p = again(r)
+        if let a = r.agent, (r.model ?? "").hasPrefix("seat/") {
+            p.agents = [a]; p.apiAgents = []; p.models = []
+            p.setups = [.seat(a)]
+            p.notRecorded = true
+        }
+        return p
+    }
+    /// The plan Test again opens for a state that is not .reading.
+    public static func again(_ r: EvalResult, stamp: EvalStamp?, state: AgainState) -> EvalRunPlan? {
+        switch state {
+        case .reading: return nil
+        case .ready: return again(r, stamp: stamp)
+        case .unreadable: return againUnrecorded(r)
+        }
+    }
+
     public static func again(_ r: EvalResult) -> EvalRunPlan {
         let task = r.taskRef ?? r.task ?? "gsm8k"
         let model = r.model ?? "mockllm/model"

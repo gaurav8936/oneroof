@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 import OneRoofCore
 
-/// LAB-2061 · the Evals place, redesigned (Claude Design "Evals v1.0" handover, blended with the owner's Overview):
-/// How to (LAB-2113) · Overview · Your evals · Explore · Run · Results · Learn. Behind `Settings.evalsRedesign` (on in 2.0.0); off shows the
-/// 1.9.37 Evals. Stage 1 (M9): the shell, Overview, Explore and Your evals; Run, Results and Learn show today's run
-/// sheet + queue, results and lessons until stage 2/3 replaces them, so nothing is lost at any commit.
+/// LAB-2242 · Evals v2 (One Roof 2.0.4, Claude Design "Evals v2.0" handover): six tabs — Overview · Compare · Changes ·
+/// Real history · Our tasks · Public benchmarks — five drill-downs (one test, all results, one task, the grader, one
+/// benchmark) and two sheets over any tab (Set up a test, Lessons). Names and self-test mapping: OneRoofCore
+/// EvalsNavigation.swift. Each screen is its own file (EvalsCompare.swift …); until a screen is rebuilt it shows the 2.0.3
+/// view that held the same job, so nothing is lost at any commit. Behind `Settings.evalsRedesign`; off shows 1.9.37's.
 struct EvalsPlace: View {
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
@@ -14,50 +15,108 @@ struct EvalsPlace: View {
     }
 }
 
-/// Drill-downs replace the header with a breadcrumb row (⌘[ goes back).
+/// Drill-downs: the title becomes "‹ parent  title"; the tab bar stays; ⌘[ goes back.
 enum EvalsRoute: Equatable {
-    case questions(benchmark: String, task: String)   // E1.2
-    case judge(name: String, first: String?)          // E2.2
-    /// E4.2 one run; `only`: the cases to list (Compare's "See the N cases"), `other`: B's run, its answer alongside.
-    case runDetail(run: String, sample: String?, only: [String]?, other: String?)
+    /// E2.2 one test, bug by bug. `run` nil = the newest finished run; `only`: the cases to list; `other`: B's run alongside.
+    case oneTest(run: String?, sample: String?, only: [String]?, other: String?)
+    /// E2.3 the all-results grid, every run, export.
+    case allResults
+    /// E5.2 one task (an eval set); nil = the first.
+    case oneTask(name: String?, version: Int?)
+    /// E5.3 check the grader; nil = the first grader.
+    case grader(name: String?, first: String?)
+    /// E6.2 a public benchmark: How it works · Questions · Published scores · Your runs.
+    case oneBenchmark(id: String, task: String?, part: EvalsNav.ExploreTab)
+
+    var screen: EvalsScreen {
+        switch self {
+        case .oneTest: return .oneTest; case .allResults: return .allResults; case .oneTask: return .oneTask
+        case .grader: return .grader; case .oneBenchmark: return .oneBenchmark
+        }
+    }
+
+    // 2.0.3 names, kept so the 2.0.3 views' links land on the new drill-downs.
+    static func judge(name: String, first: String?) -> EvalsRoute { .grader(name: name, first: first) }
+    static func questions(benchmark: String, task: String) -> EvalsRoute { .oneBenchmark(id: benchmark, task: task, part: .questions) }
+    static func runDetail(run: String, sample: String?, only: [String]?, other: String?) -> EvalsRoute {
+        .oneTest(run: run, sample: sample, only: only, other: other)
+    }
+}
+
+/// The two sheets, openable from any tab.
+enum EvalsSheet: String, Identifiable {
+    case setup, lessons
+    var id: String { rawValue }
 }
 
 final class EvalsNav: ObservableObject {
     @Published var tab: EvalsTabV2 = .overview
-    @Published var route: EvalsRoute?
-    /// Run, pre-filled by Run this… / Run… / Run just this one / Run again / a suggestion (the cost shows first).
+    /// A drill-down; setting one shows its parent tab and closes any sheet.
+    @Published var route: EvalsRoute? {
+        didSet { if let r = route { if let tb = r.screen.tab, tb != tab { tab = tb }; if sheet != nil { sheet = nil } } }
+    }
+    @Published var sheet: EvalsSheet?
+    /// Set up a test, pre-filled by Test them / Run both agents / Test again / Test a model on it… (nothing starts until Start).
     @Published var draft: EvalRunPlan?
-    /// What Run shows, kept while you visit other tabs.
+    /// What Set up a test shows, kept while the sheet is closed.
     var workPlan: EvalRunPlan?
-    /// Results: the eval shown (set@vN or a task), its view, and Compare's A (one run's "Compare with…").
+    /// Compare: the task shown (set@vN or a task), and A for "Compare with…". `resultsMode` is 2.0.3's Results switch.
     @Published var resultsKey: String?
     @Published var resultsMode: ResultsMode = .byEval
     @Published var compareA: String?
-    /// Explore: the benchmark shown and its sub-tab; Your evals: the set shown.
+    /// Public benchmarks: the benchmark shown and its part; Our tasks: the task (set) shown.
     @Published var benchmark: String?
     @Published var exploreTab: ExploreTab = .anatomy
     @Published var set: String?
-    /// Your evals › Build v2 opened from the Overview's suggestion.
+    /// Our tasks › Next version opened from a suggestion.
     @Published var openBuild = false
-    /// Learn: the lesson shown (LAB-2070); every number's hover and every "Why ›" opens one.
+    /// Lessons: the lesson shown; `lessonsPart` shows the lessons or the walkthrough (2.0.3 How to).
     @Published var lesson: String?
+    @Published var lessonsPart: LessonsPart = .lessons
+    /// "New test or task ▾" › New task from fixed bugs / New grader: Our tasks opens that sheet, then clears this.
+    @Published var newRequest: NewRequest?
 
-    enum ExploreTab: String, CaseIterable { case anatomy = "Anatomy", questions = "Questions", scores = "Scores", runs = "Your runs" }
+    enum ExploreTab: String, CaseIterable { case anatomy = "How it works", questions = "Questions", scores = "Published scores", runs = "Your runs" }
     enum ResultsMode: String, CaseIterable { case byEval = "By eval", allByAll = "All × all", xray = "X-ray" }
+    enum LessonsPart: String, CaseIterable { case lessons = "Lessons", howTo = "How to" }
+    enum NewRequest: String { case task, grader }
 
-    /// Every way into Run goes through here (HP: `EvalsNav.run(plan)` is the only prefill).
-    func run(_ plan: EvalRunPlan) { route = nil; draft = plan; tab = .run }
+    /// Every way into Set up a test goes through here (the only prefill).
+    func test(_ plan: EvalRunPlan?) { draft = plan; sheet = .setup }
+    /// 2.0.3's name for `test`.
+    func run(_ plan: EvalRunPlan) { test(plan) }
     func back() { route = nil }
-    /// Any score or run date opens that run, question by question (E4.2); Back lands on Results.
+    func go(_ t: EvalsTabV2) { route = nil; sheet = nil; tab = t }
+    /// A 2.0.3 tab, to its new home (How to / Learn → Lessons, Run → Set up a test, Results › All × all → All results …).
+    func go(_ old: EvalsLegacyTab) {
+        switch old {
+        case .howTo: lessonsPart = .howTo; route = nil; sheet = .lessons
+        case .learn: lessonsPart = .lessons; route = nil; sheet = .lessons
+        case .run: test(nil)
+        case .results:
+            switch resultsMode {
+            case .allByAll: resultsMode = .byEval; route = .allResults
+            case .xray: resultsMode = .byEval; go(.realHistory)
+            case .byEval: go(.compare)
+            }
+        case .overview, .yourEvals, .explore: if let tb = old.home.tab { go(tb) }
+        }
+    }
+    /// Any score or run date opens that test, bug by bug (E2.2); Back lands on Compare.
     func openRun(_ id: String, sample: String? = nil, only: [String]? = nil, other: String? = nil) {
-        tab = .results
-        route = .runDetail(run: id, sample: sample, only: only, other: other)
+        route = .oneTest(run: id, sample: sample, only: only, other: other)
     }
     func showResults(key: String, compareA: String? = nil) {
-        route = nil; resultsMode = .byEval; resultsKey = key; self.compareA = compareA; tab = .results
+        resultsMode = .byEval; resultsKey = key; self.compareA = compareA; go(.compare)
     }
-    func go(_ t: EvalsTabV2) { route = nil; tab = t }
-    func openLesson(_ id: String) { route = nil; lesson = id; tab = .learn }
+    func openLesson(_ id: String) { lesson = id; lessonsPart = .lessons; sheet = .lessons }
+    func openTask(_ name: String?, version: Int? = nil) { set = name; route = .oneTask(name: name, version: version) }
+    func openGrader(_ name: String?, first: String? = nil) { route = .grader(name: name, first: first) }
+    func openBenchmark(_ id: String, task: String? = nil, part: ExploreTab = .anatomy) {
+        benchmark = id; exploreTab = part; route = .oneBenchmark(id: id, task: task, part: part)
+    }
+    /// "New test or task ▾".
+    func new(_ r: NewRequest) { newRequest = r; go(.ourTasks) }
 }
 
 // MARK: - Engine calls the redesign adds (same queue and style as EvalsBoard's own)
@@ -84,6 +143,20 @@ extension EvalsBoard {
             }
         }
     }
+
+    // 2.0.4 calls (CONTRACT.md). Each answers on the main queue; the screens keep the result in their own state.
+    /// §3 · Compare: `leaderboard <task> [--version N] --by setup`.
+    func setupLeaderboard(task: String, version: Int? = nil, done: @escaping (Result<EvalSetupLeaderboard, EvalError>) -> Void) {
+        ask(["leaderboard", task] + (version.map { ["--version", String($0)] } ?? []) + ["--by", "setup"], EvalSetupLeaderboard.self, done: done)
+    }
+    /// §4 · one test's cases with named / changed files (`samples <run>`).
+    func caseResults(run: String, done: @escaping ([EvalCaseResult]) -> Void) {
+        samples(run) { done($0.map(EvalCaseResult.init)) }
+    }
+    /// §5 · Changes: `changes [--repo PATH] [--days 60]`.
+    func changes(repo: String? = nil, days: Int = 60, done: @escaping (Result<[EvalChange], EvalError>) -> Void) {
+        ask(["changes"] + (repo.map { ["--repo", $0] } ?? []) + ["--days", String(days)], [EvalChange].self, done: done)
+    }
 }
 
 struct EvalsViewV2: View {
@@ -92,124 +165,176 @@ struct EvalsViewV2: View {
     @StateObject private var board = EvalsBoard()
     @StateObject private var nav = EvalsNav()
     @StateObject private var hover = EvalHoverCenter()
+    @StateObject private var sheetHover = EvalHoverCenter()
     @Environment(\.theme) private var t
+    @Environment(\.v2Window) private var v2
     @AppStorage(EvalsLearnStore.doneKey, store: Prefs.viewState) private var lessonsDone = ""
 
     var body: some View {
-        Group {
-            if let route = nav.route { drill(route) } else { page }
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            lines
+            main(nav.route)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(v2 ? AnyShapeStyle(t.window.color) : AnyShapeStyle(LinearGradient(colors: [t.desk.top.color, t.desk.bottom.color], startPoint: .top, endPoint: .bottom)))
         .environment(\.evalHover, hover)
         .coordinateSpace(name: EvalHoverCenter.space)
         .overlay { EvalHoverLayer(center: hover) }
         .background(shortcuts)
+        .sheet(item: $nav.sheet) { s in sheet(s) }
         .onAppear {
             hover.openLesson = { [weak nav] in nav?.openLesson($0) }
+            sheetHover.openLesson = { [weak nav] in nav?.openLesson($0) }
             board.start()
             board.refreshOwn()
             board.refreshOverview()
-            // LAB-2113: the first visit to Evals opens How to; later visits open Overview.
-            if !Prefs.viewState.bool(forKey: EvalsHowTo.seenKey) { Prefs.viewState.set(true, forKey: EvalsHowTo.seenKey); nav.tab = .howTo }
             selfTest()
         }
         .onDisappear { board.stop() }
         .onChange(of: nav.tab) { _, tab in
-            board.tab = tab == .run ? .runs : tab == .results ? .results : tab == .learn ? .learn : .catalog   // 3 s polling on Run
             if tab == .overview { board.refreshOverview() }
-            if tab == .results { EvalsLearnStore.note(EvalsLearnStore.resultsKey) }   // first eval, step 2
+            if tab == .compare { EvalsLearnStore.note(EvalsLearnStore.resultsKey) }   // first test, step 2
             hover.hide()
+        }
+        .onChange(of: nav.sheet) { _, s in
+            board.tab = s == .setup ? .runs : .catalog   // 3 s polling while the queue shows
+            hover.hide(); sheetHover.hide()
         }
         .onChange(of: nav.route) { _, r in
             hover.hide()
-            if case .runDetail = r { EvalsLearnStore.note(EvalsLearnStore.questionKey) }   // first eval, step 3
+            if case .oneTest = r { EvalsLearnStore.note(EvalsLearnStore.questionKey) }   // first test, step 3
         }
-        .onChange(of: board.started) { _, _ in nav.go(.run) }        // a started run shows in Run's queue
+        .onChange(of: board.started) { _, _ in if nav.sheet != .setup { nav.sheet = .setup } }   // a started test shows in the queue
         .onChange(of: board.results) { _, _ in board.refreshOverview(); board.refreshOwn() }
     }
 
-    // MARK: Page (header + tabs) and drill-downs (breadcrumb row)
+    // MARK: Header: title (or "‹ parent  title") + one Draft tag, subtitle, the six tabs, Running · N, New test or task ▾
 
-    private var page: some View {
-        FleetPage(title: "Evals", subtitle: subtitle) {
-            HStack(spacing: 8) {
-                Segmented(options: EvalsTabV2.allCases.map { ($0, $0.title) }, selection: $nav.tab,
-                          badge: { $0 == .run ? board.runs.filter(\.isActive).count.nonZeroText : nil })
-                    .accessibilityLabel("Evals tabs")
-                if board.doctor?.engine.ready == true && nav.tab != .run {
-                    RoofButton("+ New run", .primary) { nav.go(.run) }.fixedSize()   // LAB-2139: not "+ Ne…" at 1280
-                        .help("Choose what to run and on whom; the cost shows before anything starts")
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .bottom, spacing: 24) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        if let r = nav.route, let back = r.screen.backTitle {
+                            Button { nav.back() } label: { Text("‹ " + back).ui(15, .semibold).foregroundStyle(t.accentText.color) }
+                                .buttonStyle(.plain).accessibilityLabel("Back to " + back)
+                                .help("Back (⌘[)")
+                            Text(r.screen.title).ui(TypeScale.display, .semibold).tracking(-0.5).foregroundStyle(t.text.color).lineLimit(1)
+                        } else {
+                            Text("Evals").ui(TypeScale.display, .semibold).tracking(-0.5).foregroundStyle(t.text.color)
+                        }
+                        if EvalsDraft.isDraft { EvalsDraftTag() }   // LAB-2220: one tag by the title, no second banner
+                    }
+                    Text(subtitle).ui(14).foregroundStyle(t.text2.color).lineLimit(1)
+                }
+                Spacer()
+                if board.doctor?.engine.ready == true {
+                    EvalsRunningPill(count: board.runs.filter(\.isActive).count) { nav.sheet = .setup }
+                    newMenu
                 }
             }
-        } content: {
-            VStack(alignment: .leading, spacing: 12) {
-                lines
-                if nav.tab == .howTo {
-                    tab   // LAB-2113: How to reads without the engine (a new user starts here)
-                } else if let d = board.doctor, !d.engine.ready {
-                    EvalsSetupCard(doctor: d, board: board)
-                } else if board.doctor == nil {
-                    Text("Checking the eval engine…").ui(TypeScale.body).foregroundStyle(t.text2.color)
-                } else {
-                    tab
+            if board.doctor?.engine.ready != false {
+                HStack(spacing: 8) {
+                    Segmented(options: EvalsTabV2.allCases.map { ($0, $0.title) }, selection: Binding(get: { nav.tab }, set: { nav.go($0) }))
+                        .accessibilityLabel("Evals tabs")
+                    Spacer()
+                    RoofButton("Lessons", .plain) { nav.lessonsPart = .lessons; nav.sheet = .lessons }.fixedSize()
+                        .help("What the numbers mean, one lesson at a time")
                 }
             }
         }
+        .padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28).padding(.top, 22).padding(.bottom, 12)
     }
 
-    /// The Draft banner (LAB-2072) on every tab, and the busy and error lines under the header (as 1.9.37).
+    private var newMenu: some View {
+        Menu {   // QA m2: one "+ New" (the window toolbar's); this one is named for what it makes
+            Button(EvalsNewMenu.items[0]) { nav.test(nil) }
+            Button(EvalsNewMenu.items[1]) { nav.new(.task) }
+            Button(EvalsNewMenu.items[2]) { nav.new(.grader) }
+        } label: { Text(EvalsNewMenu.title) }
+        .menuStyle(.button).fixedSize()
+        .accessibilityLabel("New: a test, a task from fixed bugs, or a grader")
+    }
+
+    /// The busy and error lines under the header (as 1.9.37).
     @ViewBuilder private var lines: some View {
-        if EvalsDraft.isDraft { EvalsDraftBanner() }
-        if let b = board.busy { Text(b).ui(TypeScale.small).foregroundStyle(t.text2.color) }
-        if let e = board.error {
-            Text(e).ui(TypeScale.small).foregroundStyle(t.needsText.color).textSelection(.enabled).lineLimit(4)
+        if board.busy != nil || board.error != nil {
+            VStack(alignment: .leading, spacing: 4) {
+                if let b = board.busy { Text(b).ui(TypeScale.small).foregroundStyle(t.text2.color) }
+                if let e = board.error {
+                    Text(e).ui(TypeScale.small).foregroundStyle(t.needsText.color).textSelection(.enabled).lineLimit(4)
+                }
+            }
+            .padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28).padding(.bottom, 8)
+        }
+    }
+
+    @ViewBuilder private func main(_ route: EvalsRoute?) -> some View {
+        if let d = board.doctor, !d.engine.ready {
+            EvalsSetupCard(doctor: d, board: board).padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28)
+            Spacer(minLength: 0)
+        } else if board.doctor == nil {
+            Text("Checking the eval engine…").ui(TypeScale.body).foregroundStyle(t.text2.color)
+                .padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28)
+            Spacer(minLength: 0)
+        } else if let r = route {
+            drill(r).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            tab.padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28).padding(.bottom, 26)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
     @ViewBuilder private var tab: some View {
         switch nav.tab {
-        case .howTo: EvalsHowToTab(nav: nav, model: model)   // LAB-2113
-        case .overview: EvalsOverviewTab(board: board, nav: nav)
-        case .yourEvals: EvalsYourEvalsTab(board: board, nav: nav)
-        case .explore: EvalsExploreTab(board: board, nav: nav)
-        case .run: EvalsRunTab(board: board, nav: nav)
-        case .results: EvalsResultsV2(board: board, nav: nav)
-        case .learn: EvalsLearnV2(board: board, nav: nav)   // LAB-2070; today's walkthrough and glossary live on in it
+        case .overview: EvalsOverviewTab(board: board, nav: nav)           // lane A · EvalsOverview.swift
+        case .compare: EvalsCompareView(board: board, nav: nav)            // lane A · EvalsCompare.swift
+        case .changes: EvalsChangesView(board: board, nav: nav)            // lane A · EvalsChanges.swift
+        case .realHistory: EvalsRealHistoryView(board: board, nav: nav)    // lane A · EvalsRealHistory.swift
+        case .ourTasks: EvalsTasksView(board: board, nav: nav)             // lane B · EvalsTasks.swift
+        case .benchmarks: EvalsBenchmarksView(board: board, nav: nav)      // lane B · EvalsBenchmarks.swift
         }
     }
 
     @ViewBuilder private func drill(_ r: EvalsRoute) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if EvalsDraft.isDraft {   // LAB-2072: the banner on every Evals page, drill-downs too
-                EvalsDraftBanner().padding(.horizontal, 20).padding(.top, 10)
-            }
-            switch r {
-            case .questions(let b, let task): EvalsQuestionsPage(board: board, nav: nav, benchmark: b, task: task)
-            case .judge(let name, let first): EvalsJudgePage(board: board, nav: nav, name: name, first: first)
-            case .runDetail(let run, let sample, let only, let other):
-                EvalsRunDetailPage(board: board, nav: nav, runID: run, start: sample, only: only, other: other).id(run + (only?.joined() ?? ""))
+        switch r {
+        case .oneTest(let run, let sample, let only, let other):          // lane A · EvalsOneTest.swift
+            EvalsOneTestView(board: board, nav: nav, runID: run, sample: sample, only: only, other: other)
+                .id((run ?? "latest") + (only?.joined() ?? ""))
+        case .allResults: EvalsAllResultsView(board: board, nav: nav)      // lane A · EvalsAllResults.swift
+        case .oneTask(let name, let version):                              // lane B · EvalsTaskDetail.swift
+            EvalsTaskDetailView(board: board, nav: nav, name: name, version: version)
+        case .grader(let name, let first):                                 // lane B · EvalsGrader.swift
+            EvalsGraderView(board: board, nav: nav, name: name, first: first).id(name ?? "first")
+        case .oneBenchmark(let id, let task, let part):                    // lane B · EvalsBenchmarkDetail.swift
+            EvalsBenchmarkDetailView(board: board, nav: nav, id: id, task: task, part: part).id(id + part.rawValue)
+        }
+    }
+
+    @ViewBuilder private func sheet(_ s: EvalsSheet) -> some View {
+        Group {
+            switch s {
+            case .setup: EvalsSetupSheet(board: board, nav: nav)           // lane B · EvalsSetupSheet.swift
+            case .lessons: EvalsLessonsSheet(board: board, nav: nav, model: model)   // lane B · EvalsLessons.swift
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(t.window.color)
+        .background(Button("") { nav.sheet = nil }.keyboardShortcut(.cancelAction).opacity(0).frame(width: 0, height: 0).accessibilityHidden(true))
+        .environment(\.evalHover, sheetHover)
+        .coordinateSpace(name: EvalHoverCenter.space)
+        .overlay { EvalHoverLayer(center: sheetHover) }
+        .background(t.surface.color)
+        .themed(t.name)
     }
 
     private var subtitle: String {
         guard let d = board.doctor else { return "Measure your agents and models on your own work, and learn what the numbers mean" }
         guard d.engine.ready else { return "The eval engine is not installed yet" }
-        let running = board.runs.filter { $0.status == "running" || $0.status == "waiting" }.count
-        if nav.tab == .run {   // HP E3.1
-            return "\(running) running · \(board.runs.filter { $0.status == "queued" }.count) queued · runs keep going if One Roof closes"
-        }
-        if nav.tab == .learn, let b = EvalsLearnStore.book {   // HP E5.1
-            return b.subtitle(done: Set(lessonsDone.split(separator: ",").map(String.init)))
-        }
-        if nav.tab == .results {   // HP E4.1
-            let entries = EvalResultsEntry.from(board.results).filter { $0.runs > 0 }
-            let n = board.results.filter { $0.status == "done" }.count
-            return "\(n) finished run\(n == 1 ? "" : "s") across \(entries.count) eval\(entries.count == 1 ? "" : "s")"
+        if nav.tab == .compare && nav.route == nil {
+            return EvalFinished.text(board.results)   // one count everywhere (QA)
         }
         return EvalsSubtitle.text(benchmarks: board.catalog.map(\.benchmarkCount), ownEvals: board.sets.count,
-                                  judges: board.judges.count, finished: board.results.filter { $0.status == "done" }.count,
+                                  judges: board.judges.count, finished: EvalFinished.count(board.results).tests,
                                   running: board.runs.filter(\.isActive).count)
     }
 
@@ -224,39 +349,79 @@ struct EvalsViewV2: View {
         .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
     }
 
-    /// ONEROOF_SELFTEST_EVALS_TAB=<overview|your-evals|judge|explore|question|scores|your-runs|run|sheet|results|learn>;
-    /// EVALS_LESSON=<lesson id> and EVALS_DONE=<id,id> for Learn; EVALS_HOVER=<EvalHover.Kind> shows that number's card.
-    /// EVALS_BENCH=<folder> picks the benchmark, EVALS_QUESTION=<id> the question, EVALS_JUDGE=<name> the judge.
+    /// ONEROOF_SELFTEST_EVALS_TAB=<overview|compare|one-test|all-results|changes|real-history|our-tasks|one-task|grader|
+    /// benchmarks|one-benchmark|setup|lessons>, and every 2.0.3 name (EvalsScreen.selfTest maps it to its new home).
+    /// EVALS_RUN=<run id> (one test), EVALS_SAMPLE, EVALS_SET=<set> (one task), EVALS_JUDGE=<grader>, EVALS_BENCH=<folder>
+    /// (+ EVALS_TASK), EVALS_LESSON=<lesson id>, EVALS_DONE=<id,id>, EVALS_KEY=<compare key>; setup pre-fill: EVALS_TASK,
+    /// EVALS_MODELS, EVALS_AGENTS, EVALS_LIMIT, EVALS_EPOCHS.
     private func selfTest() {
         let env = ProcessInfo.processInfo.environment
-        guard let v = env["ONEROOF_SELFTEST_EVALS_TAB"], let (tab, drill) = EvalsTabV2.selfTest(v) else { return }
-        nav.tab = tab
+        guard let v = env["ONEROOF_SELFTEST_EVALS_TAB"], let st = EvalsScreen.selfTest(v) else { return }
+        nav.tab = st.tab
         if let b = env["ONEROOF_SELFTEST_EVALS_BENCH"] { nav.benchmark = b }
-        switch drill {
-        case "questions": nav.route = .questions(benchmark: env["ONEROOF_SELFTEST_EVALS_BENCH"] ?? "gsm8k",
-                                                 task: env["ONEROOF_SELFTEST_EVALS_TASK"] ?? env["ONEROOF_SELFTEST_EVALS_BENCH"] ?? "gsm8k")
-        case "scores": nav.exploreTab = .scores
-        case "runs": nav.exploreTab = .runs
-        case "judge": nav.route = .judge(name: env["ONEROOF_SELFTEST_EVALS_JUDGE"] ?? board.judges.first?.name ?? "oneroof_triage", first: nil)
-        case "sheet": nav.run(EvalRunPlan(tasks: ["gsm8k"], models: ["mockllm/model", "anthropic/claude-haiku-5-5"]))
-        case "allbyall": nav.resultsMode = .allByAll
-        case "xray": nav.resultsMode = .xray
-        default: break
-        }
         if let k = env["ONEROOF_SELFTEST_EVALS_KEY"] { nav.resultsKey = k }
-        if let l = env["ONEROOF_SELFTEST_EVALS_LESSON"] { nav.lesson = l }   // learn: the lesson shown
-        if let d = env["ONEROOF_SELFTEST_EVALS_DONE"] { lessonsDone = d }    // learn: lessons ticked done
-        if v == "run-detail", let id = env["ONEROOF_SELFTEST_EVALS_RUN"] {
-            nav.openRun(id, sample: env["ONEROOF_SELFTEST_EVALS_SAMPLE"])
-        }
-        if v == "run", let task = env["ONEROOF_SELFTEST_EVALS_TASK"] {   // Run pre-filled: a set (or task), agents and models
-            nav.run(EvalRunPlan(tasks: [task], models: (env["ONEROOF_SELFTEST_EVALS_MODELS"] ?? "mockllm/model").split(separator: ",").map(String.init),
-                                limit: Int(env["ONEROOF_SELFTEST_EVALS_LIMIT"] ?? "") ?? 20, epochs: Int(env["ONEROOF_SELFTEST_EVALS_EPOCHS"] ?? ""),
-                                agents: (env["ONEROOF_SELFTEST_EVALS_AGENTS"] ?? "").split(separator: ",").map(String.init)))
+        if let l = env["ONEROOF_SELFTEST_EVALS_LESSON"] { nav.lesson = l }   // lessons: the lesson shown
+        if let d = env["ONEROOF_SELFTEST_EVALS_DONE"] { lessonsDone = d }    // lessons: ticked done
+        switch st.screen {
+        case .overview, .compare, .changes, .realHistory, .ourTasks, .benchmarks: break
+        case .oneTest: nav.route = .oneTest(run: env["ONEROOF_SELFTEST_EVALS_RUN"], sample: env["ONEROOF_SELFTEST_EVALS_SAMPLE"], only: nil, other: nil)
+        case .allResults: nav.route = .allResults
+        case .oneTask: nav.openTask(env["ONEROOF_SELFTEST_EVALS_SET"])
+        case .grader: nav.openGrader(env["ONEROOF_SELFTEST_EVALS_JUDGE"])
+        case .oneBenchmark:
+            let part: EvalsNav.ExploreTab = st.part == "questions" ? .questions : st.part == "scores" ? .scores : st.part == "runs" ? .runs : .anatomy
+            let b = env["ONEROOF_SELFTEST_EVALS_BENCH"] ?? "gsm8k"
+            nav.openBenchmark(b, task: env["ONEROOF_SELFTEST_EVALS_TASK"] ?? b, part: part)
+        case .setup:
+            if st.part == "sheet" {
+                nav.test(EvalRunPlan(tasks: ["gsm8k"], models: ["mockllm/model", "anthropic/claude-haiku-5-5"]))
+            } else if let task = env["ONEROOF_SELFTEST_EVALS_TASK"] {   // pre-filled: a set (or task), agents and models
+                nav.test(EvalRunPlan(tasks: [task], models: (env["ONEROOF_SELFTEST_EVALS_MODELS"] ?? "mockllm/model").split(separator: ",").map(String.init),
+                                     limit: Int(env["ONEROOF_SELFTEST_EVALS_LIMIT"] ?? "") ?? 20, epochs: Int(env["ONEROOF_SELFTEST_EVALS_EPOCHS"] ?? ""),
+                                     agents: (env["ONEROOF_SELFTEST_EVALS_AGENTS"] ?? "").split(separator: ",").map(String.init)))
+            } else { nav.test(nil) }
+        case .lessons:
+            nav.lessonsPart = st.part == "how-to" ? .howTo : .lessons
+            nav.sheet = .lessons
         }
     }
 }
 
+/// LAB-2220: the one Draft tag next to the title (replaces the banner on every tab and drill-down); its detail on hover.
+struct EvalsDraftTag: View {
+    @Environment(\.theme) private var t
+    var body: some View {
+        Text(EvalsDraft.tag.uppercased()).ui(10, .bold).foregroundStyle(t.onAccent.color)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(Capsule().fill(t.accent.color))   // LAB-2170: a draft is news, not something that needs you
+            .help(EvalsDraft.detail)
+            .accessibilityLabel(EvalsDraft.banner + ". " + EvalsDraft.detail)
+    }
+}
+
+/// "Running · N": the queue's single home in the header; opens Set up a test › Running and recent. Hidden at 0.
+struct EvalsRunningPill: View {
+    @Environment(\.theme) private var t
+    let count: Int
+    var open: () -> Void
+    var body: some View {
+        if count > 0 {
+            Button(action: open) {
+                HStack(spacing: 6) {
+                    Circle().fill(t.accent.color).frame(width: 7, height: 7)
+                    Text("Running · \(count)").ui(12.5, .semibold).foregroundStyle(t.text.color)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Capsule().fill(t.control.color))
+                .overlay(Capsule().strokeBorder(t.separator.color))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Open the queue: what is running and what finished lately")
+            .accessibilityLabel("\(count) running; open the queue")
+        }
+    }
+}
 
 private extension Int { var nonZeroText: String? { self > 0 ? String(self) : nil } }
 
