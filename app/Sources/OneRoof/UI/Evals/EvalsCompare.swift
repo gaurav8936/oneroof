@@ -39,8 +39,9 @@ struct EvalsCompareView: View {
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(sets) { s in taskCard(s) }
                     Spacer(minLength: 8)
-                    RoofButton("All results ›") { nav.route = .allResults }   // LAB-2255: a button you can see
-                        .help("Every task × every setup, every test, export")
+                    if kind == nil {   // v3: on a segment page the tile above does this
+                        RoofButton("All results ›") { nav.route = .allResults }.help("Every task × every setup, every test, export")
+                    }
                 }
                 content
             }
@@ -124,7 +125,7 @@ struct EvalsCompareView: View {
     }
 
     @ViewBuilder private func loaded(_ lb: EvalSetupLeaderboard) -> some View {
-        Text(EvalsACompare.headline(lb)).ui(17, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+        if kind == nil { Text(EvalsACompare.headline(lb)).ui(17, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true) }
         HStack {
             if kind != .oneShot { Segmented(options: Mode.allCases.map { ($0, $0.rawValue) }, selection: $view).fixedSize() }
             Spacer()

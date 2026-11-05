@@ -2374,3 +2374,14 @@ class Integration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+def test_export_job_kind_2_0_5():
+    import importlib.util, pathlib
+    spec = importlib.util.spec_from_file_location("roof_eval_k", pathlib.Path(__file__).resolve().parents[1] / "app/Resources/evals/roof_eval.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    assert m.job_kind({"task": "own_oneroof_v2", "set_name": "oneroof"}) == "one-shot"
+    assert m.job_kind({"task": "own_oneroof_v2", "agent": "claude_code"}) == "agent"
+    assert m.job_kind({"task": "gsm8k"}) == "public model"
+    assert m.job_kind({"task": "swe_bench", "agent": "claude_code"}) == "public agent"
+    assert m.job_kind({"task": "judge_oneroof_triage"}) == "grader"

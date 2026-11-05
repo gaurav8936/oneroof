@@ -2255,6 +2255,17 @@ def judge_reason(text: str | None) -> str | None:
     return (lines[-1] if lines else body)[:300] or None
 
 
+def job_kind(r: dict) -> str:
+    """2.0.5 (Evals v3): one-shot · agent on our tasks, public model · public agent, or grader (counted apart)."""
+    task = r.get("task") or ""
+    if task.startswith(("judge_", "labeller_")):
+        return "grader"
+    c = r.get("contestant") or {}
+    agent = bool(r.get("agent")) or (isinstance(c, dict) and c.get("kind") == "agent")
+    own = bool(r.get("set_name")) or task.startswith("own_")
+    return ("agent" if agent else "one-shot") if own else ("public agent" if agent else "public model")
+
+
 def cmd_export(argv):
     _, o = args_of(argv, {"--format": "csv", "--out": "", "--json": False})
     index()
@@ -2263,6 +2274,7 @@ def cmd_export(argv):
         base = {k: r.get(k) for k in ("id", "task", "model", "status", "started", "finished", "limit_n", "epochs", "seed",
                                       "temperature", "samples_done", "input_tokens", "output_tokens", "cost", "est_cost",
                                       "inspect_ai", "inspect_evals", "task_version")}
+        base["kind"] = job_kind(r)
         for m in r["metrics"] or [{}]:
             ci = m.get("ci95") or [None, None]
             rows.append(dict(base, scorer=m.get("scorer"), metric=m.get("metric"), value=m.get("value"),

@@ -282,10 +282,13 @@ struct EvalsViewV2: View {
             HStack(alignment: .bottom, spacing: 24) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(pageTitle).ui(TypeScale.display, .semibold).tracking(-0.5).foregroundStyle(t.text.color).lineLimit(1)
+                        // A segment page's title is its question (v3): the header shows only the breadcrumb above.
+                        if !isSegmentPage {
+                            Text(pageTitle).ui(TypeScale.display, .semibold).tracking(-0.5).foregroundStyle(t.text.color).lineLimit(1)
+                        }
                         if EvalsDraft.isDraft { EvalsDraftTag() }   // LAB-2220: one tag by the title, no second banner
                     }
-                    Text(subtitle).ui(14).foregroundStyle(t.text2.color).lineLimit(1)
+                    if !isSegmentPage { Text(subtitle).ui(14).foregroundStyle(t.text2.color).lineLimit(1) }
                 }
                 Spacer()
                 if board.doctor?.engine.ready == true {
@@ -298,6 +301,8 @@ struct EvalsViewV2: View {
         }
         .padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28).padding(.top, 22).padding(.bottom, 12)
     }
+
+    private var isSegmentPage: Bool { nav.route == nil && (nav.page.segment != nil || nav.page == .agentPublic) }
 
     /// The page (or drill-down) title.
     private var pageTitle: String {
