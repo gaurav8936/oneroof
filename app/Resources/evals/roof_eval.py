@@ -41,6 +41,12 @@ only; the few steps that need Inspect re-run this file under the engine's own py
   compare <runA> <runB> [--json]   paired difference over shared questions, verdict a|b|noise, the questions only one solved
   leaderboard <task | set@vN> [--json]   latest finished run per contestant, the floor, judge agreement
   history <task | set@vN> [--json]       every finished run per contestant over time, with possible drops
+  leaderboard <task> [--version N] --by setup [--json]   one row per setup (model alone · agent using a model · agent
+                                   with your rules), its stamp, right/n, Wilson range and each case (Compare screen)
+  run <your set> --agent claude_code|codex_cli --seat C1|CX [--model M] [--rules off|on]   M is passed to the CLI;
+                                   rules on copies the repo HEAD's CLAUDE.md/AGENTS.md into each case (still read-only)
+  estimate <your set> --agent A [--model M] [--json]   runs_on, api_cost, cases and a seat note (no invented share)
+  changes [--repo PATH] [--days 60] [--json]   rules/skills changes (git) and agent version/default-model changes
   Runs started with --background wait for a free slot (ONEROOF_EVALS_SLOTS, default 2), so a queue of runs survives
   closing One Roof.
 
@@ -66,6 +72,10 @@ import urllib.request
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+# LAB-2219: never write bytecode into the app bundle (its Resources/evals is signed), here or in any child.
+sys.dont_write_bytecode = True
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 HERE = Path(__file__).resolve().parent
 EVALS = Path(os.environ.get("ONEROOF_EVALS_DIR") or Path.home() / "Library/Application Support/One Roof/evals")
@@ -115,6 +125,10 @@ def where_ready(where: str) -> bool:
     if where == "modal":
         return (Path.home() / ".modal.toml").exists() or bool(os.environ.get("MODAL_TOKEN_ID"))
     return read_key(where) is not None or bool(os.environ.get(PROVIDER_ENV[where]))
+# LAB-2236: every API call has a time limit and a few retries, so a dead provider fails the run with its own error text
+# instead of hanging it (Inspect's default is no timeout and unlimited retries).
+API_TIMEOUT = 120
+API_RETRIES = 3
 FREE_PREFIXES = ("mockllm/", "ollama/", "openai-api/local/", "hf/", "llama-cpp-python/", "vllm/", "sglang/")
 # Used only until this Mac has measured a task: typical prompt and answer sizes, labelled as a guess.
 DEFAULT_TOKENS = {"input": 1000, "output": 500}
@@ -332,6 +346,7 @@ def cmd_doctor(argv):
            "prices_checked": pr.get("checked"), "runs": len(list(RUNS.glob("*/run.json"))) if RUNS.exists() else 0,
            "where": {w: where_ready(w) if w != "local" else dk.startswith("running") for w in WHERE},
            "agents": agents_state()}
+    rep["agents_seen"] = note_agents_seen()
     lines = [f"engine    {'ready' if info.get('ready') else 'NOT INSTALLED (roof eval setup)'}"
              + (f" · inspect-ai {info.get('inspect_ai')} · inspect-evals {info.get('inspect_evals')}" if info.get("ready") else ""),
              f"folder    {EVALS}", f"uv        {rep['uv'] or 'missing (brew install uv)'}", f"docker    {dk}",
@@ -339,6 +354,30 @@ def cmd_doctor(argv):
              "providers " + ", ".join(f"{p}:{'key' if v['ready'] else '-'}" for p, v in prov.items()),
              "sandboxes " + ", ".join(f"{w}:{'ready' if ok else '-'}" for w, ok in rep['where'].items())]
     out(rep, o["json"], "\n".join(lines))
+
+
+def note_agents_seen() -> dict:
+    """EV-6: the agent CLI versions doctor saw, kept in <evals>/agents-seen.json (a new line only when it changed), so
+    `changes` can tell "Claude Code 2.1.30 → 2.1.31" even when no run was stamped in between."""
+    try:
+        ar = _sibling("agent_runner")
+    except Exception:
+        return {}
+    p = EVALS / "agents-seen.json"
+    seen = read_json(p, {}) or {}
+    changed = False
+    for a in SEAT_NAMES:
+        b = ar.find_bin(a)
+        v = ar.agent_version(b) if b else None
+        if not v:
+            continue
+        hist = seen.setdefault(a, [])
+        if not hist or hist[-1].get("version") != v:
+            hist.append({"at": now(), "version": v})
+            changed = True
+    if changed:
+        write_json(p, seen)
+    return {a: (h[-1]["version"] if h else None) for a, h in seen.items()}
 
 
 # ── providers and keys ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -582,6 +621,14 @@ def seat_estimate_row(task: str, agent: str, limit: int, epochs: int, seat_limit
     if agent not in ar.SEAT_AGENTS:
         die(f"{AGENT_NAMES.get(agent, agent)} cannot run on a seat yet", 2, True)
     s = ar.seat_estimate(agent, limit, epochs, seat_limit)
+    if s["seat_basis"] == "measured":
+        note = (f"No API cost. About {s['seat_share'] * 100:.1f} % of {s['seat']}'s 5-hour window, measured from this "
+                "Mac's earlier runs")
+    else:   # never an invented share: say it is not measured yet
+        note = f"No API cost. It uses your {s['seat']} seat; its share of the 5-hour window is not measured yet"
+    if s.get("seat_used") is None or s.get("seat_stale"):
+        note += f". One Roof cannot see {s['seat']}'s use right now, so the run waits until it can (or Run anyway)"
+    s = dict(s, runs_on=f"seat:{s['seat']}", api_cost=0.0, cases=limit, seat_note=note)
     return dict(s, task=task_name(task), model=f"seat/{s['seat']}", agent=agent, samples=limit, epochs=epochs, calls=limit * epochs,
                 tokens_per_sample={"input": 0, "output": 0}, token_basis="a share of your seat's 5-hour window, not tokens",
                 usd=0.0, model_usd=0.0, cap_check_usd=0.0, grader={"models": [], "usd": 0.0, "basis": "none"}, where="local")
@@ -590,9 +637,14 @@ def seat_estimate_row(task: str, agent: str, limit: int, epochs: int, seat_limit
 def cmd_estimate(argv):
     pos, o = args_of(argv, {"--model": "", "--limit": "50", "--epochs": "1", "--where": "local", "--agent": "", "--seat": "",
                             "--seat-limit": "", "--json": False})
-    if len(pos) == 1 and o["seat"]:
-        e = seat_estimate_row(pos[0], o["agent"], int(o["limit"]), int(o["epochs"]),
+    own = own_task_file(pos[0]) if len(pos) == 1 else None
+    if len(pos) == 1 and (o["seat"] or (own and o["agent"] in SEAT_NAMES and "/" not in o["model"])):
+        # EV-3: an agent on your own set runs on its seat (--seat optional): --model is what the CLI is asked to use
+        meta = read_json(Path(own).parent / "set.json", {}) if own else {}
+        limit = int(o["limit"]) if "--limit" in argv else (meta.get("count") or int(o["limit"]))
+        e = seat_estimate_row(own or pos[0], o["agent"], limit, int(o["epochs"]),
                               float(o["seat_limit"]) if o["seat_limit"] else None)
+        e["model_requested"] = cli_model(o["model"])
         out(e, o["json"], f"{e['task']} × {AGENT_NAMES.get(o['agent'], o['agent'])} on {e['seat']}: {e['calls']} cases · about "
             f"{e['seat_share'] * 100:.1f} % of the seat's 5-hour window ({e['seat_basis']})")
         return
@@ -647,7 +699,8 @@ def inspect_cmd(r: dict) -> list[str]:
     if ref.endswith(".py"):
         ref = Path(ref).name  # Inspect takes task files relative to the working folder (see task_cwd)
     c = [str(INSPECT), "eval", ref, "--model", r["model"], "--limit", str(r["limit"]),
-         "--log-dir", r["dir"], "--display", "plain", "--no-log-images"]
+         "--log-dir", r["dir"], "--display", "plain", "--no-log-images",
+         "--timeout", str(API_TIMEOUT), "--max-retries", str(API_RETRIES)]
     if r.get("epochs"):
         c += ["--epochs", str(r["epochs"])]
     if r.get("sample_id"):
@@ -706,10 +759,12 @@ def pid_alive(pid: int | None) -> bool:
 def cmd_run(argv):
     pos, o = args_of(argv, {"--model": "", "--limit": "50", "--epochs": "", "--seed": "42", "--temperature": "",
                             "--task-args": "", "--where": "local", "--agent": "", "--parallel": "", "--max-cost": "2", "--allow-unknown-cost": False, "--background": False,
-                            "--sample-id": "", "--seat": "", "--seat-limit": "", "--wait": False,
+                            "--sample-id": "", "--seat": "", "--seat-limit": "", "--wait": False, "--rules": "",
                             "--json": False})
     if len(pos) == 1 and o["seat"]:
         return run_on_seat(pos[0], o)
+    if o["rules"]:
+        die("--rules is for an agent on your seat (--agent … --seat …): a model alone reads no rules files", 2, o["json"])
     if len(pos) != 1 or not o["model"]:
         die("run <task> --model M [--limit 50] [--epochs 1] [--seed 42] [--temperature T] [--max-cost 2] [--background]",
             2, o["json"])
@@ -761,6 +816,7 @@ def cmd_run(argv):
          # Containers at once: agent runs start a container per question; ~10 emulated x86 SWE-bench containers on a Mac
          # made sandbox commands time out (LAB-1993), so sandboxed agent runs default to 2.
          "parallel": int(o["parallel"]) if o["parallel"] else (2 if o["agent"] else None), "max_cost": cap, "estimate": est, "status": "queued", "created": now(), "dir": str(d)}
+    r["stamp"] = new_stamp(r)
     # Hard cap while answering: no answer may spend more than its share of the cap (Inspect's per-sample cost limit,
     # with every known price so tools and sub-agents count). Inspect applies it to the solver only: grading runs after
     # it (inspect_ai/_eval/task/run.py, the scoring block has only a time limit), and sandbox time is not tokens. Both
@@ -800,7 +856,10 @@ def run_on_seat(task: str, o: dict):
     if agent not in ar.SEAT_AGENTS:
         why = (ar.NOT_YET.get(agent) or (agent, agent, "not an agent One Roof knows"))[2]
         die(f"{AGENT_NAMES.get(agent, agent)} cannot run on a seat: {why}", 2, o["json"])
-    task = str(Path(os.path.expanduser(task)).resolve())
+    rules = o.get("rules") or "off"
+    if rules not in ("off", "on"):
+        die("--rules must be off or on", 2, o["json"])
+    task = own_task_file(task) or str(Path(os.path.expanduser(task)).resolve())
     sname, sver = set_of(task)
     if not sname or not os.path.isfile(task):
         die("agents on your seats answer your own eval sets; for a benchmark, run the agent on an API model "
@@ -826,7 +885,10 @@ def run_on_seat(task: str, o: dict):
          "seed": None, "temperature": None, "task_args": [], "where": "local", "agent": agent, "seat": est["seat"],
          "seat_limit": est["seat_limit"], "runner": "seat", "sample_id": o["sample_id"] or None, "max_cost": 0.0,
          "repo_path": es.repo_of(meta), "estimate": est, "status": "queued", "created": now(), "dir": str(d),
-         "cap_mode": "no API credit: the agent runs on your subscription seat"}
+         "cap_mode": "no API credit: the agent runs on your subscription seat",
+         "model_requested": cli_model(o.get("model")), "rules": rules}
+    rules_info = ar.capture_rules(r["repo_path"], d) if rules == "on" else {}
+    r["stamp"] = new_stamp(r, agent_version=ar.agent_version(ar.find_bin(agent)), **rules_info)
     write_json(d / "run.json", r)
     env = ar.strip_keys(dict(os.environ))
     if o["background"]:
@@ -872,7 +934,8 @@ def work(rid: str, env: dict | None = None, retry_log: str | None = None) -> int
             set_status(d, hint=hint_for(r["error"]))
         return rc
     r = set_status(d, status="running", started=now(), pid=os.getpid())
-    cmd = [str(INSPECT), "eval-retry", retry_log, "--log-dir", str(d)] if retry_log else inspect_cmd(r)
+    cmd = ([str(INSPECT), "eval-retry", retry_log, "--log-dir", str(d), "--timeout", str(API_TIMEOUT),
+            "--max-retries", str(API_RETRIES)] if retry_log else inspect_cmd(r))
     with open(d / "console.log", "ab") as log:
         env = dict(env or run_env(r["model"]))
         if r.get("where") == "modal":
@@ -945,7 +1008,7 @@ def cmd_cancel(argv):
         die("cancel <run>", 2)
     d = run_dir(argv[0])
     r = read_json(d / "run.json")
-    if r.get("status") in ("done", "failed", "cancelled"):
+    if r.get("status") in ("done", "failed", "cancelled", "expired"):
         out({"id": argv[0], "cancelled": False, "status": r["status"]}, o["json"], f"{argv[0]} already {r['status']}")
         return
     (d / "CANCEL").write_text(now())
@@ -958,9 +1021,41 @@ def cmd_cancel(argv):
                 os.kill(r["child"], signal.SIGINT)
         except OSError:
             pass
+    if r.get("runner") == "seat":   # LAB-2237: the worker's whole process group stops, also while it waits
+        stop_group(r.get("pid"))
     if r.get("status") in ("queued", "running", "waiting", "interrupted") and not pid_alive(r.get("pid")):
-        set_status(d, status="cancelled", finished=now())
+        set_status(d, status="cancelled", finished=now(), waiting=None)
     out({"id": argv[0], "cancelled": True}, o["json"], f"cancel sent to {argv[0]}")
+
+
+def stop_group(pid, wait: float = 5.0) -> None:
+    """SIGTERM to a background worker's own process group (it leads one: started with start_new_session), then SIGKILL
+    if it is still there after `wait` seconds. A worker that is not a group leader (a run in the foreground of a
+    terminal) gets the signal alone: never the terminal's group."""
+    if not pid_alive(pid):
+        return
+    try:
+        leader = os.getpgid(pid) == pid
+    except OSError:
+        return
+    def send(sig):
+        try:
+            os.killpg(pid, sig) if leader else os.kill(pid, sig)
+        except OSError:
+            pass
+    send(signal.SIGTERM)
+    end = time.time() + wait
+    while time.time() < end and pid_alive(pid) and not zombie(pid):
+        time.sleep(0.1)
+    if pid_alive(pid) and not zombie(pid):
+        send(signal.SIGKILL)
+
+
+def zombie(pid) -> bool:
+    try:   # reap it when it is our own child (tests start the worker themselves)
+        return os.waitpid(pid, os.WNOHANG)[0] == pid
+    except ChildProcessError:
+        return False
 
 
 def cmd_run_anyway(argv):
@@ -972,7 +1067,7 @@ def cmd_run_anyway(argv):
     r = read_json(d / "run.json", {})
     if r.get("runner") != "seat":
         die(f"{argv[0]} is not an agent run on a seat", 2, o["json"])
-    if r.get("status") in ("done", "failed", "cancelled"):
+    if r.get("status") in ("done", "failed", "cancelled", "expired"):
         die(f"{argv[0]} already {r['status']}", 3, o["json"])
     r = _sibling("agent_runner").run_anyway(d)
     out({"id": argv[0], "seat_unknown_ok": True, "at": r.get("seat_unknown_ok_at")}, o["json"],
@@ -993,7 +1088,8 @@ def cmd_resume(argv):
         if read_json(d / "run.json", {}).get("status") in ("running", "waiting", "queued") and pid_alive(read_json(d / "run.json", {}).get("pid")):
             die(f"{argv[0]} is still going", 3, o["json"])
         (d / "CANCEL").unlink(missing_ok=True)
-        set_status(d, status="queued", error=None, hint=None, finished=None)
+        set_status(d, status="queued", error=None, hint=None, finished=None, waiting=None, waiting_since=None,
+                   expired_reason=None)
         logf = open(d / "console.log", "ab")
         env = _sibling("agent_runner").strip_keys(dict(os.environ))
         p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_worker", argv[0]], stdout=logf, stderr=logf,
@@ -1033,7 +1129,7 @@ def status_row(r: dict, d: Path) -> dict:
                                        "seat", "waiting", "where", "seat_unknown_ok")},
                 progress=progress(d), error=last, hint=(r.get("hint") or hint_for(err)) if last else None,
                 contestant=contestant(r.get("model"), r.get("agent")), set_name=sname, set_version=sver,
-                task_ref=r.get("task_ref"))
+                task_ref=r.get("task_ref"), stamp=stamp_of(r), status_note=status_note(r))
 
 
 def progress(d: Path) -> str:
@@ -1250,12 +1346,136 @@ def results_for(rid: str | None = None) -> list[dict]:
                 r["metrics"].append({"scorer": s["scorer"], "metric": s["metric"], "value": v, "stderr": se,
                                      "n": n, "ci95": [round(lo, 4), round(hi, 4)], "ci_method": how})
     for r in runs:
+        rj = read_json(RUNS / str(r["id"]) / "run.json", {}) or {}
         r["contestant"] = contestant(r.get("model"), r.get("agent"))
-        r["task_ref"] = (read_json(RUNS / str(r["id"]) / "run.json", {}) or {}).get("task_ref")   # Run again (LAB-2069)
+        r["task_ref"] = rj.get("task_ref")   # Run again (LAB-2069)
+        r["stamp"] = stamp_of(rj, task_version=r.get("task_version"))
+        r["setup_id"] = setup_id(r["stamp"])
+        st = r["stamp"]
+        if r["contestant"]["kind"] == "agent" and (st.get("model_requested") or st.get("rules") == "on"):
+            # one seat, several setups: a chosen model or rules on is its own contestant (old ids stay as they were)
+            r["contestant"] = dict(r["contestant"], id=r["contestant"]["id"] + f":{st.get('model_requested') or 'default'}:{st.get('rules')}",
+                                   name=r["contestant"]["name"] + (f" · {st['model_requested']}" if st.get("model_requested") else "")
+                                   + (" · rules on" if st.get("rules") == "on" else ""))
         a = judge_agreement(r)
         if a:
             r["judge_agreement"] = a
     return runs
+
+
+# ── the stamp (EV-1, LAB-2240): what exactly produced a score ──────────────────────────────────────────────────────
+STAMP_KEYS = ("recorded", "layer", "agent", "agent_name", "agent_version", "model", "model_requested", "model_source",
+              "runs_on", "rules", "rules_hash", "rules_commit", "rules_files", "permission_mode", "task", "task_version",
+              "task_commit", "seed")
+SEAT_NAMES = {"claude_code": "Claude Code", "codex_cli": "Codex"}
+
+
+def runs_on_of(model: str | None, seat: str | None = None) -> str:
+    model = model or ""
+    if seat or model.startswith("seat/"):
+        return f"seat:{seat or model[5:]}"
+    if model.startswith("mockllm/"):
+        return "stand-in"
+    if model.startswith(LOCAL_PREFIXES):
+        return "local"
+    return f"api:{provider_of(model)}"
+
+
+def cli_model(m: str | None) -> str | None:
+    """--model for an agent CLI: as typed, minus an Inspect provider prefix (anthropic/claude-opus-5-5 → claude-opus-5-5)."""
+    m = (m or "").strip()
+    for p in ("anthropic/", "openai/"):
+        if m.startswith(p):
+            m = m[len(p):]
+    return m or None
+
+
+def set_meta(task_ref: str | None) -> dict:
+    """set.json of the eval set version a task file belongs to ({} for a benchmark)."""
+    name, ver = set_of(task_ref or "")
+    if not name:
+        return {}
+    return read_json(Path(task_ref).parent / "set.json", {}) or read_json(EVALS / "sets" / name / f"v{ver}" / "set.json", {}) or {}
+
+
+def new_stamp(r: dict, agent_version: str | None = None, rules_hash: str | None = None, rules_commit: str | None = None,
+              rules_files: list | None = None) -> dict:
+    """The stamp written into a new run.json (recorded: true). A seat run's model is filled in when it ends, from what
+    the CLI itself reported (agent_runner.final_stamp)."""
+    meta = set_meta(r.get("task_ref"))
+    agent = r.get("agent")
+    seat = r.get("seat") or (str(r.get("model"))[5:] if str(r.get("model") or "").startswith("seat/") else None)
+    rules = (r.get("rules") or "off") if agent else None
+    if seat:
+        req = r.get("model_requested")
+        model, src = req, ("chosen" if req else "cli_default_unknown")
+    else:
+        model, req, src = short_model(r.get("model") or ""), short_model(r.get("model") or ""), "api"
+    return {"recorded": True, "layer": "model" if not agent else ("full" if rules == "on" else "agent_model"),
+            "agent": agent, "agent_name": AGENT_NAMES.get(agent) if agent else None, "agent_version": agent_version,
+            "model": model, "model_requested": req, "model_source": src, "runs_on": runs_on_of(r.get("model"), seat),
+            "rules": rules, "rules_hash": rules_hash if rules == "on" else None,
+            "rules_commit": rules_commit if rules == "on" else None, "rules_files": list(rules_files or []) if rules == "on" else [],
+            "permission_mode": "read-only" if seat else None,
+            "task": meta.get("task") or r.get("task"), "task_version": meta.get("version"), "task_commit": meta.get("head"),
+            "seed": r.get("seed")}
+
+
+def stamp_of(r: dict, task_version=None) -> dict:
+    """Every run's stamp: the recorded one (all keys present), or one derived from an older run.json (recorded: false;
+    what it cannot know is null, never guessed)."""
+    if not r:
+        return {k: None for k in STAMP_KEYS} | {"recorded": False, "rules_files": []}
+    if isinstance(r.get("stamp"), dict):
+        st = {k: r["stamp"].get(k) for k in STAMP_KEYS}
+        st["recorded"] = r["stamp"].get("recorded", True) is not False
+        st["rules_files"] = st["rules_files"] or []
+    else:
+        st = new_stamp(dict(r, rules="off"))
+        st["recorded"] = False
+        if st["runs_on"].startswith("seat:"):
+            st["model_source"] = "cli_default_unknown"
+    if st["task_version"] is None and task_version not in (None, "", "None"):   # a benchmark: its Inspect task version
+        try:
+            st["task_version"] = int(task_version)
+        except (TypeError, ValueError):
+            st["task_version"] = task_version
+    return st
+
+
+def setup_id(st: dict) -> str:
+    """model:<model> · <agent>:<model or default>:<rules>. A seat run on the CLI's default stays "default" (what was
+    asked for), whatever model the CLI turned out to use."""
+    if not st.get("agent"):
+        return f"model:{st.get('model') or '?'}"
+    return f"{st['agent']}:{st.get('model_requested') or ('default' if st.get('runs_on', '').startswith('seat:') else st.get('model') or 'default')}:{st.get('rules') or 'off'}"
+
+
+def model_words(m: str | None) -> str:
+    """A model id in plain words: claude-opus-5-5 → Opus; others as they are."""
+    if not m:
+        return "?"
+    x = m.rsplit("/", 1)[-1]
+    k = re.match(r"^claude-(opus|sonnet|haiku|fable)\b", x) or re.match(r"^(opus|sonnet|haiku|fable)$", x)
+    return k.group(1).capitalize() if k else x
+
+
+def setup_label(st: dict) -> str:
+    if not st.get("agent"):
+        return "The stand-in model" if st.get("runs_on") == "stand-in" else f"{model_words(st.get('model'))}, on its own"
+    name = st.get("agent_name") or AGENT_NAMES.get(st["agent"], st["agent"])
+    via = st.get("model_requested") or (None if (st.get("runs_on") or "").startswith("seat:") else st.get("model"))
+    base = f"{name} using {model_words(via)}" if via else f"{name} on its CLI default model"
+    return base + (", with your rules" if st.get("rules") == "on" else "")
+
+
+def status_note(r: dict) -> str | None:
+    if r.get("status") == "waiting":
+        w = r.get("waiting") or ""
+        return "seat use unknown" if w.startswith("seat use unknown") else (w or None)
+    if r.get("status") == "expired":
+        return r.get("expired_reason") or "waited too long without knowing the seat's use"
+    return None
 
 
 # ── contestants (HP EV-2): agents first, then models, then models on this Mac, then the no-model baseline ─────────────
@@ -1413,6 +1633,9 @@ def cmd_samples(argv):
     rows = with_verdicts(pos[0], sample_rows(pos[0], o["json"]))
     for x in rows:
         x["error"] = redact(x.get("error"))
+        code = x.get("code") or {}
+        x["named"] = [n for n in code.get("named") or [] if n and n != "(no path)"][:3]     # EV-4: files the answer named, in order (max 3)
+        x["changed"] = list(code.get("changed") or [])     # files the fix changed; [] for other tasks
     out(rows, o["json"], "\n".join(f"{x['id']:<24} e{x['epoch']} score={x.get('score')} answer={x.get('answer')!r} target={x.get('target')!r}"
                                    for x in rows) or "no samples yet")
 
@@ -1593,11 +1816,176 @@ def leaderboard(k: str) -> dict:
     return dict(info, rows=rows, runs=len(runs), judge=judge_for(info) if info.get("judged") else None, latest_failed=latest_failed)
 
 
+def own_set(task: str, version: int | None = None) -> tuple | None:
+    """(name, version, set folder) of one of your eval sets, from any way of naming it: the task file, own_oneroof_v2,
+    own_oneroof (newest version, or --version), oneroof@v2, oneroof. None for a benchmark."""
+    t = os.path.expanduser(task or "")
+    n, v = set_of(t)
+    if n:
+        return n, version or v, EVALS / "sets" / n / f"v{version or v}"
+    m = re.match(r"^(?:own_)?(.+?)(?:_v(\d+)|@v(\d+))?$", Path(t).name.removesuffix(".py"))
+    if not m:
+        return None
+    name, ver = m.group(1), version or int(m.group(2) or m.group(3) or 0) or None
+    base = EVALS / "sets" / name
+    if not base.is_dir():
+        return None
+    vs = sorted(int(p.name[1:]) for p in base.glob("v*") if p.name[1:].isdigit() and (p / "set.json").exists())
+    if not vs or (ver and ver not in vs):
+        return None
+    ver = ver or vs[-1]
+    return name, ver, base / f"v{ver}"
+
+
+def own_task_file(task: str, version: int | None = None) -> str | None:
+    s = own_set(task, version)
+    if not s:
+        return None
+    meta = read_json(s[2] / "set.json", {}) or {}
+    f = s[2] / f"{meta.get('task') or f'own_{s[0]}_v{s[1]}'}.py"
+    return str(f) if f.exists() else None
+
+
+SET_TITLES = {"fix-locator": "Find the files a bug fix needs", "triage": "Write a useful note on a new bug"}
+FLOOR_RULE = "a blind guess: the three most-fixed files"
+STATUS_RANK = {"done": 0, "running": 1, "waiting": 2, "queued": 3, "failed": 4, "expired": 5}
+LAYER_RANK = {"model": 0, "agent_model": 1, "full": 2}
+
+
+def wilson(right: int, n: int) -> tuple:
+    if not n:
+        return None, None
+    lo, hi, _ = interval(right / n, n, None, True)
+    return round(lo, 4), round(hi, 4)
+
+
+def case_means(rid: str, d: Path) -> dict:
+    """Case id → mean score over attempts: a seat run's answers file (also mid-run), else the index."""
+    p = d / "answers.jsonl"
+    if p.exists():
+        acc: dict = {}
+        for line in p.read_text().splitlines():
+            try:
+                a = json.loads(line)
+            except ValueError:
+                continue
+            if a.get("score") is not None:
+                acc.setdefault(str(a["id"]), []).append(float(a["score"]))
+        return {k: sum(v) / len(v) for k, v in acc.items()}
+    return sample_means(rid)
+
+
+def leaderboard_by_setup(task: str, version: int | None = None) -> dict:
+    """EV-2/4/5 (CONTRACT §3): the Compare screen's one call. One row per setup (model alone · agent using a model ·
+    agent with your rules): its latest finished run on this version, plus every run going now (running, waiting,
+    queued) as its own row, plus a setup's latest failed or expired run while it has none finished. Never mixes
+    versions. The stand-in model is kept apart (stand_in)."""
+    st = own_set(task, version)
+    db = {r["id"]: r for r in results_for()}
+    if st:
+        name, ver, folder = st
+        meta = read_json(folder / "set.json", {}) or {}
+        cases = []
+        for line in (folder / "cases.jsonl").read_text().splitlines() if (folder / "cases.jsonl").exists() else []:
+            try:
+                c = json.loads(line)
+            except ValueError:
+                continue
+            m = c.get("meta") or {}
+            cases.append({"id": c["id"], "issue": m.get("issue"), "title": m.get("title") or c["id"]})
+        base = meta.get("baseline_frequent_files")
+        head = {"task": f"own_{name}", "version": ver, "title": SET_TITLES.get(meta.get("kind"), f"{name} v{ver}"),
+                "n": meta.get("count") or len(cases), "checked_by": "code", "kind": meta.get("kind"), "set": name,
+                "floor": {"right": base, "of": meta.get("count") or len(cases), "rule": FLOOR_RULE} if base is not None else None,
+                "cases": cases}
+        mine = lambda r: set_of(r.get("task_ref") or "") == (name, ver)
+    else:
+        tname = task_name(task)
+        b = None
+        try:
+            b = catalog_entry(tname)
+        except Exception:
+            b = None
+        graded = (catalog_extras(b) if b else {}).get("graded_by") if b else None
+        head = {"task": tname, "version": None, "title": tname, "n": None,
+                "checked_by": graded if graded in ("code", "judge", "tests") else None, "floor": None, "cases": []}
+        mine = lambda r: r.get("task") == tname and not set_of(r.get("task_ref") or "")[0]
+    order = [c["id"] for c in head["cases"]]
+    rows, stand_in = [], None
+    for f in sorted(RUNS.glob("*/run.json")) if RUNS.exists() else []:
+        r = read_json(f, {}) or {}
+        if not r.get("id") or not mine(r) or str(r.get("task") or "").startswith(("judge_", "labeller_")):
+            continue
+        status = r.get("status")
+        note = status_note(r)
+        if status in ("running", "waiting", "queued") and not pid_alive(r.get("pid")):
+            status, note = "failed", "stopped before it finished: resume it"
+        if status == "interrupted":
+            status, note = "failed", "stopped before it finished: resume it"
+        if status not in STATUS_RANK:
+            continue   # cancelled
+        x = db.get(r["id"]) or {}
+        stamp = stamp_of(r, task_version=x.get("task_version"))
+        means = case_means(r["id"], f.parent)
+        ids = order or sorted(means)
+        per_case = [{"id": i, "right": (None if means.get(i) is None else means[i] >= 0.5)} for i in ids]
+        answered = [c for c in per_case if c["right"] is not None]
+        right = sum(1 for c in answered if c["right"])
+        done = status == "done"
+        n = len(answered) if done else None
+        lo, hi = wilson(right, n) if done else (None, None)
+        cost = x.get("cost")
+        if stamp["runs_on"].startswith("seat:"):
+            cost = 0.0   # a seat run spends a share of your subscription window, never API credit
+        row = {"setup_id": setup_id(stamp), "label": setup_label(stamp), "stamp": stamp, "status": status,
+               "status_note": note, "run": r["id"], "started": x.get("started") or r.get("started") or r.get("created"),
+               "right": right if done else None, "n": n, "lo": lo, "hi": hi,
+               "cost": round(cost, 4) if isinstance(cost, (int, float)) else None,
+               "cost_per_right": (round(cost / right, 4) if done and right and cost else None),
+               "per_case": per_case}
+        if stamp["runs_on"] == "stand-in":
+            if done and (stand_in is None or (row["started"] or "") > stand_in["_at"]):
+                stand_in = {"right": right, "n": n, "_at": row["started"] or ""}
+            continue
+        rows.append(row)
+    latest_done, latest_other, going = {}, {}, []
+    for row in sorted(rows, key=lambda x: x["started"] or "", reverse=True):
+        if row["status"] == "done":
+            latest_done.setdefault(row["setup_id"], row)
+        elif row["status"] in ("running", "waiting", "queued"):
+            going.append(row)
+        else:
+            latest_other.setdefault(row["setup_id"], row)
+    keep = list(latest_done.values()) + going + [v for k, v in latest_other.items() if k not in latest_done]
+    keep.sort(key=lambda x: (LAYER_RANK.get(x["stamp"]["layer"], 9), STATUS_RANK.get(x["status"], 9),
+                             -(x["right"] if x["right"] is not None else -1), x["label"], x["started"] or ""))
+    if stand_in:
+        stand_in.pop("_at", None)
+    return dict(head, rows=keep, stand_in=stand_in)
+
+
+def render_by_setup(lb: dict) -> str:
+    fl = lb.get("floor")
+    lines = [f"{lb['title']} · v{lb.get('version')} · {lb.get('n')} cases" + (f" · a blind guess gets {fl['right']}/{fl['of']}" if fl else "")]
+    for r in lb["rows"]:
+        sc = f"{r['right']}/{r['n']}  ({r['lo'] * 100:.0f}–{r['hi'] * 100:.0f} %)" if r["right"] is not None and r["n"] else "–"
+        lines.append(f"  {r['label']:<44} {r['status']:<8} {sc:<22} {r['run']}" + (f"  [{r['status_note']}]" if r.get("status_note") else ""))
+    if lb.get("stand_in"):
+        lines.append(f"  stand-in model: {lb['stand_in']['right']}/{lb['stand_in']['n']}")
+    return "\n".join(lines)
+
+
 def cmd_leaderboard(argv):
-    pos, o = args_of(argv, {"--json": False})
+    pos, o = args_of(argv, {"--json": False, "--by": "", "--version": ""})
     if len(pos) != 1:
-        die("leaderboard <task | set@vN>", 2, o["json"])
+        die("leaderboard <task | set@vN> [--by setup [--version N]]", 2, o["json"])
     index()
+    if o["by"]:
+        if o["by"] != "setup":
+            die("--by takes: setup", 2, o["json"])
+        lb = leaderboard_by_setup(pos[0], int(o["version"]) if o["version"] else None)
+        out(lb, o["json"], render_by_setup(lb))
+        return
     lb = leaderboard(pos[0])
     lines = [lb["title"] + (f" · floor {lb['floor'] * 100:.0f} %" if lb.get("floor") is not None else "")]
     for i, r in enumerate(lb["rows"], 1):
@@ -1818,6 +2206,11 @@ def own_benchmarks() -> list[dict]:
         return []
 
 
+def cmd_changes(argv):
+    """EV-6: what changed in your rules and skills (git) and in the agents (recorded stamps, doctor): changes.py."""
+    os.execv(sys.executable, [sys.executable, str(HERE / "changes.py"), *argv])
+
+
 def cmd_xray(argv):
     """The agent X-ray from git (LAB-1961): xray.py beside this file, standard library only."""
     os.execv(sys.executable, [sys.executable, str(HERE / "xray.py"), *argv])
@@ -1964,7 +2357,7 @@ def board_row(r: dict) -> dict:
             "score": score, "metric": p.get("metric"), "ci95": p.get("ci95"), "ci_method": p.get("ci_method"), "n": n,
             "epochs": r.get("epochs"), "cost": cost, "free": free,
             "seat": c["kind"] == "agent" and not cost,   # an agent on your seat; one run through Inspect on an API key paid dollars
-            "usd_per_right": per_right, "date": r.get("started")}
+            "usd_per_right": per_right, "date": r.get("started"), "stamp": r.get("stamp"), "setup_id": r.get("setup_id")}
 
 
 def leaderboard_rows(runs: list[dict]) -> list[dict]:
@@ -2050,8 +2443,47 @@ def overview(since: str | None = None) -> dict:
         if r.get("status") in ("running", "queued", "waiting") and pid_alive(r.get("pid")):
             status_rows.append({"id": r.get("id"), "task": r.get("task"), "model": r.get("model"), "status": r.get("status"),
                                 "progress": progress(f.parent), "contestant": contestant(r.get("model"), r.get("agent"))["name"]})
+    lay, graders = layers()
     return {"evals": cards, "changes": changes[:5], "running": status_rows,
-            "suggestion": suggestion(runs, newest, es), "finished_runs": len(runs)}
+            "suggestion": suggestion(runs, newest, es), "finished_runs": len(runs), "layers": lay, "grader_runs": graders}
+
+
+def layers() -> tuple:
+    """EV-2 (CONTRACT §7): finished runs per layer, inside = on your own sets, outside = on public benchmarks; on your
+    sets the stand-in model is counted apart (inside_stand_in), outside it is part of outside_runs (outside_stand_in
+    says how many); grader and labeller runs (a judge's own runs) counted separately. outside_benchmarks
+    = benchmarks in the catalog that this layer can run (agent + model: those with a sandbox or an Agent tag)."""
+    rows = {k: {"layer": k, "inside_runs": 0, "inside_stand_in": 0, "inside_waiting": 0, "outside_runs": 0,
+                "outside_stand_in": 0, "outside_benchmarks": 0} for k in ("model", "agent_model", "full")}
+    graders = 0
+    for f in sorted(RUNS.glob("*/run.json")) if RUNS.exists() else []:
+        r = read_json(f, {}) or {}
+        task = str(r.get("task") or "")
+        st = r.get("status")
+        going = st in ("running", "waiting", "queued") and pid_alive(r.get("pid"))
+        if st != "done" and not going:
+            continue
+        if task.startswith(("judge_", "labeller_")):
+            graders += st == "done"
+            continue
+        stamp = stamp_of(r)
+        row = rows.get(stamp["layer"]) or rows["model"]
+        inside = bool(set_of(r.get("task_ref") or "")[0])
+        if going:
+            if inside:
+                row["inside_waiting"] += 1
+            continue
+        stand_in = stamp["runs_on"] == "stand-in"
+        if inside:   # on your own sets the stand-in is apart; outside, outside_runs counts every run (of which stand-in)
+            row["inside_stand_in" if stand_in else "inside_runs"] += 1
+        else:
+            row["outside_runs"] += 1
+            row["outside_stand_in"] += stand_in
+    benches = (read_json(CATALOG, {}) or {}).get("benchmarks") or []
+    public = [b for b in benches if b.get("category") != "Your evals"]
+    rows["model"]["outside_benchmarks"] = len(public)
+    rows["agent_model"]["outside_benchmarks"] = sum(1 for b in public if b.get("sandbox") or "Agent" in (b.get("tags") or []))
+    return list(rows.values()), graders
 
 
 def judges_summary() -> list[dict]:
@@ -2518,7 +2950,7 @@ COMMANDS = {"setup": cmd_setup, "doctor": cmd_doctor, "catalog": cmd_catalog, "p
             "evalset": cmd_evalset, "judge": cmd_judge, "lmeval": cmd_lmeval, "overview": cmd_overview,
             "anatomy": cmd_anatomy, "items": cmd_items, "item": cmd_item, "item-results": cmd_item_results,
             "scores": cmd_scores, "power": cmd_power, "compare": cmd_compare, "leaderboard": cmd_leaderboard,
-            "history": cmd_history}
+            "history": cmd_history, "changes": cmd_changes}
 
 
 def main(argv: list[str]) -> None:

@@ -1053,6 +1053,7 @@ class AgentRunner(unittest.TestCase):
         # on the XYZ-3 case when asked to.
         self.fake = Path(self.tmp) / "fake-claude"
         self.fake.write_text("#!/bin/sh\n"
+                             "if [ \"$1\" = --version ]; then echo '9.8.7 (Claude Code)'; exit 0; fi\n"
                              f"echo \"$PWD|$(cat src/alpha.py 2>/dev/null)|${{ANTHROPIC_API_KEY:-none}}|${{OPENAI_API_KEY:-none}}\" >> {self.log}\n"
                              "case \"$2\" in *export*) if [ -n \"$FAKE_FAIL\" ]; then echo boom >&2; exit 3; fi;; esac\n"
                              "echo 'src/alpha.py'\n")
@@ -1433,6 +1434,394 @@ class SeatGate(unittest.TestCase):
         os.environ.pop("ONEROOF_EVAL_WORKTREES", None)
         ar2 = sibling("agent_runner")
         self.assertFalse(str(ar2.WORKTREES).startswith(str(Path.home() / "Library")))
+
+
+def git_commit(repo, msg, files, when=None):
+    env = dict(os.environ, GIT_AUTHOR_NAME="Pat", GIT_AUTHOR_EMAIL="p@x", GIT_COMMITTER_NAME="Pat", GIT_COMMITTER_EMAIL="p@x")
+    if when:
+        env.update(GIT_AUTHOR_DATE=when, GIT_COMMITTER_DATE=when)
+    for name, text in files.items():
+        p = Path(repo) / name
+        if text is None:
+            p.unlink()
+            continue
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+    subprocess.run(["git", "-C", repo, "add", "-A"], check=True, env=env)
+    subprocess.run(["git", "-C", repo, "commit", "-qm", msg], check=True, env=env)
+    return subprocess.run(["git", "-C", repo, "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+
+class SetupStamp(unittest.TestCase):
+    """Evals v2 · EV-1 (LAB-2240) + EV-3: every new seat run writes a stamp (agent + CLI version, the model the CLI
+    reported, rules off/on @ hash, task version); --model is passed to the CLI; rules off removes every CLAUDE.md /
+    AGENTS.md from the case, rules on puts the repo HEAD's copies there. A fake CLI answers: no seat is used."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-stamp-")
+        self.repo = tempfile.mkdtemp(prefix="roof-stamp-repo-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        os.environ["ONEROOF_EVALS_DIR"] = self.tmp
+        self.es = sibling("evalset")
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        git_commit(self.repo, "XYZ-1 · setup", {"src/alpha.py": "old alpha\n", "src/beta.py": "b\n", "CLAUDE.md": "old rules\n",
+                                                 "app/AGENTS.md": "old app rules\n"})
+        git_commit(self.repo, "XYZ-2 · fix: login button does nothing", {"src/alpha.py": "new alpha\n"})
+        git_commit(self.repo, "XYZ-3 · Fix: export is empty", {"src/beta.py": "b2\n"})
+        self.head = git_commit(self.repo, "XYZ-4 · rules", {"CLAUDE.md": "new rules\n"})
+        cases, stats = self.es.build_cases(self.repo, 20, 30, None)
+        d, _ = self.es.write_set("demo", self.repo, cases, stats, 30)
+        self.task = str(self.es.task_file(d))
+        self.log = Path(self.tmp) / "agent.log"
+        # The fake Claude Code: prints its version; otherwise logs its arguments and the rules files it can see, and
+        # answers in the CLI's json shape (two models used: a small side call and the one that answered).
+        self.fake = Path(self.tmp) / "fake-claude"
+        self.fake.write_text("#!/bin/sh\n"
+                             "if [ \"$1\" = --version ]; then echo '2.1.31 (Claude Code)'; exit 0; fi\n"
+                             f"echo \"ARGS $*\" >> {self.log}\n"
+                             f"echo \"RULES $(cat CLAUDE.md 2>/dev/null || echo none)|$(cat app/AGENTS.md 2>/dev/null || echo none)\" >> {self.log}\n"
+                             "printf '%s' '{\"type\":\"result\",\"result\":\"src/alpha.py\",\"modelUsage\":"
+                             "{\"claude-haiku-5-5\":{\"outputTokens\":12},\"claude-opus-5-5\":{\"outputTokens\":900}}}'\n")
+        self.fake.chmod(0o755)
+        usage = Path(self.tmp) / "usage"
+        usage.mkdir()
+        (usage / "Claude1.json").write_text(json.dumps({"updated": time.time(), "rate_limits": {"five_hour": {"used_percentage": 9}}}))
+        self.env = dict(os.environ, ONEROOF_EVALS_DIR=self.tmp, ONEROOF_AGENT_BIN_CLAUDE_CODE=str(self.fake),
+                        ONEROOF_EVAL_WORKTREES=str(Path(self.tmp) / "worktrees"), ONEROOF_USAGE_DIR=str(usage))
+
+    def run_engine(self, *args):
+        r = subprocess.run([sys.executable, str(ENGINE), *args, "--json"], capture_output=True, text=True, env=self.env)
+        return json.loads(r.stdout)
+
+    def test_rules_off_default_stamp_resolves_the_cli_default_model(self):
+        res = self.run_engine("run", self.task, "--agent", "claude_code", "--seat", "C1")
+        self.assertEqual(res["status"], "done", res)
+        st = res["stamp"]
+        self.assertEqual((st["recorded"], st["layer"], st["agent"], st["agent_name"], st["agent_version"]),
+                         (True, "agent_model", "claude_code", "Claude Code", "2.1.31"))
+        self.assertEqual((st["model"], st["model_requested"], st["model_source"]), ("claude-opus-5-5", None, "cli_default_resolved"))
+        self.assertEqual((st["runs_on"], st["rules"], st["rules_hash"], st["rules_files"], st["permission_mode"]),
+                         ("seat:C1", "off", None, [], "read-only"))
+        self.assertEqual((st["task"], st["task_version"]), ("own_demo_v1", 1))
+        log = self.log.read_text()
+        self.assertNotIn("--model", log)                                   # the CLI's own default
+        self.assertIn("--output-format json", log)
+        self.assertEqual(set(re.findall(r"RULES (.*)", log)), {"none|none"})   # rules off: no instruction file at all
+        r = res["results"][0]
+        self.assertEqual(r["stamp"]["model"], "claude-opus-5-5")
+        self.assertEqual(r["setup_id"], "claude_code:default:off")
+        self.assertEqual(r["contestant"]["name"], "Claude Code · C1")      # unchanged for the default setup
+        status = {x["id"]: x for x in self.run_engine("status")}
+        self.assertEqual(status[res["id"]]["stamp"]["agent_version"], "2.1.31")
+        rows = self.run_engine("samples", res["id"])
+        self.assertTrue(all(x["named"] == ["src/alpha.py"] for x in rows))
+        self.assertEqual(sorted(x["changed"] for x in rows), [["src/alpha.py"], ["src/beta.py"]])
+
+    def test_model_and_rules_on(self):
+        res = self.run_engine("run", self.task, "--agent", "claude_code", "--seat", "C1", "--model", "claude-sonnet-5-5",
+                              "--rules", "on")
+        self.assertEqual(res["status"], "done", res)
+        st = res["stamp"]
+        self.assertEqual((st["layer"], st["rules"], st["model_requested"], st["model_source"], st["model"]),
+                         ("full", "on", "claude-sonnet-5-5", "chosen", "claude-opus-5-5"))   # what answered, as the CLI said
+        import hashlib
+        want = hashlib.sha256(b"new rules\nold app rules\n").hexdigest()[:7]   # HEAD's files, in path order
+        self.assertEqual((st["rules_hash"], st["rules_commit"], st["rules_files"]), (want, self.head, ["CLAUDE.md", "app/AGENTS.md"]))
+        log = self.log.read_text()
+        self.assertIn("--model claude-sonnet-5-5", log)
+        self.assertEqual(set(re.findall(r"RULES (.*)", log)), {"new rules|old app rules"})   # HEAD's, not the pre-fix copy
+        self.assertIn("--restricted", log)                                                    # still contained
+        r = self.run_engine("results", res["id"])[0]
+        self.assertEqual(r["setup_id"], "claude_code:claude-sonnet-5-5:on")
+        self.assertIn("rules on", r["contestant"]["name"])
+        e = self.run_engine("run", self.task, "--model", "openai/gpt-5-nano", "--rules", "on")
+        self.assertIn("--rules is for an agent", e["error"])
+
+    def test_codex_command_and_output(self):
+        ar = sibling("agent_runner")
+        out, case = Path(self.tmp) / "x.txt", Path(self.tmp) / "case"
+        off = ar.command("codex_cli", "codex", "q", out, case)
+        self.assertIn("--ignore-rules", off)
+        self.assertIn("--json", off)
+        self.assertNotIn("-m", off)
+        on = ar.command("codex_cli", "codex", "q", out, case, model="gpt-5.5-codex", rules="on")
+        self.assertNotIn("--ignore-rules", on)
+        self.assertEqual(on[on.index("-m") + 1], "gpt-5.5-codex")
+        self.assertEqual(on[on.index("--sandbox") + 1], "read-only")
+        cc = ar.command("claude_code", "claude", "q", out, case, model="opus")
+        self.assertEqual((cc[cc.index("--model") + 1], cc[cc.index("--output-format") + 1]), ("opus", "json"))
+        ev = "\n".join(json.dumps(x) for x in [{"type": "thread.started"}, {"type": "turn_context", "payload": {"model": "gpt-5.5"}},
+                                                 {"type": "item.completed", "item": {"type": "agent_message", "text": "a.py"}}])
+        self.assertEqual(ar.parse_output("codex_cli", ev, None), ("a.py", "gpt-5.5"))
+        self.assertEqual(ar.parse_output("codex_cli", ev, "b.py\n"), ("b.py\n", "gpt-5.5"))   # the last-message file wins
+        self.assertEqual(ar.parse_output("claude_code", "plain.py\n", None), ("plain.py\n", None))   # an older CLI
+        self.assertEqual(ar.parse_output("codex_cli", "{\"type\":\"turn.started\"}", None), ("", None))   # no model said
+
+    def test_estimate_for_an_agent_says_no_invented_share(self):
+        e = self.run_engine("estimate", self.task, "--agent", "claude_code")
+        self.assertEqual((e["runs_on"], e["api_cost"], e["cases"]), ("seat:C1", 0.0, 2))
+        self.assertIn("not measured yet", e["seat_note"])
+        self.assertNotIn("%", e["seat_note"].split("window")[0].replace("5-hour", ""))
+        e = self.run_engine("estimate", "own_demo", "--agent", "claude_code", "--model", "claude-opus-5-5")
+        self.assertEqual((e["runs_on"], e["model_requested"], e["cases"]), ("seat:C1", "claude-opus-5-5", 2))
+
+
+class SetupBoard(unittest.TestCase):
+    """Evals v2 · EV-2/4/5 (CONTRACT §3, §4, §7): leaderboard --by setup (floor, cases in set order, Wilson, rows per
+    setup incl. a waiting run, the stand-in apart, never another version), derived stamps for old runs, overview layers."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-setup-board-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.e = load(self.tmp)
+        self.f = Fixture(self.tmp)
+        self.ids = [f"XYZ-{i}-abc" for i in range(1, 11)]
+        self.tf = str(self.f.set("demo", 2, self.ids, floor=5))
+        self.tf1 = str(self.f.set("demo", 1, self.ids[:4], floor=1))
+
+    def sc(self, right):
+        return {i: (1.0 if n < right else 0.0) for n, i in enumerate(self.ids)}
+
+    def board(self, *extra):
+        return engine(self.tmp, "leaderboard", "own_demo", "--by", "setup", *extra)
+
+    def test_by_setup(self):
+        self.f.run("opus-old", "own_demo_v2", "anthropic/claude-opus-5-5", self.sc(6), "2026-10-30T00:00:00Z", task_ref=self.tf)
+        self.f.run("opus", "own_demo_v2", "anthropic/claude-opus-5-5", self.sc(8), "2026-11-01T16:31:03Z", task_ref=self.tf)
+        self.f.run("mock", "own_demo_v2", "mockllm/model", self.sc(0), "2026-11-01T00:00:00Z", task_ref=self.tf)
+        self.f.run("v1", "own_demo_v1", "anthropic/claude-opus-5-5", {i: 1.0 for i in self.ids[:4]}, "2026-11-02T00:00:00Z", task_ref=self.tf1)
+        d = Path(self.tmp) / "runs" / "wait"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps({"id": "wait", "task": "own_demo_v2", "task_ref": self.tf, "model": "seat/C1",
+                                                "agent": "claude_code", "seat": "C1", "runner": "seat", "status": "waiting",
+                                                "pid": os.getpid(), "created": "2026-11-01T16:30:58Z",
+                                                "waiting": "seat use unknown: One Roof cannot see …"}))
+        self.e.index()
+        lb = self.board()
+        self.assertEqual((lb["task"], lb["version"], lb["title"], lb["n"], lb["checked_by"]),
+                         ("own_demo", 2, "Find the files a bug fix needs", 10, "code"))
+        self.assertEqual(lb["floor"], {"right": 5, "of": 10, "rule": "a blind guess: the three most-fixed files"})
+        self.assertEqual([c["id"] for c in lb["cases"]], self.ids)                 # the set's order
+        self.assertEqual(lb["cases"][0]["issue"], "XYZ-1")
+        self.assertEqual(lb["stand_in"], {"right": 0, "n": 10})
+        rows = {r["setup_id"]: r for r in lb["rows"]}
+        self.assertEqual(set(rows), {"model:claude-opus-5-5", "claude_code:default:off"})   # one row per setup; no v1, no mock
+        o = rows["model:claude-opus-5-5"]
+        self.assertEqual((o["label"], o["run"], o["status"], o["right"], o["n"], o["lo"], o["hi"]),
+                         ("Opus, on its own", "opus", "done", 8, 10, 0.4902, 0.9433))
+        self.assertEqual([c["right"] for c in o["per_case"]], [True] * 8 + [False] * 2)
+        self.assertEqual([c["id"] for c in o["per_case"]], self.ids)
+        self.assertEqual((o["stamp"]["recorded"], o["stamp"]["layer"], o["stamp"]["runs_on"], o["stamp"]["task_version"]),
+                         (False, "model", "api:anthropic", 2))
+        w = rows["claude_code:default:off"]
+        self.assertEqual((w["label"], w["status"], w["status_note"], w["right"], w["lo"]),
+                         ("Claude Code on its CLI default model", "waiting", "seat use unknown", None, None))
+        self.assertEqual((w["stamp"]["model"], w["stamp"]["model_source"], w["stamp"]["layer"]), (None, "cli_default_unknown", "agent_model"))
+        self.assertTrue(all(c["right"] is None for c in w["per_case"]))
+        for key in ("setup_id", "label", "stamp", "status", "status_note", "run", "started", "right", "n", "lo", "hi", "cost",
+                    "cost_per_right", "per_case"):
+            self.assertIn(key, o)
+        self.assertEqual(self.board("--version", "1")["rows"][0]["run"], "v1")   # another version: its own board
+        self.assertEqual(engine(self.tmp, "leaderboard", "demo@v2", "--by", "setup")["version"], 2)
+        # a waiting run whose worker is gone is not shown as waiting
+        rj = json.loads((d / "run.json").read_text())
+        (d / "run.json").write_text(json.dumps(dict(rj, pid=999999)))
+        w = {r["setup_id"]: r for r in self.board()["rows"]}["claude_code:default:off"]
+        self.assertEqual(w["status"], "failed")
+
+    def test_labels(self):
+        st = lambda **k: dict({"agent": None, "agent_name": None, "model": None, "model_requested": None, "runs_on": "api:anthropic",
+                               "rules": None}, **k)
+        self.assertEqual(self.e.setup_label(st(model="claude-opus-5-5")), "Opus, on its own")
+        self.assertEqual(self.e.setup_label(st(agent="claude_code", agent_name="Claude Code", model_requested="claude-opus-5-5",
+                                                runs_on="seat:C1", rules="off")), "Claude Code using Opus")
+        self.assertEqual(self.e.setup_label(st(agent="claude_code", agent_name="Claude Code", model="claude-sonnet-5-5",
+                                                runs_on="seat:C1", rules="off")), "Claude Code on its CLI default model")
+        self.assertIn("with your rules", self.e.setup_label(st(agent="codex_cli", agent_name="Codex", runs_on="seat:CX", rules="on")))
+        self.assertEqual(self.e.setup_id({"agent": "claude_code", "model_requested": "claude-opus-5-5", "rules": "off",
+                                          "runs_on": "seat:C1"}), "claude_code:claude-opus-5-5:off")
+
+    def test_overview_layers_and_grader_runs(self):
+        self.f.run("in1", "own_demo_v2", "anthropic/claude-opus-5-5", self.sc(8), "2026-11-01T00:00:00Z", task_ref=self.tf)
+        self.f.run("in2", "own_demo_v2", "mockllm/model", self.sc(0), "2026-11-01T00:00:00Z", task_ref=self.tf)
+        self.f.run("out1", "gsm8k", "openai/gpt-5-nano", {"1": 1.0, "2": 0.0}, "2026-11-01T00:00:00Z")
+        self.f.run("out2", "gsm8k", "mockllm/model", {"1": 0.0, "2": 0.0}, "2026-11-01T00:00:00Z")
+        self.f.run("out3", "swe_bench", "anthropic/claude-haiku-5-5", {"1": 1.0, "2": 0.0}, "2026-11-01T00:00:00Z", agent="claude_code")
+        self.f.run("j1", "judge_demo_v1", "openai/gpt-5-mini", {"1": 1.0, "2": 0.0}, "2026-11-01T00:00:00Z")
+        self.f.run("l1", "labeller_demo", "openai/gpt-5-mini", {"1": 1.0, "2": 0.0}, "2026-11-01T00:00:00Z")
+        (Path(self.tmp) / "catalog.json").write_text(json.dumps({"benchmarks": [
+            {"folder": "gsm8k", "category": "Math", "tags": []}, {"folder": "swe", "category": "Coding", "sandbox": True},
+            {"folder": "x", "category": "Assistants", "tags": ["Agent"]}]}))
+        ov = engine(self.tmp, "overview")
+        lay = {x["layer"]: x for x in ov["layers"]}
+        self.assertEqual([x["layer"] for x in ov["layers"]], ["model", "agent_model", "full"])
+        self.assertEqual((lay["model"]["inside_runs"], lay["model"]["inside_stand_in"], lay["model"]["outside_runs"],
+                          lay["model"]["outside_stand_in"], lay["model"]["outside_benchmarks"]), (1, 1, 2, 1, 3))
+        self.assertEqual((lay["agent_model"]["outside_runs"], lay["agent_model"]["outside_benchmarks"]), (1, 2))
+        self.assertEqual(lay["full"]["inside_runs"], 0)
+        self.assertEqual(ov["grader_runs"], 2)
+
+
+class Changes(unittest.TestCase):
+    """Evals v2 · EV-6 (CONTRACT §5): your rules/skills changes from git, the agents' changes from recorded stamps and
+    doctor's agents-seen.json, each with the agent run just before and just after. Real data only."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-changes-")
+        self.repo = tempfile.mkdtemp(prefix="roof-changes-repo-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        day = lambda d: f"2026-11-0{d}T12:00:00+00:00"
+        git_commit(self.repo, "code", {"src/a.py": "a\n"}, day(1))
+        self.c1 = git_commit(self.repo, "rules", {"CLAUDE.md": "r1\n"}, day(2))
+        self.c2 = git_commit(self.repo, "skill", {"skills/where-are-we/SKILL.md": "s\n", "skills/where-are-we/x.sh": "x\n"}, day(3))
+        self.c3 = git_commit(self.repo, "rules 2", {"CLAUDE.md": "r2\n", ".claude/settings.json": "{}\n"}, day(4))
+
+    def run_json(self, rid, started, version, model=None, source="cli_default_unknown"):
+        d = Path(self.tmp) / "runs" / rid
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps({"id": rid, "agent": "claude_code", "status": "done", "started": started,
+                                                "repo_path": self.repo, "stamp": {"recorded": True, "agent": "claude_code",
+                                                "agent_version": version, "model": model, "model_source": source}}))
+
+    def changes(self, *a):
+        r = subprocess.run([sys.executable, str(EVALS_DIR / "changes.py"), "--repo", self.repo, "--days", "3650", "--json", *a],
+                           capture_output=True, text=True, env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_empty_is_a_valid_answer(self):
+        empty = tempfile.mkdtemp(prefix="roof-changes-empty-")
+        self.addCleanup(shutil.rmtree, empty, True)
+        subprocess.run(["git", "init", "-q", empty], check=True)
+        git_commit(empty, "code only", {"a.py": "1\n"})
+        r = subprocess.run([sys.executable, str(ENGINE), "changes", "--repo", empty, "--json"], capture_output=True, text=True,
+                           env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        self.assertEqual(json.loads(r.stdout), [])
+
+    def test_you_and_vendor(self):
+        self.run_json("r1", "2026-11-01T00:00:00Z", "2.1.30", "claude-sonnet-5-5", "cli_default_resolved")
+        self.run_json("r2", "2026-11-03T18:00:00Z", "2.1.31", "claude-opus-5-5", "cli_default_resolved")
+        (Path(self.tmp) / "agents-seen.json").write_text(json.dumps({"claude_code": [
+            {"at": "2026-11-03T00:00:00Z", "version": "2.1.30"}, {"at": "2026-11-04T00:00:00Z", "version": "2.1.32"}]}))
+        rows = self.changes()
+        whats = [r["what"] for r in rows]
+        self.assertIn("CLAUDE.md changed", whats)
+        self.assertIn("CLAUDE.md added", whats)
+        self.assertIn("Skill added: where-are-we", whats)
+        self.assertIn(".claude/settings.json added", whats)
+        self.assertIn("Claude Code 2.1.30 → 2.1.31", whats)
+        self.assertIn("Claude Code's default model: claude-sonnet-5-5 → claude-opus-5-5", whats)
+        self.assertIn("Claude Code 2.1.30 → 2.1.32", whats)                   # seen by doctor, no run in between
+        self.assertEqual(whats.count("Claude Code 2.1.30 → 2.1.31"), 1)
+        skill = next(r for r in rows if r["what"].startswith("Skill"))
+        self.assertEqual((skill["who"], skill["path"], skill["commit"]), ("you", "skills/where-are-we", self.c2))
+        added = next(r for r in rows if r["what"] == "CLAUDE.md added")
+        self.assertEqual((added["at"], added["commit"], added["tested"]), ("2026-11-02T12:00:00Z", self.c1, {"before": "r1", "after": "r2"}))
+        v = next(r for r in rows if r["what"] == "Claude Code 2.1.30 → 2.1.31")
+        self.assertEqual((v["who"], v["path"], v["commit"], v["tested"]), ("vendor", None, None, {"before": "r1", "after": "r2"}))
+        self.assertEqual(rows, sorted(rows, key=lambda r: (r["at"], r["what"]), reverse=True))   # newest first
+        for r in rows:
+            self.assertEqual(set(r), {"at", "who", "what", "path", "commit", "tested"})
+
+
+class Robustness(unittest.TestCase):
+    """Evals v2 · LAB-2236 (API timeout + retries), LAB-2237 (an unknown-use wait expires after 6 h; cancel stops the
+    worker's whole process group), LAB-2219 (no bytecode written by the engine or its children), EV-8 (xray row names)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-robust-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.e = load(self.tmp)
+
+    def test_LAB2236_every_api_run_has_a_timeout_and_retries(self):
+        c = self.e.inspect_cmd({"task_ref": "gsm8k", "model": "openai/gpt-5-nano", "limit": 2, "dir": self.tmp})
+        self.assertEqual((c[c.index("--timeout") + 1], c[c.index("--max-retries") + 1]), ("120", "3"))
+
+    def test_LAB2237_unknown_use_expires(self):
+        usage = Path(self.tmp) / "usage"
+        usage.mkdir()
+        old = {k: os.environ.get(k) for k in ("ONEROOF_USAGE_DIR", "ONEROOF_SEAT_POLL", "ONEROOF_SEAT_EXPIRE_HOURS")}
+        os.environ.update(ONEROOF_USAGE_DIR=str(usage), ONEROOF_SEAT_POLL="0.05", ONEROOF_SEAT_EXPIRE_HOURS="0.0002")
+        try:
+            ar = sibling("agent_runner")
+        finally:
+            for k, v in old.items():
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        d = Path(self.tmp) / "runs" / "r1"
+        d.mkdir(parents=True)
+        r = {"id": "r1", "seat": "C1", "seat_limit": 90, "runner": "seat", "status": "running"}
+        (d / "run.json").write_text(json.dumps(r))
+        t0 = time.time()
+        self.assertEqual(ar.wait_for_seat(r, d), "expired")
+        self.assertLess(time.time() - t0, 10)
+        rj = json.loads((d / "run.json").read_text())
+        self.assertEqual(rj["status"], "expired")
+        self.assertIn("expired", rj["expired_reason"])
+        self.assertIsNone(rj["waiting"])
+        self.assertEqual(self.e.status_note(rj), rj["expired_reason"])
+
+    def test_LAB2237_cancel_stops_the_worker_group(self):
+        # a background worker that would wait forever (the seat's use is unknown), with a child in its group
+        ws = Path(self.tmp) / "w"
+        ws.mkdir()
+        script = ws / "worker.sh"
+        script.write_text("#!/bin/sh\nsleep 300 &\necho $! > " + str(ws / "child") + "\nwait\n")
+        script.chmod(0o755)
+        # started by a parent that exits at once, as `run --background` does: the worker leads its own group
+        launch = subprocess.run([sys.executable, "-c", "import subprocess,sys; print(subprocess.Popen([sys.argv[1]], "
+                                 "start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid)", str(script)],
+                                capture_output=True, text=True, timeout=30)
+        worker = int(launch.stdout)
+        for _ in range(50):
+            if (ws / "child").exists() and (ws / "child").read_text().strip():
+                break
+            time.sleep(0.1)
+        child = int((ws / "child").read_text())
+        d = Path(self.tmp) / "runs" / "r2"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps({"id": "r2", "runner": "seat", "status": "waiting", "pid": worker, "seat": "C1"}))
+        res = engine(self.tmp, "cancel", "r2")
+        self.assertTrue(res["cancelled"])
+        for _ in range(50):
+            if not self.e.pid_alive(child) and not self.e.pid_alive(worker):
+                break
+            time.sleep(0.1)
+        self.assertFalse(self.e.pid_alive(worker))
+        self.assertFalse(self.e.pid_alive(child))   # the worker's child went with it
+        self.assertEqual(json.loads((d / "run.json").read_text())["status"], "cancelled")
+
+    def test_LAB2219_no_bytecode_written(self):
+        self.assertTrue(sys.dont_write_bytecode)    # loading the engine switched it on
+        copy = Path(self.tmp) / "bundle-evals"
+        shutil.copytree(EVALS_DIR, copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+        env["ONEROOF_EVALS_DIR"] = str(Path(self.tmp) / "evals-data")
+        for args in (["overview"], ["status"], ["doctor"], ["leaderboard", "gsm8k", "--by", "setup"], ["changes"]):
+            subprocess.run([sys.executable, str(copy / "roof_eval.py"), *args, "--json"], capture_output=True, text=True, env=env)
+        self.assertEqual(list(copy.rglob("__pycache__")), [])
+        self.assertEqual(list(copy.rglob("*.pyc")), [])
+        ar = sibling("agent_runner")
+        self.assertEqual(ar.clean_env().get("PYTHONDONTWRITEBYTECODE"), "1")
+
+    def test_EV8_xray_rows_carry_the_contract_names(self):
+        repo = tempfile.mkdtemp(prefix="roof-xray2-")
+        self.addCleanup(shutil.rmtree, repo, True)
+        subprocess.run(["git", "init", "-q", repo], check=True)
+        env = dict(os.environ, GIT_AUTHOR_NAME="Pat", GIT_AUTHOR_EMAIL="p@x", GIT_COMMITTER_NAME="Pat", GIT_COMMITTER_EMAIL="p@x")
+        (Path(repo) / "a.py").write_text("a = 1\n")
+        subprocess.run(["git", "-C", repo, "add", "-A"], check=True, env=env)
+        subprocess.run(["git", "-C", repo, "commit", "-qm", "add a\n\nCo-Authored-By: Codex <noreply@oneroof.local>"], check=True, env=env)
+        r = subprocess.run([sys.executable, str(ROOT / "app/Resources/evals/xray.py"), "--repo", repo, "--repo", repo,
+                            "--days", "60", "--horizon", "0", "--json"], capture_output=True, text=True)
+        x = json.loads(r.stdout)
+        row = next(a for a in x["rows"] if a["agent"] == "Codex")
+        for k in ("agent", "commits", "lines", "churn", "self", "revert", "fixup"):
+            self.assertIn(k, row)
+        self.assertEqual(x["agents"]["Codex"]["fixup"], row["fixup"])
+        self.assertEqual(x["window_days"], 60)
 
 
 @unittest.skipUnless(os.environ.get("ROOF_EVAL_INTEGRATION") == "1", "set ROOF_EVAL_INTEGRATION=1")

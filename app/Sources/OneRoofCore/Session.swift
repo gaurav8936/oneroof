@@ -50,6 +50,10 @@ public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// LAB-2241 · the name a session exports as ONEROOF_AGENT, so the workspace commit hook can sign the agent's commits
+    /// (`Co-Authored-By: <name>`); the agent X-ray matches these names. A plain shell is no agent: nil.
+    public var commitName: String? { isAgent ? displayName : nil }
+
     /// Short badge shown in the sidebar.
     public var badge: String {
         switch self {

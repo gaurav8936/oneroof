@@ -143,9 +143,9 @@ final class Holder {
         env["ONEROOF_SESSION"] = spec.id
         env["ONEROOF_ROOFD"] = Paths.control
         env["ONEROOF_ROOFD_BIN"] = Daemon.selfPath()   // what agent hooks call: `$ONEROOF_ROOFD_BIN report claude`
-        // LAB-2006: which agent this session is, so a commit hook can sign the agent's commits (the agent X-ray needs
-        // every agent's commits attributed, not only Claude's). Never inherited: a plain shell gets none.
-        if let k = spec.kind, k != .shell { env["ONEROOF_AGENT"] = k.rawValue } else { env.removeValue(forKey: "ONEROOF_AGENT") }
+        // LAB-2006 · LAB-2241: which agent this session is, by name ("Claude", "Codex"…), so the commit hook can sign the
+        // agent's commits (the agent X-ray needs every agent's commits attributed). Never inherited: a shell gets none.
+        if let name = spec.kind?.commitName { env["ONEROOF_AGENT"] = name } else { env.removeValue(forKey: "ONEROOF_AGENT") }
         let envList = env.map { "\($0.key)=\($0.value)" }
         let args = [path] + spec.argv.dropFirst()
         var m: Int32 = -1

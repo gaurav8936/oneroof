@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agent X-ray from git (LAB-1961): how much of each agent's work survives, per agent, over a window.
+r"""Agent X-ray from git (LAB-1961): how much of each agent's work survives, per agent, over a window.
 
   python3 xray.py --repo PATH [--repo PATH …] [--days 30] [--horizon 14] [--json]
   python3 xray.py --oneroof ~/Library/Application\ Support/One\ Roof/sessions.sqlite   supervision load (LAB-2008)
@@ -21,6 +21,9 @@ Only source-code files count (py, swift, ts/js, sh, go, rs, …); generated page
 are left out. A repo younger than the horizon has no mature commits: use a shorter --horizon and say so.
 """
 from __future__ import annotations
+import os as _os, sys as _sys  # LAB-2219: no bytecode inside the app bundle, here or in any child
+_sys.dont_write_bytecode = True
+_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import json
 import os
@@ -171,8 +174,13 @@ def xray(repos: list[str], days: int, horizon: int) -> dict:
             "revert_rate": round(a["reverted"] / n, 4) if n else None,
             "fixup_rate": round(a["fixed_up"] / n, 4) if n else None,
         }
+        # EV-8 (Evals v2 contract §6): the short names every agent row carries (fractions 0–1); "followed by a fix" =
+        # fixup × commits, "reverted" = revert × commits, as the app shows them.
+        o = out[agent]
+        o.update(agent=agent, lines=o["lines_added"], self=o["self_churn_share"], revert=o["revert_rate"],
+                 fixup=o["fixup_rate"], followed_by_fix=round(a["fixed_up"]), reverted=round(a["reverted"]))
     return {"window_days": days, "horizon_days": horizon, "computed": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "repos": len(repos), "agents": out}
+            "repos": len(repos), "agents": out, "rows": list(out.values())}
 
 
 def supervision(store: str, days: int) -> dict:

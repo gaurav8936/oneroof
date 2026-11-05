@@ -11,6 +11,9 @@ guessed. A failed check keeps the last good values and says when and why it fail
 sent but the request. Stored in <evals>/published_scores.json. Standard library only (Python 3.9).
 """
 from __future__ import annotations
+import os as _os, sys as _sys  # LAB-2219: no bytecode inside the app bundle, here or in any child
+_sys.dont_write_bytecode = True
+_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import json
 import os
