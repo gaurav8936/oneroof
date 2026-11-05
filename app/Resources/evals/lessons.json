@@ -1,5 +1,5 @@
 {
- "about": "LAB-2070 (HP EV-12): the Learn lessons, in order. App help, not Agentic Engineering content. Bodies that have a glossary entry keep its text (EvalGlossary in OneRoofCore/Evals.swift); 'more' is one extra paragraph; 'links' are the places in Evals where the lesson's number shows up (routes in EvalLessons.knownRoutes); 'widget' is the Try it kind.",
+ "about": "LAB-2070 (HP EV-12): the Lessons sheet, in order. App help, not Agentic Engineering content. Bodies that have a glossary entry keep its text (EvalGlossary in OneRoofCore/Evals.swift); 'more' is one extra paragraph; 'links' are the places in Evals where the lesson's number shows up (routes in EvalLessons.knownRoutes); 'widget' is the Try it kind.",
  "sections": [
   {
    "id": "start",
@@ -19,7 +19,7 @@
   },
   {
    "id": "own",
-   "title": "Your own evals"
+   "title": "Our own tasks"
   },
   {
    "id": "leaderboards",
@@ -30,7 +30,7 @@
   {
    "id": "first-eval",
    "section": "start",
-   "title": "Your first eval, free",
+   "title": "Your first test, free",
    "body": "An eval is three things: a fixed set of questions, a way to ask them, and a way to mark the answers. The cheapest way to see all three is a run that costs nothing. One Roof has a free stand-in model. It always gives the same wrong answer, so it scores 0 %. That is the point: you see every step without paying. Then you run the same five questions on a real, cheap model and compare the two runs.",
    "example": "Five GSM8K questions on the stand-in: 0 right, and the 95 % range still goes up to 43 %.",
    "glossary": [],
@@ -38,15 +38,15 @@
    "teaser": "Run five questions for free, read the score, open one answer.",
    "links": [
     {
-     "label": "Run: the cost shows before anything starts",
+     "label": "Set up a test: the cost shows before anything starts",
      "route": "run"
     },
     {
-     "label": "Results: the score and its range",
+     "label": "Compare: the score and \"On new bugs, expect 5 to 9\"",
      "route": "results"
     },
     {
-     "label": "One run, question by question",
+     "label": "One test, bug by bug",
      "route": "results/run"
     }
    ]
@@ -65,15 +65,15 @@
    "teaser": "What guessing alone would score.",
    "links": [
     {
-     "label": "Explore › Anatomy: the Chance tile",
+     "label": "A public benchmark › How it works: the Blind guess tile",
      "route": "explore/anatomy"
     },
     {
-     "label": "Results: the dashed floor on every bar",
+     "label": "Compare: the blind guess on every task",
      "route": "results"
     },
     {
-     "label": "Overview: each eval's floor",
+     "label": "One task: Blind guess gets",
      "route": "overview"
     }
    ]
@@ -91,19 +91,19 @@
    "teaser": "Where the true score probably is.",
    "links": [
     {
-     "label": "Results: the bar behind every score",
+     "label": "Compare: \"expect 5 to 9\" under every score",
      "route": "results"
     },
     {
-     "label": "Run: what this run can tell you",
+     "label": "Set up a test: what this test can tell you",
      "route": "run"
     },
     {
-     "label": "Overview: the 95 % range column",
+     "label": "Overview: the range in each answer",
      "route": "overview"
     },
     {
-     "label": "One run: the score at the top",
+     "label": "One test: the score at the top",
      "route": "results/run"
     }
    ]
@@ -121,11 +121,11 @@
    "teaser": "How much the score moves from sample to sample.",
    "links": [
     {
-     "label": "One run: every metric with its range",
+     "label": "One test: every metric with its range",
      "route": "results/run"
     },
     {
-     "label": "Results › All × all: each cell",
+     "label": "All results: each cell",
      "route": "results/all-by-all"
     }
    ]
@@ -143,11 +143,11 @@
    "teaser": "Paired comparison on shared questions.",
    "links": [
     {
-     "label": "Results › Compare: the verdict in words",
+     "label": "Compare: the verdict in words",
      "route": "results/compare"
     },
     {
-     "label": "Overview: what changed",
+     "label": "Changes: before and after",
      "route": "overview"
     }
    ]
@@ -165,11 +165,11 @@
    "teaser": "One try, or the best of several.",
    "links": [
     {
-     "label": "One run: pass@k metrics",
+     "label": "One test: pass@k metrics",
      "route": "results/run"
     },
     {
-     "label": "Run: attempts per question",
+     "label": "Set up a test: tries each",
      "route": "run"
     }
    ],
@@ -188,15 +188,15 @@
    "teaser": "More attempts, narrower range, higher cost.",
    "links": [
     {
-     "label": "Run: what this run can tell you",
+     "label": "Set up a test: what this test can tell you",
      "route": "run"
     },
     {
-     "label": "Results › Over time: Re-run ×3",
+     "label": "Changes: test again",
      "route": "results"
     }
    ],
-   "more": "Repeats narrow the range less than new questions would: a model tends to give the same question the same answer. The Run note counts every attempt as if it were a new question, so it shows the most repeats can do."
+   "more": "Repeats narrow the range less than new questions would: a model tends to give the same question the same answer. The \"what this test can tell you\" note counts every attempt as if it were a new question, so it shows the most repeats can do."
   },
   {
    "id": "exact-match",
@@ -209,11 +209,11 @@
    "teaser": "Read the reply, take one thing out, compare.",
    "links": [
     {
-     "label": "Explore › Questions: how it's marked",
+     "label": "A public benchmark › Questions: how it's marked",
      "route": "explore/questions"
     },
     {
-     "label": "One run: answer, expected and the marking",
+     "label": "One test: what it named and what the fix changed",
      "route": "results/run"
     }
    ]
@@ -231,11 +231,11 @@
    "teaser": "A grader with its own errors.",
    "links": [
     {
-     "label": "Your evals › Judge: how far to trust it",
+     "label": "Check the grader: how far to trust it",
      "route": "your-evals/judge"
     },
     {
-     "label": "Results: the judge badge on a judged eval",
+     "label": "Our tasks: the grader banner",
      "route": "results"
     }
    ],
@@ -252,11 +252,11 @@
    "teaser": "Your marks are what the judge is measured against.",
    "links": [
     {
-     "label": "Your evals › Judge: label, agreement",
+     "label": "Check the grader: label, agreement",
      "route": "your-evals/judge"
     },
     {
-     "label": "One run: the code, judge and you columns",
+     "label": "One test: code check, grader and you",
      "route": "results/run"
     }
    ]
@@ -275,11 +275,11 @@
    "teaser": "Same model, different wrapper, different score.",
    "links": [
     {
-     "label": "Results › All × all: agents and models side by side",
+     "label": "All results: agents and models side by side",
      "route": "results/all-by-all"
     },
     {
-     "label": "Run: agents first, then models",
+     "label": "Set up a test: agent and model picked together",
      "route": "run"
     }
    ]
@@ -297,15 +297,15 @@
    "teaser": "Dollars for each answer marked right.",
    "links": [
     {
-     "label": "Results: the $ / right column",
+     "label": "Compare: $ per right answer",
      "route": "results"
     },
     {
-     "label": "Run: the cost before you start",
+     "label": "Set up a test: before you start",
      "route": "run"
     },
     {
-     "label": "Overview: cost and $ / right",
+     "label": "Overview: cost in each answer",
      "route": "overview"
     }
    ],
@@ -322,11 +322,11 @@
    "teaser": "Your own work, turned into questions with known answers.",
    "links": [
     {
-     "label": "Your evals: sets, cases and the floor",
+     "label": "Our tasks: tasks, bugs and the blind guess",
      "route": "your-evals"
     },
     {
-     "label": "Results: your set's leaderboard",
+     "label": "Compare: your task's setups",
      "route": "results"
     }
    ]
@@ -342,11 +342,11 @@
    "teaser": "Same questions, so scores over time mean something.",
    "links": [
     {
-     "label": "Your evals: versions and Build v2",
+     "label": "One task: versions and the next version",
      "route": "your-evals"
     },
     {
-     "label": "Results › Over time: one version's history",
+     "label": "Changes: one version, before and after",
      "route": "results"
     }
    ]
@@ -362,11 +362,11 @@
    "teaser": "When a benchmark has no room left.",
    "links": [
     {
-     "label": "Explore › Anatomy: the Headroom tile",
+     "label": "A public benchmark › How it works: Room to improve",
      "route": "explore/anatomy"
     },
     {
-     "label": "Explore › Scores: published scores, source and date",
+     "label": "A public benchmark › Published scores: source and date",
      "route": "explore/scores"
     }
    ]
@@ -384,11 +384,11 @@
    "teaser": "When the model has seen the questions.",
    "links": [
     {
-     "label": "Explore › Scores: published scores, source and date",
+     "label": "A public benchmark › Published scores: source and date",
      "route": "explore/scores"
     },
     {
-     "label": "Explore › Anatomy: what it's made of",
+     "label": "A public benchmark › How it works: what it's made of",
      "route": "explore/anatomy"
     }
    ]
