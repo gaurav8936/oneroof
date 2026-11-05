@@ -342,4 +342,51 @@ final class EvalsLaneBTests: XCTestCase {
         for n in EvalsCoverage.oldSelfTestNames { XCTAssertTrue(doc.contains("`\(n)`"), n) }
         XCTAssertFalse(doc.contains("/Users/"), "public repo: no private paths")
     }
+    // MARK: Real history commit lists (LAB-2254)
+
+    func test_LAB2254_commit_list_decodes_the_engine_answer_and_names_itself() throws {
+        let l = try snake(EvalCommitList.self, #"""
+        {"kind": "fixup", "agent": "Claude", "window_days": 60, "horizon_days": 14, "computed": "2026-11-05T10:00:00Z", "count": 2,
+         "commits": [
+          {"sha": "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0", "short": "a1b2c3d", "subject": "add a", "date": "2026-11-03T09:00:00Z",
+           "agent": "Claude", "repo": "oneroof", "repo_path": "/r/oneroof",
+           "by": [{"sha": "ffff", "short": "ffff", "subject": "fix a", "date": "2026-11-04T09:00:00Z", "agent": "unattributed"},
+                  {"sha": "eeee", "short": "eeee", "subject": "fix a again", "date": "2026-11-04T10:00:00Z", "agent": "Codex"}]},
+          {"sha": "b1", "short": "b1", "subject": "add b", "date": "2026-11-01T09:00:00Z", "agent": "Claude", "repo": "oneroof", "by": []}]}
+        """#)
+        XCTAssertEqual(l.count, l.commits.count)
+        XCTAssertEqual(l.commits[0].by.map(\.agent), ["unattributed", "Codex"])
+        XCTAssertEqual(l.commits[0].repoPath, "/r/oneroof")
+        XCTAssertNil(l.commits[0].linesRewritten)
+        XCTAssertEqual(l.title(horizon: 14), "2 of Claude's commits followed by a fix · last 60 days")
+        XCTAssertEqual(EvalCommitList.day(l.commits[0].date), "2026-11-03")
+        var u = l; u.agent = "unattributed"; u.kind = "revert"
+        XCTAssertEqual(u.title(horizon: 14), "2 commits with no agent name reverted · last 60 days")
+        XCTAssertEqual(EvalCommitList.Kind.churn.what(horizon: 14), "rewritten in 14 days")
+        XCTAssertEqual(EvalCommitList.Kind.allCases.map(\.byLabel), ["Fixed by", "Rewritten by", "Reverted by"])
+    }
+
+    func test_LAB2254_the_button_and_the_engine_call() {
+        XCTAssertEqual(EvalCommitList.seeTitle(12), "See the 12 commits ›")
+        XCTAssertEqual(EvalCommitList.seeTitle(1), "See the commit ›")
+        XCTAssertEqual(EvalCommitList.args(repos: ["/a", "/b"], days: 60, kind: .fixup, agent: "Claude"),
+                       ["xray", "--repo", "/a", "--repo", "/b", "--days", "60", "--commits", "fixup", "--agent", "Claude"])
+    }
+
+    func test_LAB2254_history_rows_use_the_engines_exact_counts_when_sent() throws {
+        let x = try snake(EvalXRay.self, #"""
+        {"window_days": 60, "horizon_days": 14, "agents": {
+          "Claude": {"commits": 657, "lines_added": 1, "fixup_rate": 0.1872, "revert_rate": 0.0015, "followed_by_fix": 123, "reverted": 1, "rewritten_commits": 40},
+          "Codex": {"commits": 10, "lines_added": 1, "fixup_rate": 0.3, "revert_rate": 0.0}}}
+        """#)
+        let rows = EvalHistoryRow.from(x)
+        let c = try XCTUnwrap(rows.first { $0.agent == "Claude" })
+        XCTAssertEqual(c.followedByFix, 123)
+        XCTAssertEqual(c.reverted, 1)
+        XCTAssertEqual(c.rewrittenCommits, 40)
+        XCTAssertEqual(EvalsAHistory.split(c).fix, 123)   // the bar's fix part = the list's length
+        let o = try XCTUnwrap(rows.first { $0.agent == "Codex" })
+        XCTAssertEqual(o.followedByFix, 3)                 // an older engine: fixup × commits, as before
+        XCTAssertNil(o.rewrittenCommits)
+    }
 }

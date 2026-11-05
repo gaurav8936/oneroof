@@ -2,6 +2,7 @@
 r"""Agent X-ray from git (LAB-1961): how much of each agent's work survives, per agent, over a window.
 
   python3 xray.py --repo PATH [--repo PATH …] [--days 30] [--horizon 14] [--json]
+  python3 xray.py --repo PATH … --commits fixup|churn|revert [--agent NAME] [--json]   the commits behind a count (LAB-2254)
   python3 xray.py --oneroof ~/Library/Application\ Support/One\ Roof/sessions.sqlite   supervision load (LAB-2008)
   (also: roof eval xray …)
 
@@ -116,11 +117,24 @@ def blame_origins(repo: str, parent: str, path: str, ranges: list[tuple[int, int
     return origins
 
 
-def xray(repos: list[str], days: int, horizon: int) -> dict:
+LIST_KINDS = ("fixup", "churn", "revert")
+
+
+def _scan(repos: list[str], days: int, horizon: int):
+    """One pass over the repos: the per-agent sums and, for every commit that counts, the later commits behind it.
+    links[kind][(repo index, sha)] = {"commit": c, "repo": path, "by": {later sha: later commit}, "lines": n}; every count
+    below is len() of these, so `--commits KIND` lists exactly the commits the headline counts (LAB-2254)."""
     now = datetime.now(timezone.utc)
     window_start, mature = now - timedelta(days=days), now - timedelta(days=horizon)
     per = defaultdict(lambda: defaultdict(float))
-    for repo in repos:
+    links = {k: {} for k in LIST_KINDS}
+
+    def link(kind, ri, repo, o, later, lines=0):
+        e = links[kind].setdefault((ri, o["sha"]), {"commit": o, "repo": repo, "by": {}, "lines": 0})
+        e["by"][later["sha"]] = later
+        e["lines"] += lines
+
+    for ri, repo in enumerate(repos):
         cs = commits(repo, window_start - timedelta(days=1))
         by_sha = {c["sha"]: c for c in cs}
         for c in cs:
@@ -146,14 +160,15 @@ def xray(repos: list[str], days: int, horizon: int) -> dict:
                         continue
                     if later["time"] - o["time"] <= timedelta(days=horizon):
                         per[o["agent"]]["churned"] += 1
+                        link("churn", ri, repo, o, later, 1)
                         if later["agent"] == o["agent"]:
                             per[o["agent"]]["self_churned"] += 1
-        # Reverts and fix-ups
+        # Reverts (a commit reverted twice is one reverted commit) and fix-ups
         for c in cs:
             for m in re.finditer(r"This reverts commit ([0-9a-f]{7,40})", c["body"]):
                 o = next((x for s, x in by_sha.items() if s.startswith(m.group(1))), None)
                 if o and o["time"] >= window_start:
-                    per[o["agent"]]["reverted"] += 1
+                    link("revert", ri, repo, o, c)
         for i, c in enumerate(cs):
             if c["time"] < window_start:
                 continue
@@ -162,8 +177,15 @@ def xray(repos: list[str], days: int, horizon: int) -> dict:
                 if later["time"] - c["time"] > timedelta(days=3):
                     break
                 if FIXY.search(later["subject"]) and files & set(later["files"]):
-                    per[c["agent"]]["fixed_up"] += 1
-                    break
+                    link("fixup", ri, repo, c, later)    # counted once; every fix in the 3 days is listed beside it
+    for kind, key in (("fixup", "fixed_up"), ("revert", "reverted"), ("churn", "rewritten")):
+        for e in links[kind].values():
+            per[e["commit"]["agent"]][key] += 1
+    return per, links, now
+
+
+def xray(repos: list[str], days: int, horizon: int) -> dict:
+    per, _, now = _scan(repos, days, horizon)
     out = {}
     for agent, a in sorted(per.items(), key=lambda kv: -kv[1]["commits"]):
         n, ml = a["commits"], a["mature_lines"]
@@ -175,12 +197,41 @@ def xray(repos: list[str], days: int, horizon: int) -> dict:
             "fixup_rate": round(a["fixed_up"] / n, 4) if n else None,
         }
         # EV-8 (Evals v2 contract §6): the short names every agent row carries (fractions 0–1); "followed by a fix" =
-        # fixup × commits, "reverted" = revert × commits, as the app shows them.
+        # fixup × commits, "reverted" = revert × commits, as the app shows them. LAB-2254: the exact counts, which
+        # `--commits fixup|revert|churn` lists one by one (rewritten_commits = commits with any line rewritten).
         o = out[agent]
         o.update(agent=agent, lines=o["lines_added"], self=o["self_churn_share"], revert=o["revert_rate"],
-                 fixup=o["fixup_rate"], followed_by_fix=round(a["fixed_up"]), reverted=round(a["reverted"]))
+                 fixup=o["fixup_rate"], followed_by_fix=int(a["fixed_up"]), reverted=int(a["reverted"]),
+                 rewritten_commits=int(a["rewritten"]))
     return {"window_days": days, "horizon_days": horizon, "computed": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "repos": len(repos), "agents": out, "rows": list(out.values())}
+
+
+def _brief(c: dict) -> dict:
+    return {"sha": c["sha"], "short": c["sha"][:7], "subject": c["subject"], "date": c["time"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "agent": c["agent"]}
+
+
+def commit_list(repos: list[str], days: int, horizon: int, kind: str, agent: str | None = None) -> dict:
+    """LAB-2254 · the commits behind one count: fixup (followed by a fix), churn (rewritten within the horizon), revert
+    (reverted), each with the later commit(s) that fixed / rewrote / reverted it. Newest first; `agent` filters by name."""
+    if kind not in LIST_KINDS:
+        raise ValueError(f"--commits takes one of {', '.join(LIST_KINDS)}")
+    _, links, now = _scan(repos, days, horizon)
+    rows = []
+    for e in links[kind].values():
+        c = e["commit"]
+        if agent and c["agent"].lower() != agent.lower():
+            continue
+        r = _brief(c)
+        r.update(repo=os.path.basename(os.path.normpath(e["repo"])), repo_path=e["repo"],
+                 by=[_brief(x) for x in sorted(e["by"].values(), key=lambda x: x["time"])])
+        if kind == "churn":
+            r["lines_rewritten"] = e["lines"]
+        rows.append(r)
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    return {"kind": kind, "agent": agent, "window_days": days, "horizon_days": horizon,
+            "computed": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "count": len(rows), "commits": rows}
 
 
 def supervision(store: str, days: int) -> dict:
@@ -302,7 +353,7 @@ def issue_cost(store: str, prices_path: str, days: int) -> dict:
 
 
 def main(argv: list[str]) -> None:
-    repos, days, horizon, as_json, store = [], 30, 14, False, None
+    repos, days, horizon, as_json, store, kind, agent = [], 30, 14, False, None, None, None
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -314,6 +365,10 @@ def main(argv: list[str]) -> None:
             horizon = int(argv[i + 1]); i += 1
         elif a == "--json":
             as_json = True
+        elif a == "--commits" and i + 1 < len(argv) and argv[i + 1] in LIST_KINDS:
+            kind = argv[i + 1]; i += 1
+        elif a == "--agent" and i + 1 < len(argv):
+            agent = argv[i + 1]; i += 1
         elif a == "--oneroof":
             store = os.path.expanduser(argv[i + 1]); i += 1
         else:
@@ -321,6 +376,20 @@ def main(argv: list[str]) -> None:
         i += 1
     if not repos and not store:
         print(__doc__); sys.exit(2)
+    if kind:
+        if not repos:
+            print(__doc__); sys.exit(2)
+        lst = commit_list(repos, days, horizon, kind, agent)
+        if as_json:
+            print(json.dumps(lst, indent=2))
+            return
+        what = {"fixup": "followed by a fix", "churn": f"rewritten within {horizon} days", "revert": "reverted"}[kind]
+        print(f"{lst['count']} commit(s) {what}" + (f" · {agent}" if agent else "") + f" · last {days} days")
+        for r in lst["commits"]:
+            print(f"{r['short']}  {r['date'][:10]}  {r['repo']:<16} {r['agent']:<12} {r['subject']}")
+            for b in r["by"]:
+                print(f"    by {b['short']}  {b['date'][:10]}  {b['agent']:<12} {b['subject']}")
+        return
     r = xray(repos, days, horizon) if repos else {"agents": {}}
     if store:
         r["supervision"] = supervision(store, days)

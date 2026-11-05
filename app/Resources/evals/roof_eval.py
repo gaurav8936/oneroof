@@ -20,6 +20,7 @@ only; the few steps that need Inspect re-run this file under the engine's own py
   sample <run> <id> [--epoch N] [--json]   one question's full transcript (messages, tool calls, scorer's reasoning)
   export [--format csv|json] [--out FILE]  every run with its metrics and 95 % intervals
   xray --repo PATH [--repo …] [--days 30] [--horizon 14] [--json]   agent X-ray from git: churn, reverts, fix-ups
+  xray --repo PATH … --commits fixup|churn|revert [--agent NAME] [--json]   the commits behind a count (LAB-2254)
   evalset build --repo PATH [--count 20] [--linear-key-file PATH] | list | show <name>   your own eval set from a
                                    repo's fix history (evalset.py); the catalog lists it under "Your evals"
   judge new|label|build|agreement|list|show   a model as judge, measured against your own pass/fail labels (judge.py)
