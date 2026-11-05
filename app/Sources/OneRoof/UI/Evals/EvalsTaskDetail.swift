@@ -106,7 +106,7 @@ struct EvalsTaskDetailView: View {
         let floor = guess.of > 0 ? Double(guess.right) / Double(guess.of) : nil
         let best = d.best
         let side = best.map { b -> EvalVerdicts.Side in
-            let right = Int((b.score * Double(b.n)).rounded())
+            let right = b.score * Double(b.n)   // the attempts policy: may be fractional
             let w = EvalStats.wilson(b.score, n: b.n)
             return EvalVerdicts.Side(label: EvalTaskWords.contestant(b.contestant), right: right, n: b.n, lo: w.lo, hi: w.hi)
         }
@@ -117,7 +117,7 @@ struct EvalsTaskDetailView: View {
             fact("Blind guess gets", EvalTaskWords.guessText(right: guess.right, of: guess.of), sub: rule)
                 .evalHover(.floor, EvalHover.floor(share: floor, right: guess.right, of: guess.of))
             if let b = best, let s = side {
-                fact("Best so far", "\(s.right ?? 0) of \(b.n) · \(s.label)", sub: verdict?.text, subTint: verdict?.isCall == true ? t.diffAddText : t.needsText)
+                fact("Best so far", "\(EvalScoreText.count(s.right ?? 0)) of \(b.n) · \(s.label)", sub: verdict?.text, subTint: verdict?.isCall == true ? t.diffAddText : t.needsText)
                     .evalHover(.range, EvalHover.range(score: b.score, n: b.n, lo: s.lo ?? 0, hi: s.hi ?? 1, unit: "bug"))
                     .onTapGesture { nav.openRun(b.run) }
             } else {

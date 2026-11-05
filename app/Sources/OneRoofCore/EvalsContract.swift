@@ -129,7 +129,7 @@ public struct EvalSetupLeaderboard: Decodable, Equatable, Sendable {
         public var issue: String?
         public var title: String?
     }
-    public struct StandIn: Decodable, Equatable, Sendable { public var right: Int; public var n: Int }
+    public struct StandIn: Decodable, Equatable, Sendable { public var right: Double; public var n: Int }
     public var task: String
     public var version: Int?
     public var title: String?
@@ -156,9 +156,21 @@ public struct EvalSetupLeaderboard: Decodable, Equatable, Sendable {
 public struct EvalSetupRow: Decodable, Equatable, Identifiable, Sendable {
     public struct CaseRight: Decodable, Equatable, Sendable {
         public var id: String
-        /// nil = not answered.
+        /// Right on every attempt (score 1); nil = not answered.
         public var right: Bool?
-        public init(id: String, right: Bool?) { self.id = id; self.right = right }
+        /// The attempts policy (CONTRACT §3 note): the mean over this bug's attempts, 0–1 (0.5 = right on 1 of 2); nil =
+        /// not answered. An engine before 2.0.4 sends no score: 1 when right, 0 when wrong.
+        public var score: Double?
+        public init(id: String, right: Bool?, score: Double? = nil) {
+            self.id = id; self.right = right; self.score = score ?? right.map { $0 ? 1 : 0 }
+        }
+        enum CodingKeys: String, CodingKey { case id, right, score }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let id = try c.decode(String.self, forKey: .id)
+            let right = try c.decodeIfPresent(Bool.self, forKey: .right)
+            self.init(id: id, right: right, score: try c.decodeIfPresent(Double.self, forKey: .score))
+        }
     }
     public var setupId: String
     public var label: String
@@ -168,7 +180,8 @@ public struct EvalSetupRow: Decodable, Equatable, Identifiable, Sendable {
     public var statusNote: String?
     public var run: String?
     public var started: String?
-    public var right: Int?
+    /// The sum of the bug scores (the attempts policy): 8 with one attempt, 7.5 when attempts disagree.
+    public var right: Double?
     public var n: Int?
     public var lo: Double?
     public var hi: Double?
@@ -189,7 +202,7 @@ public struct EvalSetupRow: Decodable, Equatable, Identifiable, Sendable {
         statusNote = try c.decodeIfPresent(String.self, forKey: .statusNote)
         run = try c.decodeIfPresent(String.self, forKey: .run)
         started = try c.decodeIfPresent(String.self, forKey: .started)
-        right = try c.decodeIfPresent(Int.self, forKey: .right)
+        right = try c.decodeIfPresent(Double.self, forKey: .right)
         n = try c.decodeIfPresent(Int.self, forKey: .n)
         lo = try c.decodeIfPresent(Double.self, forKey: .lo)
         hi = try c.decodeIfPresent(Double.self, forKey: .hi)
@@ -198,25 +211,33 @@ public struct EvalSetupRow: Decodable, Equatable, Identifiable, Sendable {
         perCase = try c.decodeIfPresent([CaseRight].self, forKey: .perCase) ?? []
     }
     public init(setupId: String, label: String, stamp: EvalStamp? = nil, status: String = "done", run: String? = nil,
-                right: Int? = nil, n: Int? = nil, lo: Double? = nil, hi: Double? = nil, perCase: [CaseRight] = []) {
+                right: Double? = nil, n: Int? = nil, lo: Double? = nil, hi: Double? = nil, perCase: [CaseRight] = []) {
         self.setupId = setupId; self.label = label; self.stamp = stamp; self.status = status; self.run = run
         self.right = right; self.n = n; self.lo = lo; self.hi = hi; self.perCase = perCase
     }
 
     public var isDone: Bool { status == "done" }
     public var isActive: Bool { ["running", "waiting", "queued"].contains(status) }
-    public var share: Double? { guard isDone, let r = right, let n, n > 0 else { return nil }; return Double(r) / Double(n) }
+    public var share: Double? { guard isDone, let r = right, let n, n > 0 else { return nil }; return r / Double(n) }
     /// Layer from the stamp, else from the setup id ("model:…" → model; "<agent>:<model>:on" → full; else agent).
     public var layer: EvalStamp.Layer {
         if let s = stamp { return s.effectiveLayer }
         if setupId.hasPrefix("model:") { return .model }
         return setupId.hasSuffix(":on") ? .full : .agentModel
     }
-    /// "8 of 10" (nil while not done).
-    public var scoreText: String? { guard isDone, let r = right, let n else { return nil }; return "\(r) of \(n)" }
+    /// "8 of 10", "7.5 of 10" when attempts disagree (nil while not done).
+    public var scoreText: String? { guard isDone, let r = right, let n else { return nil }; return "\(EvalScoreText.count(r)) of \(n)" }
     /// "On new bugs, expect 5 to 9".
     public var expectText: String? { guard isDone, let lo, let hi, let n else { return nil }; return EvalVerdicts.expect(lo: lo, hi: hi, n: n) }
     fileprivate var group: Int { isDone ? 0 : isActive ? 1 : 2 }
+}
+
+/// Counts under the attempts policy: whole numbers as integers ("8"), a fractional sum with one decimal ("7.5").
+public enum EvalScoreText {
+    public static func count(_ x: Double) -> String {
+        let r = (x * 10).rounded() / 10
+        return r == r.rounded() ? String(Int(r)) : String(format: "%.1f", r)
+    }
 }
 
 // MARK: - §4 Per-case evidence
@@ -333,12 +354,13 @@ public enum EvalVerdicts {
     /// One side of a comparison: its plain label and its own score (Wilson range 0–1).
     public struct Side: Equatable, Sendable {
         public var label: String
-        public var right: Int?
+        /// Right answers under the attempts policy (may be fractional).
+        public var right: Double?
         public var n: Int?
         public var lo: Double?
         public var hi: Double?
         public var done: Bool
-        public init(label: String, right: Int?, n: Int?, lo: Double?, hi: Double?, done: Bool = true) {
+        public init(label: String, right: Double?, n: Int?, lo: Double?, hi: Double?, done: Bool = true) {
             self.label = label; self.right = right; self.n = n; self.lo = lo; self.hi = hi; self.done = done
         }
         public init(_ r: EvalSetupRow) { self.init(label: r.label, right: r.right, n: r.n, lo: r.lo, hi: r.hi, done: r.isDone) }
@@ -384,7 +406,7 @@ public enum EvalVerdicts {
     public static func againstFloor(_ a: Side, floor: Double?) -> Verdict? {
         guard a.done, let r = a.right, let n = a.n, n > 0 else { return Verdict(kind: .notRun, text: "Not run yet", winner: nil) }
         guard let f = floor else { return nil }
-        let share = Double(r) / Double(n)
+        let share = r / Double(n)
         let (lo, hi) = (a.lo ?? EvalStats.wilson(share, n: n).lo, a.hi ?? EvalStats.wilson(share, n: n).hi)
         if lo <= f { return Verdict(kind: .tooFewVsFloor, text: "Too few bugs to be sure it beats a blind guess", winner: nil) }
         return Verdict(kind: .beatsFloor, text: "\(a.label) is better: +\(points(share - f)) points (\(points(lo - f)) to \(points(hi - f)))",

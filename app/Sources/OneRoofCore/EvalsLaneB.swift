@@ -377,7 +377,8 @@ public struct EvalSetupChoice: Hashable, Identifiable, Sendable {
 
     /// The setups a 2.0.3 plan names (pre-fill from Test them / Run both agents / Test a model on it…).
     public static func from(_ plan: EvalRunPlan) -> [EvalSetupChoice] {
-        plan.contestants.map { c in
+        if !plan.setups.isEmpty { return plan.setups }   // the exact setups (agent + model + rules) win
+        return plan.contestants.map { c in
             switch c {
             case .seat(let a): return .seat(a)
             case .apiAgent(let a, let m): return .apiAgent(a, model: m)
@@ -390,6 +391,23 @@ public struct EvalSetupChoice: Hashable, Identifiable, Sendable {
         let provider = agent == "claude_code" ? "Anthropic" : agent == "codex_cli" ? "OpenAI" : ""
         let ms = EvalModels.suggestions.first { $0.group == provider }?.models ?? []
         return [nil] + ms.reversed().map { Optional($0) }
+    }
+    /// Whether an agent's CLI can be asked for this model: its own provider's models only (Claude Code: Anthropic,
+    /// Codex: OpenAI). nil (the CLI default) always can. An unsupported pair is disabled, never swapped for the default.
+    public static func supports(agent: String, model: String?) -> Bool {
+        guard let m = model.map(cliModel)?.lowercased(), !m.isEmpty else { return true }
+        switch agent {
+        case "claude_code": return m.hasPrefix("claude") || ["opus", "sonnet", "haiku"].contains(m)
+        case "codex_cli": return m.hasPrefix("gpt") || m.hasPrefix("o1") || m.hasPrefix("o3") || m.hasPrefix("o4") || m.contains("codex")
+        default: return false
+        }
+    }
+    /// The sheet's note when a rules-on test is repeated: the repeat reads the rules at HEAD now, not the old copy.
+    public static func repeatRulesNote(old: String?, now: String?) -> String {
+        let was = (old?.isEmpty == false) ? " @ \(old!)" : ""
+        let new = now.map { " @ \($0)" } ?? " (hash read at start)"
+        if let o = old, let n = now, o == n { return "A repeat uses the rules at HEAD now\(new): the same as this test had." }
+        return "A repeat uses the rules at HEAD now\(new), not the copy this test had\(was)."
     }
     /// Agents One Roof cannot test with yet (no verified headless mode), named so the sheet says why.
     public static let notYet = ["kimi_code": "Kimi", "gemini_cli": "Gemini CLI", "antigravity": "Antigravity", "opencode": "OpenCode", "goose": "Goose"]

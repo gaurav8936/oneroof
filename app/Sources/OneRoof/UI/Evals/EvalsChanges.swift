@@ -140,7 +140,7 @@ struct EvalsChangesView: View {
                     squaresRow("Before", p.before)
                     squaresRow("After", p.after)
                     EvalsASquaresLegend(ring: true)
-                    verdictLine(p, floor: boards.first?.floor?.share)
+                    verdictLine(p, floor: EvalsAChanges.floor(before: p.change.tested?.before, after: p.change.tested?.after, boards: boards))
                 } else {
                     Text("When a change has a stamped test on each side, it shows here: the same frozen bugs before and after, every bug that flipped outlined, and a verdict chosen by rule from the paired range (“probably helped, not proven” while the range still includes no change). Nothing is drawn until real tests exist.")
                         .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
@@ -153,16 +153,14 @@ struct EvalsChangesView: View {
     private func squaresRow(_ label: String, _ xs: [EvalsASquare]) -> some View {
         HStack(spacing: 14) {
             Text(label).ui(TypeScale.small, .semibold).foregroundStyle(t.text.color).frame(width: 52, alignment: .leading)
-            Text("\(xs.filter { $0.right == true }.count) of \(xs.count)").ui(TypeScale.small, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 60, alignment: .leading)
+            Text("\(EvalsAOneTest.score(xs).map { EvalScoreText.count($0.right) } ?? "0") of \(xs.filter { $0.score != nil }.count)").ui(TypeScale.small, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 60, alignment: .leading)
             EvalsABugSquares(squares: xs)
         }
     }
 
     private func verdictLine(_ p: Pair, floor: Double?) -> some View {
-        let before = p.before.filter { $0.right != nil }, after = p.after.filter { $0.right != nil }
-        let a = EvalVerdicts.Side(label: "After", right: after.filter { $0.right == true }.count, n: after.count, lo: nil, hi: nil)
-        let b = EvalVerdicts.Side(label: "Before", right: before.filter { $0.right == true }.count, n: before.count, lo: nil, hi: nil)
-        let v = EvalVerdicts.compare(a, b, paired: p.compare.map(EvalsACompare.paired), floor: nil)
+        // review P2 #5: the floor of the pair's task version and each side's own Wilson bounds go into the rule
+        let v = EvalsAChanges.verdict(before: p.before, after: p.after, compare: p.compare, floor: floor)
         let lead = EvalsAChanges.lead(diff: p.compare?.diff ?? 0, verdict: v)
         return VStack(alignment: .leading, spacing: 4) {
             (Text("Verdict: \(lead). ").bold() + Text(EvalsAChanges.flipLine(toRight: p.toRight.count, toWrong: p.toWrong.count) + " " + v.text + "."))
@@ -180,11 +178,9 @@ struct EvalsChangesView: View {
               let before = c.tested?.before, let after = c.tested?.after else { pair = nil; return }
         board.caseResults(run: before) { b in
             board.caseResults(run: after) { a in
-                let order = a.map(\.id)
-                func sq(_ xs: [EvalCaseResult]) -> [EvalsASquare] {
-                    let by = Dictionary(xs.map { ($0.id, $0.right) }, uniquingKeysWith: { x, _ in x })
-                    return order.map { EvalsASquare(id: $0, issue: EvalsASquares.issue($0), right: by[$0] ?? nil) }
-                }
+                var order: [String] = []
+                for x in a where !order.contains(x.id) { order.append(x.id) }
+                func sq(_ xs: [EvalCaseResult]) -> [EvalsASquare] { EvalsASquares.fromCaseResults(xs, order: order) }
                 let f = EvalsASquares.flips(before: sq(b), after: sq(a))
                 pair = Pair(change: c, before: f.before, after: f.after, toRight: f.toRight, toWrong: f.toWrong)
                 board.ask(["compare", after, before], EvalCompareResult.self, timeout: 120) { r in
@@ -219,7 +215,7 @@ struct EvalsChangesView: View {
                             Spacer()
                             if c.delta < 0, let r = board.results.first(where: { $0.id == c.runs[0] }) {
                                 RoofButton("Re-run ×3", .plain) {
-                                    var p = EvalRunPlan.again(r); p.epochs = 3; nav.test(p)
+                                    var p = EvalRunPlan.again(r, stamp: store.stamps[r.id]?.stamp); p.epochs = 3; nav.test(p)
                                 }
                                 .help("Set up a test pre-filled with 3 attempts each; a drop only counts when it is bigger than the noise")
                             }
