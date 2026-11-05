@@ -18,6 +18,9 @@ Each run is a normal run folder: run.json with framework 'lm-eval' and a summary
 file (kept beside it), so the index, Results, compare and export treat it like any other run. Standard library only.
 """
 from __future__ import annotations
+import os as _os, sys as _sys  # LAB-2219: no bytecode inside the app bundle, here or in any child
+_sys.dont_write_bytecode = True
+_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import json
 import os
