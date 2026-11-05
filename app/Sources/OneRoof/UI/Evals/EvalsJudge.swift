@@ -38,7 +38,6 @@ struct EvalsJudgePage: View {
             EvalsDrillHeader(crumb: "Evals  Your evals › \(title)", back: "Your evals", title: title, meta: meta, onBack: { nav.back() }) {
                 EvalsTextTabs(options: Tab.allCases.map { ($0, $0.rawValue) }, selection: $tab)
             }
-            if EvalsDraft.isDraft { EvalsDraftBanner().padding(.horizontal, 20).padding(.top, 10) }
             if let e = error { Text(e).ui(TypeScale.small).foregroundStyle(t.needsText.color).padding(.horizontal, 20).padding(.top, 8) }
             switch tab {
             case .label: labelTab

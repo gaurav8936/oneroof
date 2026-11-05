@@ -11,22 +11,25 @@ final class EvalsRedesignTests: XCTestCase {
 
     // MARK: Shell (LAB-2061)
 
-    func test_LAB2061_tabs_in_the_owners_order_with_overview_first() {
-        XCTAssertEqual(EvalsTabV2.allCases.map(\.title), ["How to", "Overview", "Your evals", "Explore", "Run", "Results", "Learn"])   // LAB-2113
-        XCTAssertEqual(EvalsTabV2.allCases.first, .howTo)
-        XCTAssertEqual(EvalsTabV2.allCases.map(\.keyDigit), ["1", "2", "3", "4", "5", "6", "7"])   // ⌃⌥1…⌃⌥7
+    func test_LAB2242_six_tabs_with_overview_first() {
+        // 2.0.4 (LAB-2242) replaced How to · Overview · Your evals · Explore · Run · Results · Learn.
+        XCTAssertEqual(EvalsTabV2.allCases.map(\.title), ["Overview", "Compare", "Changes", "Real history", "Our tasks", "Public benchmarks"])
+        XCTAssertEqual(EvalsTabV2.allCases.first, .overview)
+        XCTAssertEqual(EvalsTabV2.allCases.map(\.keyDigit), ["1", "2", "3", "4", "5", "6"])   // ⌃⌥1…⌃⌥6
     }
 
     func test_LAB2061_selftest_values_reach_every_tab_and_drill_down() {
-        XCTAssertEqual(EvalsTabV2.selfTest("overview")?.tab, .overview)
-        XCTAssertEqual(EvalsTabV2.selfTest("your-evals")?.tab, .yourEvals)
-        XCTAssertEqual(EvalsTabV2.selfTest("build")?.tab, .yourEvals)          // HP's name still works
-        XCTAssertEqual(EvalsTabV2.selfTest("judge")?.drill, "judge")
-        XCTAssertEqual(EvalsTabV2.selfTest("question")?.drill, "questions")
-        XCTAssertEqual(EvalsTabV2.selfTest("scores")?.drill, "scores")
-        XCTAssertEqual(EvalsTabV2.selfTest("catalog")?.tab, .explore)          // 1.9.37's values keep working
-        XCTAssertEqual(EvalsTabV2.selfTest("runs")?.tab, .run)
-        XCTAssertEqual(EvalsTabV2.selfTest("sheet")?.drill, "sheet")
+        // The 2.0.3 / 1.9.37 names still work, each landing on its 2.0.4 home (LAB-2242).
+        XCTAssertEqual(EvalsTabV2.selfTest("overview")?.screen, .overview)
+        XCTAssertEqual(EvalsTabV2.selfTest("your-evals")?.screen, .ourTasks)
+        XCTAssertEqual(EvalsTabV2.selfTest("build")?.screen, .ourTasks)         // HP's name still works
+        XCTAssertEqual(EvalsTabV2.selfTest("judge")?.screen, .grader)
+        XCTAssertEqual(EvalsTabV2.selfTest("question")?.part, "questions")
+        XCTAssertEqual(EvalsTabV2.selfTest("question")?.screen, .oneBenchmark)
+        XCTAssertEqual(EvalsTabV2.selfTest("scores")?.part, "scores")
+        XCTAssertEqual(EvalsTabV2.selfTest("catalog")?.screen, .benchmarks)     // 1.9.37's values keep working
+        XCTAssertEqual(EvalsTabV2.selfTest("runs")?.screen, .setup)
+        XCTAssertEqual(EvalsTabV2.selfTest("sheet")?.part, "sheet")
         XCTAssertNil(EvalsTabV2.selfTest("nope"))
     }
 
@@ -285,13 +288,13 @@ final class EvalsRedesignTests: XCTestCase {
     // MARK: Audit (LAB-2061): every 1.9.37 action still has a home while stage 2/3 is built
 
     func test_LAB2061_every_1937_action_has_an_entry_point() {
-        // Stage 1 routes Run, Results and Learn to today's views, so their actions stay where they were.
-        let homes: [String: EvalsTabV2] = ["catalog search": .explore, "category filter": .explore, "start here": .explore,
-                                           "no docker needed": .explore, "rescan": .explore, "run sheet": .run, "cancel": .run,
-                                           "resume": .run, "export csv": .results, "export json": .results, "compare": .results,
-                                           "every run": .results, "run detail": .results, "first eval free": .learn, "glossary": .learn]
-        for (action, tab) in homes { XCTAssertTrue(EvalsTabV2.allCases.contains(tab), action) }
-        XCTAssertEqual(Set(homes.values), [.explore, .run, .results, .learn])
+        // 2.0.4: every 2.0.3 tab has a home (NO_REGRESSION.md), so the actions on it stay reachable.
+        let homes: [String: EvalsLegacyTab] = ["catalog search": .explore, "category filter": .explore, "start here": .explore,
+                                               "no docker needed": .explore, "rescan": .explore, "run sheet": .run, "cancel": .run,
+                                               "resume": .run, "export csv": .results, "export json": .results, "compare": .results,
+                                               "every run": .results, "run detail": .results, "first eval free": .learn, "glossary": .learn]
+        for (action, tab) in homes { XCTAssertTrue(EvalsScreen.allCases.contains(tab.home), action) }
+        XCTAssertEqual(Set(homes.values.map(\.home)), [.benchmarks, .setup, .compare, .lessons])
         XCTAssertEqual(EvalBenchmark.topics.first, "Knowledge")
     }
 

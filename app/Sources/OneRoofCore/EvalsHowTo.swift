@@ -17,7 +17,7 @@ public enum EvalsHowTo {
         public var title: String
         public var body: String
         /// The tab this scene talks about (its "Open" button), nil for none.
-        public var tab: EvalsTabV2?
+        public var tab: EvalsLegacyTab?
         public var openLabel: String
     }
 

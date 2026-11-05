@@ -5,41 +5,7 @@ import Foundation
 // build --dry-run; judge.py items · queue · trust · advise · rubric · versions) and the pure logic the views use.
 // Nothing here draws. Every number shown comes from the engine (HP AGENT_RULES rule 2).
 
-// MARK: - Tabs and navigation
-
-/// The six tabs, in the owner's order (LAB-2061): Overview opens first; HP's Build is named Your evals.
-public enum EvalsTabV2: String, CaseIterable, Identifiable, Sendable {
-    case howTo, overview, yourEvals, explore, run, results, learn   // LAB-2113: How to first
-    public var id: String { rawValue }
-    public var title: String {
-        switch self {
-        case .howTo: return "How to"; case .overview: return "Overview"; case .yourEvals: return "Your evals"; case .explore: return "Explore"
-        case .run: return "Run"; case .results: return "Results"; case .learn: return "Learn"
-        }
-    }
-    /// ⌃⌥1…⌃⌥7 (How to is 1 since LAB-2113; HP's ⌘1…5 and ⌥⌘1…9 are taken by group-by and workspaces, KeymapV2).
-    public var keyDigit: Character { Character(String((Self.allCases.firstIndex(of: self) ?? 0) + 1)) }
-    /// ONEROOF_SELFTEST_EVALS_TAB values: each tab's name, plus the drill-downs (question, scores, judge).
-    public static func selfTest(_ v: String) -> (tab: EvalsTabV2, drill: String?)? {
-        switch v.lowercased() {
-        case "how-to", "howto": return (.howTo, nil)
-        case "overview": return (.overview, nil)
-        case "your-evals", "build", "yourevals": return (.yourEvals, nil)
-        case "judge": return (.yourEvals, "judge")
-        case "explore", "catalog": return (.explore, nil)
-        case "question", "questions": return (.explore, "questions")
-        case "scores": return (.explore, "scores")
-        case "your-runs": return (.explore, "runs")
-        case "run", "runs", "sheet": return (.run, v.lowercased() == "sheet" ? "sheet" : nil)
-        case "results": return (.results, nil)
-        case "run-detail", "one-run": return (.results, "rundetail")
-        case "all-by-all", "allbyall", "matrix": return (.results, "allbyall")
-        case "xray", "x-ray": return (.results, "xray")
-        case "learn": return (.learn, nil)
-        default: return nil
-        }
-    }
-}
+// MARK: - Tabs and navigation: OneRoofCore/EvalsNavigation.swift (2.0.4 six tabs, drill-downs, sheets, self-test names)
 
 /// The page subtitle from real counts: "131 benchmarks · 2 of your evals · 1 judge · 32 finished runs · 1 running".
 public enum EvalsSubtitle {
@@ -159,6 +125,9 @@ public struct EvalOverview: Decodable, Equatable, Sendable {
     public var running: [Running]
     public var suggestion: Suggestion?
     public var finishedRuns: Int
+    /// 2.0.4 (CONTRACT §7): runs per layer, inside (our own sets) and outside (public benchmarks); grader runs apart.
+    public var layers: [EvalOverviewLayer]?
+    public var graderRuns: Int?
 
     /// The engine's order checked (agents, models, on this Mac, baseline; best first) — the scorecard never reorders.
     public static func ordered(_ rows: [Row]) -> [Row] {

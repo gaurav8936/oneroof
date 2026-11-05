@@ -37,9 +37,7 @@ public enum EvalEngine {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: py)
         p.arguments = [s] + args
-        var env = ProcessInfo.processInfo.environment
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")   // uv, docker
-        p.environment = hfEnvironment(env, extra: extraEnvironment?() ?? [:])
+        p.environment = environment(ProcessInfo.processInfo.environment, extra: extraEnvironment?() ?? [:])
         let out = Pipe(), err = Pipe()
         p.standardOutput = out; p.standardError = err
         do { try p.run() } catch { return Output(code: 126, stdout: Data(), stderr: "\(error)") }
@@ -50,6 +48,16 @@ public enum EvalEngine {
         if g.wait(timeout: .now() + timeout) == .timedOut { p.terminate() }
         p.waitUntilExit()
         return Output(code: p.terminationStatus, stdout: o, stderr: String(decoding: e, as: UTF8.self))
+    }
+
+    /// The engine's whole environment: uv and docker on PATH, the Hugging Face rules below, and LAB-2219: no `.pyc` files
+    /// (PYTHONDONTWRITEBYTECODE=1), so a run never writes `__pycache__` into the signed app bundle's Resources/evals.
+    public static func environment(_ base: [String: String], extra: [String: String]) -> [String: String] {
+        var env = base
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")   // uv, docker
+        env = hfEnvironment(env, extra: extra)
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        return env
     }
 
     /// LAB-2117 · the user's own Hugging Face sign-in (token from the Keychain, accepted gated sets), set by the app.
@@ -446,11 +454,14 @@ public struct EvalSample: Decodable, Equatable, Identifiable, Sendable {
     public var judgeItem: EvalJudgeItemRef?
     public var disagree: Bool?
     public var labelled: Bool?
+    /// 2.0.4 (CONTRACT §4): the files the answer named (in order, max 3) and the files the fix changed; [] for other tasks.
+    public var named: [String]?
+    public var changed: [String]?
     public var id: String { "\(sampleID)#\(epoch)" }
     enum CodingKeys: String, CodingKey {
         case sampleID = "id", epoch, score, answer, target, input, output, explanation, time, error
         case inputTokens = "input_tokens", outputTokens = "output_tokens"
-        case issue, title, code, judge, you, disagree, labelled, judgeItem = "judge_item"
+        case issue, title, code, judge, you, disagree, labelled, judgeItem = "judge_item", named, changed
     }
 }
 
