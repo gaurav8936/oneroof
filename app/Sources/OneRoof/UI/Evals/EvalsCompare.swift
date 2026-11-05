@@ -286,7 +286,7 @@ struct EvalsCompareView: View {
     }
 
     @ViewBuilder private func pairedCard(_ lb: EvalSetupLeaderboard) -> some View {
-        let done = lb.rows.filter(\.isDone)
+        let done = lb.rows.filter { $0.isDone && (kind == nil || EvalJobKind.of($0) == kind) }   // the same rows the page shows
         if done.count >= 2 || !picked.isEmpty {
             Card(padding: 14) {
                 VStack(alignment: .leading, spacing: 8) {

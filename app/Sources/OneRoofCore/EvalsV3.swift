@@ -217,8 +217,9 @@ public struct EvalEvidence: Equatable, Sendable {
     /// kind (graders and stand-ins apart); loop runs = live ledger runs of that kind's loops in the window.
     public static func count(results: [EvalResult], runs: [EvalRunRow], loops: [EvalLoopRuns], kind: EvalJobKind) -> EvalEvidence {
         let done = results.filter { $0.status == "done" && !isGrader($0.task) && EvalJobKind.of($0) == kind }
-        let own = done.filter { $0.setName != nil }
-        let pub = done.filter { $0.setName == nil && !isStand($0.model) }
+        // One own/public rule everywhere (2.0.5 review P2): an older own_<set> run with no set name is ours.
+        let own = done.filter { !EvalResultKind.isPublic($0) }
+        let pub = done.filter { EvalResultKind.isPublic($0) && !isStand($0.model) }
         let waiting = runs.filter { $0.isActive && $0.setName != nil && EvalJobKind.of($0) == kind }.count
         return EvalEvidence(publicTests: kind == .agent ? 0 : pub.count,
                             ours: own.filter { !isStand($0.model) }.count,
@@ -228,7 +229,7 @@ public struct EvalEvidence: Equatable, Sendable {
 
     /// Public agent-harness runs (SWE-bench and the like): kept outside the agent bar (D3), shown on its own button.
     public static func publicAgentRuns(_ results: [EvalResult]) -> Int {
-        results.filter { $0.status == "done" && $0.setName == nil && EvalJobKind.of($0) == .agent }.count
+        results.filter { $0.status == "done" && EvalResultKind.isPublic($0) && EvalJobKind.of($0) == .agent }.count
     }
     public static func graderRuns(_ results: [EvalResult]) -> Int { results.filter { $0.status == "done" && isGrader($0.task) }.count }
 }

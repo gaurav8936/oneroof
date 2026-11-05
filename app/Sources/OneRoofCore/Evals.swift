@@ -68,7 +68,20 @@ public enum EvalEngine {
     /// roof_eval.py: run → its worker, resume, run-anyway, and the question browser items / item). Every other call
     /// (doctor, catalog, results …) never touches the Keychain.
     public static let hfCommands: Set<String> = ["run", "resume", "run-anyway", "items", "item"]
-    public static func needsHFToken(_ args: [String]) -> Bool { args.first.map(hfCommands.contains) ?? false }
+    /// 2.0.5 review P1: the command must also name a gated dataset (its task, or for resume / run-anyway the task of
+    /// that run), so browsing GSM8K questions or running our own tasks never touches the Keychain.
+    public static func needsHFToken(_ args: [String], gated: [String] = EvalSources.gatedFolders,
+                                    taskOfRun: (String) -> String? = { _ in nil }) -> Bool {
+        guard let cmd = args.first, hfCommands.contains(cmd) else { return false }
+        var names = Array(args.dropFirst())
+        if cmd == "resume" || cmd == "run-anyway" { names = names.compactMap(taskOfRun) }
+        return names.contains { isGated($0, gated) }
+    }
+    /// "hle", "inspect_evals/hle", "hle_text", "xstest@v1" name a gated folder; "gsm8k", "own_oneroof_v2" do not.
+    static func isGated(_ arg: String, _ gated: [String]) -> Bool {
+        let parts = arg.lowercased().split(whereSeparator: { "/:@ ".contains($0) }).map(String.init)
+        return parts.contains { p in gated.contains { g in p == g || p.hasPrefix(g + "_") } }
+    }
 
     /// LAB-2117 · the engine's environment for Hugging Face: only the token the user signed in with in One Roof is passed
     /// (an inherited HF_TOKEN or a cached `hf auth login` token is never reused: HF_TOKEN_PATH points at a file that
