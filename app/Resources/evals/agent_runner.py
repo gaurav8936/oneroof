@@ -42,6 +42,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# LAB-2219: the engine never writes bytecode next to itself (inside the signed app bundle), nor do its children.
+sys.dont_write_bytecode = True
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 EVALS = Path(os.environ.get("ONEROOF_EVALS_DIR") or Path.home() / "Library/Application Support/One Roof/evals")
 RUNS = EVALS / "runs"
 # Case worktrees live in the system temp folder, outside ~/Library (whose reads are denied to the agent) and outside the
@@ -53,6 +57,12 @@ SEAT_POLL = float(os.environ.get("ONEROOF_SEAT_POLL") or 30)
 SEAT_LIMIT = 90.0          # the router's five-hour skip threshold (OneRoofCore/Router.swift, RoutingPolicy.skipFiveHour)
 STALE_HOURS = 6            # as SeatUsage.stale
 SHARE_GUESS = 0.003        # share of a five-hour window per case, until this Mac has measured one (labelled "guess")
+# LAB-2237: a run waiting because the seat's use is unknown gives up after this many hours (status "expired").
+EXPIRE_HOURS = float(os.environ.get("ONEROOF_SEAT_EXPIRE_HOURS") or 6)
+# EV-1 (LAB-2240): the instruction files an agent reads by itself. Rules "off" removes them from the case worktree;
+# rules "on" puts the repo HEAD's copies there (not the pre-fix commit's).
+RULE_NAMES = ("CLAUDE.md", "AGENTS.md", "CLAUDE.local.md")
+VERSION = re.compile(r"\d+(?:\.\d+)+")
 
 # The agents that can be contestants on a seat today, and why the others cannot (shown in Run, never hidden).
 SEAT_AGENTS = {
@@ -255,7 +265,9 @@ def question(case: dict) -> str:
 
 def clean_env() -> dict:
     """The agent's own login only: API keys and tokens are removed, so a seat run never spends API credit."""
-    return {k: v for k, v in strip_keys(dict(os.environ)).items() if k != "ONEROOF_EVALS_DIR"}
+    env = {k: v for k, v in strip_keys(dict(os.environ)).items() if k not in ("ONEROOF_EVALS_DIR", "ONEROOF_AGENT")}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
 
 
 # Read is denied here for Claude Code even inside --restricted (belt and braces): the secrets and settings folders.
@@ -284,16 +296,127 @@ def claude_settings() -> str:
                                        + ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch"]}})
 
 
-def command(agent: str, binary: str, prompt: str, out_file: Path, folder: Path | None = None) -> list[str]:
+def command(agent: str, binary: str, prompt: str, out_file: Path, folder: Path | None = None, model: str | None = None,
+            rules: str = "off") -> list[str]:
+    """The agent CLI's argv. --model is passed to the CLI as chosen (claude --model, codex -m); none = the CLI's default.
+    The output is the CLI's machine-readable one (claude --output-format json, codex exec --json), so the model that
+    answered can be read back. Rules "on" keeps the same read-only containment; Codex then loads its rules files."""
     if agent == "claude_code":   # read-only tools in the case folder; edits, shell, web, hooks and MCP are refused
-        return [binary, "-p", prompt, "--output-format", "text", "--restricted", "--settings", claude_settings(),
+        return [binary, "-p", prompt, "--output-format", "json", *(["--model", model] if model else []),
+                "--restricted", "--settings", claude_settings(),
                 "--strict-mcp-config", "--permission-mode", "default", "--permission-prompts", "none",
                 "--no-session-persistence",
                 "--allowedTools", "Read,Grep,Glob,LS", "--disallowedTools", "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"]
     off = [x for f in CODEX_OFF for x in ("--disable", f)]
-    return [binary, "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-            "--ephemeral", *off, *(["-C", str(folder)] if folder else []), "--output-last-message",
-            str(out_file), prompt]
+    return [binary, "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config",
+            *([] if rules == "on" else ["--ignore-rules"]), "--ephemeral", *off, "--json", *(["-m", model] if model else []),
+            *(["-C", str(folder)] if folder else []), "--output-last-message", str(out_file), prompt]
+
+
+def parse_output(agent: str, stdout: str, last: str | None) -> tuple:
+    """(answer text, model that answered or None) from the CLI's own output. Claude Code's json result lists the
+    models it used (modelUsage; the one with the most output is the one that answered, side calls use a small model);
+    Codex's JSONL events are searched for a model name. Plain text (an older CLI, a fake) is the answer as it is."""
+    text, model = (last if last is not None else None), None
+    raw = (stdout or "").strip()
+    if agent == "claude_code":
+        try:
+            j = json.loads(raw)
+        except ValueError:
+            j = None
+        if isinstance(j, dict):
+            mu = j.get("modelUsage") or {}
+            if isinstance(mu, dict) and mu:
+                def out_tokens(v):
+                    return (v or {}).get("outputTokens") or 0 if isinstance(v, dict) else 0
+                model = max(mu, key=lambda k: (out_tokens(mu[k]), k))
+            if text is None:
+                text = j.get("result") if isinstance(j.get("result"), str) else ""
+        elif text is None:
+            text = stdout or ""
+        return text, model
+    events = []
+    for line in raw.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict):
+            events.append(ev)
+    for ev in events:
+        m = find_key(ev, "model")
+        if isinstance(m, str) and m.strip():
+            model = m.strip()
+    if text is None:
+        msgs = [find_key(ev, "text") for ev in events if "agent_message" in json.dumps(ev)]
+        msgs = [m for m in msgs if isinstance(m, str)]
+        text = msgs[-1] if msgs else ("" if events else (stdout or ""))
+    return text, model
+
+
+def agent_version(binary: str | None) -> str | None:
+    """`<bin> --version`, first line: the version number in it ("2.1.31 (Claude Code)" → "2.1.31"), else the line."""
+    if not binary:
+        return None
+    try:
+        r = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
+                           env=clean_env())
+    except (OSError, subprocess.SubprocessError):
+        return None
+    line = next((x.strip() for x in (r.stdout or r.stderr or "").splitlines() if x.strip()), "")
+    if not line:
+        return None
+    m = VERSION.search(line)
+    return m.group(0) if m else line[:80]
+
+
+# ── rules on / off (EV-1) ─────────────────────────────────────────────────────────────────────────────────────────
+def rule_files_at_head(repo: str | None) -> list[str]:
+    """The instruction files tracked at the repo's HEAD (any folder), sorted."""
+    if not repo or not Path(repo, ".git").exists():
+        return []
+    r = git(repo, "ls-tree", "-r", "--name-only", "HEAD")
+    return sorted(p for p in r.stdout.splitlines() if p.rsplit("/", 1)[-1] in RULE_NAMES) if r.returncode == 0 else []
+
+
+def capture_rules(repo: str | None, d: Path) -> dict:
+    """Rules "on": the HEAD's instruction files copied into <run>/rules (so every case gets the same bytes, even if
+    HEAD moves during the run). Returns the stamp's rules_hash (first 7 hex of sha256 over their bytes, in path order),
+    rules_commit and rules_files."""
+    import hashlib
+    files, h = [], hashlib.sha256()
+    commit = None
+    if repo and Path(repo, ".git").exists():
+        c = git(repo, "rev-parse", "--short=7", "HEAD")
+        commit = c.stdout.strip() or None if c.returncode == 0 else None
+        for path in rule_files_at_head(repo):
+            b = subprocess.run(["git", "-C", repo, "show", f"HEAD:{path}"], capture_output=True)
+            if b.returncode != 0:
+                continue
+            dest = d / "rules" / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b.stdout)
+            h.update(b.stdout)
+            files.append(path)
+    return {"rules_hash": h.hexdigest()[:7] if files else None, "rules_commit": commit, "rules_files": files}
+
+
+def prepare_rules(folder: Path, d: Path, rules: str) -> list[str]:
+    """Rules off: every instruction file is removed from the case worktree, so the agent reads none. Rules on: the
+    same, then the run's captured HEAD copies are put in. Returns the files the agent can read."""
+    for p in list(folder.rglob("*")) if folder.is_dir() else []:
+        if p.name in RULE_NAMES and ".git" not in p.relative_to(folder).parts and (p.is_file() or p.is_symlink()):
+            p.unlink(missing_ok=True)
+    given = []
+    if rules == "on" and (d / "rules").is_dir():
+        for src in sorted((d / "rules").rglob("*")):
+            if src.is_file():
+                rel = src.relative_to(d / "rules")
+                dest = folder / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dest)
+                given.append(str(rel))
+    return given
 
 
 def kill_group(pid: int, sig) -> None:
@@ -368,8 +491,12 @@ def answer_case(r: dict, d: Path, case: dict, epoch: int, kind: str) -> dict:
         if not binary:
             raise RuntimeError(f"{SEAT_AGENTS[r['agent']]['bin']} is not installed on this Mac")
         out_file = folder.parent / f"{case['id']}-e{epoch}.last.txt"
+        rules = r.get("rules") or "off"
+        if how == "worktree" or rules == "on":
+            row["rules_files"] = prepare_rules(folder, d, rules)
         prompt = SYSTEM.get(kind, SYSTEM["fix-locator"]) + "\n\n" + question(case)
-        p = subprocess.Popen(command(r["agent"], binary, prompt, out_file, folder), cwd=str(folder), env=clean_env(),
+        p = subprocess.Popen(command(r["agent"], binary, prompt, out_file, folder, r.get("model_requested"), rules),
+                             cwd=str(folder), env=clean_env(),
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
                              start_new_session=True)   # its own process group: a timeout or cancel stops its children too
         set_status(d, child=p.pid, child_group=True)
@@ -381,8 +508,10 @@ def answer_case(r: dict, d: Path, case: dict, epoch: int, kind: str) -> dict:
             raise RuntimeError(f"no answer within {CASE_TIMEOUT // 60} minutes")
         finally:
             set_status(d, child=None)
-        text = out_file.read_text() if out_file.exists() else so
+        text, seen = parse_output(r["agent"], so, out_file.read_text() if out_file.exists() else None)
         out_file.unlink(missing_ok=True)
+        if seen:
+            row["model_seen"] = seen
         if p.returncode != 0 and not text.strip():
             raise RuntimeError((se.strip().splitlines() or [f"{binary} exited {p.returncode}"])[-1][:300])
         value, ans, expl = score(text, case["target"])
@@ -393,6 +522,24 @@ def answer_case(r: dict, d: Path, case: dict, epoch: int, kind: str) -> dict:
         remove_worktree(r.get("repo_path"), folder, how)
     row["time"] = round(time.time() - started, 1)
     return row
+
+
+def final_stamp(r: dict, rows: list[dict]) -> dict | None:
+    """The stamp once the run is answered: the model that answered, as the CLI itself reported it (the most common one
+    over the cases). Chosen = the --model asked for; otherwise the CLI default, resolved when the CLI said which."""
+    st = dict(r.get("stamp") or {})
+    if not st:
+        return None
+    seen = [a["model_seen"] for a in rows if a.get("model_seen")]
+    resolved = max(set(seen), key=lambda m: (seen.count(m), m)) if seen else None
+    if st.get("model_requested"):
+        st["model"], st["model_source"] = resolved or st["model_requested"], "chosen"
+    else:
+        st["model"], st["model_source"] = resolved, "cli_default_resolved" if resolved else "cli_default_unknown"
+    given = sorted({f for a in rows for f in a.get("rules_files") or []})
+    if st.get("rules") == "on" and given:
+        st["rules_files"] = given
+    return st
 
 
 # ── the run ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -412,20 +559,39 @@ def seat_gate(u: dict, lim: float, run_anyway: bool) -> str | None:
     return None
 
 
-def wait_for_seat(r: dict, d: Path) -> bool:
+def wait_for_seat(r: dict, d: Path):
     """Pause (status 'waiting') while the seat is at or over its limit, or its use is unknown and the owner has not pressed
-    Run anyway; False when the run was cancelled meanwhile. Checked before each case (between cases, never mid-case)."""
+    Run anyway. True = a case may start; False = the run was cancelled meanwhile; "expired" = it waited with the seat's
+    use unknown for EXPIRE_HOURS (LAB-2237): the run ends with status "expired" and says why. Checked before each case
+    (between cases, never mid-case)."""
     lim = float(r.get("seat_limit") or SEAT_LIMIT)
     while True:
         if (d / "CANCEL").exists():
             return False
-        why = seat_gate(seat_usage(r["seat"]), lim, bool(read_json(d / "run.json", {}).get("seat_unknown_ok")))
+        cur = read_json(d / "run.json", {})
+        why = seat_gate(seat_usage(r["seat"]), lim, bool(cur.get("seat_unknown_ok")))
         if why is None:
-            if read_json(d / "run.json", {}).get("status") == "waiting":
-                set_status(d, status="running", waiting=None)
+            if cur.get("status") == "waiting" or cur.get("waiting_since"):
+                set_status(d, status="running", waiting=None, waiting_since=None)
             return True
-        set_status(d, status="waiting", waiting=why)
+        since = cur.get("waiting_since") if why.startswith(UNKNOWN_WAIT) else None
+        if why.startswith(UNKNOWN_WAIT) and not since:
+            since = now()
+        if since and hours_since(since) >= EXPIRE_HOURS:
+            reason = (f"expired: waited {EXPIRE_HOURS:g} h without knowing how much of {r['seat']}'s 5-hour window is used; "
+                      "start it again, or press Run anyway next time")
+            set_status(d, status="expired", waiting=None, expired_reason=reason, finished=now(), child=None)
+            return "expired"
+        set_status(d, status="waiting", waiting=why, waiting_since=since)
         time.sleep(SEAT_POLL)
+
+
+def hours_since(iso: str) -> float:
+    try:
+        t = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return 0.0
+    return (datetime.now(timezone.utc) - t).total_seconds() / 3600
 
 
 def run_anyway(d: Path) -> dict:
@@ -466,9 +632,19 @@ def answers_of(d: Path) -> list[dict]:
     return rows
 
 
+def _stop(*_):
+    raise KeyboardInterrupt
+
+
 def work(rid: str) -> int:
     """Answer every case × attempt not yet answered (a resume skips the done ones), then write the summary the index reads."""
     d = RUNS / rid
+    # LAB-2237: cancel sends SIGTERM to this worker's process group; stop like a cancel, so the finally below removes
+    # the case worktrees and frees the seat.
+    try:
+        signal.signal(signal.SIGTERM, _stop)
+    except ValueError:   # not the main thread (tests): cancel still works through the CANCEL file
+        pass
     r = set_status(d, status="running", started=read_json(d / "run.json", {}).get("started") or now(), pid=os.getpid())
     sweep(r.get("repo_path"))
     lock = seat_lock(r["seat"], d)
@@ -489,7 +665,10 @@ def work(rid: str) -> int:
             for c in cases:
                 if (c["id"], epoch) in done:
                     continue
-                if not wait_for_seat(r, d):
+                gate = wait_for_seat(r, d)
+                if gate == "expired":
+                    return 1
+                if not gate:
                     raise KeyboardInterrupt
                 row = answer_case(r, d, c, epoch, meta.get("kind") or "fix-locator")
                 if (d / "CANCEL").exists():   # stopped mid-case: that case is asked again on resume, never kept as a 0
@@ -510,7 +689,8 @@ def work(rid: str) -> int:
                    "error": errors[-1]["error"] if errors and len(errors) == len(rows) else None}
         ok = summary["status"] == "success"
         set_status(d, status="done" if ok else "failed", finished=fin, summary=summary, cases_done=len(rows),
-                   seat_after=seat_usage(r["seat"])["five_hour"], error=None if ok else summary["error"], child=None)
+                   seat_after=seat_usage(r["seat"])["five_hour"], error=None if ok else summary["error"], child=None,
+                   stamp=final_stamp(read_json(d / "run.json", {}), rows))
         return 0 if ok else 1
     except KeyboardInterrupt:
         set_status(d, status="cancelled", finished=now(), child=None)

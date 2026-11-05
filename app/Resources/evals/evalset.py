@@ -24,6 +24,9 @@ the Inspect task file; `roof eval run <that file>` runs it, and the Evals place 
 "Your evals". Standard library only.
 """
 from __future__ import annotations
+import os as _os, sys as _sys  # LAB-2219: no bytecode inside the app bundle, here or in any child
+_sys.dont_write_bytecode = True
+_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import json
 import os
