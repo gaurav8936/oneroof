@@ -23,21 +23,25 @@ final class EvalsLearnTests: XCTestCase {
 
     // MARK: Lessons (HP EV-12)
 
-    func test_LAB2070_sixteen_lessons_in_six_groups_in_the_handover_order() {
+    func test_LAB2070_eighteen_lessons_in_six_groups_in_the_handover_order() {
         let b = book
-        XCTAssertEqual(b.lessons.count, 16)   // agent decision 2026-11-01: the handover lists 16
+        XCTAssertEqual(b.lessons.count, 18)   // 16 (handover, 2026-11-01) + 2 in 2.0.5 (LAB-2261): job kinds, loop runs
         XCTAssertEqual(b.sections.map(\.title), ["Start", "Reading a score", "How answers are marked", "Agents vs models",
                                                  "Our own tasks", "Reading leaderboards"])
         XCTAssertEqual(b.lessons.map(\.title), [
             "Your first test, free", "Accuracy and chance", "The 95 % range", "Standard error", "Is the difference real?",
             "pass@1 and pass@k", "Attempts per question", "Exact match and parsing", "Model judges and their limits",
-            "Your labels as ground truth", "What the harness adds", "Cost per solved task", "Golden sets from repo history",
-            "Why versions are frozen", "Saturation and headroom", "Contamination"])
-        XCTAssertEqual(Set(b.lessons.map(\.id)).count, 16)
+            "Your labels as ground truth", "What the harness adds", "Cost per solved task", "One-shot jobs and agent jobs",
+            "Golden sets from repo history", "Why versions are frozen", "Loop runs as evidence", "Saturation and headroom",
+            "Contamination"])
+        XCTAssertEqual(Set(b.lessons.map(\.id)).count, 18)
+        XCTAssertEqual(b.position("job-kinds"), "Agents vs models · 3 of 3")
+        XCTAssertEqual(b.position("loop-runs"), "Our own tasks · 3 of 3")
+        XCTAssertEqual(b.next(after: "cost")?.id, "job-kinds")
         XCTAssertEqual(b.position("range"), "Reading a score · 2 of 6")
         XCTAssertEqual(b.next(after: "range")?.title, "Standard error")
         XCTAssertNil(b.next(after: "contamination"))
-        XCTAssertEqual(b.subtitle(done: ["range", "stderr", "nope"]), "16 lessons · 2 done · each one opens in the app where it applies")
+        XCTAssertEqual(b.subtitle(done: ["range", "stderr", "nope"]), "18 lessons · 2 done · each one opens in the app where it applies")
     }
 
     func test_LAB2070_lessons_keep_todays_glossary_text_every_entry_once() {
@@ -54,8 +58,9 @@ final class EvalsLearnTests: XCTestCase {
             for k in l.links { XCTAssertTrue(EvalLessons.knownRoutes.contains(k.route), "\(l.id) → \(k.route)") }
         }
         let widgets = Set(b.lessons.map(\.widget))
-        XCTAssertEqual(widgets.count, 16)                                      // one Try it per lesson
-        XCTAssertLessThanOrEqual(b.lessons.filter { ["harness", "golden", "frozen"].contains($0.widget) }.count, 3)   // ≤ 3 static
+        XCTAssertEqual(widgets.count, 18)                                      // one Try it per lesson
+        // ≤ 5 static pictures: 3 since 2.0.3, + the two 2.0.5 lessons (job kinds, loop runs) are pictures too
+        XCTAssertLessThanOrEqual(b.lessons.filter { ["harness", "golden", "frozen", "jobKinds", "loopRuns"].contains($0.widget) }.count, 5)
     }
 
     // MARK: Try it maths
@@ -177,5 +182,23 @@ final class EvalsLearnTests: XCTestCase {
         {"id": "r", "status": "waiting", "progress": "0/4", "seat": "C1", "waiting": "waiting for seat C1: 93 % of its 5-hour window used (limit 90 %)"}
         """.utf8))
         XCTAssertFalse(full.waitsForUnknownSeat)
+    }
+
+    // MARK: 2.0.5 lessons (LAB-2261)
+
+    func test_LAB2261_the_two_new_lessons_say_what_the_brief_asks_and_link_to_v3_pages() {
+        let jobs = book.lesson("job-kinds")!, loops = book.lesson("loop-runs")!
+        for k in ["one prompt to a model", "tested as the model alone", "Claude Code or Codex", "our setup", "Public benchmarks never test that",
+                  "rules on", "rules off (clean)"] {
+            XCTAssertTrue(jobs.body.contains(k), k)
+        }
+        for k in ["it was right and you read it", "its verdicts match yours", "the gaps it found were real",
+                  "spoke up when it mattered", "its change passed its check and stayed in", "good run: not recorded"] {
+            XCTAssertTrue(loops.body.contains(k), k)
+        }
+        XCTAssertTrue(loops.more?.contains("no model") == true)   // loops with no model are not judged
+        // Every v3 link opens a v3 page by its self-test name (or Loops).
+        let v3 = Set(EvalsV3Screen.allCases.map(\.selfTestName)).union(["loops"])
+        for l in jobs.links + loops.links { XCTAssertTrue(v3.contains(l.route), l.route) }
     }
 }

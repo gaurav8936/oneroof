@@ -1360,7 +1360,7 @@ class SampleVerdicts(unittest.TestCase):
 
 
 class Lessons(unittest.TestCase):
-    """LAB-2070 (HP EV-12): lessons.json loads, 16 lessons in six groups, unique ids, every link a route the app knows
+    """LAB-2070 (HP EV-12): lessons.json loads, 18 lessons (16 + 2 in 2.0.5, LAB-2261) in six groups, unique ids, every link a route the app knows
     (EvalLessons.knownRoutes in OneRoofCore/EvalsLearn.swift), every 1.9.37 glossary entry carried once with its text,
     and the range explorer's numbers are the engine's Wilson (the same table EvalsLearnTests locks in Swift)."""
 
@@ -1370,10 +1370,10 @@ class Lessons(unittest.TestCase):
         self.glossary = re.findall(r'Entry\(id: "(\w+)", title: "[^"]*",\s*body: "((?:[^"\\]|\\.)*)"',
                                    (ROOT / "app/Sources/OneRoofCore/Evals.swift").read_text())
 
-    def test_sixteen_lessons_unique_grouped(self):
+    def test_eighteen_lessons_unique_grouped(self):
         ls = self.doc["lessons"]
-        self.assertEqual(len(ls), 16)
-        self.assertEqual(len({x["id"] for x in ls}), 16)
+        self.assertEqual(len(ls), 18)   # LAB-2261: + job-kinds, loop-runs
+        self.assertEqual(len({x["id"] for x in ls}), 18)
         self.assertEqual([x["title"] for x in self.doc["sections"]], ["Start", "Reading a score", "How answers are marked",
                                                                      "Agents vs models", "Our own tasks", "Reading leaderboards"])   # lane B rename (2.0.4)
         order = [x["id"] for x in self.doc["sections"]]
