@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.0.4 — Evals v2: your setup on your own work, three questions first (5 Nov 2026)
+
+Evals is still a draft (marked as one in the app), and nothing outside Evals changed.
+
+- **The thing under test is a setup** (LAB-2240). A setup is an agent, the model it runs on and, if you choose, your
+  rules (CLAUDE.md, AGENTS.md). Every score now carries a stamp: the layer (a model on its own · an agent using a
+  model · your full setup), the model that actually answered, the agent and its version, rules on or off with their
+  hash, and the task version. Parts a run could not record say "not recorded" instead of guessing.
+- **Agent and model are picked together** in Set up a test. Seat runs (Claude Code on C1, Codex on CX) now pass the
+  chosen model to the CLI; "CLI default" is allowed and labelled. Rules are off by default (the agent sees no
+  CLAUDE.md or AGENTS.md); rules on gives it the repo's current files, read-only. The sheet says what a test can tell
+  you (for example 10 bugs × 1 try ≈ ±26 points) before it shows the cost.
+- **Six tabs instead of seven:** Overview · Compare · Changes · Real history · Our tasks · Public benchmarks, with Set
+  up a test and Lessons as sheets you can open from anywhere and one "Running" pill for the queue.
+- **Overview** answers three questions from your own runs: which setup does our work best, did my last change help,
+  what does real history say. "Can't tell yet" and "not recorded" are real answers, with what would settle them.
+- **Compare** shows one square per bug for every setup on the same frozen bugs, with a blind-guess mark ("a blind
+  guess gets 5"), the range in counts ("on new bugs, expect 5 to 9") and a paired verdict that never names a winner
+  under 10 shared bugs. One test, bug by bug, puts what the answer named next to what the fix changed.
+- **Changes** lists every change to your rules and skills from git (and vendor changes such as a new CLI version or
+  default model) and pairs before/after tests only when the setups really match.
+- **Real history** reads git: how many of each agent's commits were followed by a fix, rewritten or reverted.
+  Sessions One Roof starts now tell git which agent they are (LAB-2241).
+- **Our tasks** shows each task set in plain words ("Find the files a bug fix needs"), its versions, its blind-guess
+  floor and how many new fixes the next version could add; the grader page keeps labelling, rubric, agreement and
+  versions. Lessons gained "Where everything went", a map from every 2.0.3 Evals feature to its new home.
+- **Fixes:** running Evals no longer writes Python cache files into the app (its signature stays valid, LAB-2219); a
+  provider that stops answering now fails with its error instead of hanging (LAB-2236); a seat test waiting on
+  unknown seat use expires after 6 hours, and Cancel stops the agent's whole process group (LAB-2237); one Draft tag
+  instead of two banners (LAB-2220).
+
 ## 2.0.3 — Ready for anyone: a safe first run, a setup guide, a readable Home (1 Nov 2026)
 
 - **New users start every agent in Manual** (LAB-2169). On a new Mac each agent asks before it edits a file or runs a
