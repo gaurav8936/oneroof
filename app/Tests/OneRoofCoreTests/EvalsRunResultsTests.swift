@@ -181,9 +181,9 @@ final class EvalsRunResultsTests: XCTestCase {
     }
 
     func test_LAB2061_selftest_values_for_stage_two() {
-        XCTAssertEqual(EvalsTabV2.selfTest("run-detail")?.drill, "rundetail")
-        XCTAssertEqual(EvalsTabV2.selfTest("all-by-all")?.drill, "allbyall")
-        XCTAssertEqual(EvalsTabV2.selfTest("xray")?.tab, .results)
+        XCTAssertEqual(EvalsTabV2.selfTest("run-detail")?.screen, .oneTest)      // 2.0.4 homes (LAB-2242)
+        XCTAssertEqual(EvalsTabV2.selfTest("all-by-all")?.screen, .allResults)
+        XCTAssertEqual(EvalsTabV2.selfTest("xray")?.screen, .realHistory)
     }
 
     func test_QA_subtitle_and_explore_footer_count_the_same_benchmarks() throws {

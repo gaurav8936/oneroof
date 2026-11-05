@@ -4,10 +4,12 @@ import XCTest
 /// LAB-2113: Evals › How to — eight scenes covering the three jobs, each opening the tab it talks about; progress is
 /// remembered; narration plays only when the deck carries the card with audio.
 final class EvalsHowToTests: XCTestCase {
-    func test_LAB2113_howToIsTheFirstTab() {
-        XCTAssertEqual(EvalsTabV2.allCases.first, .howTo)
-        XCTAssertEqual(EvalsTabV2.howTo.title, "How to")
-        XCTAssertEqual(EvalsTabV2.selfTest("how-to")?.tab, .howTo)
+    func test_LAB2113_howToLivesInLessons() {
+        // 2.0.4 (LAB-2242): How to is no longer a tab; its walkthrough opens in the Lessons sheet.
+        XCTAssertEqual(EvalsLegacyTab.allCases.first, .howTo)
+        XCTAssertEqual(EvalsLegacyTab.howTo.title, "How to")
+        XCTAssertEqual(EvalsLegacyTab.howTo.home, .lessons)
+        XCTAssertEqual(EvalsTabV2.selfTest("how-to"), EvalsSelfTest(screen: .lessons, part: "how-to"))
     }
 
     func test_LAB2113_eightScenesNamingTheThreeJobs() {
@@ -18,7 +20,7 @@ final class EvalsHowToTests: XCTestCase {
         XCTAssertTrue(EvalsHowTo.scenes[1].body.contains("Run this"))   // a first eval
         // Every scene opens a tab, and together they reach every tab but How to itself.
         XCTAssertTrue(EvalsHowTo.scenes.allSatisfy { $0.tab != nil })
-        XCTAssertEqual(Set(EvalsHowTo.scenes.compactMap(\.tab)), Set(EvalsTabV2.allCases.filter { $0 != .howTo }))
+        XCTAssertEqual(Set(EvalsHowTo.scenes.compactMap(\.tab)), Set(EvalsLegacyTab.allCases.filter { $0 != .howTo }))
     }
 
     func test_LAB2113_progressIsRemembered() {

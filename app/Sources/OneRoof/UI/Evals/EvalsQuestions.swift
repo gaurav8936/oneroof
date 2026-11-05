@@ -37,7 +37,6 @@ struct EvalsQuestionsPage: View {
                     nav.exploreTab = tab; nav.benchmark = benchmark; nav.back()
                 }))
             }
-            if EvalsDraft.isDraft { EvalsDraftBanner().padding(.horizontal, 20).padding(.top, 10) }
             if let s = source { EvalsSourceLine(source: s).padding(.horizontal, 20).padding(.top, 8) }
             if let s = source, hf.status(s).locked {
                 EvalsLockCard(name: bench?.name ?? task, source: s, status: hf.status(s)).padding(24)

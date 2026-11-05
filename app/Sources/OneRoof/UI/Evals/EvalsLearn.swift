@@ -258,10 +258,10 @@ enum EvalsLearnStore {
     /// A lesson's "Where this shows up" link (EvalLessons.knownRoutes).
     static func go(_ route: String, nav: EvalsNav, board: EvalsBoard) {
         switch route {
-        case "overview": nav.go(.overview)
+        case "overview": nav.go(EvalsTabV2.overview)
         case "your-evals": nav.go(.yourEvals)
         case "your-evals/judge":
-            if let j = board.judges.first?.name { nav.tab = .yourEvals; nav.route = .judge(name: j, first: nil) } else { nav.go(.yourEvals) }
+            if let j = board.judges.first?.name { nav.route = .judge(name: j, first: nil) } else { nav.go(.yourEvals) }
         case "explore", "explore/anatomy": nav.exploreTab = .anatomy; nav.go(.explore)
         case "explore/questions": nav.exploreTab = .questions; nav.go(.explore)
         case "explore/scores": nav.exploreTab = .scores; nav.go(.explore)
