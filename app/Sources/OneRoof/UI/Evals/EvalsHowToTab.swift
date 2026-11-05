@@ -72,7 +72,7 @@ struct EvalsHowToTab: View {
                 HStack(spacing: 8) {
                     if let tab = s.tab {
                         RoofButton(s.openLabel + " ›") { mark(s.id); nav.go(tab) }
-                            .accessibilityLabel("\(s.openLabel): \(tab.title) tab")
+                            .accessibilityLabel("\(s.openLabel): \(tab.home.rawValue)")
                     }
                     if case .playable = narration {
                         RoofButton("Play this scene", .plain) { mark(s.id); play(s.id) }

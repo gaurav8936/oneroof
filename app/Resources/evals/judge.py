@@ -29,6 +29,9 @@ Results then show the agreement next to the judged score. Data: <evals>/judges/<
 never edited. Standard library only; reading run logs uses the engine's python.
 """
 from __future__ import annotations
+import os as _os, sys as _sys  # LAB-2219: no bytecode inside the app bundle, here or in any child
+_sys.dont_write_bytecode = True
+_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import json
 import os

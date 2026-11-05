@@ -4,10 +4,12 @@ import XCTest
 /// LAB-2113: Evals › How to — eight scenes covering the three jobs, each opening the tab it talks about; progress is
 /// remembered; narration plays only when the deck carries the card with audio.
 final class EvalsHowToTests: XCTestCase {
-    func test_LAB2113_howToIsTheFirstTab() {
-        XCTAssertEqual(EvalsTabV2.allCases.first, .howTo)
-        XCTAssertEqual(EvalsTabV2.howTo.title, "How to")
-        XCTAssertEqual(EvalsTabV2.selfTest("how-to")?.tab, .howTo)
+    func test_LAB2113_howToLivesInLessons() {
+        // 2.0.4 (LAB-2242): How to is no longer a tab; its walkthrough opens in the Lessons sheet.
+        XCTAssertEqual(EvalsLegacyTab.allCases.first, .howTo)
+        XCTAssertEqual(EvalsLegacyTab.howTo.title, "How to")
+        XCTAssertEqual(EvalsLegacyTab.howTo.home, .lessons)
+        XCTAssertEqual(EvalsTabV2.selfTest("how-to"), EvalsSelfTest(screen: .lessons, part: "how-to"))
     }
 
     func test_LAB2113_eightScenesNamingTheThreeJobs() {
@@ -15,10 +17,17 @@ final class EvalsHowToTests: XCTestCase {
         XCTAssertEqual(Set(EvalsHowTo.scenes.map(\.id)).count, 8)
         let first = EvalsHowTo.scenes[0].body
         for job in ["public benchmarks", "your own work", "build and keep your own eval sets"] { XCTAssertTrue(first.contains(job), job) }
-        XCTAssertTrue(EvalsHowTo.scenes[1].body.contains("Run this"))   // a first eval
+        XCTAssertTrue(EvalsHowTo.scenes[1].body.contains("Test a model on it"))   // a first eval
+        // QA m3: the 2.0.4 names only, never the old tabs (Explore / Run / Results / Learn / Your evals)
+        for sc in EvalsHowTo.scenes {
+            for old in ["Explore", "In Run", "Open Run", "Results:", "Open Results", "In Results", "Learn", "Your evals"] {
+                XCTAssertFalse(sc.body.contains(old) || sc.openLabel.contains(old), "\(sc.id): \(old)")
+            }
+        }
+        XCTAssertEqual(EvalsHowTo.scenes.map(\.openLabel).filter { $0.hasPrefix("Open ") }.count, 8)
         // Every scene opens a tab, and together they reach every tab but How to itself.
         XCTAssertTrue(EvalsHowTo.scenes.allSatisfy { $0.tab != nil })
-        XCTAssertEqual(Set(EvalsHowTo.scenes.compactMap(\.tab)), Set(EvalsTabV2.allCases.filter { $0 != .howTo }))
+        XCTAssertEqual(Set(EvalsHowTo.scenes.compactMap(\.tab)), Set(EvalsLegacyTab.allCases.filter { $0 != .howTo }))
     }
 
     func test_LAB2113_progressIsRemembered() {
