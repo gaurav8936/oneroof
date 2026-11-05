@@ -73,7 +73,7 @@ final class EvalsNav: ObservableObject {
     /// Lessons: the lesson shown; `lessonsPart` shows the lessons or the walkthrough (2.0.3 How to).
     @Published var lesson: String?
     @Published var lessonsPart: LessonsPart = .lessons
-    /// "+ New ▾" › New task from fixed bugs / New grader: Our tasks opens that sheet, then clears this.
+    /// "New test or task ▾" › New task from fixed bugs / New grader: Our tasks opens that sheet, then clears this.
     @Published var newRequest: NewRequest?
 
     enum ExploreTab: String, CaseIterable { case anatomy = "How it works", questions = "Questions", scores = "Published scores", runs = "Your runs" }
@@ -115,7 +115,7 @@ final class EvalsNav: ObservableObject {
     func openBenchmark(_ id: String, task: String? = nil, part: ExploreTab = .anatomy) {
         benchmark = id; exploreTab = part; route = .oneBenchmark(id: id, task: task, part: part)
     }
-    /// "+ New ▾".
+    /// "New test or task ▾".
     func new(_ r: NewRequest) { newRequest = r; go(.ourTasks) }
 }
 
@@ -209,7 +209,7 @@ struct EvalsViewV2: View {
         .onChange(of: board.results) { _, _ in board.refreshOverview(); board.refreshOwn() }
     }
 
-    // MARK: Header: title (or "‹ parent  title") + one Draft tag, subtitle, the six tabs, Running · N, + New ▾
+    // MARK: Header: title (or "‹ parent  title") + one Draft tag, subtitle, the six tabs, Running · N, New test or task ▾
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -248,11 +248,11 @@ struct EvalsViewV2: View {
     }
 
     private var newMenu: some View {
-        Menu {
-            Button("New test…") { nav.test(nil) }
-            Button("New task from fixed bugs…") { nav.new(.task) }
-            Button("New grader…") { nav.new(.grader) }
-        } label: { Text("+ New") }
+        Menu {   // QA m2: one "+ New" (the window toolbar's); this one is named for what it makes
+            Button(EvalsNewMenu.items[0]) { nav.test(nil) }
+            Button(EvalsNewMenu.items[1]) { nav.new(.task) }
+            Button(EvalsNewMenu.items[2]) { nav.new(.grader) }
+        } label: { Text(EvalsNewMenu.title) }
         .menuStyle(.button).fixedSize()
         .accessibilityLabel("New: a test, a task from fixed bugs, or a grader")
     }
@@ -331,12 +331,10 @@ struct EvalsViewV2: View {
         guard let d = board.doctor else { return "Measure your agents and models on your own work, and learn what the numbers mean" }
         guard d.engine.ready else { return "The eval engine is not installed yet" }
         if nav.tab == .compare && nav.route == nil {
-            let entries = EvalResultsEntry.from(board.results).filter { $0.runs > 0 }
-            let n = board.results.filter { $0.status == "done" }.count
-            return "\(n) finished test\(n == 1 ? "" : "s") across \(entries.count) task\(entries.count == 1 ? "" : "s")"
+            return EvalFinished.text(board.results)   // one count everywhere (QA)
         }
         return EvalsSubtitle.text(benchmarks: board.catalog.map(\.benchmarkCount), ownEvals: board.sets.count,
-                                  judges: board.judges.count, finished: board.results.filter { $0.status == "done" }.count,
+                                  judges: board.judges.count, finished: EvalFinished.count(board.results).tests,
                                   running: board.runs.filter(\.isActive).count)
     }
 

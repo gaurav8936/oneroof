@@ -248,7 +248,7 @@ public enum EvalsAQuestions {
             tail = c.isEmpty ? " No change to your rules, skills or agents in the last 60 days."
                 : " \(EvalsAWords.count(c.count, "change")) in the last 60 days (\(you) yours, \(c.count - you) from the vendor)."
         }
-        if let both = changes?.first(where: \.testedBoth) {
+        if let both = changes?.first(where: \.testedAlone) {
             return EvalsAAnswer(tone: .cantTell, headline: "Tested before and after", body: "“\(both.what)” has a test before and after it: Changes shows which bugs flipped." + tail)
         }
         if stamped.isEmpty {
@@ -693,6 +693,7 @@ public struct EvalsAAllGrid: Equatable, Sendable {
 public enum EvalsAChanges {
     public static func who(_ c: EvalChange) -> String { c.who == .you ? "You" : "Vendor" }
     public static func status(_ c: EvalChange) -> String {
+        if c.isSpan { return "covers \(c.tested?.spans?.count ?? 2) changes together — can't tell which one" }
         if c.testedBoth { return "tested before and after" }
         if c.tested?.before != nil { return "tested before only" }
         if c.tested?.after != nil { return "tested after only" }
@@ -711,11 +712,26 @@ public enum EvalsAChanges {
         default: return "Not run yet"
         }
     }
-    /// The floor (share) of the task version the pair's runs were on: the board that holds either run (review P2 #5).
-    public static func floor(before: String?, after: String?, boards: [EvalSetupLeaderboard]) -> Double? {
-        let ids = Set([before, after].compactMap { $0 })
-        return boards.first { b in b.rows.contains { r in r.run.map(ids.contains) ?? false } }?.floor?.share
+    /// The blind-guess floor of the pair's task version (re-review #5): read by the task + task_version the pair recorded,
+    /// never by finding its runs in the latest boards (a repeat displaces them, a new version replaces the board).
+    public enum Floor: Equatable, Sendable {
+        case reading
+        case known(Double)
+        /// Not found (no task version on the pair, the board could not be read, it is another version, or it has no
+        /// floor): a winner is named only with the caveat.
+        case unknown
     }
+    /// The engine call that reads the floor of the pair's task version; nil = the pair recorded none (floor unknown).
+    public static func floorQuery(_ c: EvalChange) -> [String]? {
+        guard let task = c.tested?.task, !task.isEmpty, let v = c.tested?.taskVersion else { return nil }
+        return ["leaderboard", task, "--version", String(v), "--by", "setup"]
+    }
+    /// The floor from that board: only when it is the pair's own version and has a floor.
+    public static func floor(of c: EvalChange, board: EvalSetupLeaderboard?) -> Floor {
+        guard let b = board, let v = c.tested?.taskVersion, b.version == v, let share = b.floor?.share else { return .unknown }
+        return .known(share)
+    }
+    public static let floorUnknownCaveat = "floor unknown — can't check it against a blind guess"
     /// One side of the before/after pair: its right answers (attempts policy) and its own Wilson range.
     public static func side(_ label: String, _ xs: [EvalsASquare]) -> EvalVerdicts.Side {
         guard let s = EvalsAOneTest.score(xs) else { return EvalVerdicts.Side(label: label, right: nil, n: nil, lo: nil, hi: nil, done: false) }
@@ -725,6 +741,14 @@ public enum EvalsAChanges {
     /// version, so a winner that only matches a blind guess says so.
     public static func verdict(before: [EvalsASquare], after: [EvalsASquare], compare: EvalCompareResult?, floor: Double?) -> EvalVerdicts.Verdict {
         EvalVerdicts.compare(side("After", after), side("Before", before), paired: compare.map(EvalsACompare.paired), floor: floor)
+    }
+    /// The same, with the floor as read for the pair's task version: while it is unknown (or still being read) a verdict
+    /// that names a winner carries the caveat "floor unknown — can't check it against a blind guess" (re-review #5).
+    public static func verdict(before: [EvalsASquare], after: [EvalsASquare], compare: EvalCompareResult?, floor: Floor) -> EvalVerdicts.Verdict {
+        if case .known(let f) = floor { return verdict(before: before, after: after, compare: compare, floor: f) }
+        var v = verdict(before: before, after: after, compare: compare, floor: nil)
+        if v.winner != nil { v.text += " (" + floorUnknownCaveat + ")" }
+        return v
     }
     /// "3 bugs flipped to right, 1 flipped to wrong."
     public static func flipLine(toRight: Int, toWrong: Int) -> String {
@@ -736,6 +760,8 @@ public enum EvalsAChanges {
 // MARK: - E4 · Real history
 
 public enum EvalsAHistory {
+    /// The untagged bar's words (QA m9): facts only, no guess at who made the commits.
+    public static let untaggedLine = "Commits with no agent name: Codex, Kimi and hand edits don't add one yet (LAB-2241), so they can't be split by agent"
     /// The agent with the most signed commits (never the unattributed row).
     public static func top(_ rows: [EvalHistoryRow]) -> EvalHistoryRow? {
         rows.filter { !$0.isUntagged && $0.commits > 0 }.max { $0.commits < $1.commits }

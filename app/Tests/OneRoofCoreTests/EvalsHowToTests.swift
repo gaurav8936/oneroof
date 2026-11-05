@@ -17,7 +17,14 @@ final class EvalsHowToTests: XCTestCase {
         XCTAssertEqual(Set(EvalsHowTo.scenes.map(\.id)).count, 8)
         let first = EvalsHowTo.scenes[0].body
         for job in ["public benchmarks", "your own work", "build and keep your own eval sets"] { XCTAssertTrue(first.contains(job), job) }
-        XCTAssertTrue(EvalsHowTo.scenes[1].body.contains("Run this"))   // a first eval
+        XCTAssertTrue(EvalsHowTo.scenes[1].body.contains("Test a model on it"))   // a first eval
+        // QA m3: the 2.0.4 names only, never the old tabs (Explore / Run / Results / Learn / Your evals)
+        for sc in EvalsHowTo.scenes {
+            for old in ["Explore", "In Run", "Open Run", "Results:", "Open Results", "In Results", "Learn", "Your evals"] {
+                XCTAssertFalse(sc.body.contains(old) || sc.openLabel.contains(old), "\(sc.id): \(old)")
+            }
+        }
+        XCTAssertEqual(EvalsHowTo.scenes.map(\.openLabel).filter { $0.hasPrefix("Open ") }.count, 8)
         // Every scene opens a tab, and together they reach every tab but How to itself.
         XCTAssertTrue(EvalsHowTo.scenes.allSatisfy { $0.tab != nil })
         XCTAssertEqual(Set(EvalsHowTo.scenes.compactMap(\.tab)), Set(EvalsLegacyTab.allCases.filter { $0 != .howTo }))

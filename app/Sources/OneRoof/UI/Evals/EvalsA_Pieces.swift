@@ -17,6 +17,8 @@ final class EvalsAStore: ObservableObject {
     @Published private(set) var changes: Result<[EvalChange], EvalError>?
     @Published private(set) var xray: [String: Result<EvalXRay, EvalError>] = [:]
     @Published private(set) var stamps: [String: EvalsARunStamp] = [:]
+    /// nil while the stamps are being read (or never read), true once read, false when the read failed (re-review #6).
+    @Published private(set) var stampsRead: Bool?
     private var boardsKey = ""
     private var loading = Set<String>()
 
@@ -89,9 +91,16 @@ final class EvalsAStore: ObservableObject {
     func refreshStamps(_ board: EvalsBoard) {
         guard !loading.contains("stamps") else { return }
         loading.insert("stamps")
+        stampsRead = nil
         board.ask(["results"], [EvalsARunStamp].self, timeout: 300) { [weak self] r in
             self?.loading.remove("stamps")
-            if case .success(let xs) = r { self?.stamps = Dictionary(xs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
+            switch r {
+            case .success(let xs):
+                self?.stamps = Dictionary(xs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+                self?.stampsRead = true
+            case .failure:
+                self?.stampsRead = false
+            }
         }
     }
 

@@ -567,6 +567,16 @@ class Overview(unittest.TestCase):
         self.assertEqual((ch["runs"], ch["verdict"], ch["diff"]), (["r2", "r1"], cmp["verdict"], cmp["diff"]))
         self.assertIn("+50 on demo · fix locator v1", ch["text"])
         self.assertEqual(ov["suggestion"]["rule"], "one_attempt")   # no judge; the best run had 1 attempt
+        self.assertEqual(card["checked_by"], "code")
+
+    def test_QA_m12_triage_card_is_checked_by_code_as_the_leaderboard_says(self):
+        ids = [f"XYZ-{i}-abc" for i in range(1, 11)]
+        tf = str(self.f.set("tri", 1, ids, kind="triage"))
+        self.f.run("t1", "own_tri_v1", "anthropic/claude-haiku-5-5", {i: 1.0 for i in ids}, "2026-10-02T00:00:00Z", task_ref=tf)
+        self.e.index()
+        card = next(c for c in self.e.overview()["evals"] if c["set"] == "tri")
+        self.assertEqual(card["checked_by"], "code")
+        self.assertEqual(self.e.leaderboard_by_setup("own_tri", 1)["checked_by"], "code")
 
     def test_paired_compare_matches_the_app(self):
         a = {"q1": 1.0, "q2": 1.0, "q3": 0.0, "q4": 1.0}
@@ -1702,6 +1712,16 @@ class SetupBoard(unittest.TestCase):
         self.assertEqual(ov["grader_runs"], 2)
 
 
+T = {"task": "own_x_v2", "task_version": 2}   # a pair carries its runs' task + version (re-review #5: the floor)
+EMPTY = "e3b0c44"   # sha256 of no bytes, first 7 hex: "rules on" with no rules files (re-review P2)
+
+
+def H(*texts: str) -> str:
+    """A rules hash as agent_runner.rules_state makes it: sha256 over the files' bytes in path order, first 7 hex."""
+    import hashlib
+    return hashlib.sha256("".join(texts).encode()).hexdigest()[:7]
+
+
 class Changes(unittest.TestCase):
     """Evals v2 · EV-6 (CONTRACT §5): your rules/skills changes from git, the agents' changes from recorded stamps and
     doctor's agents-seen.json, each with the agent run just before and just after. Real data only."""
@@ -1723,7 +1743,8 @@ class Changes(unittest.TestCase):
         d.mkdir(parents=True)
         (d / "run.json").write_text(json.dumps({"id": rid, "agent": "claude_code", "status": "done", "started": started,
                                                 "repo_path": self.repo, "stamp": {"recorded": True, "agent": "claude_code",
-                                                "agent_version": version, "model": model, "model_source": source}}))
+                                                "agent_version": version, "model": model, "model_source": source,
+                                                "rules": "off", "task": "own_x_v1", "task_version": 1}}))
 
     def changes(self, *a):
         r = subprocess.run([sys.executable, str(EVALS_DIR / "changes.py"), "--repo", self.repo, "--days", "3650", "--json", *a],
@@ -1783,7 +1804,7 @@ class ChangesComparablePairs(unittest.TestCase):
 
     def run_json(self, rid, started, recorded=True, agent="claude_code", **st):
         stamp = dict({"recorded": recorded, "agent": agent, "agent_version": "2.1.30", "model": "claude-opus-5-5",
-                      "model_requested": "claude-opus-5-5", "model_source": "chosen", "rules": "on", "rules_hash": "aaaaaaa",
+                      "model_requested": "claude-opus-5-5", "model_source": "chosen", "rules": "on", "rules_hash": EMPTY,
                       "task": "own_x_v2", "task_version": 2}, **st)
         d = Path(self.tmp) / "runs" / rid
         d.mkdir(parents=True)
@@ -1800,16 +1821,16 @@ class ChangesComparablePairs(unittest.TestCase):
         after = "2026-11-03T00:00:00Z"
         self.run_json("codex", after, agent="codex_cli")                        # another agent
         self.run_json("off", after, rules="off", rules_hash=None)               # rules off cannot see a CLAUDE.md edit
-        self.run_json("v3", after, task="own_x_v3", task_version=3, rules_hash="bbbbbbb")   # other frozen bugs
-        self.run_json("sonnet", after, model="claude-sonnet-5-5", model_requested="claude-sonnet-5-5", rules_hash="bbbbbbb")
-        self.run_json("cli", after, agent_version="2.1.31", rules_hash="bbbbbbb")            # the CLI changed too
-        self.run_json("unrec", after, recorded=False, rules_hash="bbbbbbb")     # derived stamp: proves nothing
+        self.run_json("v3", after, task="own_x_v3", task_version=3, rules_hash=H("r1\n"))   # other frozen bugs
+        self.run_json("sonnet", after, model="claude-sonnet-5-5", model_requested="claude-sonnet-5-5", rules_hash=H("r1\n"))
+        self.run_json("cli", after, agent_version="2.1.31", rules_hash=H("r1\n"))            # the CLI changed too
+        self.run_json("unrec", after, recorded=False, rules_hash=H("r1\n"))     # derived stamp: proves nothing
         self.run_json("same", after)                                            # same rules hash: did not see the change
         rows = self.changes()
         self.assertEqual(rows["CLAUDE.md added"]["tested"], {"before": "before", "after": None})
         self.assertEqual(rows["Skill added: x"]["tested"], {"before": None, "after": None})   # no run loads skills
-        self.run_json("good", "2026-11-03T06:00:00Z", rules_hash="bbbbbbb")     # differs only in the rules
-        self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": "before", "after": "good"})
+        self.run_json("good", "2026-11-03T06:00:00Z", rules_hash=H("r1\n"))     # differs only in the rules
+        self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": "before", "after": "good", "task": "own_x_v2", "task_version": 2})
 
     def test_vendor_pairs_differ_only_in_the_vendor_change(self):
         dflt = dict(model_requested=None, model_source="cli_default_resolved", rules="off", rules_hash=None)
@@ -1819,11 +1840,134 @@ class ChangesComparablePairs(unittest.TestCase):
         v = rows["Claude Code 2.1.30 → 2.1.31"]
         self.assertEqual(v["tested"], {"before": "v30", "after": None})          # different task: not comparable
         self.run_json("v31", "2026-11-01T12:00:00Z", **dict(dflt, agent_version="2.1.31"))
-        self.assertEqual(self.changes()["Claude Code 2.1.30 → 2.1.31"]["tested"], {"before": "v30", "after": "v31"})
+        self.assertEqual(self.changes()["Claude Code 2.1.30 → 2.1.31"]["tested"], {"before": "v30", "after": "v31", "task": "own_x_v2", "task_version": 2})
         # a default-model change that came with a CLI change is not attributed to the model alone
         self.run_json("v32", "2026-11-02T00:00:00Z", **dict(dflt, agent_version="2.1.32", model="claude-sonnet-5-5"))
         m = self.changes()["Claude Code's default model: claude-opus-5-5 → claude-sonnet-5-5"]
         self.assertEqual(m["tested"]["after"], None)
+
+
+class ChangesRulesAttribution(unittest.TestCase):
+    """Re-review #3 (P1) + new P2: a rules pair is credited to a commit only when the runs' captured rules are exactly the
+    states just before and just after it; several rules commits between two runs = one pair with "spans"; missing
+    essentials are never compatible; "rules on, no rules files" is a recorded state (EMPTY hash, rules_files [])."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-changes-attr-")
+        self.repo = tempfile.mkdtemp(prefix="roof-changes-attr-repo-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        git_commit(self.repo, "code", {"src/a.py": "a\n"}, "2026-11-01T12:00:00+00:00")
+
+    def run_json(self, rid, started, **st):
+        stamp = dict({"recorded": True, "agent": "claude_code", "agent_version": "2.1.30", "model": "claude-opus-5-5",
+                      "model_requested": "claude-opus-5-5", "model_source": "chosen", "rules": "on", "rules_hash": EMPTY,
+                      "rules_files": [], "task": "own_x_v2", "task_version": 2}, **st)
+        d = Path(self.tmp) / "runs" / rid
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps({"id": rid, "agent": "claude_code", "status": "done", "started": started,
+                                                "repo_path": self.repo, "stamp": stamp}))
+
+    def changes(self):
+        r = subprocess.run([sys.executable, str(EVALS_DIR / "changes.py"), "--repo", self.repo, "--days", "3650", "--json"],
+                           capture_output=True, text=True, env=dict(os.environ, ONEROOF_EVALS_DIR=self.tmp))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return {x["what"]: x for x in json.loads(r.stdout)}
+
+    def test_pair_must_be_the_commits_own_before_and_after_states(self):
+        x = git_commit(self.repo, "rules", {"CLAUDE.md": "r1\n"}, "2026-11-02T12:00:00+00:00")
+        self.run_json("a", "2026-11-01T18:00:00Z")                               # the state just before x (no rules)
+        self.run_json("other", "2026-11-03T00:00:00Z", rules_hash="bbbbbbb")     # some other rules state: not x's after
+        self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": "a", "after": None})
+        self.run_json("b", "2026-11-03T06:00:00Z", rules_hash=H("r1\n"))         # exactly the state at x
+        self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": "a", "after": "b", **T})
+        self.assertTrue(x)
+
+    def test_before_run_must_hold_the_state_before_the_commit(self):
+        git_commit(self.repo, "rules", {"CLAUDE.md": "r1\n"}, "2026-11-02T12:00:00+00:00")
+        self.run_json("a", "2026-11-01T18:00:00Z", rules_hash="ccccccc")         # not the empty state before the add
+        self.run_json("b", "2026-11-03T06:00:00Z", rules_hash=H("r1\n"))
+        self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": "a", "after": None})
+
+    def test_several_rules_commits_between_two_runs_are_a_span(self):
+        x = git_commit(self.repo, "rules x", {"CLAUDE.md": "r1\n"}, "2026-11-02T12:00:00+00:00")
+        y = git_commit(self.repo, "rules y", {"CLAUDE.md": "r2\n"}, "2026-11-03T12:00:00+00:00")
+        self.run_json("a", "2026-11-01T18:00:00Z")
+        self.run_json("b", "2026-11-04T00:00:00Z", rules_hash=H("r2\n"))
+        rows = self.changes()
+        span = {"before": "a", "after": "b", "spans": [x, y], **T}
+        self.assertEqual(rows["CLAUDE.md added"]["tested"], span)      # never credited to x alone
+        self.assertEqual(rows["CLAUDE.md changed"]["tested"], span)    # nor to y alone
+        self.run_json("mid", "2026-11-03T00:00:00Z", rules_hash=H("r1\n"))     # a run between them isolates each one
+        rows = self.changes()
+        self.assertEqual(rows["CLAUDE.md added"]["tested"], {"before": "a", "after": "mid", **T})
+        self.assertEqual(rows["CLAUDE.md changed"]["tested"], {"before": "mid", "after": "b", **T})
+
+    def test_missing_essentials_are_not_compatible(self):
+        git_commit(self.repo, "rules", {"CLAUDE.md": "r1\n"}, "2026-11-02T12:00:00+00:00")
+        for k in ("agent_version", "model", "task_version"):
+            with self.subTest(missing=k):
+                shutil.rmtree(Path(self.tmp) / "runs", True)
+                self.run_json("a", "2026-11-01T18:00:00Z", **{k: None})
+                self.run_json("b", "2026-11-03T06:00:00Z", rules_hash=H("r1\n"), **{k: None})
+                self.assertEqual(self.changes()["CLAUDE.md added"]["tested"], {"before": None, "after": None})
+
+    def test_P2_deleting_the_only_rules_file_gives_a_comparable_pair(self):
+        ar = sibling("agent_runner")
+        git_commit(self.repo, "rules", {"AGENTS.md": "only\n"}, "2026-11-02T12:00:00+00:00")
+        cap1 = ar.capture_rules(self.repo, Path(self.tmp) / "cap1")
+        self.run_json("with", "2026-11-03T00:00:00Z", rules_hash=cap1["rules_hash"], rules_files=cap1["rules_files"])
+        git_commit(self.repo, "drop rules", {"AGENTS.md": None}, "2026-11-04T12:00:00+00:00")
+        cap2 = ar.capture_rules(self.repo, Path(self.tmp) / "cap2")
+        self.assertEqual((cap2["rules_hash"], cap2["rules_files"]), (EMPTY, []))   # recorded, not null
+        self.assertEqual(cap1["rules_hash"], H("only\n"))
+        self.run_json("without", "2026-11-05T00:00:00Z", rules_hash=cap2["rules_hash"], rules_files=cap2["rules_files"])
+        self.assertEqual(self.changes()["AGENTS.md removed"]["tested"], {"before": "with", "after": "without", **T})
+        # unrecorded (null) is still never eligible
+        shutil.rmtree(Path(self.tmp) / "runs" / "without")
+        self.run_json("unrec", "2026-11-05T00:00:00Z", rules_hash=None)
+        self.assertEqual(self.changes()["AGENTS.md removed"]["tested"], {"before": "with", "after": None})
+        self.assertEqual(ar.capture_rules(None, Path(self.tmp) / "cap3")["rules_hash"], None)   # no repo: not recorded
+
+
+class ConcurrentIndex(unittest.TestCase):
+    """QA blocker (2.0.4): the screens start several engine calls at once; each rebuilt evals.db through ONE shared
+    evals.tmp, so concurrent rebuilds unlinked / replaced each other's file mid-write ("disk I/O error", "0 finished
+    runs"). Now: a lock around the rebuild, a temp file per caller, readers retry once."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="roof-concurrent-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        for i in range(150):
+            d = Path(self.tmp) / "runs" / f"r{i:03d}"
+            d.mkdir(parents=True)
+            (d / "run.json").write_text(json.dumps({
+                "id": f"r{i:03d}", "task": "gsm8k" if i % 3 else "labeller_x_v1", "model": "mockllm/model",
+                "status": "done", "started": f"2026-11-01T00:{i // 60:02d}:{i % 60:02d}Z", "limit": 5,
+                "summary": {"samples_done": 5, "samples_total": 5}}))
+
+    def test_concurrent_index_and_overview_never_raise_and_agree(self):
+        from concurrent.futures import ThreadPoolExecutor
+        env = dict(os.environ, ONEROOF_EVALS_DIR=self.tmp, PYTHONDONTWRITEBYTECODE="1")
+
+        def call(i):
+            cmd = "index" if i % 2 == 0 else "overview"
+            r = subprocess.run([sys.executable, str(ENGINE), cmd, "--json"], capture_output=True, text=True, env=env, timeout=300)
+            return cmd, r.returncode, r.stdout, r.stderr
+
+        for _ in range(2):
+            with ThreadPoolExecutor(max_workers=12) as ex:
+                got = list(ex.map(call, range(12)))
+            for cmd, rc, so, se in got:
+                self.assertEqual(rc, 0, f"{cmd}: {se[-800:]}")
+                self.assertNotIn("OperationalError", se)
+                j = json.loads(so)
+                if cmd == "index":
+                    self.assertEqual(j["runs"], 150)
+                else:
+                    self.assertEqual(j["finished_runs"], 100)   # every one, minus the labeller helper runs
+        self.assertEqual(sorted(p.name for p in Path(self.tmp).glob("evals.db*.tmp")), [])   # no temp file left
 
 
 class Robustness(unittest.TestCase):

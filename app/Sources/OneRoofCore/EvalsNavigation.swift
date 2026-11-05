@@ -50,6 +50,15 @@ public enum EvalsLegacyTab: String, CaseIterable, Sendable {
     }
 }
 
+/// QA m2: the window toolbar already has the app's "+ New ▾" (sessions), so Evals' own menu (a test, a task from fixed
+/// bugs, a grader) is named for what it makes, never a second "+ New".
+public enum EvalsNewMenu {
+    public static let title = "New test or task"
+    public static let items = ["New test…", "New task from fixed bugs…", "New grader…"]
+    /// How copy points at it: "New test or task ▾ › New grader".
+    public static func path(_ item: String) -> String { title + " ▾ › " + item }
+}
+
 /// Every Evals screen (SCREEN_MAP.md): six tabs, five drill-downs, two sheets.
 public enum EvalsScreen: String, CaseIterable, Sendable {
     case overview, compare, oneTest, allResults, changes, realHistory, ourTasks, oneTask, grader, benchmarks, oneBenchmark, setup, lessons

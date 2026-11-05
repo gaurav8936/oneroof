@@ -37,6 +37,9 @@ struct EvalsSetupSheet: View {
     }
     /// What the sheet showed, kept while it is closed (nav.workPlan keeps the plan; the setups live here).
     private static var keptRows: [SetupRow]?
+    /// Test again without a readable stamp (re-review #6): the pre-filled setups whose model and rules are flagged
+    /// "pick again — not recorded" until the owner changes them.
+    @State private var unrecorded: [EvalSetupChoice]?
 
     private var choices: [EvalSetupChoice] {
         var seen = Set<String>()
@@ -438,6 +441,12 @@ struct EvalsSetupSheet: View {
                         .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).fill(t.needsText.color.opacity(0.12)))
                 }
+                if let u = unrecorded, u == choices {
+                    Text(EvalRunPlan.notRecordedNote).ui(TypeScale.small, .semibold).foregroundStyle(t.needsText.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).fill(t.needsText.color.opacity(0.12)))
+                }
                 if !choices.isEmpty { stampBox }
                 Button(action: start) {
                     Text("Start \(testCount) test\(testCount == 1 ? "" : "s")").ui(TypeScale.body, .semibold)
@@ -561,6 +570,7 @@ struct EvalsSetupSheet: View {
         if let p {
             plan = p
             rows = EvalSetupChoice.from(p).map { SetupRow(choice: $0, on: true) }
+            unrecorded = p.notRecorded ? EvalSetupChoice.from(p) : nil
             if let first = rows.first { layer = first.choice.layer }
             nav.draft = nil
         } else if let kept = nav.workPlan {
@@ -570,6 +580,11 @@ struct EvalsSetupSheet: View {
             let first = board.sets.first
             plan = EvalRunPlan(tasks: [first?.taskFile ?? "gsm8k"], models: [], limit: first?.count ?? 5, cap: 2)
             rows = Self.keptRows ?? []
+        }
+        if rows.isEmpty {   // QA m4: a valid default, never "Start 0 tests"
+            let d = EvalSetupChoice.defaults(task: plan.tasks.first, seatAgents: seatAgents.filter(\.available).map(\.id))
+            rows = d.choices.map { SetupRow(choice: $0, on: true) }
+            layer = d.layer
         }
         epochsText = plan.epochs.map(String.init) ?? ""
         temperatureText = plan.temperature.map { String($0) } ?? ""
