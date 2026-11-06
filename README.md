@@ -1,0 +1,47 @@
+# site/ · the One Roof launch page
+
+The public page at https://gaurav8936.github.io/oneroof/. Plain HTML, CSS and one small script, no build step.
+Woodpecker (`.woodpecker/pages.yaml`) publishes this folder to GitHub Pages on every push to `main` that touches `site/`.
+
+| File | What it is |
+|---|---|
+| `index.html` | the page (the released state is written into the HTML, so it works without JavaScript) |
+| `assets/style.css` | layout and the three themes (Porcelain, Graphite, Blueprint) as CSS variables |
+| `assets/site.js` | launch config, theme switcher, smooth anchors, visit counter |
+| `shots/` | app screenshots (2.0 window, 1600 px wide, taken on a fresh profile with demo data); `home-<daylight\|graphite\|midnight>.png` follows the page theme |
+| `og.png` | social card, 1200×630 |
+| `assets/favicon.png`, `assets/apple-touch-icon.png` | from `app/Resources/AppIcon.icns` |
+
+## Preview locally
+
+```bash
+cd site && python3 -m http.server 3952
+# open http://localhost:3952/   (add ?theme=graphite or ?theme=blueprint to force a theme)
+```
+
+## Launch config
+
+At the top of `assets/site.js`:
+
+```js
+const LAUNCH = { released: true, version: '2.0.6', releaseDate: 'Sun 25 Oct 2026',
+  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-2.0.6.zip',
+  repo: 'https://github.com/gaurav8936/oneroof', blogUrl: 'https://console.zibajoon.com/blog/chorus-coding' };
+```
+
+For a new release, change `version` and `downloadUrl` there and the matching text in `index.html` (search for
+the current version), so the page reads right with or without JavaScript. `released: false` switches the page to its
+"launching soon" state (Star on GitHub, release date).
+
+## Removing the Gatekeeper note
+
+Once the app is signed and notarized, delete the one element marked `data-gatekeeper-note` in `index.html`
+(install step 01). Nothing else refers to it.
+
+## Visit counter
+
+GitHub Pages has no visit counting, so `assets/site.js` sends two kinds of event to our own counter at
+`https://console.zibajoon.com/api/t/hit` with `navigator.sendBeacon`: a `view` when the page loads and a `download` when a
+release download link is clicked. No cookies, nothing third party, nothing stored in the browser; the beacon never blocks
+or delays the click, and any failure is silent. The counter stores counts only (no IP, no browser string). To keep your own
+visits apart, run `localStorage.setItem('zj-self', '1')` once in your browser's console on this page.
