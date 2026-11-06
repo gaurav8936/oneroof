@@ -43,6 +43,18 @@ public final class LoopLedger {
         try exec(Self.schema)
     }
 
+    /// Read-only (2.0.5 Evals, LAB-2001 guard): no directory, no WAL pragma, no schema, so reading never changes the
+    /// file. Throws when there is no ledger yet.
+    public init(readingOnly path: String = LoopLedger.defaultPath()) throws {
+        self.path = path
+        guard FileManager.default.fileExists(atPath: path) else { throw LoopStoreError("no ledger at \(path)") }
+        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            sqlite3_close(db); db = nil
+            throw LoopStoreError("could not read the ledger at \(path)")
+        }
+        sqlite3_busy_timeout(db, 5000)
+    }
+
     deinit { sqlite3_close(db) }
 
     private func exec(_ sql: String) throws {
