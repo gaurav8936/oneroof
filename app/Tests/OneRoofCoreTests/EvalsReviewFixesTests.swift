@@ -195,7 +195,9 @@ final class EvalsReviewFixesTests: XCTestCase {
         let off = EvalsAGrid.build(lb)                                       // default: rules off (clean)
         let cc = try XCTUnwrap(off.rows.first { $0.agent == "claude_code" })
         XCTAssertEqual(cc.cells["claude-opus-5-5"]?.run, "off-new")          // the latest, not the 9 with rules nor the old 8
-        XCTAssertTrue(cc.sub.contains("rules off"))
+        XCTAssertTrue(cc.sub.contains("clean (no rules)"))
+        XCTAssertFalse(off.rows.contains { $0.sub.contains("layer") }, "QA #5: no layer wording")
+        XCTAssertTrue(EvalsAGrid.build(lb, rules: true).rows.first { $0.agent == "claude_code" }!.sub.contains("with our rules"))
         XCTAssertEqual(off.rows.first { $0.agent == nil }?.cells["claude-opus-5-5"]?.run, "model")
         let on = EvalsAGrid.build(lb, rules: true)
         XCTAssertEqual(on.rows.first { $0.agent == "claude_code" }?.cells["claude-opus-5-5"]?.run, "on")

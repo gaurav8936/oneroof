@@ -163,10 +163,10 @@ struct EvalsRunDetailPage: View {
             divider
             cell {
                 Text(line.heading.uppercased()).ui(10.5, .semibold).tracking(0.6).foregroundStyle(line.trusted ? t.text3.color : t.needsText.color)
-                (Text(line.body + " ") + Text("Judge ›").foregroundStyle(t.accentText.color))
+                Text(line.body)
                     .ui(TypeScale.small).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
-                    .onTapGesture { openJudge() }
                     .evalHover(.agreement, EvalHover.agreement(a))
+                RoofButton("Judge ›") { openJudge() }.fixedSize()   // LAB-2255: a button, not tappable text
             }
         } else if judged {
             divider
@@ -556,7 +556,7 @@ struct EvalsRunDetailPage: View {
 
     private func compareWith() {
         guard let r = result else { return }
-        nav.showResults(key: r.setName.map { "\($0)@v\(r.setVersion ?? 1)" } ?? (r.task ?? ""), compareA: r.id)
+        nav.showResults(key: r.setName.map { "\($0)@v\(r.setVersion ?? 1)" } ?? (r.task ?? ""), compareA: r.id, kind: EvalJobKind.of(r))
     }
 
     /// ⌘[ back is the shell's; W and ↑/↓ act on the list when it has focus.

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.0.5 — Evals v3: two kinds of job, click a colour (5 Nov 2026)
+
+Evals is still a draft (marked as one in the app). Nothing in 2.0.4's Evals was dropped: every feature has a new home, listed in
+Evals › Lessons › Where everything went and `docs/evals-v3-coverage.md`.
+
+- **Two kinds of job.** One-shot jobs are one prompt to a model (triage notes, grading, briefs): tested as the model alone.
+  Agent jobs are Claude Code or Codex on our code with our setup: tested the way we use them. The old three layers are gone;
+  the "agent out of the box" layer lives on as the clean (no rules) agent setup and as public agent benchmarks.
+- **The launch view is the navigation.** No tab bar. "What can we trust to do our work?" shows the two kinds as sheets, each
+  with its tasks, its loops, what it is made of, and one evidence bar split by where the evidence comes from: public tests
+  (amber), our tests (blue), our loop runs (light blue). Click a colour to open its page. A breadcrumb and ⌘[ take you back;
+  ⌃⌥0 is the launch view, ⌃⌥1–8 the pages.
+- **Loops count as evidence.** Each loop sits with its kind of job by how it is built, never by its name: a loop with a prompt
+  is one-shot, a One Roof loop that works in a worktree is an agent job, and loops with no model are listed apart and not
+  judged. Their pages show real runs from the outcome ledger (last 30 days, finished, failed, dry); whether each run was good
+  is not recorded yet, and the page says so.
+- **Each page answers one question.** One-shot · Public tests ("Which models are worth trying?"), One-shot · Our tests,
+  One-shot · Loop runs, Agent · Our tests (with the agent × model grid), Agent · Loop runs, and Public agent benchmarks, kept
+  outside the agent bar because they never include our code or setup.
+- **Set up a test** picks One-shot or Agent; agents run with our rules by default, or clean.
+- **Real history** opens the commits behind "followed by a fix" (LAB-2254). All results and the export gain a Kind column; task
+  cards show how each task has been tested. Two new lessons: one-shot vs agent jobs, and loop runs as evidence.
+- **Buttons you can see** (LAB-2255): every way to another screen is a button or a tile with a chevron, never a small text link.
+- **Fix: no Keychain password prompts** (LAB-2246, reopened). One Roof no longer reads your Hugging Face sign-in at launch or for
+  ordinary engine calls, only for a test or question that needs a gated dataset; test builds never read it.
+
 ## 2.0.4 — Evals v2: your setup on your own work, three questions first (5 Nov 2026)
 
 Evals is still a draft (marked as one in the app), and nothing outside Evals changed.

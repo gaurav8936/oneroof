@@ -304,25 +304,120 @@ public struct EvalHistoryRow: Decodable, Equatable, Identifiable, Sendable {
     public var selfShare: Double?
     public var revert: Double?
     public var fixup: Double?
+    /// LAB-2254: the engine's exact counts when it sends them (the commit lists have exactly this many rows).
+    public var fixCount: Int?
+    public var revertCount: Int?
+    /// Commits with any line rewritten within the horizon (the rewritten % is of lines, this is of commits).
+    public var rewrittenCommits: Int?
     public var id: String { agent }
-    enum CodingKeys: String, CodingKey { case agent, commits, lines, churn, selfShare = "self", revert, fixup }
+    enum CodingKeys: String, CodingKey {
+        case agent, commits, lines, churn, selfShare = "self", revert, fixup
+        case fixCount = "followedByFix", revertCount = "reverted", rewrittenCommits
+    }
     public init(agent: String, commits: Int, lines: Int? = nil, churn: Double? = nil, selfShare: Double? = nil,
-                revert: Double? = nil, fixup: Double? = nil) {
+                revert: Double? = nil, fixup: Double? = nil, fixCount: Int? = nil, revertCount: Int? = nil,
+                rewrittenCommits: Int? = nil) {
         self.agent = agent; self.commits = commits; self.lines = lines; self.churn = churn; self.selfShare = selfShare
         self.revert = revert; self.fixup = fixup
+        self.fixCount = fixCount; self.revertCount = revertCount; self.rewrittenCommits = rewrittenCommits
     }
     /// From today's `xray --json` agent entry (agents keyed by name).
     public init(name: String, _ a: EvalXRay.Agent) {
         self.init(agent: name, commits: a.commits, lines: a.linesAdded, churn: a.churn, selfShare: a.selfChurnShare,
-                  revert: a.revertRate, fixup: a.fixupRate)
+                  revert: a.revertRate, fixup: a.fixupRate, fixCount: a.followedByFix, revertCount: a.reverted,
+                  rewrittenCommits: a.rewrittenCommits)
     }
-    /// Commits followed by a fix = fixup × commits, rounded (shown with the % too).
-    public var followedByFix: Int? { fixup.map { Int(($0 * Double(commits)).rounded()) } }
-    public var reverted: Int? { revert.map { Int(($0 * Double(commits)).rounded()) } }
+    /// Commits followed by a fix: the engine's exact count, else fixup × commits, rounded (shown with the % too).
+    public var followedByFix: Int? { fixCount ?? fixup.map { Int(($0 * Double(commits)).rounded()) } }
+    public var reverted: Int? { revertCount ?? revert.map { Int(($0 * Double(commits)).rounded()) } }
     public var isUntagged: Bool { agent == "unattributed" }
     /// "18.8 %" (one decimal; a fraction 0–1).
     public static func pct(_ x: Double?) -> String { x.map { String(format: "%.1f %%", $0 * 100) } ?? "–" }
     public static func from(_ x: EvalXRay) -> [EvalHistoryRow] { x.rows.map { EvalHistoryRow(name: $0.name, $0.agent) } }
+}
+
+// MARK: - LAB-2254 · the commits behind a Real history count
+
+/// `xray --repo … --days N --commits fixup|churn|revert [--agent NAME] --json`: the commits one count is made of, each with
+/// the later commit(s) that fixed, rewrote or reverted it. The engine builds the count and the list in one pass, so
+/// `count == commits.count` == the headline's number.
+public struct EvalCommitList: Decodable, Equatable, Sendable {
+    public enum Kind: String, CaseIterable, Identifiable, Sendable {
+        case fixup, churn, revert
+        public var id: String { rawValue }
+        /// "followed by a fix" / "rewritten in 14 days" / "reverted": what the list is of.
+        public func what(horizon: Int) -> String {
+            switch self {
+            case .fixup: return "followed by a fix"
+            case .churn: return "rewritten in \(horizon) days"
+            case .revert: return "reverted"
+            }
+        }
+        /// The words before the later commits: "Fixed by", "Rewritten by", "Reverted by".
+        public var byLabel: String {
+            switch self {
+            case .fixup: return "Fixed by"
+            case .churn: return "Rewritten by"
+            case .revert: return "Reverted by"
+            }
+        }
+    }
+    public struct Later: Decodable, Equatable, Identifiable, Sendable {
+        public var sha: String
+        public var short: String
+        public var subject: String
+        public var date: String
+        public var agent: String
+        public var id: String { sha }
+        public init(sha: String, short: String, subject: String, date: String, agent: String) {
+            self.sha = sha; self.short = short; self.subject = subject; self.date = date; self.agent = agent
+        }
+    }
+    public struct Commit: Decodable, Equatable, Identifiable, Sendable {
+        public var sha: String
+        public var short: String
+        public var subject: String
+        public var date: String
+        public var agent: String
+        public var repo: String
+        public var repoPath: String?
+        public var linesRewritten: Int?
+        public var by: [Later]
+        public var id: String { (repoPath ?? repo) + "@" + sha }
+        public init(sha: String, short: String, subject: String, date: String, agent: String, repo: String,
+                    repoPath: String? = nil, linesRewritten: Int? = nil, by: [Later] = []) {
+            self.sha = sha; self.short = short; self.subject = subject; self.date = date; self.agent = agent; self.repo = repo
+            self.repoPath = repoPath; self.linesRewritten = linesRewritten; self.by = by
+        }
+    }
+    public var kind: String
+    public var agent: String?
+    public var windowDays: Int
+    public var horizonDays: Int?
+    public var count: Int
+    public var commits: [Commit]
+    public init(kind: String, agent: String?, windowDays: Int, horizonDays: Int?, count: Int, commits: [Commit]) {
+        self.kind = kind; self.agent = agent; self.windowDays = windowDays; self.horizonDays = horizonDays
+        self.count = count; self.commits = commits
+    }
+
+    /// The engine call (without --json, which `ask` adds).
+    public static func args(repos: [String], days: Int, kind: Kind, agent: String) -> [String] {
+        ["xray"] + repos.flatMap { ["--repo", $0] } + ["--days", String(days), "--commits", kind.rawValue, "--agent", agent]
+    }
+    /// The visible button that opens the list (LAB-2255: a button, never a bare link): "See the 12 commits ›".
+    public static func seeTitle(_ n: Int) -> String { n == 1 ? "See the commit ›" : "See the \(n) commits ›" }
+    /// "Hide the commits" once open.
+    public static let hideTitle = "Hide the commits"
+    /// "2026-11-03" from the engine's ISO date (the date alone; the time adds nothing here).
+    public static func day(_ iso: String) -> String { String(iso.prefix(10)) }
+    /// The list's title: "12 of Claude's commits followed by a fix · last 60 days".
+    public func title(horizon: Int) -> String {
+        let k = Kind(rawValue: kind) ?? .fixup
+        let what = k.what(horizon: horizon)
+        guard let a = agent, a != "unattributed" else { return "\(count) commits with no agent name \(what) · last \(windowDays) days" }
+        return "\(count) of \(a)'s commits \(what) · last \(windowDays) days"
+    }
 }
 
 // MARK: - §7 Overview layers

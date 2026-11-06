@@ -37,7 +37,7 @@ public enum EvalEngine {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: py)
         p.arguments = [s] + args
-        p.environment = environment(ProcessInfo.processInfo.environment, extra: extraEnvironment?() ?? [:])
+        p.environment = environment(ProcessInfo.processInfo.environment, extra: extraEnvironment?(args) ?? [:])
         let out = Pipe(), err = Pipe()
         p.standardOutput = out; p.standardError = err
         do { try p.run() } catch { return Output(code: 126, stdout: Data(), stderr: "\(error)") }
@@ -60,8 +60,37 @@ public enum EvalEngine {
         return env
     }
 
-    /// LAB-2117 · the user's own Hugging Face sign-in (token from the Keychain, accepted gated sets), set by the app.
-    nonisolated(unsafe) public static var extraEnvironment: (() -> [String: String])?
+    /// LAB-2117 · the user's own Hugging Face sign-in (token from the Keychain, accepted gated sets), set by the app. Gets
+    /// the command's arguments: the token is read only for a command that can touch gated data (`needsHFToken`).
+    nonisolated(unsafe) public static var extraEnvironment: (([String]) -> [String: String])?
+
+    /// LAB-2246 (reopened 11-05): the only engine commands that read gated Hugging Face data (`hf_locked` in
+    /// roof_eval.py: run → its worker, resume, run-anyway, and the question browser items / item). Every other call
+    /// (doctor, catalog, results …) never touches the Keychain.
+    public static let hfCommands: Set<String> = ["run", "resume", "run-anyway", "items", "item"]
+    /// 2.0.5 review P1: the command must also name a gated dataset (its task, or for resume / run-anyway the task of
+    /// that run), so browsing GSM8K questions or running our own tasks never touches the Keychain.
+    public static func needsHFToken(_ args: [String], gated: [String] = EvalSources.gatedFolders,
+                                    taskOfRun: (String) -> String? = { _ in nil }) -> Bool {
+        guard let cmd = args.first, hfCommands.contains(cmd) else { return false }
+        let rest = Array(args.dropFirst())
+        let tasks: [String]
+        switch cmd {
+        case "resume", "run-anyway": tasks = rest.first.flatMap(taskOfRun).map { [$0] } ?? []
+        case "run": tasks = Array(rest.prefix { !$0.hasPrefix("-") })   // `run <task…> --options`: the task operands only
+        default: tasks = rest.first.map { [$0] } ?? []                  // items / item <task> …
+        }
+        return tasks.contains { isGated($0, gated) }
+    }
+    /// "hle", "inspect_evals/hle", "hle_text", "xstest@v1" name a gated folder; "gsm8k", "own_oneroof_v2" do not.
+    /// Only the task's own name decides (never a folder on its path or an option value); our own task files never do.
+    static func isGated(_ arg: String, _ gated: [String]) -> Bool {
+        var name = arg.lowercased()
+        if name.hasSuffix(".py") || name.contains("/own_") || name.hasPrefix("own_") { return false }
+        if let slash = name.lastIndex(of: "/") { name = String(name[name.index(after: slash)...]) }   // inspect_evals/hle → hle
+        if let at = name.firstIndex(of: "@") { name = String(name[..<at]) }                          // xstest@v1 → xstest
+        return gated.contains { name == $0 || name.hasPrefix($0 + "_") }
+    }
 
     /// LAB-2117 · the engine's environment for Hugging Face: only the token the user signed in with in One Roof is passed
     /// (an inherited HF_TOKEN or a cached `hf auth login` token is never reused: HF_TOKEN_PATH points at a file that

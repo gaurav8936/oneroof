@@ -11,6 +11,9 @@ import OneRoofCore
 struct EvalsOverviewTab: View {
     @ObservedObject var board: EvalsBoard
     @ObservedObject var nav: EvalsNav
+    /// v3 (2.0.5): drawn inside the launch view under the job sheets: the three questions, their "To answer it properly"
+    /// and the suggestion; the layer picture is replaced by the sheets (D5, D9).
+    var embedded = false
     @ObservedObject private var store = EvalsAStore.shared
     @Environment(\.theme) private var t
     @AppStorage(EvalsRealHistoryView.reposKey, store: Prefs.viewState) private var reposPref = ""
@@ -19,27 +22,28 @@ struct EvalsOverviewTab: View {
     private var repos: [String] { EvalsRealHistoryView.repos(reposPref, board: board) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                layerCard
-                questions
-                if let s = board.overview?.suggestion {
-                    Button { follow(s) } label: {
-                        (Text("Also suggested: ").foregroundColor(t.text2.color) + Text(s.text + " ›").foregroundColor(t.accentText.color))
-                            .ui(TypeScale.small).fixedSize(horizontal: false, vertical: true)
-                    }
-                    .buttonStyle(.plain)
-                }
-                if let e = board.overviewError {
-                    Text("The overview could not be read: " + e).ui(TypeScale.small).foregroundStyle(t.needsText.color).textSelection(.enabled)
-                }
-            }
-            .frame(maxWidth: 1240, alignment: .leading)
-            .padding(.bottom, 20)
+        Group {
+            if embedded { content } else { ScrollView { content.frame(maxWidth: 1240, alignment: .leading).padding(.bottom, 20) } }
         }
         .onAppear(perform: refresh)
         .onChange(of: board.results) { _, _ in store.refreshBoards(board) }
         .onChange(of: board.sets) { _, _ in refresh() }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if !embedded { layerCard }
+            questions
+            if let s = board.overview?.suggestion {
+                HStack(spacing: 10) {   // LAB-2255: the suggestion's action is a button, not a text link
+                    Text("Also suggested: " + s.text).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                    RoofButton("Do it ›") { follow(s) }.fixedSize()
+                }
+            }
+            if let e = board.overviewError {
+                Text("The overview could not be read: " + e).ui(TypeScale.small).foregroundStyle(t.needsText.color).textSelection(.enabled)
+            }
+        }
     }
 
     private func refresh() {
@@ -91,10 +95,7 @@ struct EvalsOverviewTab: View {
                     Text("Each layer adds one thing to the one above it. Test the same tasks at each layer to see what each part adds.")
                     Text("Inside is what matters: our own bugs, our own work. Outside is context.")
                     Text("The three questions below read from this picture: Compare works on any layer; Changes and Real history work on the base.")
-                    Button { nav.go(EvalsLegacyTab.howTo) } label: {
-                        Text("Your first test, step by step ›").ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color)
-                    }
-                    .buttonStyle(.plain)
+                    RoofButton("Your first test, step by step ›") { nav.go(EvalsLegacyTab.howTo) }.fixedSize()   // LAB-2255
                 }
                 .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 12)
@@ -244,7 +245,11 @@ struct EvalsOverviewTab: View {
         let body = content(), fixView = fix()
         return Card(padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("QUESTION \(n)").ui(10.5, .semibold).tracking(0.6).foregroundStyle(t.accentText.color)
+                HStack {
+                    Text("QUESTION \(n)").ui(10.5, .semibold).tracking(0.6).foregroundStyle(t.accentText.color)
+                    Spacer()
+                    RoofButton("Open ›", action: open).fixedSize()   // LAB-2255
+                }
                 Button(action: open) {
                     Text(title).ui(TypeScale.title, .bold).foregroundStyle(t.text.color).multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)

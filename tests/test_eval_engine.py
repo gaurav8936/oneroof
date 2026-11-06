@@ -250,6 +250,87 @@ class XRay(unittest.TestCase):
         self.assertEqual(c["fixup_rate"], 1.0)                    # 'fix a' after 'add a'; the revert after 'add b' 
 
 
+    def test_LAB2254_commit_lists_match_the_headline_counts(self):
+        """`--commits fixup|revert|churn` lists exactly the commits the headline counts: count == len(list) == the agent
+        row's followed_by_fix / reverted / rewritten_commits, per agent and for all agents together."""
+        repo = tempfile.mkdtemp(prefix="roof-xray3-")
+        self.addCleanup(shutil.rmtree, repo, True)
+        base = int(time.time()) - 25 * 86400
+        CLAUDE, CODEX = "Claude Opus 5.5 <noreply@anthropic.com>", "Codex <noreply@oneroof.local>"
+
+        def commit(msg, when_days, trailer=None, author="Pat Person"):
+            env = dict(os.environ, GIT_AUTHOR_NAME=author, GIT_AUTHOR_EMAIL="p@x", GIT_COMMITTER_NAME=author,
+                       GIT_COMMITTER_EMAIL="p@x", GIT_AUTHOR_DATE=f"{base + int(when_days * 86400)} +0000",
+                       GIT_COMMITTER_DATE=f"{base + int(when_days * 86400)} +0000")
+            full = msg + (f"\n\nCo-Authored-By: {trailer}" if trailer else "")
+            subprocess.run(["git", "-C", repo, "add", "-A"], check=True, env=env)
+            subprocess.run(["git", "-C", repo, "commit", "-qm", full], check=True, env=env)
+            return subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+        def put(name, text):
+            (Path(repo) / name).write_text(text)
+
+        subprocess.run(["git", "init", "-q", repo], check=True)
+        put("a.py", "".join(f"a{i} = {i}\n" for i in range(10)))
+        c1 = commit("add a", 0, CLAUDE)
+        put("a.py", "".join(f"a{i} = {i + (i == 3)}\n" for i in range(10)))
+        f1 = commit("fix a3", 1)                                   # fixes c1 (same file, within 3 days)
+        put("a.py", "".join(f"a{i} = {i + (i in (3, 4))}\n" for i in range(10)))
+        f2 = commit("fix a4 too", 1.5, CODEX)                       # a second fix: listed beside c1, counted once
+        put("b.py", "b = 1\n")
+        commit("add b", 2, CODEX)
+        put("b.py", "b = 2\n")
+        commit("fix b", 2.5, CLAUDE)                                # fixes Codex's add b
+        put("c.py", "c = 1\n")
+        bad = commit("add c", 6, CLAUDE)
+        env = dict(os.environ, GIT_AUTHOR_NAME="Pat", GIT_AUTHOR_EMAIL="p@x", GIT_COMMITTER_NAME="Pat",
+                   GIT_COMMITTER_EMAIL="p@x", GIT_AUTHOR_DATE=f"{base + 10 * 86400} +0000",
+                   GIT_COMMITTER_DATE=f"{base + 10 * 86400} +0000")
+        subprocess.run(["git", "-C", repo, "revert", "--no-edit", bad], check=True, stdout=subprocess.DEVNULL, env=env)
+        put("d.py", "d = 1\n")
+        commit("add d", 11)                                         # no agent; nothing follows it
+        put("e.py", "e = 1\n")
+        commit("add e", 20, CLAUDE)                                 # a 'fix' 5 days later is outside the 3 days
+        put("e.py", "e = 2\n")
+        commit("fix e", 25 - 0.01)
+
+        xr = str(ROOT / "app/Resources/evals/xray.py")
+
+        def run(*extra):
+            r = subprocess.run([sys.executable, xr, "--repo", repo, "--days", "30", "--horizon", "7", "--json", *extra],
+                               capture_output=True, text=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return json.loads(r.stdout)
+
+        agents = run()["agents"]
+        field = {"fixup": "followed_by_fix", "revert": "reverted", "churn": "rewritten_commits"}
+        for kind, key in field.items():
+            everyone = run("--commits", kind)
+            self.assertEqual(everyone["count"], len(everyone["commits"]))
+            self.assertEqual(everyone["count"], sum(a[key] for a in agents.values()), kind)
+            for name, a in agents.items():
+                lst = run("--commits", kind, "--agent", name)
+                self.assertEqual(lst["count"], len(lst["commits"]), (kind, name))
+                self.assertEqual(lst["count"], a[key], (kind, name))
+                self.assertTrue(all(r["agent"] == name for r in lst["commits"]))
+                if kind == "fixup":   # the headline's count = fixup × commits, rounded, as the app computes it
+                    self.assertEqual(lst["count"], round(a["fixup"] * a["commits"]), name)
+
+        fix = run("--commits", "fixup", "--agent", "Claude")
+        self.assertEqual(fix["count"], 1)                               # add a (add e's fix came too late)
+        row = fix["commits"][0]
+        self.assertEqual((row["sha"], row["short"], row["subject"], row["repo"]), (c1, c1[:7], "add a", os.path.basename(repo)))
+        self.assertEqual([b["sha"] for b in row["by"]], [f1, f2])       # both fixes beside it, oldest first
+        self.assertEqual([b["agent"] for b in row["by"]], ["unattributed", "Codex"])
+        self.assertEqual(run("--commits", "fixup", "--agent", "Codex")["count"], 1)
+        rev = run("--commits", "revert", "--agent", "claude")           # the name matches in any case
+        self.assertEqual([r["sha"] for r in rev["commits"]], [bad])
+        self.assertTrue(rev["commits"][0]["by"][0]["subject"].startswith("Revert"))
+        churn = run("--commits", "churn")["commits"]
+        self.assertTrue(churn and all(r["lines_rewritten"] > 0 and r["by"] for r in churn))
+        bad_kind = subprocess.run([sys.executable, xr, "--repo", repo, "--commits", "nope"], capture_output=True, text=True)
+        self.assertEqual(bad_kind.returncode, 2)
+
 class IssueCost(unittest.TestCase):
     def test_transcript_usage_sums_tokens_per_model(self):
         spec = importlib.util.spec_from_file_location("xray", ROOT / "app/Resources/evals/xray.py")
@@ -1279,7 +1360,7 @@ class SampleVerdicts(unittest.TestCase):
 
 
 class Lessons(unittest.TestCase):
-    """LAB-2070 (HP EV-12): lessons.json loads, 16 lessons in six groups, unique ids, every link a route the app knows
+    """LAB-2070 (HP EV-12): lessons.json loads, 18 lessons (16 + 2 in 2.0.5, LAB-2261) in six groups, unique ids, every link a route the app knows
     (EvalLessons.knownRoutes in OneRoofCore/EvalsLearn.swift), every 1.9.37 glossary entry carried once with its text,
     and the range explorer's numbers are the engine's Wilson (the same table EvalsLearnTests locks in Swift)."""
 
@@ -1289,10 +1370,10 @@ class Lessons(unittest.TestCase):
         self.glossary = re.findall(r'Entry\(id: "(\w+)", title: "[^"]*",\s*body: "((?:[^"\\]|\\.)*)"',
                                    (ROOT / "app/Sources/OneRoofCore/Evals.swift").read_text())
 
-    def test_sixteen_lessons_unique_grouped(self):
+    def test_eighteen_lessons_unique_grouped(self):
         ls = self.doc["lessons"]
-        self.assertEqual(len(ls), 16)
-        self.assertEqual(len({x["id"] for x in ls}), 16)
+        self.assertEqual(len(ls), 18)   # LAB-2261: + job-kinds, loop-runs
+        self.assertEqual(len({x["id"] for x in ls}), 18)
         self.assertEqual([x["title"] for x in self.doc["sections"]], ["Start", "Reading a score", "How answers are marked",
                                                                      "Agents vs models", "Our own tasks", "Reading leaderboards"])   # lane B rename (2.0.4)
         order = [x["id"] for x in self.doc["sections"]]
@@ -2374,3 +2455,14 @@ class Integration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+def test_export_job_kind_2_0_5():
+    import importlib.util, pathlib
+    spec = importlib.util.spec_from_file_location("roof_eval_k", pathlib.Path(__file__).resolve().parents[1] / "app/Resources/evals/roof_eval.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    assert m.job_kind({"task": "own_oneroof_v2", "set_name": "oneroof"}) == "one-shot"
+    assert m.job_kind({"task": "own_oneroof_v2", "agent": "claude_code"}) == "agent"
+    assert m.job_kind({"task": "gsm8k"}) == "public model"
+    assert m.job_kind({"task": "swe_bench", "agent": "claude_code"}) == "public agent"
+    assert m.job_kind({"task": "judge_oneroof_triage"}) == "grader"

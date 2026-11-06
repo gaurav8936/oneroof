@@ -53,7 +53,7 @@ final class EvalsNav: ObservableObject {
     @Published var tab: EvalsTabV2 = .overview
     /// A drill-down; setting one shows its parent tab and closes any sheet.
     @Published var route: EvalsRoute? {
-        didSet { if let r = route { if let tb = r.screen.tab, tb != tab { tab = tb }; if sheet != nil { sheet = nil } } }
+        didSet { if route != nil, sheet != nil { sheet = nil } }   // v3: a drill-down sits on the current page; it never switches page
     }
     @Published var sheet: EvalsSheet?
     /// Set up a test, pre-filled by Test them / Run both agents / Test again / Test a model on it… (nothing starts until Start).
@@ -81,12 +81,73 @@ final class EvalsNav: ObservableObject {
     enum LessonsPart: String, CaseIterable { case lessons = "Lessons", howTo = "How to" }
     enum NewRequest: String { case task, grader }
 
+    // MARK: v3 (2.0.5): no tabs. The launch view is the navigation; pages stack, drill-downs sit on top, ⌘[ goes back.
+
+    /// The page shown under any drill-down (launch, a segment page, Changes, Real history, Our tasks, Public benchmarks).
+    @Published var page: EvalsV3Screen = .launch
+    /// The pages walked to get here (the breadcrumb), newest last; `page` is not in it.
+    @Published var trail: [EvalsV3Screen] = []
+    /// The kind of job last opened, so 2.0.4's "Compare" links land on that kind's Our tests.
+    @Published var lastKind: EvalJobKind = .oneShot
+
+    /// Open a page (never a sheet or a drill-down): closes any drill-down and sheet; re-opening a page on the trail goes back to it.
+    func open(_ s: EvalsV3Screen) {
+        if s != .setup, s != .lessons, sheet != nil { sheet = nil }   // e.g. Lessons › Where everything went › Open (re-review)
+        switch s {
+        case .setup: test(nil); return
+        case .lessons: lessonsPart = .lessons; sheet = .lessons; return
+        case .oneTest: route = .oneTest(run: nil, sample: nil, only: nil, other: nil); return
+        case .allResults: route = .allResults; return
+        case .oneTask: openTask(nil); return
+        case .grader: openGrader(nil); return
+        case .oneBenchmark: openBenchmark(benchmark ?? "gsm8k"); return
+        default: break
+        }
+        route = nil; sheet = nil
+        if let k = s.segment?.0 { lastKind = k } else if s == .agentPublic || s == .changes || s == .realHistory { lastKind = .agent }
+        if s == page { return }
+        if s == .launch { trail = []; page = .launch; tab = .overview; return }
+        if let i = trail.firstIndex(of: s) { trail = Array(trail.prefix(i)); page = s; return }
+        if page != .launch || !trail.isEmpty { trail.append(page) }
+        page = s
+        tab = Self.legacyTab(s)
+    }
+    func home() { open(.launch) }
+    /// Opens One Roof › Loops (at that loop when given): a loop's own runs live there (v3 G10). Set by the shell.
+    var loopsHandler: ((String?) -> Void)?
+    func openLoops(_ id: String? = nil) { loopsHandler?(id) }
+    /// The 2.0.4 tab a v3 page stands in for (2.0.4 code still reads `tab`).
+    static func legacyTab(_ s: EvalsV3Screen) -> EvalsTabV2 {
+        switch s {
+        case .changes: return .changes; case .realHistory: return .realHistory; case .ourTasks: return .ourTasks
+        case .benchmarks, .oneShotPublic, .agentPublic: return .benchmarks
+        case .oneShotOurs, .agentOurs: return .compare
+        default: return .overview
+        }
+    }
+    /// The page a 2.0.4 tab opens now.
+    func v3Page(_ t: EvalsTabV2) -> EvalsV3Screen {
+        switch t {
+        case .overview: return .launch
+        case .compare: return lastKind == .agent ? .agentOurs : .oneShotOurs
+        case .changes: return .changes; case .realHistory: return .realHistory; case .ourTasks: return .ourTasks
+        case .benchmarks: return .benchmarks
+        }
+    }
+
     /// Every way into Set up a test goes through here (the only prefill).
     func test(_ plan: EvalRunPlan?) { draft = plan; sheet = .setup }
     /// 2.0.3's name for `test`.
     func run(_ plan: EvalRunPlan) { test(plan) }
-    func back() { route = nil }
-    func go(_ t: EvalsTabV2) { route = nil; sheet = nil; tab = t }
+    /// ⌘[ and "‹": a drill-down first, then the trail, then the launch view.
+    func back() {
+        if route != nil { route = nil; return }
+        guard page != .launch else { return }
+        let prev = trail.popLast() ?? .launch
+        page = prev; tab = Self.legacyTab(prev)
+        if let k = prev.segment?.0 { lastKind = k }
+    }
+    func go(_ t: EvalsTabV2) { open(v3Page(t)) }
     /// A 2.0.3 tab, to its new home (How to / Learn → Lessons, Run → Set up a test, Results › All × all → All results …).
     func go(_ old: EvalsLegacyTab) {
         switch old {
@@ -106,7 +167,9 @@ final class EvalsNav: ObservableObject {
     func openRun(_ id: String, sample: String? = nil, only: [String]? = nil, other: String? = nil) {
         route = .oneTest(run: id, sample: sample, only: only, other: other)
     }
-    func showResults(key: String, compareA: String? = nil) {
+    /// `kind`: the run's kind of job, so Compare with… opens that kind's Our tests (2.0.5 review P1), not the last one seen.
+    func showResults(key: String, compareA: String? = nil, kind: EvalJobKind? = nil) {
+        if let kind { lastKind = kind }
         resultsMode = .byEval; resultsKey = key; self.compareA = compareA; go(.compare)
     }
     func openLesson(_ id: String) { lesson = id; lessonsPart = .lessons; sheet = .lessons }
@@ -185,6 +248,10 @@ struct EvalsViewV2: View {
         .sheet(item: $nav.sheet) { s in sheet(s) }
         .onAppear {
             hover.openLesson = { [weak nav] in nav?.openLesson($0) }
+            nav.loopsHandler = { [weak model, weak win] id in
+                guard let model, let win else { return }
+                LoopInboxState.shared.focus = id; model.show(.loops, in: win)
+            }
             sheetHover.openLesson = { [weak nav] in nav?.openLesson($0) }
             board.start()
             board.refreshOwn()
@@ -192,9 +259,9 @@ struct EvalsViewV2: View {
             selfTest()
         }
         .onDisappear { board.stop() }
-        .onChange(of: nav.tab) { _, tab in
-            if tab == .overview { board.refreshOverview() }
-            if tab == .compare { EvalsLearnStore.note(EvalsLearnStore.resultsKey) }   // first test, step 2
+        .onChange(of: nav.page) { _, page in
+            if page == .launch { board.refreshOverview() }
+            if page == .oneShotOurs || page == .agentOurs { EvalsLearnStore.note(EvalsLearnStore.resultsKey) }   // first test, step 2
             hover.hide()
         }
         .onChange(of: nav.sheet) { _, s in
@@ -209,42 +276,70 @@ struct EvalsViewV2: View {
         .onChange(of: board.results) { _, _ in board.refreshOverview(); board.refreshOwn() }
     }
 
-    // MARK: Header: title (or "‹ parent  title") + one Draft tag, subtitle, the six tabs, Running · N, New test or task ▾
+    // MARK: Header (v3): the breadcrumb ("‹ Evals › job › source › item") + the page title + one Draft tag, the subtitle,
+    // Running · N, New test or task ▾, Lessons. No tab bar: the launch view is the navigation.
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
+            if nav.page != .launch || nav.route != nil { breadcrumb }
             HStack(alignment: .bottom, spacing: 24) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        if let r = nav.route, let back = r.screen.backTitle {
-                            Button { nav.back() } label: { Text("‹ " + back).ui(15, .semibold).foregroundStyle(t.accentText.color) }
-                                .buttonStyle(.plain).accessibilityLabel("Back to " + back)
-                                .help("Back (⌘[)")
-                            Text(r.screen.title).ui(TypeScale.display, .semibold).tracking(-0.5).foregroundStyle(t.text.color).lineLimit(1)
-                        } else {
-                            Text("Evals").ui(TypeScale.display, .semibold).tracking(-0.5).foregroundStyle(t.text.color)
+                        // A segment page's title is its question (v3): the header shows only the breadcrumb above.
+                        if !isSegmentPage {
+                            Text(pageTitle).ui(TypeScale.display, .semibold).tracking(-0.5).foregroundStyle(t.text.color).lineLimit(1)
                         }
                         if EvalsDraft.isDraft { EvalsDraftTag() }   // LAB-2220: one tag by the title, no second banner
                     }
-                    Text(subtitle).ui(14).foregroundStyle(t.text2.color).lineLimit(1)
+                    if !isSegmentPage { Text(subtitle).ui(14).foregroundStyle(t.text2.color).lineLimit(1) }
                 }
                 Spacer()
                 if board.doctor?.engine.ready == true {
                     EvalsRunningPill(count: board.runs.filter(\.isActive).count) { nav.sheet = .setup }
                     newMenu
-                }
-            }
-            if board.doctor?.engine.ready != false {
-                HStack(spacing: 8) {
-                    Segmented(options: EvalsTabV2.allCases.map { ($0, $0.title) }, selection: Binding(get: { nav.tab }, set: { nav.go($0) }))
-                        .accessibilityLabel("Evals tabs")
-                    Spacer()
-                    RoofButton("Lessons", .plain) { nav.lessonsPart = .lessons; nav.sheet = .lessons }.fixedSize()
+                    RoofButton("Lessons") { nav.lessonsPart = .lessons; nav.sheet = .lessons }.fixedSize()
                         .help("What the numbers mean, one lesson at a time")
                 }
             }
         }
         .padding(.horizontal, v2 ? CGFloat(V2Layout.Bar.contentLead) : 28).padding(.top, 22).padding(.bottom, 12)
+    }
+
+    private var isSegmentPage: Bool { nav.route == nil && (nav.page.segment != nil || nav.page == .agentPublic) }
+
+    /// The page (or drill-down) title.
+    private var pageTitle: String {
+        if let r = nav.route { return r.screen.title }
+        switch nav.page {
+        case .launch: return "Evals"
+        default: return nav.page.title
+        }
+    }
+
+    /// Each step is a button with a visible hover (LAB-2255); the kind of job is a step too (it opens that kind's Our tests).
+    private var breadcrumb: some View {
+        let steps = EvalsCrumbs.steps(page: nav.page, trail: nav.trail, drill: nav.route?.screen.title)
+        return HStack(spacing: 4) {
+            Button { nav.back() } label: {
+                HStack(spacing: 3) { Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold)); Text("Back") }
+                    .ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color)
+                    .padding(.horizontal, 7).padding(.vertical, 3).hoverHighlight(radius: Radius.button)
+            }
+            .buttonStyle(.plain).help("Back (⌘[)").accessibilityLabel("Back")
+            Text("·").ui(TypeScale.small).foregroundStyle(t.text3.color)
+            ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                if i > 0 { Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(t.text3.color) }
+                if let target = s.target {
+                    Button { nav.open(target) } label: {
+                        Text(s.title).ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color)
+                            .padding(.horizontal, 6).padding(.vertical, 3).hoverHighlight(radius: Radius.button)
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Go to " + s.title)
+                } else {
+                    Text(s.title).ui(TypeScale.small, .semibold).foregroundStyle(t.text.color).padding(.horizontal, 6)
+                }
+            }
+        }
     }
 
     private var newMenu: some View {
@@ -286,14 +381,19 @@ struct EvalsViewV2: View {
         }
     }
 
+    /// The page under any drill-down (v3 SCREEN_MAP): the launch view, the six segment pages, and the 2.0.4 screens that
+    /// keep their own page (Changes, Real history, Our tasks, Public benchmarks).
     @ViewBuilder private var tab: some View {
-        switch nav.tab {
-        case .overview: EvalsOverviewTab(board: board, nav: nav)           // lane A · EvalsOverview.swift
-        case .compare: EvalsCompareView(board: board, nav: nav)            // lane A · EvalsCompare.swift
-        case .changes: EvalsChangesView(board: board, nav: nav)            // lane A · EvalsChanges.swift
-        case .realHistory: EvalsRealHistoryView(board: board, nav: nav)    // lane A · EvalsRealHistory.swift
-        case .ourTasks: EvalsTasksView(board: board, nav: nav)             // lane B · EvalsTasks.swift
-        case .benchmarks: EvalsBenchmarksView(board: board, nav: nav)      // lane B · EvalsBenchmarks.swift
+        switch nav.page {
+        case .launch: EvalsLaunchView(board: board, nav: nav)                                  // E1.1 · EvalsLaunch.swift
+        case .oneShotPublic, .oneShotOurs, .oneShotLoops, .agentOurs, .agentLoops, .agentPublic:
+            EvalsSegmentPage(board: board, nav: nav, screen: nav.page).id(nav.page.rawValue)   // E2.x · E3.x · EvalsSegmentPage.swift
+        case .changes: EvalsChangesView(board: board, nav: nav)                                // E3.3
+        case .realHistory: EvalsRealHistoryView(board: board, nav: nav)                        // E3.4
+        case .ourTasks: EvalsTasksView(board: board, nav: nav)                                 // E5.1
+        case .benchmarks: EvalsBenchmarksView(board: board, nav: nav)                          // E6.1
+        case .oneTest, .allResults, .oneTask, .grader, .oneBenchmark, .setup, .lessons:        // never a page (nav.open routes them)
+            EvalsLaunchView(board: board, nav: nav)
         }
     }
 
@@ -330,7 +430,7 @@ struct EvalsViewV2: View {
     private var subtitle: String {
         guard let d = board.doctor else { return "Measure your agents and models on your own work, and learn what the numbers mean" }
         guard d.engine.ready else { return "The eval engine is not installed yet" }
-        if nav.tab == .compare && nav.route == nil {
+        if (nav.page == .oneShotOurs || nav.page == .agentOurs) && nav.route == nil {
             return EvalFinished.text(board.results)   // one count everywhere (QA)
         }
         return EvalsSubtitle.text(benchmarks: board.catalog.map(\.benchmarkCount), ownEvals: board.sets.count,
@@ -338,32 +438,36 @@ struct EvalsViewV2: View {
                                   running: board.runs.filter(\.isActive).count)
     }
 
-    /// ⌃⌥1…⌃⌥6 switch tabs (scoped to Evals: the buttons exist only while it shows); ⌘[ goes back from a drill-down.
+    /// v3 (D8): ⌃⌥0 the launch view, ⌃⌥1–5 the five segment pages, ⌃⌥6 public agent benchmarks, ⌃⌥7 Changes, ⌃⌥8 Real
+    /// history (scoped to Evals: the buttons exist only while it shows); ⌘[ goes back one step.
     private var shortcuts: some View {
         ZStack {
-            ForEach(EvalsTabV2.allCases) { tb in
-                Button("") { nav.go(tb) }.keyboardShortcut(KeyEquivalent(tb.keyDigit), modifiers: [.control, .option])
+            ForEach(EvalsV3Screen.allCases.filter { $0.keyDigit != nil }, id: \.self) { s in
+                Button("") { nav.open(s) }.keyboardShortcut(KeyEquivalent(s.keyDigit!), modifiers: [.control, .option])
             }
-            if nav.route != nil { Button("") { nav.back() }.keyboardShortcut("[", modifiers: .command) }
+            if nav.route != nil || nav.page != .launch { Button("") { nav.back() }.keyboardShortcut("[", modifiers: .command) }
         }
         .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
     }
 
-    /// ONEROOF_SELFTEST_EVALS_TAB=<overview|compare|one-test|all-results|changes|real-history|our-tasks|one-task|grader|
-    /// benchmarks|one-benchmark|setup|lessons>, and every 2.0.3 name (EvalsScreen.selfTest maps it to its new home).
+    /// ONEROOF_SELFTEST_EVALS_TAB=<launch|oneshot-public|oneshot-ours|oneshot-loops|agent-ours|agent-loops|agent-public|changes|
+    /// real-history|one-test|all-results|our-tasks|one-task|grader|benchmarks|one-benchmark|setup|lessons>, and every 2.0.4 /
+    /// 2.0.3 name (EvalsV3Screen.selfTest maps it to its v3 home).
     /// EVALS_RUN=<run id> (one test), EVALS_SAMPLE, EVALS_SET=<set> (one task), EVALS_JUDGE=<grader>, EVALS_BENCH=<folder>
     /// (+ EVALS_TASK), EVALS_LESSON=<lesson id>, EVALS_DONE=<id,id>, EVALS_KEY=<compare key>; setup pre-fill: EVALS_TASK,
     /// EVALS_MODELS, EVALS_AGENTS, EVALS_LIMIT, EVALS_EPOCHS.
     private func selfTest() {
         let env = ProcessInfo.processInfo.environment
-        guard let v = env["ONEROOF_SELFTEST_EVALS_TAB"], let st = EvalsScreen.selfTest(v) else { return }
-        nav.tab = st.tab
+        guard let v = env["ONEROOF_SELFTEST_EVALS_TAB"], let st = EvalsV3Screen.selfTest(v) else { return }
+        if v.lowercased() == "compare-grid" || env["ONEROOF_SELFTEST_EVALS_COMPARE_VIEW"] == "grid" { nav.lastKind = .agent }
         if let b = env["ONEROOF_SELFTEST_EVALS_BENCH"] { nav.benchmark = b }
         if let k = env["ONEROOF_SELFTEST_EVALS_KEY"] { nav.resultsKey = k }
         if let l = env["ONEROOF_SELFTEST_EVALS_LESSON"] { nav.lesson = l }   // lessons: the lesson shown
         if let d = env["ONEROOF_SELFTEST_EVALS_DONE"] { lessonsDone = d }    // lessons: ticked done
         switch st.screen {
-        case .overview, .compare, .changes, .realHistory, .ourTasks, .benchmarks: break
+        case .launch, .oneShotPublic, .oneShotOurs, .oneShotLoops, .agentOurs, .agentLoops, .agentPublic, .changes, .realHistory, .ourTasks, .benchmarks:
+            // COMPARE_VIEW=grid: the agent × model grid lives on Agent jobs › Our tests.
+            nav.open(st.screen == .oneShotOurs && nav.lastKind == .agent ? .agentOurs : st.screen)
         case .oneTest: nav.route = .oneTest(run: env["ONEROOF_SELFTEST_EVALS_RUN"], sample: env["ONEROOF_SELFTEST_EVALS_SAMPLE"], only: nil, other: nil)
         case .allResults: nav.route = .allResults
         case .oneTask: nav.openTask(env["ONEROOF_SELFTEST_EVALS_SET"])

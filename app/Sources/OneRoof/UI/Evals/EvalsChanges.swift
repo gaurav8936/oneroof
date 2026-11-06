@@ -74,7 +74,7 @@ struct EvalsChangesView: View {
                     Text("Your recent changes").ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
                     Text("read from git" + (repo.map { " (\($0))" } ?? "") + " and from agent updates · last 60 days").ui(TypeScale.caption).foregroundStyle(t.text3.color)
                     Spacer()
-                    RoofButton("Read again", .plain) { store.refreshChanges(board, force: true) }
+                    RoofButton("Read again") { store.refreshChanges(board, force: true) }   // LAB-2255: an action, a button you can see
                 }
                 .padding(14)
                 Divider()
@@ -108,8 +108,8 @@ struct EvalsChangesView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(EvalsAChanges.status(c)).ui(TypeScale.caption).foregroundStyle(c.testedAlone ? t.diffAddText.color : t.text2.color).frame(width: 150, alignment: .leading)
-            Button { testBeforeAfter(c) } label: { Text("Test before & after").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color) }
-                .buttonStyle(.plain).help("Set up a test pre-filled with the same setup and task; nothing starts until Start")
+            RoofButton("Test before & after") { testBeforeAfter(c) }.fixedSize()   // LAB-2255
+                .help("Set up a test pre-filled with the same setup and task; nothing starts until Start")
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
     }
@@ -217,15 +217,19 @@ struct EvalsChangesView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(c.isNoise || c.delta >= 0 ? "●" : "▾").ui(TypeScale.caption)
                                 .foregroundStyle(c.isNoise ? t.text3.color : (c.delta < 0 ? t.needsText.color : t.diffAddText.color))
-                            Button { nav.openRun(c.runs[0]) } label: {
-                                Text(c.text).ui(TypeScale.small).foregroundStyle(c.isNoise ? t.text2.color : t.text.color)
-                                    .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                            Button { nav.openRun(c.runs[0]) } label: {   // LAB-2255: a row that looks clickable (chevron + hover)
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text(c.text).ui(TypeScale.small).foregroundStyle(c.isNoise ? t.text2.color : t.text.color)
+                                        .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(t.accentText.color)
+                                }
+                                .padding(.horizontal, 6).padding(.vertical, 2).hoverHighlight()
                             }
                             .buttonStyle(.plain)
                             .evalHover(.compare, EvalHover.compare(diff: c.delta, lo: c.ci95.first ?? c.delta, hi: c.ci95.last ?? c.delta, paired: true))
                             Spacer()
                             if c.delta < 0, let r = board.results.first(where: { $0.id == c.runs[0] }) {
-                                RoofButton("Re-run ×3", .plain) {
+                                RoofButton("Re-run ×3") {
                                     var p = EvalRunPlan.again(r, stamp: store.stamps[r.id]?.stamp); p.epochs = 3; nav.test(p)
                                 }
                                 .help("Set up a test pre-filled with 3 attempts each; a drop only counts when it is bigger than the noise")

@@ -23,32 +23,45 @@ final class HFAccount: ObservableObject {
     private let lock = NSLock()
     private var token: String?
     private var loaded = false
+    /// LAB-2246: the one quiet read this run of the app may try (never repeated after a refusal).
+    private var quietTried = false
     /// `accepted` for the engine's queue (read under `lock`; never a hop to main, which may be waiting on the engine).
     private var acceptedSnapshot: Set<String> = []
     private static let acceptedKey = "evals.hf.accepted"
-    /// A fresh profile (--fresh-profile, self-tests) uses its own Keychain item, so it starts signed out.
+    /// A fresh profile (--fresh-profile only) uses its own Keychain item, so it starts signed out. Env self-tests are not a
+    /// fresh profile: they look up the real item, by its attributes only (no secret read, no prompt), which is harmless.
     private static var account: String { Prefs.freshProfile ? "huggingface-token.fresh" : "huggingface-token" }
     private static let service = "One Roof · Hugging Face"
 
     private init() {
         accepted = Set(Prefs.defaults.stringArray(forKey: Self.acceptedKey) ?? [])
         acceptedSnapshot = accepted
-        io.async { [weak self] in self?.loadToken() }
+        // LAB-2246: never read the secret at launch. Whether you are signed in comes from the item's attributes, which
+        // macOS gives without the password prompt.
+        io.async { [weak self] in let has = Self.keychainHasItem(); DispatchQueue.main.async { self?.signedIn = has } }
     }
 
     /// Hand the engine the user's sign-in (called when Evals starts; idempotent).
     func install() {
-        EvalEngine.extraEnvironment = { [weak self] in self?.engineEnvironment() ?? [:] }
+        EvalEngine.extraEnvironment = { [weak self] args in self?.engineEnvironment(args) ?? [:] }
     }
 
-    func engineEnvironment() -> [String: String] {
-        loadToken()
+    /// The token only for a command on a gated dataset (EvalEngine.needsHFToken); every other call gets none, even once
+    /// the token is loaded (2.0.5 review P1).
+    func engineEnvironment(_ args: [String] = []) -> [String: String] {
+        let needs = EvalEngine.needsHFToken(args, taskOfRun: { [weak self] id in self?.runTask(id) })
+        if needs { loadToken() }
         lock.lock(); defer { lock.unlock() }
         var e: [String: String] = [:]
-        if let token { e["HF_TOKEN"] = token }
+        if needs, let token { e["HF_TOKEN"] = token }
         e["ONEROOF_HF_ACCEPTED"] = EvalGate.acceptedEnv(acceptedSnapshot)
         return e
     }
+
+    /// Run id → task, from the queue (resume / run-anyway name only the run). Set by EvalsBoard on every refresh.
+    private var runTasks: [String: String] = [:]
+    func setRunTasks(_ m: [String: String]) { lock.lock(); runTasks = m; lock.unlock() }
+    private func runTask(_ id: String) -> String? { lock.lock(); defer { lock.unlock() }; return runTasks[id] }
 
     func status(_ s: EvalDataSource?) -> EvalGate.Status { EvalGate.status(s, signedIn: signedIn, accepted: accepted) }
 
@@ -110,15 +123,34 @@ final class HFAccount: ObservableObject {
     /// prompt, so a build the item doesn't trust (a test or candidate build, signed ad hoc) gets no token and gated sets
     /// stay locked. Only the owner's own Test press may prompt. `signedIn` comes from the item's existence, which needs
     /// no access to the secret.
+    ///
+    /// LAB-2246 (reopened 11-05, owner saw the prompt again): `kSecUseAuthenticationUIFail` is ignored for items in the
+    /// login (file-based) keychain, whose access list prompts any app it doesn't trust. So a build without a Developer ID
+    /// team (ad-hoc test, candidate and self-test builds) never reads the secret quietly, and a quiet read is tried once
+    /// per run of the app, never again after a refusal.
     private func loadToken(prompt: Bool = false) {
         lock.lock()
-        if loaded { lock.unlock(); return }
+        if loaded || (quietTried && !prompt) { lock.unlock(); return }
+        if !prompt { quietTried = true }
         lock.unlock()
-        let (t, locked) = Self.keychainRead(prompt: prompt)
+        let skip = !prompt && !Self.trustedBuild
+        let (t, locked) = skip ? (nil, false) : Self.keychainRead(prompt: prompt)
         let exists = t != nil || locked || Self.keychainHasItem()
-        lock.lock(); token = t; if !locked { loaded = true }; lock.unlock()
+        lock.lock(); token = t; if t != nil { loaded = true }; lock.unlock()
         DispatchQueue.main.async { [weak self] in self?.signedIn = exists }
     }
+
+    /// Signed with a Developer ID team (the released app). Ad-hoc builds have no team identifier.
+    static let trustedBuild: Bool = {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let c = code else { return false }
+        var st: SecStaticCode?
+        guard SecCodeCopyStaticCode(c, [], &st) == errSecSuccess, let s = st else { return false }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(s, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let d = info as? [String: Any] else { return false }
+        return (d[kSecCodeInfoTeamIdentifier as String] as? String).map { !$0.isEmpty } ?? false
+    }()
 
     // MARK: Keychain (generic password, this app only)
 

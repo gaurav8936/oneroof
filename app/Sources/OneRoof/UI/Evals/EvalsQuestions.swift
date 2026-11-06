@@ -399,8 +399,7 @@ struct EvalsQuestionDetail: View {
                     Text("…" + r.answerTail + ((r.model ?? "").hasPrefix("mockllm/") ? " · the free stand-in, always this" : ""))
                         .ui(TypeScale.small).foregroundStyle(t.text2.color).lineLimit(1)
                     Spacer()
-                    Button { nav.openRun(r.run, sample: detail.id) } label: { Text("transcript ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
-                        .buttonStyle(.plain)
+                    RoofButton("Transcript ›") { nav.openRun(r.run, sample: detail.id) }.fixedSize()
                 }
                 .accessibilityElement(children: .combine)
             }

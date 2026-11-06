@@ -403,8 +403,7 @@ struct EvalsGraderPage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     EvalsLabel("The rule it grades by")
                     Text(judge?.rubric ?? "").ui(TypeScale.small).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
-                    Button { tab = .rubric } label: { Text("Edit the rule ›").ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color) }
-                        .buttonStyle(.plain)
+                    RoofButton("Edit the rule ›") { tab = .rubric }.fixedSize()   // LAB-2255
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

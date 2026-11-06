@@ -27,7 +27,7 @@ public enum EvalsHowTo {
                 + "One: compare models on public benchmarks, sets of questions others published (GSM8K maths, Humanity's Last Exam, SWE-bench). "
                 + "Two: test your own agents and models on your own work, with sets built from your repository's real bugs and their fixes. "
                 + "Three: build and keep your own eval sets and judges, versioned, so next month's model is measured the same way.",
-              tab: .overview, openLabel: "Open Overview"),
+              tab: .overview, openLabel: "Open the launch view"),   // QA #11: 2.0.5 names
         Scene(id: "first", title: "A first eval in two minutes",
               body: "Open Public benchmarks, pick a Start here benchmark such as GSM8K and press Test a model on it. In Set up a test, keep the free stand-in model (mockllm) to see the whole loop at no cost, "
                 + "then tick one cheap model and five questions. The cost shows before anything starts; Start runs it in the background.",
@@ -35,11 +35,11 @@ public enum EvalsHowTo {
         Scene(id: "read", title: "Reading a result",
               body: "A score is right answers over all questions. The 95 % range says how much it could move if you asked other questions of the same kind: "
                 + "a narrow range means the number is steady. A blind guess is what guessing scores. Hover any number for what it means; Lessons has one on each.",
-              tab: .results, openLabel: "Open Compare"),
+              tab: .results, openLabel: "Open Our tests"),
         Scene(id: "compare", title: "Comparing two models or agents",
-              body: "Compare puts setups side by side on the same questions. It says whether the difference is real or could be luck, "
+              body: "Our tests puts setups side by side on the same questions. It says whether the difference is real or could be luck, "
                 + "and One test lists the questions where they disagree, so you can read what each answered.",
-              tab: .results, openLabel: "Open Compare"),
+              tab: .results, openLabel: "Open Our tests"),
         Scene(id: "build", title: "Building your own set from a repository",
               body: "Our tasks builds a set from a repository's history: each case is a real bug with the commit that fixed it. Versions keep every earlier case, "
                 + "so scores on v1 and v2 stay comparable. Test your agents on it like any benchmark.",
@@ -53,7 +53,7 @@ public enum EvalsHowTo {
                 + "or models through an API key (billed per token, capped per test). Either way the cost shows before you start.",
               tab: .run, openLabel: "Open Set up a test"),
         Scene(id: "next", title: "What to do next, and where things live",
-              body: "Overview: the three questions and what to try next. Compare: setups on one task, and All results. Changes: did my last change help. "
+              body: "The launch view: one-shot jobs and agent jobs, where their evidence comes from, and three questions. Our tests: setups on one task, and All results. Changes: did my last change help. "
                 + "Real history: what the agents' commits did. Our tasks: your sets and graders. Public benchmarks: every benchmark, its questions and published scores. "
                 + "Set up a test: what to test, on whom, at what cost. Lessons: what the numbers mean.",
               tab: .learn, openLabel: "Open Lessons"),
