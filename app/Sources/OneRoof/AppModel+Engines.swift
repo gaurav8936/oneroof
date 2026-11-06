@@ -78,7 +78,8 @@ extension AppModel {
         // LAB-1933: a loop round's asks reach you through its loop, not Needs you.
         let real = SessionScope.openDecisions(decisions) { item($0) }
         guard !selfTestDecisions.isEmpty else { return real }
-        return (real + selfTestDecisions.filter(\.isOpen)).sorted { $0.askedAt < $1.askedAt }   // LAB-2042 self-test
+        // LAB-2042 self-test; LAB-2290: a seeded loop round's prompt reaches you through its loop, as a real one does.
+        return (real + selfTestDecisions.filter { $0.isOpen && !$0.sessionId.hasPrefix("selftest-loop-round-") }).sorted { $0.askedAt < $1.askedAt }
     }
     /// Open prompts plus plans waiting for approval (S03 list, toolbar count, Dock badge).
     var openDecisionCount: Int { openDecisions.count + objectives.filter { $0.status == .review && $0.plan != nil }.count }

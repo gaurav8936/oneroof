@@ -26,14 +26,15 @@ enum LoopsRoot: String, CaseIterable {
 
 /// Drill-downs that push on the root (shown with a breadcrumb).
 enum LoopsRoute: Hashable {
-    case kind(String)                               // 7b (today: the family page)
-    case needsYou(loop: String?, item: String?)     // 7d (today: the loop items and their actions)
+    case kind(String)                               // 7b A kind's page (LAB-2287)
+    case needsYou(loop: String?, item: String?)     // 7d Needs you (LAB-2289)
     case runs                                       // 7j Runs and their rounds (LAB-2293)
     // LAB-2291 · LAB-2292 · LAB-2293 (lane B): a day from This week, Tonight, one run, a run's report.
     case day(Date, loop: String?)                   // 7f at that day (the loop's lane marked)
     case tonight                                    // 7g
     case run(String)                                // 7j with that run selected
     case report(LoopsRunRef)                        // 7k
+    case loop(String)                               // 7c One loop · Now (LAB-2288)
 
     var title: String {
         switch self {
@@ -43,6 +44,7 @@ enum LoopsRoute: Hashable {
         case .day(let d, _): return LoopsV7.dayTitle(d)
         case .tonight: return "Tonight"
         case .report(let r): return r.name + " › Run " + r.id
+        case .loop(let id): return id
         }
     }
 }
@@ -71,6 +73,11 @@ struct LoopsV7Actions {
     var openLoop: (String) -> Void
     var newLoop: () -> Void
     var startFrom: (Loop) -> Void
+    /// LAB-2287 · + New <kind> loop: the editor with the kind set.
+    var newLoopOfKind: (String) -> Void = { _ in }
+    /// LAB-2288 · 2.0.5's pop-out (every field, setup, outcomes, rounds) until 7h/7m land, and the editor / the file.
+    var popout: (String) -> Void = { _ in }
+    var edit: (String) -> Void = { _ in }
 }
 
 struct LoopsV7Shell<Activity: View, Empty: View>: View {
@@ -118,10 +125,17 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
                     .help("By kind: what each kind of loop is doing · This week · Today · Library: every loop's definition")
                     .accessibilityLabel("Loops view")
             }
-            pauseButton
-            RoofButton("+ New loop", .primary) { actions.newLoop() }
-                .help("A new loop: describe it, or start from an example (⌘N in the palette)")
+            if !pageOwnsActions {
+                pauseButton
+                RoofButton("+ New loop", .primary) { actions.newLoop() }
+                    .help("A new loop: describe it, or start from an example (⌘N in the palette)")
+            }
         }
+    }
+
+    /// LAB-2287–2289: 7b, 7c and 7d draw their own actions (kind switch and + New <kind> loop · Run now, Pause, Edit).
+    private var pageOwnsActions: Bool {
+        switch nav.stack.last { case .kind?, .loop?, .needsYou?: return true; default: return false }
     }
 
     /// Pause all / Resume all (One Roof's loops; the kit's loops keep their launchd schedule until turned off).
@@ -174,10 +188,11 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
                 library
             }
         case .kind(let f)?:
-            LoopFamilyPage(board: board, familyId: f, width: width, back: { nav.back() },
-                           openLoop: actions.openLoop, startFrom: actions.startFrom)
+            LoopKindPage(model: model, board: board, nav: nav, familyId: f, actions: actions)   // LAB-2287 · 7b
         case .needsYou(let loop, let item)?:
-            LoopsNeedsList(model: model, win: win, loop: loop, selected: item, openLoop: actions.openLoop)
+            LoopsNeedsYou(model: model, win: win, board: board, nav: nav, loop: loop, open: item)   // LAB-2289 · 7d
+        case .loop(let id)?:
+            LoopPage(model: model, win: win, board: board, nav: nav, loopId: id, actions: actions)   // LAB-2288 · 7c
         case .runs?:
             LoopRunsPage(model: model, board: board, nav: nav, actions: actions, selected: nil)   // 7j (LAB-2293)
         case .run(let id)?:
@@ -253,13 +268,16 @@ struct LoopFilterBar: View {
     @Environment(\.theme) private var t
     @Binding var filter: LoopFilter
     var kinds = true
+    /// LAB-2287 · 7b and 7d word the search for their list and draw their own chips instead of the state menu.
+    var placeholder = "Search a loop, what it does or its kind"
+    var stateMenu = true
     @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(t.text3.color).accessibilityHidden(true)
-                TextField("Search a loop, what it does or its kind", text: $filter.query)
+                TextField(placeholder, text: $filter.query)
                     .textFieldStyle(.plain).ui(13).focused($focused)
                     .accessibilityLabel("Search loops")
                 Button("", action: { focused = true }).keyboardShortcut("f", modifiers: .command).frame(width: 0, height: 0).opacity(0)
@@ -275,14 +293,14 @@ struct LoopFilterBar: View {
                     chip(LoopKinds.family(fid)?.title ?? fid, on: on, text: k.text, fill: k.fill) { filter.family = on ? nil : fid }
                 }
             }
-            Menu {
+            if stateMenu { Menu {
                 Button("Any state") { filter.state = nil }
                 ForEach(LoopFilter.State.allCases, id: \.self) { s in Button(s.label) { filter.state = s } }
             } label: {
                 Text((filter.state?.label ?? "Any state") + "  ▾").ui(12.5, .medium).foregroundStyle(t.text.color)
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .accessibilityLabel("State: " + (filter.state?.label ?? "any"))
+            .accessibilityLabel("State: " + (filter.state?.label ?? "any")) }
             if !filter.isEmpty {
                 RoofButton("Clear", .plain) { filter = LoopFilter() }
             }
@@ -325,45 +343,6 @@ struct LoopsFilteredList: View {
                         LoopLine(row: r, kitKnown: board.kitKnown, showKind: true, open: { openLoop(r.id) })
                     }
                 }
-            }
-        }
-    }
-}
-
-// MARK: - Needs you (7d until it lands)
-
-/// The loop items (one per decision) with today's actions; the title's count is the rail badge's.
-struct LoopsNeedsList: View {
-    @Environment(\.theme) private var t
-    @ObservedObject var model: AppModel
-    var win: WindowState?
-    @ObservedObject private var inbox = LoopInboxState.shared
-    let loop: String?
-    @State var selected: String?
-    var openLoop: (String) -> Void
-
-    var body: some View {
-        let items = inbox.items.filter { loop == nil || $0.loopId == loop }
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(LoopsV7.needsCount(items: items)) need\(items.count == 1 ? "s" : "") you" + (loop == nil ? "" : " from this loop")
-                     + (LoopsV7.estimateSeconds(items) > 0 ? " · " + LoopsV7.estimateLabel(LoopsV7.estimateSeconds(items)) + " (estimate)" : ""))
-                    .ui(13, .semibold).foregroundStyle(t.text2.color)
-                    .help("Estimate: 5 min per PR, 1 min per proposal, 30 s per report or other item")
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(items) { i in
-                            Button { selected = i.id } label: { LoopNeedRow(item: i, selected: (selected ?? items.first?.id) == i.id) }
-                                .buttonStyle(.plain)
-                        }
-                        if items.isEmpty { Text("Nothing needs you here.").ui(13).foregroundStyle(t.text2.color).padding(8) }
-                    }
-                }
-            }
-            .frame(width: 340)
-            if let i = items.first(where: { $0.id == (selected ?? items.first?.id) }) {
-                LoopCard(padding: 0) { LoopNeedDetail(model: model, item: i, win: win) }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
     }

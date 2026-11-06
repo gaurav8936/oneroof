@@ -64,7 +64,12 @@ struct LoopNeedDetail: View {
     @State private var dismissing = false
 
     var body: some View {
-        if embedded { content } else {
+        if item.kind == .asks {
+            // LAB-2290 · 7l: a loop round's question as its own card (the command, where, the reason and the answers).
+            if embedded { LoopQuestionCard(model: model, win: win, item: item) } else {
+                ScrollView { LoopQuestionCard(model: model, win: win, item: item).padding(24).frame(maxWidth: 820, alignment: .leading) }
+            }
+        } else if embedded { content } else {
             ScrollView { content.padding(24).frame(maxWidth: 760, alignment: .leading) }
         }
     }
