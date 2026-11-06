@@ -4,9 +4,9 @@
 // ---- Launch config: edit here, then push. ----
 const LAUNCH = {
   released: true,
-  version: '2.0.4',
+  version: '2.0.5',
   releaseDate: 'Sun 25 Oct 2026',
-  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-2.0.4.zip',
+  downloadUrl: 'https://github.com/gaurav8936/oneroof/releases/latest/download/One-Roof-2.0.5.zip',
   repo: 'https://github.com/gaurav8936/oneroof',
   blogUrl: 'https://console.zibajoon.com/blog/chorus-coding',
 };
