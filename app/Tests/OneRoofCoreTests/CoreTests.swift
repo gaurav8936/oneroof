@@ -442,6 +442,35 @@ final class RouterTests: XCTestCase {
 }
 
 final class LocalModelTests: XCTestCase {
+    /// LAB-2275: the model held ~2 GB while idle, so One Roof no longer starts it unless Settings says so.
+    func testAutoStartIsOffByDefaultAlsoForSavedSettings() throws {
+        XCTAssertFalse(AppSettings().localModelAutoStart)
+        let saved = try JSONEncoder().encode(AppSettings())
+        var j = try XCTUnwrap(JSONSerialization.jsonObject(with: saved) as? [String: Any])
+        j.removeValue(forKey: "localModelAutoStart")  // settings written before LAB-2275
+        let old = try JSONDecoder().decode(AppSettings.self, from: JSONSerialization.data(withJSONObject: j))
+        XCTAssertFalse(old.localModelAutoStart)
+        var on = AppSettings(); on.localModelAutoStart = true
+        XCTAssertTrue(try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(on)).localModelAutoStart)
+    }
+
+    func testAutoStartSettingAndEnvironment() {
+        XCTAssertFalse(LocalModel.autoStartAllowed(setting: false, environment: [:]))
+        XCTAssertTrue(LocalModel.autoStartAllowed(setting: true, environment: [:]))
+        XCTAssertTrue(LocalModel.autoStartAllowed(setting: false, environment: ["ONEROOF_LOCAL_MODEL": "1"]))
+    }
+
+    /// Off: nothing is started, even with a model file in place (no server answers on the port in tests).
+    func testEnsureRunningStartsNothingWhenAutoStartIsOff() throws {
+        let f = FileManager.default.temporaryDirectory.appendingPathComponent("lab2275-\(UUID().uuidString).gguf")
+        try Data("x".utf8).write(to: f); defer { try? FileManager.default.removeItem(at: f) }
+        try XCTSkipIf(LocalModel.shared.healthy(), "a llama-server already answers on the port")
+        let t0 = Date()
+        XCTAssertFalse(LocalModel.shared.ensureRunning(modelPath: f.path, autoStart: false))
+        XCTAssertLessThan(Date().timeIntervalSince(t0), 3, "returns at once, no 20 s wait for a server")
+        XCTAssertNil(LocalModel.shared.classify("Fix the crash", kinds: ["code": "Writing code"], modelPath: f.path))
+    }
+
     /// LAB-549: the watchdog ends the server when One Roof dies without `stop()` (force-quit, crash, SIGKILL).
     func testWatchdogEndsTheServerWhenTheParentDies() throws {
         let parent = Process()

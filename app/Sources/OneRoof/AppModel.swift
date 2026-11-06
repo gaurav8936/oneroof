@@ -120,7 +120,12 @@ final class AppModel: ObservableObject {
         didSet {
             if !SelfTest.isActive, let d = try? JSONEncoder().encode(settings) { Prefs.defaults.set(d, forKey: "settings") }
             if settings.projectsPath != oldValue.projectsPath || settings.commonPath != oldValue.commonPath
-                || settings.localModelPath != oldValue.localModelPath { Self.applyFolders(settings) }
+                || settings.localModelPath != oldValue.localModelPath
+                || settings.localModelAutoStart != oldValue.localModelAutoStart { Self.applyFolders(settings) }
+            // LAB-2275: turning Start on first use off stops the server One Roof started.
+            if oldValue.localModelAutoStart && !settings.localModelAutoStart {
+                DispatchQueue.global(qos: .utility).async { LocalModel.shared.stop() }
+            }
             if settings.learnFolders != oldValue.learnFolders { learnItems = [] }
             if !settings.dockBadge { NSApp.dockTile.badgeLabel = nil }
             if settings.accounts != oldValue.accounts || settings.removedAccounts != oldValue.removedAccounts {
@@ -244,6 +249,7 @@ final class AppModel: ObservableObject {
     static func applyFolders(_ s: AppSettings) {
         Workspace.configure(root: s.projectsFolder, shared: s.sharedFolder)
         LocalModel.configure(path: s.modelFile)
+        LocalModel.configure(autoStart: s.localModelAutoStart)
     }
 
     func start() {
