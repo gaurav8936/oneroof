@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.5.1 — The on-device model stays off unless you turn it on (6 Nov 2026)
+
+- **No more 2 GB held in the background.** One Roof used to start its on-device model (llama-server, Qwen3 1.7B) the
+  first time it sorted a task, and the model then kept about 2 GB of memory for as long as One Roof was open. It is now
+  off by default, also if you used it before: captions, task sorting and session search use the built-in rules.
+- **Turn it on in Settings › On-device model › Start on first use.** Turning it off again stops the model One Roof
+  started. A llama-server you run yourself on 127.0.0.1:8749 is still used. (LAB-2275)
+
 ## 2.0.5 — Evals v3: two kinds of job, click a colour (5 Nov 2026)
 
 Evals is still a draft (marked as one in the app). Nothing in 2.0.4's Evals was dropped: every feature has a new home, listed in
