@@ -168,7 +168,7 @@ extension LoopsV7 {
 
     /// "10:30 · every 10 min · by kit", "fail 2:30 · 2:30 tmrw · by kit", "missed · 1:00 tmrw · by kit",
     /// "today 17:00 · by One Roof", "first trial 16:30 · by kit". With the kit unread, a kit loop says so.
-    public static func lastNextBy(_ r: LoopRow, kitKnown: Bool = true, now: Date = Date(), calendar cal: Calendar = .current) -> (text: String, tone: Tone) {
+    public static func lastNextBy(_ r: LoopRow, kitKnown: Bool = true, withBy: Bool = true, now: Date = Date(), calendar cal: Calendar = .current) -> (text: String, tone: Tone) {
         var parts: [String] = []
         var tone = Tone.normal
         if r.state == .missed {
@@ -189,7 +189,7 @@ extension LoopsV7 {
             parts.append(r.schedule == "manual" ? "manual" : r.schedule)
         }
         if r.engine == .kit && !kitKnown { parts.append("kit state unknown") }
-        else { parts.append(r.engine == .kit ? "by kit" : "by One Roof") }
+        else if withBy { parts.append(r.engine == .kit ? "by kit" : "by One Roof") }   // LAB-2287: 7b has its own BY column
         return (parts.joined(separator: " · "), tone)
     }
 
@@ -382,7 +382,7 @@ extension LoopsV7 {
     }
 
     /// A goal cut to its first sentence, at most 70 characters.
-    static func shortGoal(_ g: String) -> String {
+    public static func shortGoal(_ g: String) -> String {
         var s = g.trimmingCharacters(in: .whitespacesAndNewlines)
         if let nl = s.firstIndex(of: "\n") { s = String(s[..<nl]) }
         if let dot = s.range(of: ". ") { s = String(s[..<dot.lowerBound]) }

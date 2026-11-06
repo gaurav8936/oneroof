@@ -249,7 +249,7 @@ struct LoopsView: View {
             LoopEditor(draft: d, settings: model.settings, onSave: { loop, run in
                 board.save(loop, isNew: d.isNew, run: run)
                 selected = loop.id
-                if v2 { popout = loop.id }
+                if v2, popout != nil { popout = loop.id }   // LAB-2288: from 7c the page stays; from the card, the card
                 editing = nil
             }, onCancel: { editing = nil })
             .themed(t.name)
@@ -266,8 +266,18 @@ struct LoopsView: View {
     /// LAB-2286 · the v7 shell: the landing (kinds as lanes) and the segments; screens not built yet show today's views.
     private var v7Page: some View {
         LoopsV7Shell(model: model, win: win, board: board, nav: nav,
-                     actions: LoopsV7Actions(openLoop: { popout = $0 }, newLoop: { editing = LoopDraft.new() },
-                                             startFrom: { l in editing = LoopDraft.duplicate(from: l) }),
+                     actions: LoopsV7Actions(openLoop: { nav.open(.loop($0)) }, newLoop: { editing = LoopDraft.new() },   // LAB-2288: a loop opens 7c
+                                             startFrom: { l in editing = LoopDraft.duplicate(from: l) },
+                                             newLoopOfKind: { f in
+                                                 var d = LoopDraft.new()
+                                                 d.loop.kind = LoopKinds.family(f)?.kinds.first   // LAB-2287: + New <kind> loop
+                                                 editing = d
+                                             },
+                                             popout: { popout = $0 },
+                                             edit: { id in
+                                                 guard let l = board.loops.first(where: { $0.id == id }) else { return }
+                                                 if let file = l.specFile { model.openInViewer(file) } else { editing = LoopDraft(loop: l, isNew: false) }
+                                             }),
                      activity: {
                          // 2.0.5's Activity (v2 A9, C5.1), unchanged: This week until 7e lands.
                          HStack(alignment: .top, spacing: 18) {
@@ -359,9 +369,9 @@ struct LoopsView: View {
         }
     }
 
-    /// Open a loop from elsewhere (the Inbox's Open loop, a self-test): v2 pops its card out over the page.
+    /// Open a loop from elsewhere (the Inbox's Open loop, Evals, a self-test): v2 opens its page (7c, LAB-2288).
     private func focus(_ id: String) {
-        if v2 { popout = id } else { selected = id; gallery = false }
+        if v2 { popout = nil; nav.open(.loop(id)) } else { selected = id; gallery = false }
     }
 
     /// LAB-2055 · ONEROOF_SELFTEST_LOOPVIEW=kinds|activity|kind:<family>|loop:<id> (LOOPGALLERY=1 = kinds in v2).
@@ -392,6 +402,8 @@ struct LoopsView: View {
                 }
             case _ where v.hasPrefix("kind:"): nav.setRoot(.byKind); nav.open(.kind(String(v.dropFirst(5))))
             case _ where v.hasPrefix("loop:"): nav.setRoot(.byKind); focus(String(v.dropFirst(5)))
+            case _ where v.hasPrefix("popout:"): nav.setRoot(.byKind); popout = String(v.dropFirst(7))   // 2.0.5's card (7h/7m not built)
+            case _ where v.hasPrefix("needs:"): nav.setRoot(.byKind); nav.open(.needsYou(loop: nil, item: String(v.dropFirst(6))))
             default: nav.setRoot(.byKind)
             }
             return

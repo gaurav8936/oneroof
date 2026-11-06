@@ -41,6 +41,11 @@ import OneRoofCore
 ///                                               LAB-2291–2293 (lane B): week = 7e · today = 7f · tonight = 7g ·
 ///                                               day:<yyyy-MM-dd> (7f for that day) · runs / run:<ledger run id> = 7j ·
 ///                                               report:<ledger run id> = 7k (that run's journal report)
+///                                               LAB-2287–2290: kind:<family> = 7b · loop:<id> = 7c (the loop's page) ·
+///                                               popout:<id> = 2.0.5's card · needs = 7d · needs:<item id> = 7d, that row open
+///   ONEROOF_SELFTEST_LOOPQUESTION=<loop id>     LAB-2290 (7l): a loop round asks permission (`swift package resolve`), as a
+///                                               self-test seed labelled so in its title (no live question needed); with
+///                                               PLACE=needsYou the Inbox shows its card, with LOOPVIEW=needs 7d's top row
 ///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
 ///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)
 ///   ONEROOF_SELFTEST_TERMCOLS=<n>               LAB-1299: the width the TERMTEXT rows were cut at (rows that long rejoin)
@@ -222,6 +227,10 @@ enum SelfTest {
         if env["ONEROOF_SELFTEST_DEMO"] == "1" { seedDemo(app.model) }
         if SelfTestProjects.active { SelfTestProjects.install(app.model) }   // LAB-2050: a fixture Linear (SelfTestProjects.swift)
         SelfTestHistory.run(app, env: env)   // LAB-2044–2048: History and the Action log (SelfTestHistory.swift)
+        // LAB-2290 · 7l: a loop round's permission prompt, seeded (labelled "self-test seed" in its title).
+        if let lq = env["ONEROOF_SELFTEST_LOOPQUESTION"], !lq.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { SelfTestInbox.seedLoopQuestion(app.model, loop: lq) }
+        }
         // LAB-2042 · the Inbox's blocks from the demo sessions (SelfTestInbox.swift says what each n adds).
         if let n = Int(env["ONEROOF_SELFTEST_INBOX"] ?? "") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { SelfTestInbox.seed(app.model, count: n) }
