@@ -270,3 +270,20 @@ final class EvalsV3ReReviewTests: XCTestCase {
         XCTAssertEqual(EvalsV3Answers.oursPartial([], kind: .agent, unread: 1), "1 task could not be read, so this is not the whole answer; see below.")
     }
 }
+
+final class EvalsLedgerReadOnlyTests: XCTestCase {
+    /// Gate 2.0.5 (LAB-2001 loops guard): Evals reads the live ledger without changing a byte of it.
+    func test_gate_evals_reads_the_ledger_without_changing_it() throws {
+        let p = FileManager.default.temporaryDirectory.appendingPathComponent("ro-\(UUID().uuidString).sqlite").path
+        do {
+            let w = try LoopLedger(path: p)
+            try w.recordRun(loop: "morning-brief", runId: "a", started: Date(), ended: Date(), result: "pass", summary: "")
+        }
+        let before = try Data(contentsOf: URL(fileURLWithPath: p))
+        let r = try LoopLedger(readingOnly: p)
+        XCTAssertEqual(r.counts(since: Date().addingTimeInterval(-86_400)).first?.n, 1)
+        let after = try Data(contentsOf: URL(fileURLWithPath: p))
+        XCTAssertEqual(before, after)
+        XCTAssertThrowsError(try LoopLedger(readingOnly: p + ".missing"))
+    }
+}

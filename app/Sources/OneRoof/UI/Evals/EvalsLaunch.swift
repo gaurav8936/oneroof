@@ -336,7 +336,7 @@ final class EvalsLoopsStore: ObservableObject {
             let all = LoopStore().all()
             var counts: [LoopLedger.WindowCount] = []
             var err: String?
-            do { counts = try LoopLedger().counts(since: Date().addingTimeInterval(-30 * 86_400)) }   // counted in SQLite: the whole window
+            do { counts = try LoopLedger(readingOnly: LoopLedger.defaultPath()).counts(since: Date().addingTimeInterval(-30 * 86_400)) }   // counted in SQLite: the whole window
             catch { err = "The loops' outcome ledger could not be read: \(error)" }
             let rows = EvalLoopRuns.summarize(loops: all, counts: counts)
             DispatchQueue.main.async { self.rows = rows; self.error = err; self.loaded = true }
