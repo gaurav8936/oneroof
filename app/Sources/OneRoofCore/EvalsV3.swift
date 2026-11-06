@@ -136,6 +136,22 @@ public struct EvalLoopRuns: Identifiable, Equatable, Sendable {
         return "other"
     }
 
+    /// From the ledger's window counts (LoopLedger.counts(since:)): the whole window, never capped.
+    public static func summarize(loops: [Loop], counts: [LoopLedger.WindowCount]) -> [EvalLoopRuns] {
+        var by: [String: [LoopLedger.WindowCount]] = [:]
+        for c in counts { by[c.loop, default: []].append(c) }
+        return loops.map { l in
+            var fin = 0, fail = 0, dry = 0, other = 0
+            for c in by[l.id] ?? [] {
+                switch bucket(result: c.result, mode: c.mode) {
+                case "finished": fin += c.n; case "failed": fail += c.n; case "dry": dry += c.n; default: other += c.n
+                }
+            }
+            return EvalLoopRuns(loop: l.id, title: l.displayTitle, kind: l.kind, place: EvalLoopPlace.classify(l),
+                                runs: fin + fail + other, finished: fin, failed: fail, dry: dry, lastStarted: (by[l.id] ?? []).map(\.last).max())
+        }
+    }
+
     /// Group ledger runs by loop; loops with no run in the window still get a row (runs 0) so nothing is hidden.
     public static func summarize(loops: [Loop], runs: [LoopLedger.Run]) -> [EvalLoopRuns] {
         var byLoop: [String: [LoopLedger.Run]] = [:]
@@ -385,6 +401,13 @@ public enum EvalsV3Answers {
     }
     public static let publicOneShot = "Public scores shortlist models for one-shot jobs. They never decide: that is what our tests and loop runs are for."
     public static let publicAgent = "Public agent benchmarks run an agent on other people's code, with none of our files. They can't tell you how our setup does; only our tests can."
+
+    /// Some tasks could not be read: speak only for the ones read, never "none finished" overall (2.0.5 re-review).
+    public static func oursPartial(_ boards: [EvalSetupLeaderboard], kind: EvalJobKind, unread: Int) -> String {
+        let note = "\(EvalsAWords.count(unread, "task")) could not be read, so this is not the whole answer; see below."
+        let any = boards.contains { $0.rows.contains { $0.isDone && EvalJobKind.of($0) == kind } }
+        return any ? ours(boards, kind: kind) + " " + note : note
+    }
 
     /// Our tests: per task, the best finished setup of that kind against the blind guess; else what is waiting; else not run.
     public static func ours(_ boards: [EvalSetupLeaderboard], kind: EvalJobKind) -> String {

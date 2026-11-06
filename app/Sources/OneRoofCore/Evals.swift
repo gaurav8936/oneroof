@@ -73,14 +73,23 @@ public enum EvalEngine {
     public static func needsHFToken(_ args: [String], gated: [String] = EvalSources.gatedFolders,
                                     taskOfRun: (String) -> String? = { _ in nil }) -> Bool {
         guard let cmd = args.first, hfCommands.contains(cmd) else { return false }
-        var names = Array(args.dropFirst())
-        if cmd == "resume" || cmd == "run-anyway" { names = names.compactMap(taskOfRun) }
-        return names.contains { isGated($0, gated) }
+        let rest = Array(args.dropFirst())
+        let tasks: [String]
+        switch cmd {
+        case "resume", "run-anyway": tasks = rest.first.flatMap(taskOfRun).map { [$0] } ?? []
+        case "run": tasks = Array(rest.prefix { !$0.hasPrefix("-") })   // `run <task…> --options`: the task operands only
+        default: tasks = rest.first.map { [$0] } ?? []                  // items / item <task> …
+        }
+        return tasks.contains { isGated($0, gated) }
     }
     /// "hle", "inspect_evals/hle", "hle_text", "xstest@v1" name a gated folder; "gsm8k", "own_oneroof_v2" do not.
+    /// Only the task's own name decides (never a folder on its path or an option value); our own task files never do.
     static func isGated(_ arg: String, _ gated: [String]) -> Bool {
-        let parts = arg.lowercased().split(whereSeparator: { "/:@ ".contains($0) }).map(String.init)
-        return parts.contains { p in gated.contains { g in p == g || p.hasPrefix(g + "_") } }
+        var name = arg.lowercased()
+        if name.hasSuffix(".py") || name.contains("/own_") || name.hasPrefix("own_") { return false }
+        if let slash = name.lastIndex(of: "/") { name = String(name[name.index(after: slash)...]) }   // inspect_evals/hle → hle
+        if let at = name.firstIndex(of: "@") { name = String(name[..<at]) }                          // xstest@v1 → xstest
+        return gated.contains { name == $0 || name.hasPrefix($0 + "_") }
     }
 
     /// LAB-2117 · the engine's environment for Hugging Face: only the token the user signed in with in One Roof is passed

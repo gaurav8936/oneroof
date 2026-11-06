@@ -74,9 +74,8 @@ struct EvalsSegmentPage: View {
             let sets = EvalsAStore.ownSets(board)
             if sets.contains(where: { store.boards[$0.name] == nil }) { return "Reading every setup's latest test on our tasks…" }
             let failed = sets.filter { if case .failure? = store.boards[$0.name] { return true }; return false }
-            let ans = EvalsV3Answers.ours(boards, kind: kind)
-            if !failed.isEmpty { return (boards.isEmpty ? "" : ans + " ") + "\(EvalsAWords.count(failed.count, "task")) could not be read; see below." }
-            return ans
+            if !failed.isEmpty { return EvalsV3Answers.oursPartial(boards, kind: kind, unread: failed.count) }
+            return EvalsV3Answers.ours(boards, kind: kind)
         case .oneShotLoops, .agentLoops:
             if !loops.loaded { return "Reading the loops and their runs…" }
             return EvalLoopRuns.answer(loops.rows.filter { $0.place.jobKind == kind }, kind: kind)

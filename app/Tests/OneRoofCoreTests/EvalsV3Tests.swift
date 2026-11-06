@@ -173,3 +173,33 @@ final class EvalsHFTokenScopeTests: XCTestCase {
         XCTAssertEqual(e.publicTests, 0); XCTAssertEqual(e.ours, 1)
     }
 }
+
+final class EvalsV3ReReviewTests: XCTestCase {
+    /// Re-review P1: a gated name on a path or in an option never counts; our own task files never do.
+    func test_rereview_token_from_the_task_operand_only() {
+        XCTAssertFalse(EvalEngine.needsHFToken(["run", "/e/sets/gaia/v1/own_gaia_v1.py", "--model", "x"], gated: ["gaia"]))
+        XCTAssertFalse(EvalEngine.needsHFToken(["run", "gsm8k", "--out", "/tmp/hle"], gated: ["hle"]))
+        XCTAssertTrue(EvalEngine.needsHFToken(["run", "gsm8k", "inspect_evals/gaia_level1", "--limit", "5"], gated: ["gaia"]))
+        XCTAssertFalse(EvalEngine.needsHFToken(["items", "own_hle_v1"], gated: ["hle"]))
+    }
+
+    /// Re-review P2: counted in SQLite over the whole window; a busy code loop cannot hide another loop's runs.
+    func test_rereview_ledger_window_counts() throws {
+        let p = FileManager.default.temporaryDirectory.appendingPathComponent("ledger-\(UUID().uuidString).sqlite").path
+        let led = try LoopLedger(path: p)
+        let now = Date()
+        for i in 0..<30 { try led.recordRun(loop: "cost-watch", runId: "c\(i)", started: now.addingTimeInterval(-Double(i) * 60), ended: now, result: "pass", summary: "") }
+        try led.recordRun(loop: "morning-brief", runId: "m1", started: now.addingTimeInterval(-20 * 86_400), ended: now, result: "pass", summary: "")
+        try led.recordRun(loop: "morning-brief", runId: "m2", started: now.addingTimeInterval(-40 * 86_400), ended: now, result: "pass", summary: "")
+        let counts = led.counts(since: now.addingTimeInterval(-30 * 86_400))
+        let mb = Loop(id: "morning-brief", name: "morning-brief", check: "python3 -m ae.loops run morning-brief --no-agent", repoPath: "/r", roundPrompt: "b")
+        let rows = EvalLoopRuns.summarize(loops: [mb], counts: counts)
+        XCTAssertEqual(rows[0].runs, 1, "the 20-day-old run is in, the 40-day-old one is out")
+        XCTAssertEqual(counts.filter { $0.loop == "cost-watch" }.reduce(0) { $0 + $1.n }, 30)
+    }
+
+    /// Re-review P2: one unread task means no overall "none finished".
+    func test_rereview_partial_answer() {
+        XCTAssertEqual(EvalsV3Answers.oursPartial([], kind: .agent, unread: 1), "1 task could not be read, so this is not the whole answer; see below.")
+    }
+}

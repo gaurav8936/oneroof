@@ -92,6 +92,7 @@ final class EvalsNav: ObservableObject {
 
     /// Open a page (never a sheet or a drill-down): closes any drill-down and sheet; re-opening a page on the trail goes back to it.
     func open(_ s: EvalsV3Screen) {
+        if s != .setup, s != .lessons, sheet != nil { sheet = nil }   // e.g. Lessons › Where everything went › Open (re-review)
         switch s {
         case .setup: test(nil); return
         case .lessons: lessonsPart = .lessons; sheet = .lessons; return
