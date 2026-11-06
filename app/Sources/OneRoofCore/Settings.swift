@@ -46,6 +46,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var learnAutoAdvance: Bool
     /// The on-device router model (.gguf); "" = `LocalModel.defaultModelPath`.
     public var localModelPath: String
+    /// LAB-2275 · Start the on-device model (llama-server, ~2 GB) on first use. Off by default, also for existing
+    /// settings: off, One Roof never starts it and uses the built-in rules; a server already running on its port is used.
+    public var localModelAutoStart: Bool
     /// The first-run setup window has been completed (or skipped by a settings migration).
     public var setupDone: Bool
     /// "bold" (filled stickers, white text) or "soft" (tinted stickers, coloured text). Owner picks.
@@ -165,6 +168,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         learnFolders = []
         learnAutoAdvance = true
         localModelPath = ""
+        localModelAutoStart = false
         setupDone = false
     }
 
@@ -254,6 +258,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // LAB-1894 · `learnClassic` (Settings › Learn › classic screens, 1.9.32–1.9.34) is gone with the classic screens: a saved
         // value is ignored and no longer written.
         localModelPath = try c.decodeIfPresent(String.self, forKey: .localModelPath) ?? fresh.localModelPath
+        localModelAutoStart = try c.decodeIfPresent(Bool.self, forKey: .localModelAutoStart) ?? fresh.localModelAutoStart
         setupDone = try c.decodeIfPresent(Bool.self, forKey: .setupDone) ?? fresh.setupDone
     }
 
