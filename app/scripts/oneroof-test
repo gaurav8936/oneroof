@@ -30,10 +30,11 @@
 set -uo pipefail
 
 # A minimal environment: the calling shell may point at the live roofd (ONEROOF_ROOFD, ONEROOF_ROOFD_BIN, …).
+# LAB-2251: ONEROOF_NO_KEYCHAIN=1 here and in every launcher below: no test run touches the login Keychain.
 if [ -z "${ONEROOF_TEST_CLEAN:-}" ]; then
   exec env -i HOME="$HOME" USER="${USER:-$(id -un)}" LOGNAME="${LOGNAME:-$(id -un)}" SHELL="${SHELL:-/bin/zsh}" \
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin" LANG=en_US.UTF-8 TMPDIR="${TMPDIR:-/tmp/}" \
-    ${ONEROOF_AE_DECK_REPO:+ONEROOF_AE_DECK_REPO="$ONEROOF_AE_DECK_REPO"} ONEROOF_TEST_CLEAN=1 "$0" "$@"
+    ${ONEROOF_AE_DECK_REPO:+ONEROOF_AE_DECK_REPO="$ONEROOF_AE_DECK_REPO"} ONEROOF_NO_KEYCHAIN=1 ONEROOF_TEST_CLEAN=1 "$0" "$@"
 fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; APPDIR="$(cd "$HERE/.." && pwd)"; REPO="$(cd "$APPDIR/.." && pwd)"; T="$HERE/test"

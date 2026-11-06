@@ -109,4 +109,23 @@ enum SelfTestInbox {
         }
         m.selfTestDecisions = out
     }
+
+    /// LAB-2290 · ONEROOF_SELFTEST_LOOPQUESTION=<loop id>: that loop's round 3 asks to run `swift package resolve` (a
+    /// seed: the loop's title says "self-test seed"; the prompt has no pane, so answering records it in place).
+    static func seedLoopQuestion(_ m: AppModel, loop: String) {
+        let sid = "selftest-loop-round-" + loop
+        let now = Date()
+        let title = (LoopInboxState.store().load(loop)?.displayTitle ?? loop) + " (self-test seed)"
+        LoopInboxState.shared.seedForSelfTest([LoopInbox.Item(
+            id: "asks-" + loop, kind: .asks, loopId: loop, loopTitle: title,
+            headline: "Loop \(title): round 3 asks something", detail: "The round's agent waits for an answer in its terminal.",
+            when: now.addingTimeInterval(-2 * 60), sessionId: sid)])
+        let screen = [" Bash command", "", "   swift package resolve", "   Fetch the package the fix needs", "",
+                      " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for swift package commands", "   3. No (esc)"]
+        m.selfTestDecisions.removeAll { $0.sessionId == sid }
+        m.selfTestDecisions.append(Decision(sessionId: sid, agent: .claude, kind: .runCommand, command: "swift package resolve",
+                                            why: "the fix needs a package the worktree hasn't fetched", touches: "Fetches packages into the loop's worktree.",
+                                            risk: .low, ifNo: "The round stops and waits.", pattern: "swift package", repo: "labs/oneroof",
+                                            askedAt: now.addingTimeInterval(-2 * 60), screen: screen))
+    }
 }

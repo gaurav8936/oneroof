@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.0.6 — Loops, made over: what needs you, what's running, is it worth it (6 Nov 2026)
+
+Loops opens on its kinds as lanes and splits what the old page mixed together: what needs you, what is running and
+when, whether it is worth it, and how each loop is set up. Every number comes from your own loops, the kit and the
+outcome ledger.
+
+- **Real state for every loop.** Loops run by the Agentic Engineering kit (`ae`, on launchd) used to show "Off" even
+  while they ran every few minutes. One Roof now reads the kit's on/off and mode (live or trial) and names who runs each
+  loop: the kit or One Roof. (LAB-2278)
+- **By kind.** Watch · Check · Improve · Report · Other as lanes: the loops that are on, their last runs as a strip,
+  last and next run, and what each kind needs from you (Review, Run now, Turn on, Set kind).
+- **Missed runs show.** Each loop's schedule is turned into the runs it should have made; a night that didn't run is
+  shown as missed, on the lanes, in This week and in Needs you.
+- **Needs you, counted once.** One item per decision (a loop's commits are one PR), the same number on the rail, the
+  landing, the Inbox and the page; items older than 7 days fold into Stale.
+- **This week, Today, Tonight.** A day-by-day grid with runs, failures, trial runs, missed and still to come; a 24-hour
+  clock with a now line; tonight's runs and scheduled sessions in one list.
+- **Runs and reports.** One runs feed for both engines with time per run; a run opens its report as steps, findings
+  and a one-line meaning.
+- **One loop's page.** State, schedule, recent runs, what waits for you, and its actions, instead of the pop-out.
+- **A round's question** shows the command, the worktree and why; Allow once and Deny are your answers. Always for this
+  loop writes one exact allow rule into that loop's own agent settings, never a blanket one.
+- **Library, New and Edit.** Every loop's definition with the same filter bar; Set kind for your own loops. A kit loop
+  you turn on starts with trial (shadow) runs that only say what they would do; a One Roof loop is marked "trial" for
+  its first 3 runs, which work on the loop's own branch.
+- **Evals fills the window.** The Evals pages no longer stop at a fixed width. (LAB-2273)
+- **No more Hugging Face password prompts from test copies.** Only One Roof running from /Applications reads the
+  Hugging Face token; test and candidate copies never touch the Keychain. (LAB-2246, LAB-2251)
+
 ## 2.0.5.1 — The on-device model stays off unless you turn it on (6 Nov 2026)
 
 - **No more 2 GB held in the background.** One Roof used to start its on-device model (llama-server, Qwen3 1.7B) the

@@ -42,7 +42,7 @@ struct EvalsAllResultsView: View {
                 }
                 everyRun(g)
             }
-            .frame(maxWidth: 1340, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)   // LAB-2273: flexes with the window
             .padding(.horizontal, 24).padding(.bottom, 24)
         }
     }

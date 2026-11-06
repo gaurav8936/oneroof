@@ -70,7 +70,8 @@ launch() {   # launch <run dir> <scenario file> [VAR=value …] → pid
   if [ -n "$s" ]; then sed "s|@DIR@|$WORKDIR|g" "$s" > "$d/script.txt"; script=(ONEROOF_SELFTEST_SCRIPT="$d/script.txt"); fi
   # LAB-2001: a scratch shared folder (live loops copied), never the live loops.
   local shared="${ONEROOF_TEST_SHARED:-$d/shared}"; bash "$APPDIR/scripts/test/scratch-shared.sh" "$shared" >/dev/null
-  env ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED="$PROFILE/defaults.plist" ONEROOF_STORE="$d/store.sqlite" \
+  # LAB-2251: no Keychain call from a test run (older A/B builds ignore the flag; the fresh profile keeps them off the item).
+  env ONEROOF_NO_KEYCHAIN=1 ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED="$PROFILE/defaults.plist" ONEROOF_STORE="$d/store.sqlite" \
       ONEROOF_SHARED="$shared" ONEROOF_SELFTEST_DEMO=0 ONEROOF_SELFTEST_UI2=1 ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" \
       ${script[@]+"${script[@]}"} ONEROOF_SELFTEST_OUT="$d/st" "$@" "$BIN" > "$d/app-stdout.txt" 2>&1 &
   echo $!

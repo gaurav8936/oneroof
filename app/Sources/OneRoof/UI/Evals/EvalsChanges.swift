@@ -39,7 +39,7 @@ struct EvalsChangesView: View {
                 sameSetupCard
                 loopCard
             }
-            .frame(maxWidth: 1100, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)   // LAB-2273: flexes with the window
             .padding(.bottom, 20)
         }
         .onAppear { store.refreshChanges(board); store.refreshBoards(board); loadPair() }

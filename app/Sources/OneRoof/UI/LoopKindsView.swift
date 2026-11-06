@@ -36,10 +36,30 @@ struct LoopLabel: View {
 struct LoopStateChip: View {
     @Environment(\.theme) private var t
     let loop: Loop
+    /// LAB-2278 · LP-1: the loop's v7 row. A kit loop then says what the kit says (On · live, On · trial, Off, or
+    /// "kit state unknown"), never the Off its file implies.
+    var row: LoopRow? = nil
+    var kitKnown = true
     var body: some View {
+        if let r = row, r.engine == .kit, let words = LoopLook.onLabel(r, kitKnown: kitKnown) {
+            let p = LoopLook.tone(LoopLook.onTone(r, kitKnown: kitKnown), theme: t.name)
+            Text(words)
+                .ui(10.5, .semibold)
+                .foregroundStyle(p.text.color)
+                .padding(.vertical, 1).padding(.horizontal, 7)
+                .background(Capsule().fill(p.fill.color))
+                .overlay { if !r.on || (r.engine == .kit && !kitKnown) { Capsule().strokeBorder(t.separatorStrong.color, lineWidth: 1) } }
+                .lineLimit(1).fixedSize()
+                .accessibilityLabel("Status: " + words + (r.engine == .kit ? ", run by the kit" : ""))
+        } else {
+            legacy
+        }
+    }
+
+    private var legacy: some View {
         let p = LoopLook.pill(loop.state, theme: t.name)
         let label = LoopLook.label(loop)
-        Text(label)
+        return Text(label)
             .ui(10.5, .semibold)
             .foregroundStyle(p.text.color)
             .padding(.vertical, 1).padding(.horizontal, 7)
@@ -91,12 +111,21 @@ struct LoopButton: View {
 struct LoopNameChip: View {
     @Environment(\.theme) private var t
     let loop: Loop
+    /// LAB-2278: a kit loop's dot and label follow the kit (on, trial, off), not its file.
+    var row: LoopRow? = nil
+    var kitKnown = true
     var open: () -> Void
+    private var kitWords: String? { row.flatMap { $0.engine == .kit ? LoopLook.onLabel($0, kitKnown: kitKnown) : nil } }
     var body: some View {
         let c = LoopLook.chip(mine: loop.origin == .mine, theme: t.name)
         Button(action: open) {
             HStack(spacing: 5) {
-                StatusDot(status: loop.state.pillStatus, size: 7)
+                if let r = row, r.engine == .kit {
+                    Circle().fill((kitKnown ? LoopLook.dot(r.state, theme: t.name) : t.text3).color).frame(width: 7, height: 7).frame(width: 11, height: 11)
+                        .accessibilityHidden(true)
+                } else {
+                    StatusDot(status: loop.state.pillStatus, size: 7)
+                }
                 Text(loop.displayTitle).ui(12, .medium).foregroundStyle(c.text.color).lineLimit(1)
             }
             .padding(.vertical, 3.5).padding(.horizontal, 9)
@@ -107,7 +136,7 @@ struct LoopNameChip: View {
         .buttonStyle(PressStyle(radius: 12))   // a chip's capsule (a 999 radius draws odd continuous corners)
         .hoverHighlight(radius: 12)
         .help(loop.goal.isEmpty ? loop.displayTitle : loop.goal)
-        .accessibilityLabel("\(loop.displayTitle), \(loop.origin.label.lowercased()), \(LoopLook.label(loop).lowercased())")
+        .accessibilityLabel("\(loop.displayTitle), \(loop.origin.label.lowercased()), \((kitWords ?? LoopLook.label(loop)).lowercased())")
     }
 }
 
@@ -127,7 +156,7 @@ struct LoopKindsView: View {
             if !pinned.isEmpty {
                 HStack(alignment: .center, spacing: 8) {
                     LoopLabel("Pinned")
-                    FlowLayout(spacing: 6) { ForEach(pinned) { l in LoopNameChip(loop: l) { openLoop(l.id) } } }
+                    FlowLayout(spacing: 6) { ForEach(pinned) { l in LoopNameChip(loop: l, row: board.row(l.id), kitKnown: board.kitKnown) { openLoop(l.id) } } }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Pinned loops")
@@ -171,7 +200,7 @@ struct LoopKindsView: View {
                 if g.loops.isEmpty {
                     Text("No loops of this kind yet. + New loop starts one.").ui(12).foregroundStyle(t.text2.color)
                 } else {
-                    FlowLayout(spacing: 6) { ForEach(g.loops) { l in LoopNameChip(loop: l) { openLoop(l.id) } } }
+                    FlowLayout(spacing: 6) { ForEach(g.loops) { l in LoopNameChip(loop: l, row: board.row(l.id), kitKnown: board.kitKnown) { openLoop(l.id) } } }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -253,12 +282,17 @@ struct LoopFamilyPage: View {
                 Button { openLoop(l.id) } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 7) {
-                            StatusDot(status: l.state.pillStatus)
+                            if let r = board.row(l.id), r.engine == .kit {   // LAB-2278: the kit's state, not the file's
+                                Circle().fill((board.kitKnown ? LoopLook.dot(r.state, theme: t.name) : t.text3).color)
+                                    .frame(width: 8, height: 8).frame(width: 12, height: 12).accessibilityHidden(true)
+                            } else {
+                                StatusDot(status: l.state.pillStatus)
+                            }
                             Text(l.displayTitle).ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                             Text(l.origin.label).ui(11, .medium).foregroundStyle(t.text2.color)
                             Text(l.externalSchedule ?? l.trigger.label).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                             Spacer(minLength: 6)
-                            LoopStateChip(loop: l)
+                            LoopStateChip(loop: l, row: board.row(l.id), kitKnown: board.kitKnown)   // LAB-2278
                         }
                         Text(l.goal.isEmpty ? "No goal written" : l.goal).ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
                     }

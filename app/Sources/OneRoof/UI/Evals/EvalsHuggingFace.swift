@@ -33,13 +33,30 @@ final class HFAccount: ObservableObject {
     private static var account: String { Prefs.freshProfile ? "huggingface-token.fresh" : "huggingface-token" }
     private static let service = "One Roof · Hugging Face"
 
+    /// LAB-2251: why this copy treats Hugging Face as locked (a test run, or not the released app in /Applications), nil
+    /// when it may use the Keychain.
+    let lockedReason: String? = HFKeychainPolicy.lockedLine(HFAccount.keychainDecision)
+
     private init() {
         accepted = Set(Prefs.defaults.stringArray(forKey: Self.acceptedKey) ?? [])
         acceptedSnapshot = accepted
         // LAB-2246: never read the secret at launch. Whether you are signed in comes from the item's attributes, which
-        // macOS gives without the password prompt.
+        // macOS gives without the password prompt. LAB-2251: a copy that may not use the Keychain asks nothing at all.
+        guard Self.keychainAllowed else { return }
         io.async { [weak self] in let has = Self.keychainHasItem(); DispatchQueue.main.async { self?.signedIn = has } }
     }
+
+    /// LAB-2251 · HFKeychainPolicy: ONEROOF_NO_KEYCHAIN=1 (every test launcher) → no Keychain call at all; otherwise only a
+    /// Developer-ID-signed app running from /Applications may read the token (quietly or prompted). Any other copy treats
+    /// Hugging Face as locked and says so. The env is checked first, so a test run never even inspects its own signature.
+    /// Older builds used as A/B baselines don't honour ONEROOF_NO_KEYCHAIN: the harness starts them with
+    /// ONEROOF_FRESH_PROFILE=1, so their launch-time query looks for "huggingface-token.fresh", which does not exist.
+    static let keychainDecision: HFKeychainPolicy.Decision = {
+        let env = ProcessInfo.processInfo.environment
+        if HFKeychainPolicy.disabled(env: env) { return .disabledForTests }
+        return HFKeychainPolicy.decision(env: env, bundlePath: Bundle.main.bundlePath, trusted: trustedBuild)
+    }()
+    static var keychainAllowed: Bool { keychainDecision == .allowed }
 
     /// Hand the engine the user's sign-in (called when Evals starts; idempotent).
     func install() {
@@ -74,6 +91,7 @@ final class HFAccount: ObservableObject {
     /// Save a pasted token to the Keychain (refused when it doesn't look like a Hugging Face token), then test it.
     func signIn(_ raw: String) {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.keychainAllowed else { testResult = lockedReason; return }   // LAB-2251
         guard EvalGate.looksLikeToken(t) else { testResult = "That isn't a Hugging Face access token (it starts with hf_)."; return }
         io.async { [weak self] in
             let ok = Self.keychainSave(t)
@@ -87,7 +105,7 @@ final class HFAccount: ObservableObject {
 
     func signOut() {
         io.async { [weak self] in
-            Self.keychainDelete()
+            if Self.keychainAllowed { Self.keychainDelete() }   // LAB-2251
             self?.lock.lock(); self?.token = nil; self?.lock.unlock()
             DispatchQueue.main.async { self?.signedIn = false; self?.user = nil; self?.testResult = "Signed out. Gated sets are locked again." }
         }
@@ -95,6 +113,7 @@ final class HFAccount: ObservableObject {
 
     /// Ask Hugging Face who the token belongs to (whoami); nothing else is sent.
     func test() {
+        guard Self.keychainAllowed else { testResult = lockedReason; return }   // LAB-2251: no prompt from a copy
         testing = true
         io.async { [weak self] in
             guard let self else { return }
@@ -133,8 +152,10 @@ final class HFAccount: ObservableObject {
         if loaded || (quietTried && !prompt) { lock.unlock(); return }
         if !prompt { quietTried = true }
         lock.unlock()
-        let skip = !prompt && !Self.trustedBuild
-        let (t, locked) = skip ? (nil, false) : Self.keychainRead(prompt: prompt)
+        // LAB-2251: only the released app in /Applications reads the token (quiet or prompted); any other copy, and every
+        // test run (ONEROOF_NO_KEYCHAIN=1), makes no Keychain call and keeps Hugging Face locked.
+        guard Self.keychainAllowed else { return }   // HFKeychainPolicy.mayRead, decided once per run
+        let (t, locked) = Self.keychainRead(prompt: prompt)
         let exists = t != nil || locked || Self.keychainHasItem()
         lock.lock(); token = t; if t != nil { loaded = true }; lock.unlock()
         DispatchQueue.main.async { [weak self] in self?.signedIn = exists }
@@ -239,6 +260,9 @@ struct EvalsLockCard: View {
                     RoofButton("Settings › Evals") { NotificationCenter.default.post(name: .openEvalsSettings, object: nil) }
                 }
                 Text(status.label).ui(TypeScale.caption, .semibold, mono: true).foregroundStyle(t.needsText.color)
+                if let why = HFAccount.shared.lockedReason {   // LAB-2251: this copy never reads the token
+                    Text(why).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: 640, alignment: .leading)
@@ -264,9 +288,11 @@ struct EvalsSettingsPane: View {
             }
             Section("Hugging Face account") {
                 LabeledContent("Status") {
-                    Text(hf.signedIn ? (hf.user.map { "Signed in as \($0)" } ?? "Token saved in the Keychain") : "Not signed in")
+                    Text(hf.lockedReason != nil ? "Locked in this copy" : hf.signedIn ? (hf.user.map { "Signed in as \($0)" } ?? "Token saved in the Keychain") : "Not signed in")
                 }
-                if hf.signedIn {
+                if let why = hf.lockedReason {
+                    Text(why).font(.caption).foregroundStyle(.secondary)   // LAB-2251
+                } else if hf.signedIn {
                     HStack {
                         Button(hf.testing ? "Testing…" : "Test") { hf.test() }.disabled(hf.testing)
                         Button("Sign out") { hf.signOut() }
