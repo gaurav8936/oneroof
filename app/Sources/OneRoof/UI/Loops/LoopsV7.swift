@@ -35,6 +35,9 @@ enum LoopsRoute: Hashable {
     case run(String)                                // 7j with that run selected
     case report(LoopsRunRef)                        // 7k
     case loop(String)                               // 7c One loop · Now (LAB-2288)
+    // LAB-2294 · LAB-2295 (lane C): a new loop (its draft is LoopsNav.draft) and editing one.
+    case newLoop                                    // 7i
+    case edit(id: String, name: String)             // 7m
 
     var title: String {
         switch self {
@@ -45,6 +48,8 @@ enum LoopsRoute: Hashable {
         case .tonight: return "Tonight"
         case .report(let r): return r.name + " › Run " + r.id
         case .loop(let id): return id
+        case .newLoop: return "New loop"
+        case .edit(_, let name): return name + " › Edit"
         }
     }
 }
@@ -57,6 +62,15 @@ final class LoopsNav: ObservableObject {
     @Published var filters: [String: LoopFilter] = [:]
     /// Self-tests set the view without saving it.
     var persist = true
+    /// LAB-2295 · 7i: the new loop's starting draft (blank, from an example, or a duplicate).
+    @Published var draft: LoopDraft?
+    /// Bumped by every newLoop, so 7i starts again from the new draft.
+    @Published var draftSerial = 0
+    /// LAB-2294 · 7h: the Library's selected loop (7c's How it's set up opens it there).
+    @Published var librarySelected: String?
+
+    /// 7i with a draft.
+    func newLoop(_ d: LoopDraft) { draft = d; draftSerial += 1; if stack.last != .newLoop { stack.append(.newLoop) } }
 
     init() { root = LoopsRoot(saved: Prefs.viewState.string(forKey: "loops.view") ?? "") }
 
@@ -78,6 +92,8 @@ struct LoopsV7Actions {
     /// LAB-2288 · 2.0.5's pop-out (every field, setup, outcomes, rounds) until 7h/7m land, and the editor / the file.
     var popout: (String) -> Void = { _ in }
     var edit: (String) -> Void = { _ in }
+    /// LAB-2295: the full 2.0.5 editor sheet for what 7i and 7m don't draw (a hosted agent's connection).
+    var fullEditor: (LoopDraft) -> Void = { _ in }
 }
 
 struct LoopsV7Shell<Activity: View, Empty: View>: View {
@@ -94,7 +110,6 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
     @ViewBuilder var empty: () -> Empty
     var forceEmpty = false
     @State private var width: CGFloat = 1100
-    @State private var gallery = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -135,7 +150,8 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
 
     /// LAB-2287–2289: 7b, 7c and 7d draw their own actions (kind switch and + New <kind> loop · Run now, Pause, Edit).
     private var pageOwnsActions: Bool {
-        switch nav.stack.last { case .kind?, .loop?, .needsYou?: return true; default: return false }
+        // LAB-2295: 7i and 7m end with their own Save buttons (no Pause all / + New loop over a form).
+        switch nav.stack.last { case .kind?, .loop?, .needsYou?, .newLoop?, .edit?: return true; default: return false }
     }
 
     /// Pause all / Resume all (One Roof's loops; the kit's loops keep their launchd schedule until turned off).
@@ -151,18 +167,12 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
 
     // MARK: Banners (7n until it lands)
 
+    /// LAB-2294 · 7n: roofd down (its own status line), everything paused, kit unknown, a failed write (Try again ·
+    /// Dismiss), and on the landing the loops that need a setting (LoopsStates.swift).
     @ViewBuilder private var banners: some View {
-        if let e = board.error {
-            Text(e).ui(12.5).foregroundStyle(t.needsText.color).textSelection(.enabled)
-                .accessibilityLabel("Error: " + e)
-        }
-        if !board.kitKnown {
-            let p = LoopLook.tone(.needsYou, theme: t.name)
-            Text("Kit state unknown: `ae loops list` could not be read, so the kit's loops show as unknown, never as off. One Roof's own loops are shown as they are.")
-                .ui(12.5).foregroundStyle(p.text.color)
-                .padding(.vertical, 7).padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).fill(p.fill.color))
+        LoopsStateBanners(model: model, board: board)
+        if nav.stack.isEmpty, nav.root == .byKind, !board.setupItems.isEmpty, !board.loops.isEmpty, !forceEmpty {
+            LoopsNeedsSetupCard(model: model, board: board)
         }
     }
 
@@ -185,7 +195,7 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
             case .today:
                 LoopsToday(model: model, board: board, nav: nav, actions: actions, day: nil, focus: nil)   // 7f (LAB-2292)
             case .library:
-                library
+                LoopsLibrary(model: model, board: board, nav: nav, actions: actions)   // 7h (LAB-2294)
             }
         case .kind(let f)?:
             LoopKindPage(model: model, board: board, nav: nav, familyId: f, actions: actions)   // LAB-2287 · 7b
@@ -203,33 +213,15 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
             LoopsTonight(model: model, board: board, nav: nav, actions: actions)   // 7g (LAB-2292)
         case .report(let r)?:
             LoopRunReport(model: model, board: board, nav: nav, actions: actions, run: r)   // 7k (LAB-2293)
+        case .newLoop?:
+            LoopNew(model: model, board: board, nav: nav, actions: actions, start: nav.draft ?? LoopDraft.new())   // 7i (LAB-2295)
+                .id(nav.draftSerial)
+        case .edit(let id, _)?:
+            LoopEdit(model: model, board: board, nav: nav, actions: actions, loopId: id)   // 7m (LAB-2295)
+                .id(id)
         }
     }
 
-    /// Library (7h until it lands): the filter bar over every loop; with no filter, the kinds cards (or the Gallery).
-    @ViewBuilder private var library: some View {
-        let f = nav.filter("7h")
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                LoopFilterBar(filter: f)
-                RoofButton(gallery ? "‹ Kinds" : "Gallery") { gallery.toggle() }
-                    .help("The kinds of loops, what each produces, and a real sample of each")
-            }
-            ScrollView {
-                Group {
-                    if !f.wrappedValue.isEmpty {
-                        LoopsFilteredList(board: board, filter: f, openLoop: actions.openLoop)
-                    } else if gallery {
-                        LoopGalleryView(board: board, openLoop: actions.openLoop, startFrom: actions.startFrom)
-                    } else {
-                        LoopKindsView(board: board, width: width, openFamily: { nav.open(.kind($0)) }, openLoop: actions.openLoop)
-                    }
-                }
-                .padding(.bottom, 8)
-            }
-            .defaultScrollAnchor(.top)
-        }
-    }
 }
 
 // MARK: - Breadcrumb

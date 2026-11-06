@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 APP="${1:-$ROOT/app/build/One Roof.app}"
 OUT="$(mktemp -d)/fields"
 RD="$(mktemp -d /tmp/oneroof-fields.XXXX)"
-env ROOFD_DIR="$RD" ONEROOF_FRESH_PROFILE=1 ONEROOF_STORE="$OUT.sqlite" ONEROOF_SELFTEST_UI2=1 ONEROOF_SELFTEST_EDITAGENTS=1 \
+env ONEROOF_NO_KEYCHAIN=1 ROOFD_DIR="$RD" ONEROOF_FRESH_PROFILE=1 ONEROOF_STORE="$OUT.sqlite" ONEROOF_SELFTEST_UI2=1 ONEROOF_SELFTEST_EDITAGENTS=1 \
     ONEROOF_SELFTEST_WAIT=40 ONEROOF_SELFTEST_QUIT=1 ONEROOF_SELFTEST_OUT="$OUT" "$APP/Contents/MacOS/OneRoof" >/dev/null 2>&1 &
 pid=$!
 for _ in $(seq 1 90); do kill -0 $pid 2>/dev/null || break; sleep 1; done

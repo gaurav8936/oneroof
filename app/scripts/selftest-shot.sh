@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Capture One Roof in-process (no screen takeover): scripts/selftest-shot.sh <name> [VAR=value ...]
-# Uses a scratch store, the demo sessions, and quits after the snapshot. Output: $OUT_DIR/<name>.png/.json/.txt
+# Uses a scratch store, the demo sessions, no Keychain (ONEROOF_NO_KEYCHAIN=1, LAB-2251), and quits after the snapshot. Output: $OUT_DIR/<name>.png/.json/.txt
 # SHOT_TIMEOUT=<seconds> (default 60) gives a slow page longer before the app is stopped (QA m13: Real history's
 # X-ray over 60 days takes about 80 s).
 set -euo pipefail
@@ -9,7 +9,7 @@ NAME="$1"; shift
 OUT_DIR="${OUT_DIR:-/tmp/oneroof-shots}"
 mkdir -p "$OUT_DIR/store-$NAME"
 APP="build/One Roof.app/Contents/MacOS/OneRoof"
-env ONEROOF_STORE="$OUT_DIR/store-$NAME/sessions.sqlite" ONEROOF_SELFTEST_DEMO=1 ONEROOF_SELFTEST_QUIT=1 \
+env ONEROOF_NO_KEYCHAIN=1 ONEROOF_STORE="$OUT_DIR/store-$NAME/sessions.sqlite" ONEROOF_SELFTEST_DEMO=1 ONEROOF_SELFTEST_QUIT=1 \
     ONEROOF_SELFTEST_OUT="$OUT_DIR/$NAME" "$@" "$APP" >/dev/null 2>&1 &
 PID=$!
 TIMEOUT="${SHOT_TIMEOUT:-60}"

@@ -212,7 +212,7 @@ class Sim:
         env.update({
             "PATH": f"{self.bindir}:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin",
             "ZDOTDIR": self.zdot, "SIM_LOG": os.path.join(self.run, "agents.tsv"),
-            "ONEROOF_FRESH_PROFILE": "1", "ONEROOF_PROFILE_SEED": os.path.join(self.run, "seed.plist"),
+            "ONEROOF_NO_KEYCHAIN": "1", "ONEROOF_FRESH_PROFILE": "1", "ONEROOF_PROFILE_SEED": os.path.join(self.run, "seed.plist"),
             "ONEROOF_STORE": os.path.join(self.run, "sessions.sqlite"), "ONEROOF_SELFTEST_DEMO": "0",
             "ONEROOF_SELFTEST_UI2": "1",    # the v2 window the owner runs (Needs you place)
             "ONEROOF_SELFTEST_SCRIPT": self.script, "ONEROOF_SELFTEST_OUT": os.path.join(self.shots, "sim"),

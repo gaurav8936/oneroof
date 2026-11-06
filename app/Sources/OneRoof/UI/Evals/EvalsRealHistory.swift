@@ -49,7 +49,7 @@ struct EvalsRealHistoryView: View {
                     }
                 }
             }
-            .frame(maxWidth: 1100, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)   // LAB-2273: flexes with the window
             .padding(.bottom, 20)
         }
         .onAppear { store.refreshXRay(board, repos: repos, days: days); store.refreshBoards(board) }

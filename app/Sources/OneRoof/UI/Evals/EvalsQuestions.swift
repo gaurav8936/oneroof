@@ -126,7 +126,7 @@ struct EvalsQuestionsPage: View {
                     else if let e = detailError { Text(e).ui(TypeScale.small).foregroundStyle(t.needsText.color) }
                     else { Text("Reading the question…").ui(TypeScale.small).foregroundStyle(t.text3.color) }
                 }
-                .padding(20).frame(maxWidth: 980, alignment: .leading)
+                .padding(20).frame(maxWidth: .infinity, alignment: .leading)   // LAB-2273
             }
         }
     }

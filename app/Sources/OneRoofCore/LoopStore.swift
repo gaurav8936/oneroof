@@ -153,6 +153,7 @@ public struct LoopStore: Sendable {
             l.goal = edited.goal; l.check = edited.check; l.repoPath = edited.repoPath
             l.agent = edited.agent; l.model = edited.model; l.account = edited.account; l.roundPrompt = edited.roundPrompt
             l.trigger = edited.trigger; l.limits = edited.limits; l.pinned = edited.pinned; l.checkTimeout = edited.checkTimeout
+            l.harvestBase = edited.harvestBase   // LAB-2295 · 7m "Harvest PR to" (kind is set on its own: Set kind, LP-2)
             if existing == nil { l.state = edited.state; l.runRequested = edited.runRequested }
             l = LoopSpecLint.cleaned(l)      // what a terminal copy adds to goal, check and prompt (LAB-1846)
             try write(l)

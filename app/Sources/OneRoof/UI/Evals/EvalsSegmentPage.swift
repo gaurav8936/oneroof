@@ -33,7 +33,7 @@ struct EvalsSegmentPage: View {
                     evidence
                     foot
                 }
-                .frame(maxWidth: 1000, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)   // LAB-2273: flexes with the window
                 .padding(.bottom, 24)
             }
             .onAppear(perform: appear)
@@ -59,7 +59,7 @@ struct EvalsSegmentPage: View {
                         EvalsGoTile(title: w.title, detail: w.detail, symbol: w.symbol, action: w.go)
                     }
                 }
-                .frame(maxWidth: 1000).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
             }
         }
@@ -157,7 +157,7 @@ struct EvalsLoopRunsList: View {
                     }
                 }
             }
-            .frame(maxWidth: 900)
+            .frame(maxWidth: .infinity)   // LAB-2273
         }
     }
 
