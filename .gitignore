@@ -17,3 +17,9 @@ dist/
 app/roofd/RoofVT/ghostty
 app/roofd/RoofVT/.zig-cache/
 app/roofd/RoofVT/zig-out/
+
+# Local UI mockups and markups (any depth; never publish)
+ui_mockups/
+ui-mockups/
+ui_markups/
+ui-markups/
