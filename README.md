@@ -27,7 +27,7 @@
 
 <p align="center"><sub>Free · open source · MIT · signed and notarized · needs macOS 14 or later on Apple silicon</sub></p>
 
-> **Status: version 2.0.5.1.** Free and open source under the MIT licence. Tested on Apple-silicon Macs only.
+> **Status: version 2.0.6.** Free and open source under the MIT licence. Tested on Apple-silicon Macs only.
 > Evals is still a draft, and is marked as one in the app. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with anything that breaks or reads badly; see
 > [CONTRIBUTING.md](CONTRIBUTING.md).
