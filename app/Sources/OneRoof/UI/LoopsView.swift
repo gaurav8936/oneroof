@@ -29,6 +29,9 @@ final class LoopBoard: ObservableObject {
     @Published private(set) var kitKnown = true
     /// The last 8 days of runs, every loop (This week line, strips).
     @Published private(set) var weekRuns: [LoopRun7] = []
+    /// LAB-2291 · LAB-2292: each loop's real schedule (the kit's cron for kit loops, roofd's trigger for its own):
+    /// This week's missed and still-to-come cells, Today's hollow dots, Next up and Tonight.
+    @Published private(set) var crons: [String: CronSpec] = [:]
     /// Runs re-read only when the ledger changed (or every 30 s): the board reloads every 3 s.
     private var runsCache: (stamp: Date?, at: Date, byLoop: [String: [LoopRun7]]) = (nil, .distantPast, [:])
 
@@ -65,11 +68,14 @@ final class LoopBoard: ObservableObject {
             let runs7 = self?.readRuns(led, path: path) ?? [:]
             let v7 = LoopsV7.rows(loops: ls, kit: kit, runs: runs7)
             let flat = runs7.values.flatMap { $0 }.sorted { $0.started < $1.started }
+            let kitBy = Dictionary((kit ?? []).map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+            let crons = Dictionary(ls.compactMap { l in LoopSchedule.cron(l, kit: kitBy[l.id]).map { (l.id, $0) } }, uniquingKeysWith: { a, _ in a })
             DispatchQueue.main.async {
                 guard let self else { return }
                 if self.rows != v7 { self.rows = v7 }
                 if self.kitKnown != (kit != nil) { self.kitKnown = kit != nil }
                 if self.weekRuns != flat { self.weekRuns = flat }
+                if self.crons != crons { self.crons = crons }
                 if self.loops != ls { self.loops = ls }
                 if self.rounds != rs { self.rounds = rs }
                 if self.outcomes != os { self.outcomes = os }
@@ -372,6 +378,18 @@ struct LoopsView: View {
             case "empty": nav.setRoot(.byKind); selfTestEmpty = true
             case "needs": nav.setRoot(.byKind); nav.open(.needsYou(loop: nil, item: nil))
             case "runs": nav.setRoot(.byKind); nav.open(.runs)
+            // LAB-2291 · LAB-2292 · LAB-2293 (lane B): tonight · day:<yyyy-MM-dd> · run:<ledger run id> · report:<ledger run id>
+            case "tonight": nav.setRoot(.today); nav.open(.tonight)
+            case _ where v.hasPrefix("day:"):
+                let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+                nav.setRoot(.thisWeek); nav.open(.day(f.date(from: String(v.dropFirst(4))) ?? Date(), loop: nil))
+            case _ where v.hasPrefix("run:"): nav.setRoot(.byKind); nav.open(.run(String(v.dropFirst(4))))
+            case _ where v.hasPrefix("report:"):
+                nav.setRoot(.byKind); nav.open(.runs)
+                let id = String(v.dropFirst(7))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    if let r = board.weekRuns.first(where: { $0.id == id }) { nav.open(.report(LoopsRunRef(run: r, row: board.row(r.loop)))) }
+                }
             case _ where v.hasPrefix("kind:"): nav.setRoot(.byKind); nav.open(.kind(String(v.dropFirst(5))))
             case _ where v.hasPrefix("loop:"): nav.setRoot(.byKind); focus(String(v.dropFirst(5)))
             default: nav.setRoot(.byKind)

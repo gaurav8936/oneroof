@@ -28,13 +28,21 @@ enum LoopsRoot: String, CaseIterable {
 enum LoopsRoute: Hashable {
     case kind(String)                               // 7b (today: the family page)
     case needsYou(loop: String?, item: String?)     // 7d (today: the loop items and their actions)
-    case runs                                       // 7j (today: the runs card)
+    case runs                                       // 7j Runs and their rounds (LAB-2293)
+    // LAB-2291 · LAB-2292 · LAB-2293 (lane B): a day from This week, Tonight, one run, a run's report.
+    case day(Date, loop: String?)                   // 7f at that day (the loop's lane marked)
+    case tonight                                    // 7g
+    case run(String)                                // 7j with that run selected
+    case report(LoopsRunRef)                        // 7k
 
     var title: String {
         switch self {
         case .kind(let f): return LoopKinds.family(f)?.title ?? f
         case .needsYou(let l, _): return l == nil ? "Needs you" : "Needs you · " + (l ?? "")
-        case .runs: return "Runs"
+        case .runs, .run: return "Runs"
+        case .day(let d, _): return LoopsV7.dayTitle(d)
+        case .tonight: return "Tonight"
+        case .report(let r): return r.name + " › Run " + r.id
         }
     }
 }
@@ -159,16 +167,9 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
                     .accessibilityLabel("Loops by kind")
                 }
             case .thisWeek:
-                activity()   // 7e lands later: today's Activity keeps every outcome, run and list row
+                LoopsWeek(board: board, nav: nav, actions: actions)   // 7e (LAB-2291)
             case .today:
-                ScrollView {
-                    HStack(alignment: .top, spacing: 18) {
-                        LoopRunsView(model: model, board: board).frame(maxWidth: .infinity, alignment: .top)
-                        V2TonightPanel(model: model, board: board).frame(width: 280)
-                    }
-                    .padding(.bottom, 8)
-                }
-                .defaultScrollAnchor(.top)
+                LoopsToday(model: model, board: board, nav: nav, actions: actions, day: nil, focus: nil)   // 7f (LAB-2292)
             case .library:
                 library
             }
@@ -178,7 +179,15 @@ struct LoopsV7Shell<Activity: View, Empty: View>: View {
         case .needsYou(let loop, let item)?:
             LoopsNeedsList(model: model, win: win, loop: loop, selected: item, openLoop: actions.openLoop)
         case .runs?:
-            ScrollView { LoopRunsView(model: model, board: board).padding(.bottom, 8) }.defaultScrollAnchor(.top)
+            LoopRunsPage(model: model, board: board, nav: nav, actions: actions, selected: nil)   // 7j (LAB-2293)
+        case .run(let id)?:
+            LoopRunsPage(model: model, board: board, nav: nav, actions: actions, selected: id)
+        case .day(let d, let loop)?:
+            LoopsToday(model: model, board: board, nav: nav, actions: actions, day: d, focus: loop)
+        case .tonight?:
+            LoopsTonight(model: model, board: board, nav: nav, actions: actions)   // 7g (LAB-2292)
+        case .report(let r)?:
+            LoopRunReport(model: model, board: board, nav: nav, actions: actions, run: r)   // 7k (LAB-2293)
         }
     }
 
