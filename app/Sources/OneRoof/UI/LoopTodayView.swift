@@ -37,6 +37,7 @@ struct LoopNeedRow: View {
         case .failed: return "Loop stopped · needs a look"
         case .asks: return "Loop round asks"
         case .staged: return "Today · waiting for your approval"
+        case .missed: return "Loop missed its runs"
         }
     }
 
@@ -76,7 +77,7 @@ struct LoopNeedDetail: View {
                 if !embedded { Text("Loop " + item.loopTitle).ui(13).foregroundStyle(t.text2.color) }
             }
             switch item.kind {
-            case .failed, .asks: loopPart
+            case .failed, .asks, .missed: loopPart
             case .staged: stagedPart
             }
             if let r = inbox.lastResult[item.id] {
@@ -98,6 +99,10 @@ struct LoopNeedDetail: View {
                     RoofButton("Open the round ↗", .primary) { model.reveal(it) }
                 } else if item.kind == .failed {
                     RoofButton("Run again", .primary) { inbox.runAgain(item.loopId) { model.refreshLoopInbox() } }.disabled(busy)
+                } else if item.kind == .missed {
+                    // LAB-2286: a kit loop runs through the kit (`ae loops run`), a One Roof loop through roofd.
+                    RoofButton("Run now", .primary) { inbox.runNow(item.loopId) { model.refreshLoopInbox() } }.disabled(busy)
+                        .help("Starts one run now. A kit loop runs with `ae loops run --scheduled` (in trial it only says what it would do); a One Roof loop starts within 30 s.")
                 }
                 RoofButton("Open loop") { model.openLoop(item.loopId, in: win) }
                 if item.kind == .failed {
@@ -106,6 +111,8 @@ struct LoopNeedDetail: View {
             }
             Text(item.kind == .failed
                  ? "Run again starts a new run (the check first). Mark seen takes it out of the Inbox until the loop fails again."
+                 : item.kind == .missed
+                 ? "It leaves Needs you once a run is recorded. If runs keep being missed, check the scheduler (the kit: `ae doctor`)."
                  : "A loop round's terminal is not in your session list: it opens here and from its loop's Runs.")
                 .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
         }

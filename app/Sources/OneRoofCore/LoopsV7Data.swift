@@ -329,11 +329,13 @@ public enum LoopsV7 {
     }
 
     /// One count for Needs you everywhere (rail badge, landing chip, page title): one per decision you make. The
-    /// commits one run left are one decision (one PR); every other staged outcome is one; a question or a failure item
-    /// is one; a loop with missed runs is one.
+    /// commits one run left are one decision (one PR); every other staged outcome is one (a staged promotion is the
+    /// kit asking "go live?", a decision too: auto-live promotions are written as applied, never staged); a question
+    /// or a failure item is one; a loop with missed runs is one. Equals `needsCount(items:)` over LoopInbox.items.
     public static func needsCount(staged: [LoopLedger.Outcome], questions: Int, failures: Int, missedLoops: Int) -> Int {
-        let commitRuns = Set(staged.filter { $0.kind == "commit" }.map(\.runId))
-        let other = staged.filter { $0.kind != "commit" && $0.kind != "promotion" }.count
+        let open = staged.filter { $0.status == "staged" }
+        let commitRuns = Set(open.filter { $0.kind == "commit" }.map { $0.loop + "\u{1}" + $0.runId })
+        let other = open.filter { $0.kind != "commit" }.count
         return commitRuns.count + other + questions + failures + missedLoops
     }
 }

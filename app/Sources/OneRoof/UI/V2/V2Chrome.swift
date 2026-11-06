@@ -53,6 +53,9 @@ enum V2Counts {
     @MainActor static func critical(_ model: AppModel) -> Bool {
         model.openDecisions.contains { InboxUrgency.of($0) == .critical } || model.loopInbox.contains { _ in true }
     }
+    /// LAB-2286 · the Loops place's badge: what loops need from you, one per decision (the same number as the
+    /// landing's "need you" chip and the Inbox's loop items).
+    @MainActor static func loops(_ model: AppModel) -> Int { LoopInboxState.shared.needsCount }
     @MainActor static func tonight(_ model: AppModel) -> Int {
         model.scheduleRecords.values.filter { if case .tonight = $0.schedule { return true }; if case .nightly = $0.schedule { return true }; return false }.count
     }
@@ -69,7 +72,7 @@ struct V2Rail: View {
     var body: some View {
         VStack(spacing: 4) {
             ForEach(Place.allCases) { p in
-                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
+                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : p == .loops ? V2Counts.loops(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
                               labelled: true) { controller.v2Open(p) }
             }
             Spacer(minLength: 8)
@@ -104,7 +107,7 @@ struct V2PlacesIconRow: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Place.allCases) { p in
-                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
+                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : p == .loops ? V2Counts.loops(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
                               labelled: false) { controller.v2Open(p) }
             }
         }
@@ -229,6 +232,8 @@ struct V2Dock: View {
     @ObservedObject var model: AppModel
     @ObservedObject var resources: ResourceMonitor
     let controller: MainWindowController
+    /// LAB-2286 (Loops v7): on the Loops place the status bar says "14 loops on · next: …" where the Mac line is.
+    var onLoops = false
 
     var body: some View { watchedBody.modifier(WatchesResources(res: resources)) }   // LAB-1333
     @ViewBuilder private var watchedBody: some View {
@@ -255,8 +260,9 @@ extension V2Dock {
                 }
             }
             Spacer(minLength: level == 3 ? 0 : 12)
+            if onLoops && level < 3 { V2DockLoops { controller.v2Open(.loops) } }   // LAB-2286: "14 loops on · next: …"
             V2DockStatus(model: model, controller: controller)
-            if level < 2 {
+            if level < (onLoops ? 1 : 2) {
                 Button { controller.v2Open(.machine) } label: {
                     Text(V2DockMac.text(resources.snapshot)).ui(11).foregroundStyle(t.text2.color).lineLimit(1).fixedSize()
                 }
@@ -264,6 +270,27 @@ extension V2Dock {
             }
             V2DockPill(title: "Inbox", count: V2Counts.needsYou(model), urgent: true) { controller.v2Open(.needsYou) }
             V2DockPill(title: "Tonight", count: V2Counts.tonight(model), urgent: false) { controller.v2Open(.loops) }
+        }
+    }
+}
+
+/// LAB-2286 (Loops v7): "● 14 loops on · next: Mac resource watch 10:40", from the kit's and One Roof's real on/off.
+struct V2DockLoops: View {
+    @Environment(\.theme) private var t
+    @ObservedObject private var inbox = LoopInboxState.shared
+    let open: () -> Void
+
+    var body: some View {
+        if let line = inbox.statusLine {
+            Button(action: open) {
+                HStack(spacing: 5) {
+                    Circle().fill(t.text2.color).frame(width: 7, height: 7)
+                    Text(inbox.kitKnown ? line : line + " · kit state unknown").ui(11).foregroundStyle(t.text2.color).lineLimit(1).fixedSize()
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Loops that are on (the kit's and One Roof's) and the next one to run (Loops)")
+            .accessibilityLabel("Loops: " + line)
         }
     }
 }

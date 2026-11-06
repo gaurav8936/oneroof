@@ -35,6 +35,9 @@ import OneRoofCore
 ///                                               report, improve, other), a loop's pop-out card over Kinds, or the
 ///                                               no-loops card (empty, drawn for the capture only); never saved.
 ///                                               LOOPGALLERY=1 maps to kinds in the v2 window; LOOP=<id> opens the pop-out too
+///                                               LAB-2286 (Loops v7, v2 window): lanes|kinds = 7a kinds as lanes ·
+///                                               week|activity · today · library · needs · runs · kind:<family> ·
+///                                               loop:<id> · empty (LOOPGALLERY=1 = library)
 ///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
 ///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)
 ///   ONEROOF_SELFTEST_TERMCOLS=<n>               LAB-1299: the width the TERMTEXT rows were cut at (rows that long rejoin)
