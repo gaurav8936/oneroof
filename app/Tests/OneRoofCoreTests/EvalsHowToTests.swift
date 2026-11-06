@@ -20,7 +20,8 @@ final class EvalsHowToTests: XCTestCase {
         XCTAssertTrue(EvalsHowTo.scenes[1].body.contains("Test a model on it"))   // a first eval
         // QA m3: the 2.0.4 names only, never the old tabs (Explore / Run / Results / Learn / Your evals)
         for sc in EvalsHowTo.scenes {
-            for old in ["Explore", "In Run", "Open Run", "Results:", "Open Results", "In Results", "Learn", "Your evals"] {
+            for old in ["Explore", "In Run", "Open Run", "Results:", "Open Results", "In Results", "Learn", "Your evals",
+                        "Overview", "Compare"] {   // QA #11: 2.0.4 names gone too
                 XCTAssertFalse(sc.body.contains(old) || sc.openLabel.contains(old), "\(sc.id): \(old)")
             }
         }

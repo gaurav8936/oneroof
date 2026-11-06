@@ -105,6 +105,73 @@ final class EvalsV3Tests: XCTestCase {
     }
 }
 
+final class EvalsV3QAFixTests: XCTestCase {
+    private func plain<T: Decodable>(_ t: T.Type, _ json: String) throws -> T { try JSONDecoder().decode(T.self, from: Data(json.utf8)) }
+
+    /// QA #4: a public run on an agent-harness benchmark (SWE-bench, even run model-only) leaves the one-shot Public bar and
+    /// counts as a public agent benchmark run instead.
+    func test_QA4_agent_harness_runs_leave_the_one_shot_public_bar() throws {
+        let catalog = try plain(EvalCatalog.self, """
+        {"benchmarks": [
+          {"category": "Math", "description": "m", "folder": "gsm8k", "group": "Mathematics", "internet": false, "sandbox": false,
+           "starter": [], "supports_k8s": false, "tags": [], "tasks": [{"name": "gsm8k", "samples": 1319}], "title": "GSM8K"},
+          {"category": "Software engineering", "description": "s", "folder": "swe_bench", "group": "Coding", "internet": true, "sandbox": true,
+           "starter": [], "supports_k8s": true, "tags": ["Agent"],
+           "tasks": [{"name": "swe_bench", "samples": 500}, {"name": "swe_bench_verified_mini", "samples": 50}], "title": "SWE-bench Verified"}
+        ], "categories": [], "count": 2, "tasks": 3}
+        """)
+        let agentSet = EvalEvidence.agentBenchmarks(catalog.benchmarks)
+        XCTAssertEqual(agentSet, ["swe_bench", "swe_bench_verified_mini"])
+        let results = try plain([EvalResult].self, #"""
+        [{"id": "g1", "task": "gsm8k", "model": "anthropic/claude-haiku-5-5", "status": "done", "metrics": []},
+         {"id": "g2", "task": "gsm8k", "model": "openai/gpt-5-nano", "status": "done", "metrics": []},
+         {"id": "s1", "task": "swe_bench_verified_mini", "model": "anthropic/claude-haiku-5-5", "status": "done", "metrics": []},
+         {"id": "s2", "task": "swe_bench_verified_mini", "model": "anthropic/claude-haiku-5-5", "status": "done", "metrics": [], "agent": "claude_code"},
+         {"id": "s3", "task": "swe_bench_verified_mini", "model": "mockllm/model", "status": "done", "metrics": []}]
+        """#)
+        let one = EvalEvidence.count(results: results, runs: [], loops: [], kind: .oneShot, agentBenchmarks: agentSet)
+        XCTAssertEqual(one.publicTests, 2, "only the model benchmarks the page lists")
+        XCTAssertEqual(EvalEvidence.publicAgentRuns(results, agentBenchmarks: agentSet), 2, "the model-only and the agent SWE-bench run")
+        // Without the catalog (still loading) nothing is moved.
+        XCTAssertEqual(EvalEvidence.count(results: results, runs: [], loops: [], kind: .oneShot).publicTests, 3)
+        XCTAssertEqual(EvalEvidence.publicAgentRuns(results), 1)
+    }
+
+    /// QA #1: the layer bands and the launch sheets are neutrals: never a source colour, never `accent`, labels ≥ 3:1.
+    func test_QA1_layer_bands_and_sheets_never_use_a_source_colour() {
+        for name in ThemeName.panelChoices {
+            let t = name.tokens
+            let sourceFills = Set(EvalEvidenceSource.allCases.map { t.evidence($0).fill.hex } + [t.accent.hex, t.selection.hex])
+            for k in EvalJobKind.allCases {
+                let n = k.stack.count
+                for i in 0..<n {
+                    let b = t.layerBand(i, of: n, loop: i == n - 1)
+                    XCTAssertFalse(sourceFills.contains(b.fill.hex), "\(name) \(k) band \(i)")
+                    XCTAssertEqual(b.fill.alpha, 1, "\(name) \(k) band \(i): opaque, no tint")
+                    XCTAssertGreaterThanOrEqual(RGB.contrast(b.fill, b.ink), 3, "\(name) \(k) band \(i) label")
+                }
+                let sheet = t.evalsSheet(k)
+                XCTAssertFalse(sourceFills.contains(sheet.hex), "\(name) \(k) sheet")
+                // every segment of the bar stays a different colour from the sheet it sits on, and its label reads
+                for s in EvalEvidenceSource.allCases {
+                    XCTAssertNotEqual(t.evidence(s).fill.hex, sheet.hex, "\(name) \(k) \(s)")
+                }
+            }
+        }
+    }
+
+    /// QA #12: one question, not "1 questions".
+    func test_QA12_counts_are_singular_or_plural() {
+        XCTAssertEqual(EvalsAWords.count(1, "question"), "1 question")
+        XCTAssertEqual(EvalsAWords.count(3, "question"), "3 questions")
+        let one = EvalBenchmarkSummaryRow(id: "swe", name: "SWE", tests: "t", layer: .agentModel, bestRun: "x", bestN: 1, bestScore: 1, runs: 1)
+        XCTAssertEqual(EvalBenchmarkSummaryRow.smallNote([one]),
+                       "Your runs used 1 question: too few to mean much. A score on 1 question could be anything from 21 to 100 %.")
+        XCTAssertEqual(EvalBenchmarkSummaryRow.onceEach("Claude Code · claude-haiku-5-5 · claude-haiku-5-5"), "Claude Code · claude-haiku-5-5")
+        XCTAssertEqual(EvalBenchmarkSummaryRow.onceEach("Codex · gpt-5 · rules on"), "Codex · gpt-5 · rules on")
+    }
+}
+
 final class EvalsV3ColourTests: XCTestCase {
     /// Rule 2: the three evidence colours read in every look (label ≥ 3:1 on its fill), and stay three different colours.
     func test_LAB2258_evidence_colours_read_in_every_look() {

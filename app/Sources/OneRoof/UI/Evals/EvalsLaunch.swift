@@ -14,6 +14,8 @@ struct EvalsLaunchView: View {
     @Environment(\.theme) private var t
 
     private var benchmarks: [EvalBenchmark] { board.catalog?.benchmarks.filter { !$0.isOwn } ?? [] }
+    /// QA #4: agent-harness benchmarks count on the agent side ("Public agent benchmarks"), never in the one-shot bar.
+    private var agentBenchmarks: Set<String> { EvalEvidence.agentBenchmarks(board.catalog?.benchmarks ?? []) }
 
     var body: some View {
         ScrollView {
@@ -53,12 +55,12 @@ struct EvalsLaunchView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(t.selection.opacity(0.4).over(t.surface).color))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(t.evalsSheet(.oneShot).color))   // QA #1: a neutral, not `selection` blue
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(t.text2.color, lineWidth: 1.5))
     }
 
     private var agentSheet: some View {
-        let pubAgent = EvalEvidence.publicAgentRuns(board.results)
+        let pubAgent = EvalEvidence.publicAgentRuns(board.results, agentBenchmarks: agentBenchmarks)
         let agentBench = benchmarks.filter(\.isAgentTask).count
         return VStack(alignment: .leading, spacing: 12) {
             sheetHead(.agent)
@@ -71,7 +73,7 @@ struct EvalsLaunchView: View {
                         symbol: "globe", tint: t.evidence(.publicTests).fill) { nav.open(.agentPublic) }
         }
         .padding(22)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(t.surface.color))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(t.evalsSheet(.agent).color))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(t.text.color, lineWidth: 2))
         .shadow(color: t.text.color.opacity(0.12), radius: 14, y: 6)
     }
@@ -120,27 +122,31 @@ struct EvalsLaunchView: View {
                 .help(help ?? name)
             }
             if more > 0 {
-                Button { nav.open(.segment(kind, .loopRuns)) } label: {   // this sheet's loops (2.0.5 review P2)
-                    Text("+\(more) more").ui(12, .semibold).foregroundStyle(t.accentText.color)
-                }.buttonStyle(.plain)
+                // this sheet's loops (2.0.5 review P2); LAB-2255: a button you can see, not a text link
+                RoofButton("+\(more) more") { nav.open(.segment(kind, .loopRuns)) }.fixedSize()
+                    .help("See every loop of this kind and its runs")
             }
     }
 
     private func evidence(_ k: EvalJobKind) -> EvalEvidence {
-        EvalEvidence.count(results: board.results, runs: board.runs, loops: loops.rows, kind: k)
+        EvalEvidence.count(results: board.results, runs: board.runs, loops: loops.rows, kind: k, agentBenchmarks: agentBenchmarks)
     }
 
     // MARK: Under the sheets
 
     private var legend: some View {
-        HStack(spacing: 14) {
-            ForEach(EvalEvidenceSource.allCases) { s in
-                HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 3).fill(t.evidence(s).fill.color).frame(width: 14, height: 10)
-                    Text(s.legend).ui(TypeScale.small).foregroundStyle(t.text2.color)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 14) {
+                ForEach(EvalEvidenceSource.allCases) { s in
+                    HStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 3).fill(t.evidence(s).fill.color).frame(width: 14, height: 10)
+                        Text(s.legend).ui(TypeScale.small).foregroundStyle(t.text2.color)
+                    }
                 }
+                Text("· segment width = share of the evidence").ui(TypeScale.small).foregroundStyle(t.text3.color)
             }
-            Text("· segment width = share of the evidence").ui(TypeScale.small).foregroundStyle(t.text3.color)
+            // QA #10 (OV-08): say what the bars are counted from.
+            Text("Counted from this Mac's run store and the loops' ledger (30 days).").ui(TypeScale.caption).foregroundStyle(t.text3.color)
         }
     }
 
@@ -149,7 +155,7 @@ struct EvalsLaunchView: View {
         let none = loops.rows.filter { $0.place == .noModel }
         if !none.isEmpty {
             EvalsGoTile(title: "\(EvalsAWords.count(none.count, "loop")) use no model, so Evals doesn't judge them",
-                        detail: none.sorted { $0.runs > $1.runs }.prefix(6).map(\.title).joined(separator: " · ") + (none.count > 6 ? " …" : "") + ". They are checks written in code; see them in Loops.",
+                        detail: none.sorted { $0.runs > $1.runs }.prefix(6).map(\.title).joined(separator: " · ") + (none.count > 6 ? " and \(none.count - 6) more" : "") + ". They are checks written in code; see them in Loops.",
                         symbol: "gearshape.2") { nav.openLoops() }
         }
     }
@@ -218,14 +224,8 @@ struct EvalsLayerStack: View {
             }
         }
     }
-    /// The model is plain surface; each added part steps toward ink (the agent's own bands); the loop is plain again.
-    private func band(_ i: Int, of n: Int, loop: Bool) -> (RGB, RGB) {
-        if loop || i == 0 { return (t.surface, t.text) }
-        let steps = [t.accent.opacity(0.25).over(t.surface), t.text2, t.text]
-        let fill = steps[min(i - 1, steps.count - 1)]
-        let ink = RGB.contrast(fill, t.text) >= RGB.contrast(fill, t.surface) ? t.text : t.surface
-        return (fill, ink)
-    }
+    /// The model is plain surface; each added part steps toward ink in neutrals (QA #1: colour = source only); the loop is plain again.
+    private func band(_ i: Int, of n: Int, loop: Bool) -> (RGB, RGB) { t.layerBand(i, of: n, loop: loop) }
 }
 
 /// One bar per kind of job: each segment is a button in its source's colour, width = its share of the evidence.

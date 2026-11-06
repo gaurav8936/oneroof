@@ -117,9 +117,11 @@ struct EvalsTaskDetailView: View {
             fact("Blind guess gets", EvalTaskWords.guessText(right: guess.right, of: guess.of), sub: rule)
                 .evalHover(.floor, EvalHover.floor(share: floor, right: guess.right, of: guess.of))
             if let b = best, let s = side {
-                fact("Best so far", "\(EvalScoreText.count(s.right ?? 0)) of \(b.n) · \(s.label)", sub: verdict?.text, subTint: verdict?.isCall == true ? t.diffAddText : t.needsText)
-                    .evalHover(.range, EvalHover.range(score: b.score, n: b.n, lo: s.lo ?? 0, hi: s.hi ?? 1, unit: "bug"))
-                    .onTapGesture { nav.openRun(b.run) }
+                VStack(alignment: .leading, spacing: 6) {
+                    fact("Best so far", "\(EvalScoreText.count(s.right ?? 0)) of \(b.n) · \(s.label)", sub: verdict?.text, subTint: verdict?.isCall == true ? t.diffAddText : t.needsText)
+                        .evalHover(.range, EvalHover.range(score: b.score, n: b.n, lo: s.lo ?? 0, hi: s.hi ?? 1, unit: "bug"))
+                    RoofButton("Open the best test ›") { nav.openRun(b.run) }.fixedSize()   // LAB-2255: a button, not a tappable fact
+                }
             } else {
                 fact("Best so far", "Not run yet", sub: "Test setups on it to see who finds these bugs", subTint: t.needsText)
             }
@@ -202,15 +204,13 @@ struct EvalsTaskDetailView: View {
             if let a = caseAnswers[c.id] {
                 if a.isEmpty { Text("No test on this version has answered it yet.").ui(TypeScale.caption).foregroundStyle(t.text3.color) }
                 ForEach(a) { r in
-                    Button { nav.openRun(r.run) } label: {
-                        HStack(spacing: 8) {
-                            Text(r.right ? "✓" : "✕").foregroundStyle(r.right ? t.diffAddText.color : t.needsText.color)
-                            Text(EvalTaskWords.contestant(r.contestant ?? r.model ?? "?")).ui(TypeScale.caption).foregroundStyle(t.text.color)
-                            Text(r.answer ?? r.answerTail).ui(TypeScale.caption).foregroundStyle(t.text2.color).lineLimit(1)
-                            Text("open the test ›").ui(TypeScale.caption).foregroundStyle(t.accentText.color)
-                        }
+                    HStack(spacing: 8) {   // LAB-2255: the way into the test is a button, not a text link
+                        Text(r.right ? "✓" : "✕").foregroundStyle(r.right ? t.diffAddText.color : t.needsText.color)
+                        Text(EvalTaskWords.contestant(r.contestant ?? r.model ?? "?")).ui(TypeScale.caption).foregroundStyle(t.text.color)
+                        Text(r.answer ?? r.answerTail).ui(TypeScale.caption).foregroundStyle(t.text2.color).lineLimit(1)
+                        Spacer(minLength: 6)
+                        RoofButton("Open the test ›") { nav.openRun(r.run) }.fixedSize()
                     }
-                    .buttonStyle(.plain)
                 }
             } else { Text("Reading each test's answer…").ui(TypeScale.caption).foregroundStyle(t.text3.color) }
         }
@@ -234,8 +234,7 @@ struct EvalsTaskDetailView: View {
                         if v.version == d.version {
                             Text("shown").ui(TypeScale.small).foregroundStyle(t.text3.color)
                         } else {
-                            Button("open") { nav.openTask(d.name, version: v.version) }.buttonStyle(.plain)
-                                .font(.system(size: TypeScale.small)).foregroundStyle(t.accentText.color)
+                            RoofButton("Open") { nav.openTask(d.name, version: v.version) }.fixedSize()   // LAB-2255
                         }
                     }
                 }

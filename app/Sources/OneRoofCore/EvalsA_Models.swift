@@ -433,6 +433,10 @@ public enum EvalsACompare {
     public static func statusText(_ r: EvalSetupRow) -> String {
         let since = r.started.map { " since \(EvalsAWords.day($0))" } ?? ""
         let note = r.statusNote.map { ": \($0)" } ?? ""
+        // QA #6: a note that already says since when ("stuck: waiting since 2026-11-01 …") is the whole sentence; never the date twice.
+        if ["waiting", "queued"].contains(r.status), let n = r.statusNote, n.lowercased().contains("since") {
+            return n.prefix(1).uppercased() + n.dropFirst()
+        }
         switch r.status {
         case "waiting": return "Waiting\(since)\(note)"
         case "queued": return "Queued\(since)\(note)"
@@ -540,8 +544,9 @@ public struct EvalsAGrid: Equatable, Sendable {
             if cells[a ?? ""]?[m] == nil { cells[a ?? "", default: [:]][m] = r }
         }
         columns.sort { ($0 == cliDefault ? 1 : 0, $0) < ($1 == cliDefault ? 1 : 0, $1) }
-        let layer = rules ? "layer 3 · with our rules" : "layer 2 · rules off (clean)"
-        var rows = [Row(title: "Model on its own", sub: "layer 1 · API, no tools", agent: nil, cells: cells[""] ?? [:])]
+        // QA #5 (D4/D5): plain words, no "layer N".
+        let layer = rules ? "with our rules" : "clean (no rules)"
+        var rows = [Row(title: "Model on its own", sub: "the API, no tools", agent: nil, cells: cells[""] ?? [:])]
         for a in EvalsAWords.seatAgents {
             rows.append(Row(title: a.name, sub: "\(layer) · on your \(a.seat) seat", agent: a.key, cells: cells[a.key] ?? [:]))
         }

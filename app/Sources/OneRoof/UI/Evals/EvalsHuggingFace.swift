@@ -28,7 +28,8 @@ final class HFAccount: ObservableObject {
     /// `accepted` for the engine's queue (read under `lock`; never a hop to main, which may be waiting on the engine).
     private var acceptedSnapshot: Set<String> = []
     private static let acceptedKey = "evals.hf.accepted"
-    /// A fresh profile (--fresh-profile, self-tests) uses its own Keychain item, so it starts signed out.
+    /// A fresh profile (--fresh-profile only) uses its own Keychain item, so it starts signed out. Env self-tests are not a
+    /// fresh profile: they look up the real item, by its attributes only (no secret read, no prompt), which is harmless.
     private static var account: String { Prefs.freshProfile ? "huggingface-token.fresh" : "huggingface-token" }
     private static let service = "One Roof · Hugging Face"
 

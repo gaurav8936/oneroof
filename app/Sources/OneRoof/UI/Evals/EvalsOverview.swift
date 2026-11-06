@@ -95,10 +95,7 @@ struct EvalsOverviewTab: View {
                     Text("Each layer adds one thing to the one above it. Test the same tasks at each layer to see what each part adds.")
                     Text("Inside is what matters: our own bugs, our own work. Outside is context.")
                     Text("The three questions below read from this picture: Compare works on any layer; Changes and Real history work on the base.")
-                    Button { nav.go(EvalsLegacyTab.howTo) } label: {
-                        Text("Your first test, step by step ›").ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color)
-                    }
-                    .buttonStyle(.plain)
+                    RoofButton("Your first test, step by step ›") { nav.go(EvalsLegacyTab.howTo) }.fixedSize()   // LAB-2255
                 }
                 .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 12)

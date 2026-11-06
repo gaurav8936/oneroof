@@ -74,7 +74,7 @@ struct EvalsChangesView: View {
                     Text("Your recent changes").ui(TypeScale.body, .semibold).foregroundStyle(t.text.color)
                     Text("read from git" + (repo.map { " (\($0))" } ?? "") + " and from agent updates · last 60 days").ui(TypeScale.caption).foregroundStyle(t.text3.color)
                     Spacer()
-                    RoofButton("Read again", .plain) { store.refreshChanges(board, force: true) }
+                    RoofButton("Read again") { store.refreshChanges(board, force: true) }   // LAB-2255: an action, a button you can see
                 }
                 .padding(14)
                 Divider()
@@ -108,8 +108,8 @@ struct EvalsChangesView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(EvalsAChanges.status(c)).ui(TypeScale.caption).foregroundStyle(c.testedAlone ? t.diffAddText.color : t.text2.color).frame(width: 150, alignment: .leading)
-            Button { testBeforeAfter(c) } label: { Text("Test before & after").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color) }
-                .buttonStyle(.plain).help("Set up a test pre-filled with the same setup and task; nothing starts until Start")
+            RoofButton("Test before & after") { testBeforeAfter(c) }.fixedSize()   // LAB-2255
+                .help("Set up a test pre-filled with the same setup and task; nothing starts until Start")
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
     }

@@ -96,7 +96,7 @@ struct EvalsSetupSheet: View {
                     Text("Set up a test").ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
                     if EvalsDraft.isDraft { EvalsDraftTag() }
                 }
-                Text("Test setups on a task. Opened from Compare, a question, a benchmark or + New. Nothing starts until you press Start.")
+                Text("Test setups on a task. Opened from Our tests, a question, a benchmark or New test or task. Nothing starts until you press Start.")
                     .ui(TypeScale.small).foregroundStyle(t.text2.color)
             }
             Spacer()

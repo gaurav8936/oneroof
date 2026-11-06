@@ -229,13 +229,26 @@ public struct EvalEvidence: Equatable, Sendable {
     static func isGrader(_ t: String?) -> Bool { let t = t ?? ""; return t.hasPrefix("judge_") || t.hasPrefix("labeller_") }
     static func isStand(_ m: String?) -> Bool { (m ?? "").hasPrefix("mockllm/") }
 
-    /// From the run store and the ledger: public = finished public runs of that kind; ours = finished own-task runs of that
-    /// kind (graders and stand-ins apart); loop runs = live ledger runs of that kind's loops in the window.
-    public static func count(results: [EvalResult], runs: [EvalRunRow], loops: [EvalLoopRuns], kind: EvalJobKind) -> EvalEvidence {
+    /// The agent-harness benchmarks of the catalog (SWE-bench and the like, `isAgentTask`): their folders and task names.
+    public static func agentBenchmarks(_ catalog: [EvalBenchmark]) -> Set<String> {
+        Set(catalog.filter { !$0.isOwn && $0.isAgentTask }.flatMap { [$0.folder] + $0.tasks.map(\.name) })
+    }
+    /// A result on one of those benchmarks (also when it ran model-only).
+    static func onAgentBenchmark(_ r: EvalResult, _ agentBenchmarks: Set<String>) -> Bool {
+        guard let t = r.task else { return false }
+        return agentBenchmarks.contains(t) || agentBenchmarks.contains(t.replacingOccurrences(of: "lm-eval:", with: ""))
+    }
+
+    /// From the run store and the ledger: public = finished public runs of that kind on model benchmarks (QA #4: a run on an
+    /// agent-harness benchmark, even model-only, belongs to "Public agent benchmarks", not here); ours = finished own-task
+    /// runs of that kind (graders and stand-ins apart); loop runs = live ledger runs of that kind's loops in the window.
+    /// `agentBenchmarks`: `agentBenchmarks(board.catalog)`.
+    public static func count(results: [EvalResult], runs: [EvalRunRow], loops: [EvalLoopRuns], kind: EvalJobKind,
+                             agentBenchmarks: Set<String> = []) -> EvalEvidence {
         let done = results.filter { $0.status == "done" && !isGrader($0.task) && EvalJobKind.of($0) == kind }
         // One own/public rule everywhere (2.0.5 review P2): an older own_<set> run with no set name is ours.
         let own = done.filter { !EvalResultKind.isPublic($0) }
-        let pub = done.filter { EvalResultKind.isPublic($0) && !isStand($0.model) }
+        let pub = done.filter { EvalResultKind.isPublic($0) && !isStand($0.model) && !onAgentBenchmark($0, agentBenchmarks) }
         let waiting = runs.filter { $0.isActive && $0.setName != nil && EvalJobKind.of($0) == kind }.count
         return EvalEvidence(publicTests: kind == .agent ? 0 : pub.count,
                             ours: own.filter { !isStand($0.model) }.count,
@@ -243,9 +256,13 @@ public struct EvalEvidence: Equatable, Sendable {
                             waiting: waiting, standIn: own.filter { isStand($0.model) }.count)
     }
 
-    /// Public agent-harness runs (SWE-bench and the like): kept outside the agent bar (D3), shown on its own button.
-    public static func publicAgentRuns(_ results: [EvalResult]) -> Int {
-        results.filter { $0.status == "done" && EvalResultKind.isPublic($0) && EvalJobKind.of($0) == .agent }.count
+    /// Public agent-harness runs (SWE-bench and the like): kept outside the agent bar (D3), shown on its own button. An
+    /// agent's public run, or any public run on an agent-harness benchmark (QA #4: also when it ran model-only).
+    public static func publicAgentRuns(_ results: [EvalResult], agentBenchmarks: Set<String> = []) -> Int {
+        results.filter {
+            $0.status == "done" && EvalResultKind.isPublic($0) && !isGrader($0.task) && !isStand($0.model)
+                && (EvalJobKind.of($0) == .agent || onAgentBenchmark($0, agentBenchmarks))
+        }.count
     }
     public static func graderRuns(_ results: [EvalResult]) -> Int { results.filter { $0.status == "done" && isGrader($0.task) }.count }
 }
@@ -372,6 +389,19 @@ public extension ThemeTokens {
     }
     /// The sheet tags: one-shot = slate (`text2`), agent = ink (`text`), label on them = `surface`.
     func jobTag(_ k: EvalJobKind) -> (fill: RGB, ink: RGB) { (k == .oneShot ? text2 : text, surface) }
+
+    /// The launch view's sheets (QA #1): neutrals only, never a source colour. One-shot = `surface2` (the agent sheet on it
+    /// stays `surface`, framed in ink), so the blue segments of both bars sit on grey, not on blue.
+    func evalsSheet(_ k: EvalJobKind) -> RGB { k == .oneShot ? surface2 : surface }
+
+    /// One band of a sheet's layer stack (QA #1): the model and the loop are plain `surface`; each added part steps through
+    /// neutrals toward ink (`control` → `text2` → `text`), never `accent`. The label is `text` or `surface`, whichever reads.
+    func layerBand(_ i: Int, of n: Int, loop: Bool) -> (fill: RGB, ink: RGB) {
+        if loop || i == 0 { return (surface, text) }
+        let steps = [control, text2, text]
+        let fill = steps[min(i - 1, steps.count - 1)]
+        return (fill, RGB.contrast(fill, text) >= RGB.contrast(fill, surface) ? text : surface)
+    }
 }
 
 // MARK: - Each segment page opens with its question and a one-sentence answer (v3 QuestionHead), by rule

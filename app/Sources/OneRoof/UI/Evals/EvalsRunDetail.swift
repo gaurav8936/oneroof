@@ -163,10 +163,10 @@ struct EvalsRunDetailPage: View {
             divider
             cell {
                 Text(line.heading.uppercased()).ui(10.5, .semibold).tracking(0.6).foregroundStyle(line.trusted ? t.text3.color : t.needsText.color)
-                (Text(line.body + " ") + Text("Judge ›").foregroundStyle(t.accentText.color))
+                Text(line.body)
                     .ui(TypeScale.small).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
-                    .onTapGesture { openJudge() }
                     .evalHover(.agreement, EvalHover.agreement(a))
+                RoofButton("Judge ›") { openJudge() }.fixedSize()   // LAB-2255: a button, not tappable text
             }
         } else if judged {
             divider

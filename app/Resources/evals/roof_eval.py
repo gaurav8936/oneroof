@@ -1443,7 +1443,8 @@ def results_for(rid: str | None = None) -> list[dict]:
         if r["contestant"]["kind"] == "agent" and (st.get("model_requested") or st.get("rules") == "on"):
             # one seat, several setups: a chosen model or rules on is its own contestant (old ids stay as they were)
             r["contestant"] = dict(r["contestant"], id=r["contestant"]["id"] + f":{st.get('model_requested') or 'default'}:{st.get('rules')}",
-                                   name=r["contestant"]["name"] + (f" · {st['model_requested']}" if st.get("model_requested") else "")
+                                   name=r["contestant"]["name"] + (f" · {st['model_requested']}" if st.get("model_requested")
+                                                                   and not r["contestant"]["name"].endswith(f" · {st['model_requested']}") else "")
                                    + (" · rules on" if st.get("rules") == "on" else ""))
         a = judge_agreement(r)
         if a:

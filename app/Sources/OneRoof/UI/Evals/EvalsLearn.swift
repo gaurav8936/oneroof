@@ -125,8 +125,7 @@ struct EvalsLearnV2: View {
                     HStack(spacing: 6) {
                         Text("No tests on this Mac show this yet.").ui(TypeScale.small).foregroundStyle(t.text3.color)
                         if l.id != "first-eval" {
-                            Button { open("first-eval") } label: { Text("Your first test, free ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
-                                .buttonStyle(.plain)
+                            RoofButton("Your first test, free ›") { open("first-eval") }.fixedSize()   // LAB-2255
                         }
                     }
                 }
@@ -203,11 +202,7 @@ struct EvalsLearnV2: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Where this shows up").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
                 ForEach(l.links, id: \.route) { k in
-                    Button { EvalsLearnStore.go(k.route, nav: nav, board: board) } label: {
-                        Text(k.label + " ›").ui(TypeScale.small).foregroundStyle(t.accentText.color).multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .buttonStyle(.plain)
+                    EvalsGoTile(title: k.label) { EvalsLearnStore.go(k.route, nav: nav, board: board) }   // LAB-2255: a tile, not a text link
                 }
                 if let n = b.next(after: l.id) {
                     Button { open(n.id) } label: {
@@ -804,10 +799,8 @@ struct EvalHoverLayer: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text(EvalHover.definition(s.kind)).ui(TypeScale.small, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
             Text(s.line).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-            Button { center.hide(); center.openLesson(lesson) } label: {
-                Text("Lesson: \(EvalsLearnStore.book?.lesson(lesson)?.title ?? "Learn") ›").ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color)
-            }
-            .buttonStyle(.plain)
+            RoofButton("Lesson: \(EvalsLearnStore.book?.lesson(lesson)?.title ?? "Learn") ›") { center.hide(); center.openLesson(lesson) }
+                .fixedSize()   // LAB-2255: a button you can see
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(t.surface.color)

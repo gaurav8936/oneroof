@@ -141,8 +141,7 @@ struct EvalsExploreTab: View {
             HStack(spacing: 4) {
                 Text(EvalCatalog.footer(shown: shown, total: c, ownShelf: filter.shelf == .own) + " · inspect-evals \(c.inspectEvals ?? "?") ·")
                     .ui(TypeScale.caption).foregroundStyle(t.text3.color)
-                Button("Rescan benchmarks") { board.refreshCatalog(force: true) }.buttonStyle(.plain)
-                    .font(.system(size: TypeScale.caption)).foregroundStyle(t.accentText.color)
+                RoofButton("Rescan benchmarks") { board.refreshCatalog(force: true) }.fixedSize()   // LAB-2255
             }
             .lineLimit(1).minimumScaleFactor(0.85)
             if let v = board.doctor?.engine.inspectAI {
@@ -356,8 +355,7 @@ struct EvalsBenchmarkPage: View {
                 if let w = EvalRangeWarning.text(pairs.map { (score: $0.0, n: $0.1) }) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(w).ui(TypeScale.caption).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
-                        Button("Why ›") { nav.openLesson("range") }.buttonStyle(.plain).font(.system(size: TypeScale.caption))
-                            .foregroundStyle(t.accentText.color)
+                        RoofButton("Why ›") { nav.openLesson("range") }.fixedSize()   // LAB-2255: opens a lesson
                     }
                 }
             }
@@ -503,8 +501,7 @@ struct EvalsScoresView: View {
                     EvalsLabel("Published best scores")
                     Spacer()
                     if s.hasSource {
-                        Button(checking ? "Checking…" : "Check now") { refresh() }.buttonStyle(.plain).disabled(checking)
-                            .font(.system(size: TypeScale.caption)).foregroundStyle(t.accentText.color)
+                        RoofButton(checking ? "Checking…" : "Check now") { refresh() }.fixedSize().disabled(checking)   // LAB-2255: an action
                     }
                 }
                 if let f = s.failed {

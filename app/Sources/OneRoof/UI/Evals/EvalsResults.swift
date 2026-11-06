@@ -14,8 +14,7 @@ struct EvalsResultsV2: View {
         if board.results.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text("No results yet.").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
-                Button { nav.go(.run) } label: { Text("Run your first eval ›").ui(TypeScale.body).foregroundStyle(t.accentText.color) }
-                    .buttonStyle(.plain)
+                RoofButton("Run your first eval ›") { nav.go(.run) }.fixedSize()   // LAB-2255
             }
         } else {
             HStack(alignment: .top, spacing: 16) {
@@ -311,11 +310,11 @@ struct EvalsCompareCard2: View {
                             .evalHover(.compare, EvalHover.compare(diff: c.diff, lo: c.ci95.first ?? c.diff, hi: c.ci95.last ?? c.diff, paired: c.paired)
                                        + (c.tooFew == true ? " Too few shared questions to call a winner." : ""))
                         EvalsDiffAxis(diff: c.diff, lo: c.ci95.first ?? c.diff, hi: c.ci95.last ?? c.diff).frame(height: 34)
-                        (Text(c.sentence(a: na, b: nb) + " ")
-                         + (c.discordant.isEmpty || !c.paired ? Text("") : Text("See the \(c.discordant.count) cases ›").foregroundStyle(t.accentText.color)))
+                        Text(c.sentence(a: na, b: nb))
                             .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-                            .onTapGesture { if let a, let b, !c.discordant.isEmpty { nav.openRun(a, only: c.discordant, other: b) } }
-                            .accessibilityAddTraits(.isButton)
+                        if c.paired, !c.discordant.isEmpty, let a, let b {   // LAB-2255: a button, not tappable text
+                            RoofButton("See the \(c.discordant.count) cases ›") { nav.openRun(a, only: c.discordant, other: b) }.fixedSize()
+                        }
                         Text(EvalGlossary.entry("compare")?.body ?? "").ui(TypeScale.caption).foregroundStyle(t.text3.color)
                             .fixedSize(horizontal: false, vertical: true)
                     } else if let e = error {

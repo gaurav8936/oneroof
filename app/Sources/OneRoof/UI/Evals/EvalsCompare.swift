@@ -19,8 +19,8 @@ struct EvalsCompareView: View {
     @State private var compared: EvalCompareResult?
     @State private var compareError: String?
     @State private var focusRow = 0
-    /// The grid's rules mode (review P2 #8): off (clean) by default, so layer-2 rows never hold rules-on results.
-    @State private var gridRules = false
+    /// The grid's rules mode (review P2 #8): one mode per grid, never both in a row. QA #5 (D4): with our rules by default.
+    @State private var gridRules = true
     @FocusState private var listFocused: Bool
 
     enum Mode: String, CaseIterable { case setups = "By setup", grid = "Agent × model" }
@@ -232,12 +232,11 @@ struct EvalsCompareView: View {
                 } else if r.isActive {
                     HStack(spacing: 10) {
                         Text("No squares until it finishes.").ui(TypeScale.caption).foregroundStyle(t.text3.color)
-                        Button { nav.sheet = .setup } label: { Text("Open the queue ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color) }
-                            .buttonStyle(.plain).help("Run anyway, cancel or resume it in Set up a test › Running and recent")
+                        RoofButton("Open the queue ›") { nav.sheet = .setup }.fixedSize()   // LAB-2255
+                            .help("Run anyway, cancel or resume it in Set up a test › Running and recent")
                     }
                 } else {
-                    Button { nav.sheet = .setup } label: { Text("Resume or start again in the queue ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color) }
-                        .buttonStyle(.plain)
+                    RoofButton("Resume or start again in the queue ›") { nav.sheet = .setup }.fixedSize()   // LAB-2255
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -301,11 +300,11 @@ struct EvalsCompareView: View {
                         if let c = compared {
                             EvalsDiffAxis(diff: c.diff, lo: c.ci95.first ?? c.diff, hi: c.ci95.last ?? c.diff).frame(height: 34).frame(maxWidth: 420)
                             Text("\(a.label) minus \(b.label) over \(c.paired ? "\(c.n) shared bugs" : "no shared bugs (unpaired)")").ui(TypeScale.caption).foregroundStyle(t.text3.color)
-                            (Text(EvalsACompare.onlyLine(c, a: a.label, b: b.label) + "  ")
-                             + (c.discordant.isEmpty ? Text("") : Text("See the \(c.discordant.count) bugs ›").foregroundColor(t.accentText.color)))
+                            Text(EvalsACompare.onlyLine(c, a: a.label, b: b.label))
                                 .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-                                .onTapGesture { if let ra = a.run, let rb = b.run, !c.discordant.isEmpty { nav.openRun(ra, only: c.discordant, other: rb) } }
-                                .accessibilityAddTraits(.isButton)
+                            if !c.discordant.isEmpty, let ra = a.run, let rb = b.run {   // LAB-2255: a button, not tappable text
+                                RoofButton("See the \(c.discordant.count) bugs ›") { nav.openRun(ra, only: c.discordant, other: rb) }.fixedSize()
+                            }
                         }
                         if let e = compareError { Text(e).ui(TypeScale.caption).foregroundStyle(t.needsText.color) }
                     } else {
@@ -337,11 +336,11 @@ struct EvalsCompareView: View {
                         .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Picker("Our rules", selection: $gridRules) {
-                        Text("Rules off (clean)").tag(false)
-                        Text("Rules on").tag(true)
+                        Text("With our rules").tag(true)
+                        Text("Clean (no rules)").tag(false)
                     }
                     .pickerStyle(.segmented).frame(width: 240)
-                    .help("Agent rows show only tests with our rules off, or only with them on; never both in one row")
+                    .help("Agent rows show only tests with our rules, or only clean ones (no rules); never both in one row")
                 }
                 ScrollView(.horizontal) {
                     Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
@@ -401,12 +400,8 @@ struct EvalsCompareView: View {
                 .padding(8).frame(width: 150, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                 .background(box.strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
         } else if let choice = EvalsAGrid.choice(agent: agent, column: model, rules: gridRules, lb: lb) {
-            Button { testCell(choice, lb: lb) } label: {
-                Text("not run · Test ›").ui(TypeScale.caption).foregroundStyle(t.accentText.color)
-                    .padding(8).frame(width: 150, alignment: .leading)
-                    .background(box.strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-            }
-            .buttonStyle(.plain).help("Set up a test, pre-filled with \(choice.label) on this task")
+            EvalsGridTestCell { testCell(choice, lb: lb) }   // LAB-2255: a button you can see, with a hover
+                .help("Set up a test, pre-filled with \(choice.label) on this task")
         } else {
             Text("not available").ui(TypeScale.caption).foregroundStyle(t.text3.color)
                 .padding(8).frame(width: 150, alignment: .leading)
@@ -443,5 +438,33 @@ struct EvalsCompareView: View {
             .padding(14)
             .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
         }
+    }
+}
+
+
+/// LAB-2255: an empty grid cell you can test from: a framed button with a hover, not dashed text.
+struct EvalsGridTestCell: View {
+    @Environment(\.theme) private var t
+    var action: () -> Void
+    @State private var hover = false
+    var body: some View {
+        let box = RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text("not run").ui(TypeScale.caption).foregroundStyle(t.text2.color)
+                Spacer(minLength: 4)
+                Text("Test ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.text.color)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(t.surface.color))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color, lineWidth: 1))
+            }
+            .padding(8).frame(width: 150, alignment: .leading)
+            .background(box.fill(hover ? t.control.color : t.surface2.color))
+            .overlay(box.strokeBorder(hover ? t.text2.color : t.separatorStrong.color, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .accessibilityLabel("Not run. Test this setup.")
     }
 }

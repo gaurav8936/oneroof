@@ -178,7 +178,10 @@ struct EvalsLoopRunsList: View {
                 bar(r).frame(width: 220, height: 8)
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(r.runs > 0 ? "\(r.finished) / \(r.runs) finished" : "no live runs").ui(TypeScale.small, .semibold).foregroundStyle(t.text.color)
-                    Text(r.countLine).ui(TypeScale.caption).foregroundStyle(t.text3.color)
+                    // QA #13: "no live runs" once; with no live run the caption only adds the dry runs, if any
+                    if r.runs > 0 || r.dry > 0 {
+                        Text(r.runs > 0 ? r.countLine : "\(r.dry) dry").ui(TypeScale.caption).foregroundStyle(t.text3.color)
+                    }
                 }
                 .frame(width: 150, alignment: .trailing)
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(t.accentText.color)

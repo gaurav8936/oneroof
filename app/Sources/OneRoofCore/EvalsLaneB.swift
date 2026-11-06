@@ -262,7 +262,7 @@ public struct EvalBenchmarkSummaryRow: Equatable, Identifiable, Sendable {
             func who(_ r: EvalResult) -> String {
                 guard let c = r.contestant else { return EvalTaskWords.model(r.model ?? "?") }
                 switch c.kind {
-                case .agent: return c.name
+                case .agent: return EvalBenchmarkSummaryRow.onceEach(c.name)   // QA #12: the model once
                 case .local: return String((c.model ?? c.name).split(separator: "/").last ?? "") + " on this Mac"
                 default: return EvalTaskWords.model(c.model ?? c.name)
                 }
@@ -282,6 +282,14 @@ public struct EvalBenchmarkSummaryRow: Equatable, Identifiable, Sendable {
         return out.sorted { ($0.layer == .model ? 0 : 1, $0.name) < ($1.layer == .model ? 0 : 1, $1.name) }
     }
 
+    /// "Claude Code · claude-haiku-5-5 · claude-haiku-5-5" → "Claude Code · claude-haiku-5-5" (QA #12: an older run store
+    /// names the requested model twice).
+    public static func onceEach(_ name: String) -> String {
+        var parts: [String] = []
+        for p in name.components(separatedBy: " · ") where !parts.contains(p) { parts.append(p) }
+        return parts.joined(separator: " · ")
+    }
+
     /// "Your runs used 2–5 questions: too few to mean much. A score on 5 questions could be anything from 57 to 100 %."
     /// nil when every best run has 30 or more.
     public static func smallNote(_ rows: [EvalBenchmarkSummaryRow]) -> String? {
@@ -291,7 +299,7 @@ public struct EvalBenchmarkSummaryRow: Equatable, Identifiable, Sendable {
         let score = r?.bestScore ?? 1
         let w = EvalStats.wilson(score, n: hi)
         let span = lo == hi ? "\(hi)" : "\(lo)–\(hi)"
-        return "Your runs used \(span) questions: too few to mean much. A score on \(hi) questions could be anything from \(Int((w.lo * 100).rounded())) to \(Int((w.hi * 100).rounded())) %."
+        return "Your runs used \(span) \(hi == 1 ? "question" : "questions"): too few to mean much. A score on \(EvalsAWords.count(hi, "question")) could be anything from \(Int((w.lo * 100).rounded())) to \(Int((w.hi * 100).rounded())) %."
     }
 
     /// The best published score: "97 % (Llama 3.1 405B Instruct)"; "—" when the benchmark has no source.
@@ -634,7 +642,7 @@ public enum EvalsCoverage {
         v("Overview: waiting count", "Overview", "Launch view bar hover; waiting rows on Our tests", .launch, .moved),
         v("Overview: N agent tasks outside", "Overview", "The Public agent benchmarks button under the agent bar", .agentPublic, .moved),
         v("Overview: grader runs counted apart", "Overview", "Launch view: grader runs counted apart from setups", .launch, .moved),
-        v("Overview: counted from the run store note", "Overview", "Launch view bar hover", .launch, .moved),
+        v("Overview: counted from the run store note", "Overview", "Launch view: the line under the legend, counted from this Mac's run store and the loops' ledger (30 days)", .launch, .moved),
         v("Overview: base band, the full setup", "Overview", "Launch view: the Agent jobs bar (Our tests · Our loop runs)", .launch, .merged),
         v("Overview: band clicks", "Overview", "Each bar segment opens its page", .launch, .kept),
         v("Overview: How to read Evals and the first-test link", "Overview", "Lessons (header button) › Your first test, free", .lessons, .moved),
@@ -643,8 +651,8 @@ public enum EvalsCoverage {
         v("Overview: question 1 mini-chart with the blind-guess tick", "Overview", "Our tests rows: squares with the blind-guess tick", .oneShotOurs, .merged),
         v("Overview: question 1, to answer it properly", "Overview", "Our tests pages, under the answer", .oneShotOurs, .moved),
         v("Overview: question 2, did my last change help", "Overview", "Agent jobs › Changes; the launch view's Did my last change help? button", .changes, .moved),
-        v("Overview: what a test records today", "Overview", "Agent jobs › Our tests: What a test records today; Lessons", .agentOurs, .moved),
-        v("Overview: question 2 fix (model per commit)", "Overview", "Agent jobs › Our tests: What a test records today", .agentOurs, .moved),
+        v("Overview: what a test records today", "Overview", "Launch view › Question 2 card: What a test records today; Lessons", .launch, .moved),
+        v("Overview: question 2 fix (model per commit)", "Overview", "Launch view › Question 2 card: the fix under What a test records today", .launch, .moved),
         v("Overview: question 3, what git says", "Overview", "Agent jobs › Real history; the launch view's What does git say about our real work? button", .realHistory, .moved),
         v("Overview: question 3 bars per agent", "Overview", "Real history: one card and bar per agent", .realHistory, .merged),
         v("Overview: question 3 fix (sign every commit)", "Overview", "Real history: the No agent name card", .realHistory, .merged),
