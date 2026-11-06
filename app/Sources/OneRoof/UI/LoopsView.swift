@@ -22,6 +22,17 @@ final class LoopBoard: ObservableObject {
     @Published private(set) var setup: [String: LoopSetup.Status] = [:]
     /// The kit config path the statuses were read from (Setup box's Open config), nil when there is none.
     @Published private(set) var aeConfigPath: String?
+    /// LAB-2281 · LAB-2278 · LP-1 (v7): every loop as the v7 screens show it, with the kit's real on/off and mode
+    /// (`ae loops list --json`, read at most every 30 s), its schedule, last runs and missed runs (8 days of ledger).
+    @Published private(set) var rows: [LoopRow] = []
+    /// False when the kit could not be read: kit loops say "kit state unknown", never a guessed Off.
+    @Published private(set) var kitKnown = true
+    /// The last 8 days of runs, every loop (This week line, strips).
+    @Published private(set) var weekRuns: [LoopRun7] = []
+    /// Runs re-read only when the ledger changed (or every 30 s): the board reloads every 3 s.
+    private var runsCache: (stamp: Date?, at: Date, byLoop: [String: [LoopRun7]]) = (nil, .distantPast, [:])
+
+    func row(_ id: String) -> LoopRow? { rows.first { $0.id == id } }
     private var timer: Timer?
     /// Config text cached by modification date, and the tool check by time (the board reloads every 3 s).
     private var configCache: (path: String?, mtime: Date?, text: String?) = (nil, nil, nil)
@@ -50,8 +61,15 @@ final class LoopBoard: ObservableObject {
             let byLoop = Dictionary(grouping: led?.outcomes(limit: 1000) ?? [], by: \.loop)
             let runs = Dictionary(uniqueKeysWithValues: ls.map { ($0.id, led?.runs(loop: $0.id, limit: 10) ?? []) })
             let (setup, cfgPath) = self?.readSetup(ls.map(\.id)) ?? ([:], nil)
+            let kit = KitLoopsCache.shared.get(maxAge: 30)
+            let runs7 = self?.readRuns(led, path: path) ?? [:]
+            let v7 = LoopsV7.rows(loops: ls, kit: kit, runs: runs7)
+            let flat = runs7.values.flatMap { $0 }.sorted { $0.started < $1.started }
             DispatchQueue.main.async {
                 guard let self else { return }
+                if self.rows != v7 { self.rows = v7 }
+                if self.kitKnown != (kit != nil) { self.kitKnown = kit != nil }
+                if self.weekRuns != flat { self.weekRuns = flat }
                 if self.loops != ls { self.loops = ls }
                 if self.rounds != rs { self.rounds = rs }
                 if self.outcomes != os { self.outcomes = os }
@@ -61,6 +79,17 @@ final class LoopBoard: ObservableObject {
                 if self.aeConfigPath != cfgPath { self.aeConfigPath = cfgPath }
             }
         }
+    }
+
+    /// LAB-2281 (on the io queue): the last 8 days of runs, re-read when the ledger (or its WAL) changed, at least
+    /// every 30 s (so "now" moves on for missed runs).
+    private func readRuns(_ led: LoopLedger?, path: String) -> [String: [LoopRun7]] {
+        let fm = FileManager.default
+        let stamp = [path, path + "-wal"].compactMap { (try? fm.attributesOfItem(atPath: $0))?[.modificationDate] as? Date }.max()
+        if stamp == runsCache.stamp, Date().timeIntervalSince(runsCache.at) < 30 { return runsCache.byLoop }
+        let r = LoopsV7.runsByLoop(led)
+        runsCache = (stamp, Date(), r)
+        return r
     }
 
     /// LAB-2100 (on the io queue): each loop's setup status. The config is re-read only when its file changes; installed
@@ -139,6 +168,26 @@ final class LoopBoard: ObservableObject {
     }
 
     func delete(_ id: String) { write("Delete") { $0.delete(id) } }
+
+    /// LAB-2286 · Run now from the landing: the kit runs a kit loop (`ae loops run`), roofd a One Roof loop.
+    func runNowAny(_ id: String) {
+        if let r = row(id), r.engine == .kit {
+            io.async { [weak self] in
+                do { try KitLoops.runNow(id); DispatchQueue.main.async { self?.error = nil } }
+                catch { DispatchQueue.main.async { self?.error = "Run now: \(error)" } }
+                self?.reload()
+            }
+        } else { runNow(id) }
+    }
+
+    /// LAB-2286 · Turn on a kit loop (`ae loops on`): it starts with trial runs (LP-12).
+    func turnOnKit(_ id: String) {
+        io.async { [weak self] in
+            do { _ = try KitLoops.turnOn(id); DispatchQueue.main.async { self?.error = nil } }
+            catch { DispatchQueue.main.async { self?.error = "Turn on: \(error)" } }
+            self?.reload()
+        }
+    }
 }
 
 /// Loops (I12 slice 1, LAB-678): every loop, pinned first, with its state, rounds and last check; the detail shows the
@@ -163,8 +212,72 @@ struct LoopsView: View {
     @State private var pageWidth: CGFloat = 1100
     @State private var selfTestEmpty = false   // LOOPVIEW=empty: the no-loops card, for captures only
     private var view: String { viewOverride ?? savedView }
+    /// LAB-2286 · Loops v7: the shell's root and drill-downs (v2 window).
+    @StateObject private var nav = LoopsNav()
 
     var body: some View {
+        Group {
+            if v2 { v7Page } else { legacyPage }
+        }
+        .overlay {
+            // LAB-2055: the pop-out card (the landing, a kind's page, Activity, the Inbox's Open loop all open it).
+            if v2, let id = popout, let l = board.loops.first(where: { $0.id == id }) {
+                LoopPopout(loop: l, rounds: board.rounds[l.id] ?? [], model: model, board: board, win: win,
+                           edit: { editing = LoopDraft(loop: l, isNew: false) },
+                           duplicate: { editing = LoopDraft.duplicate(from: l) },
+                           delete: { confirmDelete = l },
+                           close: { popout = nil })
+            }
+        }
+        .onAppear {
+            board.start()
+            if let f = inbox.focus { focus(f); inbox.focus = nil }
+            if let d = inbox.draftRequest { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil }
+            selfTest()
+        }
+        .onDisappear { board.stop() }
+        .onChange(of: inbox.focus) { _, f in if let f { focus(f); inbox.focus = nil } }
+        .onChange(of: inbox.draftRequest) { _, d in if let d { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil } }
+        .onReceive(NotificationCenter.default.publisher(for: .newLoop)) { _ in editing = LoopDraft.new() }
+        .sheet(item: $editing) { d in
+            LoopEditor(draft: d, settings: model.settings, onSave: { loop, run in
+                board.save(loop, isNew: d.isNew, run: run)
+                selected = loop.id
+                if v2 { popout = loop.id }
+                editing = nil
+            }, onCancel: { editing = nil })
+            .themed(t.name)
+        }
+        .alert("Delete this loop?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
+               presenting: confirmDelete) { l in
+            Button("Delete", role: .destructive) { board.delete(l.id); if selected == l.id { selected = nil }; if popout == l.id { popout = nil } }
+            Button("Cancel", role: .cancel) {}
+        } message: { l in
+            Text("Its loop.json, state.json and round log are removed. Its worktree \(l.worktreePath) and branch \(l.branch) stay, with any work in them.")
+        }
+    }
+
+    /// LAB-2286 · the v7 shell: the landing (kinds as lanes) and the segments; screens not built yet show today's views.
+    private var v7Page: some View {
+        LoopsV7Shell(model: model, win: win, board: board, nav: nav,
+                     actions: LoopsV7Actions(openLoop: { popout = $0 }, newLoop: { editing = LoopDraft.new() },
+                                             startFrom: { l in editing = LoopDraft.duplicate(from: l) }),
+                     activity: {
+                         // 2.0.5's Activity (v2 A9, C5.1), unchanged: This week until 7e lands.
+                         HStack(alignment: .top, spacing: 18) {
+                             VStack(alignment: .leading, spacing: 14) {
+                                 if !board.outcomes.isEmpty { LoopOutcomesCard(rows: board.outcomes, setup: board.setup) { popout = $0 } }   // LAB-1918 · LAB-1941
+                                 LoopRunsView(model: model, board: board)   // LAB-1933
+                                 if board.loops.isEmpty { empty.frame(maxWidth: .infinity, alignment: .top) } else { list.frame(maxWidth: .infinity) }
+                             }
+                             V2TonightPanel(model: model, board: board).frame(width: 250)
+                         }
+                     },
+                     empty: { empty.frame(maxWidth: .infinity, alignment: .top) },
+                     forceEmpty: selfTestEmpty)
+    }
+
+    private var legacyPage: some View {
         FleetPage(title: "Loops", subtitle: subtitle) {
             HStack(spacing: 8) {
                 if board.loops.contains(where: { $0.state == .paused }) && !board.loops.contains(where: { $0.state.isActive }) {
@@ -238,42 +351,6 @@ struct LoopsView: View {
                 }
             }
         }
-        .overlay {
-            // LAB-2055: the pop-out card (Kinds, a family's page, Activity, the Inbox's Open loop all open it).
-            if v2, let id = popout, let l = board.loops.first(where: { $0.id == id }) {
-                LoopPopout(loop: l, rounds: board.rounds[l.id] ?? [], model: model, board: board, win: win,
-                           edit: { editing = LoopDraft(loop: l, isNew: false) },
-                           duplicate: { editing = LoopDraft.duplicate(from: l) },
-                           delete: { confirmDelete = l },
-                           close: { popout = nil })
-            }
-        }
-        .onAppear {
-            board.start()
-            if let f = inbox.focus { focus(f); inbox.focus = nil }
-            if let d = inbox.draftRequest { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil }
-            selfTest()
-        }
-        .onDisappear { board.stop() }
-        .onChange(of: inbox.focus) { _, f in if let f { focus(f); inbox.focus = nil } }
-        .onChange(of: inbox.draftRequest) { _, d in if let d { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil } }
-        .onReceive(NotificationCenter.default.publisher(for: .newLoop)) { _ in editing = LoopDraft.new() }
-        .sheet(item: $editing) { d in
-            LoopEditor(draft: d, settings: model.settings, onSave: { loop, run in
-                board.save(loop, isNew: d.isNew, run: run)
-                selected = loop.id
-                if v2 { popout = loop.id }
-                editing = nil
-            }, onCancel: { editing = nil })
-            .themed(t.name)
-        }
-        .alert("Delete this loop?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
-               presenting: confirmDelete) { l in
-            Button("Delete", role: .destructive) { board.delete(l.id); if selected == l.id { selected = nil }; if popout == l.id { popout = nil } }
-            Button("Cancel", role: .cancel) {}
-        } message: { l in
-            Text("Its loop.json, state.json and round log are removed. Its worktree \(l.worktreePath) and branch \(l.branch) stay, with any work in them.")
-        }
     }
 
     /// Open a loop from elsewhere (the Inbox's Open loop, a self-test): v2 pops its card out over the page.
@@ -282,8 +359,25 @@ struct LoopsView: View {
     }
 
     /// LAB-2055 · ONEROOF_SELFTEST_LOOPVIEW=kinds|activity|kind:<family>|loop:<id> (LOOPGALLERY=1 = kinds in v2).
+    /// LAB-2286 (v7, v2 window): lanes|kinds (7a) · week|activity · today · library · kind:<family> · needs · runs ·
+    /// loop:<id> (the pop-out over the landing) · empty. Never saved.
     private func selfTest() {
         let env = ProcessInfo.processInfo.environment
+        if v2, let v = env["ONEROOF_SELFTEST_LOOPVIEW"] ?? (env["ONEROOF_SELFTEST_LOOPGALLERY"] == "1" ? "library" : nil) {
+            nav.persist = false
+            switch v {
+            case "week", "activity": nav.setRoot(.thisWeek)
+            case "today": nav.setRoot(.today)
+            case "library": nav.setRoot(.library)
+            case "empty": nav.setRoot(.byKind); selfTestEmpty = true
+            case "needs": nav.setRoot(.byKind); nav.open(.needsYou(loop: nil, item: nil))
+            case "runs": nav.setRoot(.byKind); nav.open(.runs)
+            case _ where v.hasPrefix("kind:"): nav.setRoot(.byKind); nav.open(.kind(String(v.dropFirst(5))))
+            case _ where v.hasPrefix("loop:"): nav.setRoot(.byKind); focus(String(v.dropFirst(5)))
+            default: nav.setRoot(.byKind)
+            }
+            return
+        }
         if env["ONEROOF_SELFTEST_LOOPGALLERY"] == "1" { if v2 { viewOverride = "kinds" } else { gallery = true } }
         guard let v = env["ONEROOF_SELFTEST_LOOPVIEW"] else { return }
         if v == "kinds" || v == "activity" { viewOverride = v }
@@ -396,7 +490,7 @@ struct LoopsView: View {
             Text(rowRight(l, rs)).ui(12).foregroundStyle(t.text2.color).lineLimit(1).frame(width: 150, alignment: .leading)
             HealthStrip(results: rs.filter { $0.kind != .stop }.suffix(8).map(\.checkPassed))
             if let last { CheckGlyph(passed: last.checkPassed == true) }
-            LoopStateChip(loop: l).frame(width: 110, alignment: .trailing)   // LAB-2056: Off, never struck through
+            LoopStateChip(loop: l, row: board.row(l.id), kitKnown: board.kitKnown).frame(width: 110, alignment: .trailing)   // LAB-2056: Off, never struck through
         }
         .padding(.vertical, 10).padding(.horizontal, 12)
         .contentShape(Rectangle())
@@ -497,7 +591,7 @@ struct LoopDetail: View {
                 StatusDot(status: l.state.pillStatus, size: 10)
                 Text(l.displayTitle).ui(TypeScale.title, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
-                LoopStateChip(loop: l)   // LAB-2056: a plain Off chip, never struck through
+                LoopStateChip(loop: l, row: board.row(l.id), kitKnown: board.kitKnown)   // LAB-2056 · LAB-2278: a plain Off chip, never struck through
                 LoopTagChip(text: l.origin.label)
                 if l.pinned { LoopTagChip(text: "Pinned") }
                 Spacer()

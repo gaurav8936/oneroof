@@ -9,7 +9,7 @@ import Foundation
 ///
 /// Pure: the app reads the loop files and the ledger off the main thread and hands them in.
 public enum LoopInbox {
-    public enum Kind: String, Equatable, Sendable { case failed, asks, staged }
+    public enum Kind: String, Equatable, Sendable { case failed, asks, staged, missed }
 
     public struct Item: Identifiable, Equatable, Sendable {
         public var id: String
@@ -39,8 +39,9 @@ public enum LoopInbox {
     }
 
     /// Loop items for Needs you: failures and asks of loops, then staged outcomes (Today), each oldest first.
-    public static func items(loops: [Loop], staged: [LoopLedger.Outcome]) -> [Item] {
-        needs(loops) + today(staged, titles: Dictionary(loops.map { ($0.id, $0.displayTitle) }, uniquingKeysWith: { a, _ in a }))
+    /// LAB-2286 (v7): with the loops' rows, a loop that missed scheduled runs is one item too (after failures and asks).
+    public static func items(loops: [Loop], staged: [LoopLedger.Outcome], rows: [LoopRow] = []) -> [Item] {
+        needs(loops) + missed(rows) + today(staged, titles: Dictionary(loops.map { ($0.id, $0.displayTitle) }, uniquingKeysWith: { a, _ in a }))
     }
 
     /// Loops that stopped at a limit (not seen yet) or whose round asks you something, oldest first.
@@ -122,7 +123,7 @@ public enum LoopInbox {
 
     public static func actions(for item: Item) -> [Action] {
         switch item.kind {
-        case .failed, .asks: return []
+        case .failed, .asks, .missed: return []
         case .staged:
             switch item.outcomeKind {
             case "commit", "pr": return [.approvePR, .open, .dismiss]

@@ -363,7 +363,7 @@ struct HomeFrontPageView: View {
                 return .init(id: b.id, kind: .plan, title: title, detail: "", at: b.at)
             case .loop:
                 guard let it = b.loopItemId.flatMap({ loopItems[$0] }) else { return nil }
-                let k: HomeFrontPage.Ask.Kind = it.kind == .failed ? .loopFailed : it.kind == .asks ? .loopAsks : .loopStaged
+                let k: HomeFrontPage.Ask.Kind = (it.kind == .failed || it.kind == .missed) ? .loopFailed : it.kind == .asks ? .loopAsks : .loopStaged   // LAB-2286: missed runs: LOOK › Open
                 return .init(id: b.id, kind: k, title: it.loopTitle, detail: it.headline, at: b.at, loopId: it.loopId)
             case .question, .menu:
                 let text = b.decision.map { Inbox.body($0, agentName: $0.agent.displayName) }

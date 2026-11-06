@@ -125,7 +125,8 @@ final class LoopsV7DataTests: XCTestCase {
         }
         let staged = [o(1, "r1", "commit"), o(2, "r1", "commit"), o(3, "r1", "commit"), o(4, "r1", "commit"),
                       o(5, "r2", "proposal"), o(6, "r2", "proposal"), o(7, "r3", "report"), o(8, "r4", "promotion")]
-        XCTAssertEqual(LoopsV7.needsCount(staged: staged, questions: 1, failures: 0, missedLoops: 1), 1 + 2 + 1 + 1 + 1)
+        // LAB-2286: a staged promotion is the kit asking "go live?" (auto-live ones are written as applied), so it counts.
+        XCTAssertEqual(LoopsV7.needsCount(staged: staged, questions: 1, failures: 0, missedLoops: 1), 1 + 2 + 1 + 1 + 1 + 1)
     }
 
     // LP-4 · LP-14

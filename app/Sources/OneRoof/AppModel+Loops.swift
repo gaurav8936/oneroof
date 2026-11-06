@@ -17,6 +17,14 @@ final class LoopInboxState: ObservableObject {
     @Published var lastResult: [String: String] = [:]
     /// Items being worked on (a harvest can take minutes).
     @Published var busy: Set<String> = []
+    /// LAB-2286 · the status bar's loops part ("14 loops on · next: Mac resource watch 10:40"); nil before the first read.
+    @Published private(set) var statusLine: String?
+    /// LAB-2286 · false when the kit could not be read (`ae loops list --json`): kit loops are "kit state unknown".
+    @Published private(set) var kitKnown = true
+
+    /// LAB-2286 · one Needs you count everywhere (the Loops rail badge, the landing's chip, the Inbox's loop items):
+    /// one per decision, the items themselves (LoopsV7.needsCount).
+    var needsCount: Int { LoopsV7.needsCount(items: items) }
 
     let io = DispatchQueue(label: "oneroof.loops.inbox")
     /// LAB-2042 · self-test only (ONEROOF_SELFTEST_INBOX): loop items shown as if a loop had filed them.
@@ -40,10 +48,18 @@ final class LoopInboxState: ObservableObject {
         io.async { [weak self] in
             let s = Self.store()
             let loops = s.all()
-            let staged = Self.ledger(s.root)?.outcomes(status: "staged", limit: 300) ?? []
-            let found = LoopInbox.items(loops: loops, staged: staged)
+            let led = Self.ledger(s.root)
+            let staged = led?.outcomes(status: "staged", limit: 300) ?? []
+            // LAB-2286: the kit's real on/off (read at most once a minute here, shared with the Loops page) and the
+            // last 8 days of runs, so a loop that missed its runs is one item too and the status bar has its line.
+            let kit = KitLoopsCache.shared.get(maxAge: 60)
+            let rows = LoopsV7.rows(loops: loops, kit: kit, runs: LoopsV7.runsByLoop(led))
+            let found = LoopInbox.items(loops: loops, staged: staged, rows: rows)
+            let line = LoopsV7.statusBar(rows: rows)
             DispatchQueue.main.async {
                 guard let self else { return }
+                if self.statusLine != line { self.statusLine = line }
+                if self.kitKnown != (kit != nil) { self.kitKnown = kit != nil }
                 let next = found + self.selfTestSeed   // LAB-2042: ONEROOF_SELFTEST_INBOX's loop item (self-test only)
                 if self.items != next { self.items = next; done?() }
             }
@@ -54,6 +70,25 @@ final class LoopInboxState: ObservableObject {
 
     func runAgain(_ loopId: String, then: @escaping () -> Void = {}) {
         perform(loopId, "Run again", then) { try Self.store().update(loopId) { $0 = LoopController.runNow($0) }; return "Running again: roofd starts it within 30 s." }
+    }
+
+    /// LAB-2286 · Run now: a kit loop through the kit (`ae loops run <name> --scheduled`, in the background; a loop in
+    /// trial only says what it would do), a One Roof loop through roofd (it starts within 30 s).
+    func runNow(_ loopId: String, then: @escaping () -> Void = {}) {
+        perform(loopId, "Run now", then) {
+            if let k = KitLoopsCache.shared.get(maxAge: 60)?.first(where: { $0.name == loopId }), k.scheduler != "roofd" {
+                try KitLoops.runNow(loopId)
+                return "Started: the kit runs it now (`ae loops run \(loopId)`); the run shows here when it ends."
+            }
+            try Self.store().update(loopId) { $0 = LoopController.runNow($0) }
+            return "Running: roofd starts it within 30 s."
+        }
+    }
+
+    /// LAB-2286 · Turn on a kit loop (`ae loops on <name>`): the kit adds its scheduler entry; it starts with trial
+    /// (shadow) runs that only say what they would do (LP-12).
+    func turnOn(_ loopId: String, then: @escaping () -> Void = {}) {
+        perform(loopId, "Turn on", then) { "On, in trial: " + (try KitLoops.turnOn(loopId)) }
     }
 
     func markSeen(_ loopId: String, then: @escaping () -> Void = {}) {
