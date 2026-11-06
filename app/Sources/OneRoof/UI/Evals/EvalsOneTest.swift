@@ -661,6 +661,6 @@ struct EvalsOneTestPage: View {
 
     private func compareWith() {
         guard let r = result else { return }
-        nav.showResults(key: r.setName ?? (r.task ?? ""), compareA: r.id)
+        nav.showResults(key: r.setName ?? (r.task ?? ""), compareA: r.id, kind: EvalJobKind.of(r))
     }
 }

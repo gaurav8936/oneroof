@@ -16,6 +16,8 @@ final class EvalsAStore: ObservableObject {
     @Published private(set) var boards: [String: Result<EvalSetupLeaderboard, EvalError>] = [:]
     @Published private(set) var changes: Result<[EvalChange], EvalError>?
     @Published private(set) var xray: [String: Result<EvalXRay, EvalError>] = [:]
+    /// LAB-2254: the commits behind a Real history count, per repo list + days + kind + agent.
+    @Published private(set) var commitLists: [String: Result<EvalCommitList, EvalError>] = [:]
     @Published private(set) var stamps: [String: EvalsARunStamp] = [:]
     /// nil while the stamps are being read (or never read), true once read, false when the read failed (re-review #6).
     @Published private(set) var stampsRead: Bool?
@@ -86,6 +88,25 @@ final class EvalsAStore: ObservableObject {
         }
     }
     func isReading(repos: [String], days: Int) -> Bool { loading.contains("x:" + Self.key(repos, days: days)) }
+
+    static func listKey(_ repos: [String], days: Int, kind: EvalCommitList.Kind, agent: String) -> String {
+        key(repos, days: days) + "#" + kind.rawValue + "#" + agent
+    }
+    /// LAB-2254 · `xray … --commits KIND --agent NAME`: the commits one count is made of (read once; again on Read again).
+    func refreshCommitList(_ board: EvalsBoard, repos: [String], days: Int, kind: EvalCommitList.Kind, agent: String, force: Bool = false) {
+        let k = Self.listKey(repos, days: days, kind: kind, agent: agent)
+        guard !repos.isEmpty, force || commitLists[k] == nil, !loading.contains("cl:" + k) else { return }
+        loading.insert("cl:" + k)
+        board.ask(EvalCommitList.args(repos: repos, days: days, kind: kind, agent: agent), EvalCommitList.self, timeout: 600) { [weak self] r in
+            self?.loading.remove("cl:" + k)
+            self?.commitLists[k] = r
+        }
+    }
+    /// Read again also drops the commit lists for that repo list and window, so an open list re-reads with the counts.
+    func forgetCommitLists(repos: [String], days: Int) {
+        let p = Self.key(repos, days: days) + "#"
+        for k in commitLists.keys where k.hasPrefix(p) { commitLists[k] = nil }
+    }
 
     /// Run stamps from `results` (2.0.4 rows carry `stamp` and `setup_id`).
     func refreshStamps(_ board: EvalsBoard) {

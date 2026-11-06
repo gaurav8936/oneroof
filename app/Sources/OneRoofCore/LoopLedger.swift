@@ -159,6 +159,18 @@ public final class LoopLedger {
         }
     }
 
+    /// 2.0.5 Evals: run counts per loop, mode and result over [from, now], counted in SQLite (julianday handles the
+    /// writers' UTC offsets), so a busy loop can never push another loop's runs out of the window.
+    public struct WindowCount: Equatable, Sendable {
+        public var loop: String, mode: String, result: String, n: Int, last: String
+    }
+    public func counts(since from: Date) -> [WindowCount] {
+        rows("SELECT loop, mode, COALESCE(result, '') AS result, COUNT(*) AS n, MAX(started) AS last FROM runs "
+             + "WHERE julianday(started) >= julianday(?) GROUP BY loop, mode, result", [Self.iso(from)]).map {
+            WindowCount(loop: $0["loop"] ?? "", mode: $0["mode"] ?? "", result: $0["result"] ?? "", n: Int($0["n"] ?? "0") ?? 0, last: $0["last"] ?? "")
+        }
+    }
+
     /// Staged outcomes, newest first: what the morning view asks you about.
     public func staged(limit: Int = 100) -> [[String: String]] {
         rows("SELECT id, loop, kind, title, link, created FROM outcomes WHERE status='staged' ORDER BY created DESC LIMIT \(max(1, limit))")

@@ -72,6 +72,7 @@ final class EvalsBoard: ObservableObject {
             let sorted = rows.sorted { ($0.created ?? $0.id) > ($1.created ?? $1.id) }
             let finishedNow = self.runs.contains { old in old.isActive && sorted.contains { $0.id == old.id && !$0.isActive } }
             if sorted != self.runs { self.runs = sorted }
+            HFAccount.shared.setRunTasks(Dictionary(sorted.compactMap { r in r.task.map { (r.id, $0) } }, uniquingKeysWith: { a, _ in a }))
             if finishedNow || self.results.isEmpty { self.refreshResults() }
         }
     }

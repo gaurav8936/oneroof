@@ -460,6 +460,10 @@ public struct EvalXRay: Decodable, Equatable, Sendable {
         public var selfChurnShare: Double?
         public var revertRate: Double?
         public var fixupRate: Double?
+        /// LAB-2254: the exact counts (engines before 2.0.5 leave them out; then fixup × commits is used).
+        public var followedByFix: Int?
+        public var reverted: Int?
+        public var rewrittenCommits: Int?
     }
     public var windowDays: Int
     public var horizonDays: Int?

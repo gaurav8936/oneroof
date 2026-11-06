@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 import OneRoofCore
 
-/// LAB-2242 · E7 Set up a test (screen lane B): a sheet over any tab — 1 which task · 2 which setups (pick the layer,
-/// then the setups: an agent and its model picked together, where it runs, our rules off or on @ hash) · 3 how many,
+/// LAB-2242 · E7 Set up a test (screen lane B): a sheet over any tab — 1 which task · 2 which setups (LAB-2261, v3 D4:
+/// One-shot · Agent, then the setups: an agent and its model picked together, where it runs, Rules: with our rules @ hash
+/// (default) or clean) · 3 how many,
 /// with what the test can tell you (`power`) before what it costs · Before you start (API cost from `estimate`, seat
 /// notes from the engine — never an invented share — and what is recorded with each result) · Start N tests · Running
 /// and recent (the queue's only home; the header's Running · N opens it). Nothing starts until Start; ↩ starts when
@@ -15,7 +16,9 @@ struct EvalsSetupSheet: View {
     @Environment(\.theme) private var t
     @State private var plan = EvalRunPlan(tasks: [])
     @State private var rows: [SetupRow] = []
-    @State private var layer: EvalStamp.Layer = .agentModel
+    /// LAB-2261 · step 2's switch: One-shot · Agent (+ Rules). Maps onto the 2.0.4 layer, so the setups are unchanged.
+    @State private var pick = EvalSetupKindChoice.default
+    private var layer: EvalStamp.Layer { pick.layer }
     @State private var estimates: [String: EvalEstimate] = [:]
     @State private var extras: [String: EvalSetupEstimate] = [:]
     @State private var estimateErrors: [String: String] = [:]
@@ -93,7 +96,7 @@ struct EvalsSetupSheet: View {
                     Text("Set up a test").ui(TypeScale.title, .semibold).foregroundStyle(t.text.color)
                     if EvalsDraft.isDraft { EvalsDraftTag() }
                 }
-                Text("Test setups on a task. Opened from Compare, a question, a benchmark or + New. Nothing starts until you press Start.")
+                Text("Test setups on a task. Opened from Our tests, a question, a benchmark or New test or task. Nothing starts until you press Start.")
                     .ui(TypeScale.small).foregroundStyle(t.text2.color)
             }
             Spacer()
@@ -106,12 +109,12 @@ struct EvalsSetupSheet: View {
         let own = !plan.tasks.isEmpty && plan.tasks.allSatisfy(EvalRunPlan.isOwnSet)
         let steps: [(String, String)] = own ? [
             ("1 · The task", "A real bug report and the code as it was before the fix"),
-            ("2 · The setup", "An agent and its model (your full setup adds your rules), or a model on its own"),
+            ("2 · The setup", "Agent: an agent and its model, with our rules or clean. One-shot: a model on its own"),
             ("3 · The check", "Code checks whether the answer names a file the fix changed"),
             ("4 · The score", "Right on N bugs, with the range you can expect on new ones"),
         ] : [
             ("1 · The task", "The benchmark's questions, the same for every setup"),
-            ("2 · The setup", "A model on its own, or an agent using a model"),
+            ("2 · The setup", "One-shot: a model on its own. Agent: an agent using a model"),
             ("3 · The check", "The benchmark's own marking: exact match, tests or a judge"),
             ("4 · The score", "Right on N questions, with its 95 % range"),
         ]
@@ -141,16 +144,19 @@ struct EvalsSetupSheet: View {
         Card(padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 EvalsLabel("2 · Which setups")
-                Text("Pick the layer, then the setups. Agent and model are picked together.")
+                Text("One-shot: a model answers once, no tools. Agent: an agent and its model, picked together.")
                     .ui(TypeScale.small).foregroundStyle(t.text2.color)
-                Segmented(options: EvalStamp.Layer.allCases.map { ($0, layerTitle($0) + count($0)) }, selection: $layer)
-                    .accessibilityLabel("Layer")
+                Segmented(options: EvalJobKind.allCases.map { ($0, $0.short + count($0)) }, selection: $pick.kind)
+                    .accessibilityLabel("Kind of job")
+                if pick.kind == .agent { rulesPicker }
                 switch layer {
                 case .model: modelRows
                 case .agentModel, .full: agentRows(full: layer == .full)
                 }
                 if !ownOnly && layer != .model && !plan.tasks.isEmpty {
-                    Text("Agents on your seats answer your own tasks only; for a public benchmark, use an agent on an API key below.")
+                    Text(pick.rules == .withRules
+                         ? "Agents on your seats answer your own tasks only; for a public benchmark, pick Clean (no rules) and use an agent on an API key."
+                         : "Agents on your seats answer your own tasks only; for a public benchmark, use an agent on an API key below.")
                         .ui(TypeScale.caption).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
                 }
                 notYet
@@ -159,11 +165,25 @@ struct EvalsSetupSheet: View {
         }
     }
 
-    private func layerTitle(_ l: EvalStamp.Layer) -> String {
-        switch l { case .model: return "The model"; case .agentModel: return "Agent using a model"; case .full: return "Your full setup" }
+    /// Rules for an agent (D4): with our rules (default, the repo's CLAUDE.md / AGENTS.md at HEAD, read-only) or clean.
+    private var rulesPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Rules").ui(TypeScale.small, .semibold).foregroundStyle(t.text2.color)
+                Segmented(options: EvalSetupRules.allCases.map { ($0, $0.title + count($0)) }, selection: $pick.rules)
+                    .accessibilityLabel("Rules")
+            }
+            Text(pick.rules == .withRules ? "Our CLAUDE.md and AGENTS.md go into every case, read-only: the agent as we use it."
+                 : "No CLAUDE.md or AGENTS.md in the case: the agent out of the box.")
+                .ui(TypeScale.caption).foregroundStyle(t.text3.color).fixedSize(horizontal: false, vertical: true)
+        }
     }
-    private func count(_ l: EvalStamp.Layer) -> String {
-        let n = choices.filter { $0.layer == l }.count
+    private func count(_ k: EvalJobKind) -> String {
+        let n = EvalSetupKindChoice.count(choices, kind: k)
+        return n > 0 ? " · \(n)" : ""
+    }
+    private func count(_ r: EvalSetupRules) -> String {
+        let n = EvalSetupKindChoice.count(choices, rules: r)
         return n > 0 ? " · \(n)" : ""
     }
 
@@ -571,20 +591,21 @@ struct EvalsSetupSheet: View {
             plan = p
             rows = EvalSetupChoice.from(p).map { SetupRow(choice: $0, on: true) }
             unrecorded = p.notRecorded ? EvalSetupChoice.from(p) : nil
-            if let first = rows.first { layer = first.choice.layer }
+            if let o = EvalSetupKindChoice.opening(rows.map(\.choice)) { pick = o }   // agents → Agent (+ their rules); models → One-shot
             nav.draft = nil
         } else if let kept = nav.workPlan {
             plan = kept
             rows = Self.keptRows ?? EvalSetupChoice.from(kept).map { SetupRow(choice: $0, on: true) }
+            if let o = EvalSetupKindChoice.opening(rows.filter(\.on).map(\.choice)) { pick = o }
         } else if plan.tasks.isEmpty {
             let first = board.sets.first
             plan = EvalRunPlan(tasks: [first?.taskFile ?? "gsm8k"], models: [], limit: first?.count ?? 5, cap: 2)
             rows = Self.keptRows ?? []
         }
         if rows.isEmpty {   // QA m4: a valid default, never "Start 0 tests"
-            let d = EvalSetupChoice.defaults(task: plan.tasks.first, seatAgents: seatAgents.filter(\.available).map(\.id))
+            let d = EvalSetupKindChoice.defaults(task: plan.tasks.first, seatAgents: seatAgents.filter(\.available).map(\.id))
             rows = d.choices.map { SetupRow(choice: $0, on: true) }
-            layer = d.layer
+            pick = d.choice
         }
         epochsText = plan.epochs.map(String.init) ?? ""
         temperatureText = plan.temperature.map { String($0) } ?? ""

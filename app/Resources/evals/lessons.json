@@ -312,6 +312,31 @@
    "more": "For an agent, count every attempt, retry and tool call, then divide by the tasks it solved. An agent on your plan's seat shows \"seat\": the plan pays, not each token."
   },
   {
+   "id": "job-kinds",
+   "section": "agents",
+   "title": "One-shot jobs and agent jobs",
+   "body": "Evals sorts work into two kinds of job. A one-shot job is one prompt to a model and one answer back: label this, sum it up, name the files. It is tested as the model alone, so public benchmarks say something about it. An agent job is Claude Code or Codex on our code with our setup: our rules files, skills, hooks and tools, many steps, then a change. It is tested the way we use it, on tasks from our own repos. Public benchmarks never test that: nobody else has our code or setup. So agent tests run with our rules on by default; rules off (clean) is the agent out of the box, kept to compare.",
+   "example": "Naming the files a bug touches is a one-shot job when a model reads the report once, and an agent job when Claude Code explores the repo with our CLAUDE.md first.",
+   "glossary": [],
+   "widget": "jobKinds",
+   "teaser": "One prompt to a model, or an agent on our code: tested differently.",
+   "links": [
+    {
+     "label": "Evals: one bar per kind of job",
+     "route": "launch"
+    },
+    {
+     "label": "Agent jobs › Our tests: with our rules or clean",
+     "route": "agent-ours"
+    },
+    {
+     "label": "Agent jobs › Public agent benchmarks: out of the box, context only",
+     "route": "agent-public"
+    }
+   ],
+   "more": "A loop goes where its definition puts it, never its name: a loop that asks a model once from the findings it collected is one-shot; a loop that starts an agent session in a worktree is an agent job; a loop with no prompt is a code check, with no model at all."
+  },
+  {
    "id": "golden-sets",
    "section": "own",
    "title": "Golden sets from repo history",
@@ -350,6 +375,31 @@
      "route": "results"
     }
    ]
+  },
+  {
+   "id": "loop-runs",
+   "section": "own",
+   "title": "Loop runs as evidence",
+   "body": "A loop runs a job again and again by itself: every night, every hour, after a commit. Every run is a test nobody had to set up, on real work. What a good run is depends on the loop's kind. A report: it was right and you read it. A judge: its verdicts match yours. An auditor: the gaps it found were real. A watch: it spoke up when it mattered and stayed quiet when not. An improve loop: its change passed its check and stayed in. Nobody marks runs good or bad yet, so One Roof shows how many ran, failed or were dry, and \"good run: not recorded\" until each run is judged.",
+   "example": "Seven runs of a nightly report that nobody read are seven runs, not seven good ones.",
+   "glossary": [],
+   "widget": "loopRuns",
+   "teaser": "Every run of a loop is a test, once someone says whether it was good.",
+   "links": [
+    {
+     "label": "One-shot jobs › Loop runs: runs, failed, dry",
+     "route": "oneshot-loops"
+    },
+    {
+     "label": "Agent jobs › Our loop runs",
+     "route": "agent-loops"
+    },
+    {
+     "label": "Loops: each loop's rounds and outcomes",
+     "route": "loops"
+    }
+   ],
+   "more": "A loop with no model (a code check, such as a cost watch or a site prober) is not judged here: its check passes or fails by code, so Evals lists it on one line of its own and leaves it to Loops."
   },
   {
    "id": "saturation",

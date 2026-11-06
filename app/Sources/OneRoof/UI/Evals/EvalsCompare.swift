@@ -10,6 +10,8 @@ import OneRoofCore
 struct EvalsCompareView: View {
     @ObservedObject var board: EvalsBoard
     @ObservedObject var nav: EvalsNav
+    /// v3 (2.0.5): the segment page's kind of job: only that kind's setups; the agent × model grid only on agent jobs.
+    var kind: EvalJobKind? = nil
     @ObservedObject private var store = EvalsAStore.shared
     @Environment(\.theme) private var t
     @State private var view: Mode = .setups
@@ -17,8 +19,8 @@ struct EvalsCompareView: View {
     @State private var compared: EvalCompareResult?
     @State private var compareError: String?
     @State private var focusRow = 0
-    /// The grid's rules mode (review P2 #8): off (clean) by default, so layer-2 rows never hold rules-on results.
-    @State private var gridRules = false
+    /// The grid's rules mode (review P2 #8): one mode per grid, never both in a row. QA #5 (D4): with our rules by default.
+    @State private var gridRules = true
     @FocusState private var listFocused: Bool
 
     enum Mode: String, CaseIterable { case setups = "By setup", grid = "Agent × model" }
@@ -37,8 +39,9 @@ struct EvalsCompareView: View {
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(sets) { s in taskCard(s) }
                     Spacer(minLength: 8)
-                    RoofButton("All results ›", .plain) { nav.route = .allResults }
-                        .help("Every task × every setup, every test, export")
+                    if kind == nil {   // v3: on a segment page the tile above does this
+                        RoofButton("All results ›") { nav.route = .allResults }.help("Every task × every setup, every test, export")
+                    }
                 }
                 content
             }
@@ -122,13 +125,13 @@ struct EvalsCompareView: View {
     }
 
     @ViewBuilder private func loaded(_ lb: EvalSetupLeaderboard) -> some View {
-        Text(EvalsACompare.headline(lb)).ui(17, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
+        if kind == nil { Text(EvalsACompare.headline(lb)).ui(17, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true) }
         HStack {
-            Segmented(options: Mode.allCases.map { ($0, $0.rawValue) }, selection: $view).fixedSize()
+            if kind != .oneShot { Segmented(options: Mode.allCases.map { ($0, $0.rawValue) }, selection: $view).fixedSize() }
             Spacer()
             if let v = lb.version { Text("v\(v) · frozen bugs, the same for every setup").ui(TypeScale.caption).foregroundStyle(t.text3.color) }
         }
-        switch view {
+        switch kind == .oneShot ? .setups : view {
         case .setups: setups(lb)
         case .grid: grid(lb)
         }
@@ -138,7 +141,7 @@ struct EvalsCompareView: View {
     // MARK: By setup
 
     private func setups(_ lb: EvalSetupLeaderboard) -> some View {
-        let rows = lb.ranked
+        let rows = lb.ranked.filter { kind == nil || EvalJobKind.of($0) == kind }
         return VStack(alignment: .leading, spacing: 12) {
             Card(padding: 0) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -220,21 +223,20 @@ struct EvalsCompareView: View {
                                 .evalHover(.costPerRight, EvalHover.costPerRight(c))
                         }
                         if let run = r.run {
-                            Button { nav.openRun(run) } label: {
-                                Text("\(EvalsAWords.day(r.started)) · bug by bug ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color)
+                            HStack(spacing: 8) {   // LAB-2255: the way into One test is a button, not a text link
+                                RoofButton("See each bug ›") { nav.openRun(run) }.fixedSize()
+                                Text(EvalsAWords.day(r.started)).ui(TypeScale.caption).foregroundStyle(t.text3.color)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 } else if r.isActive {
                     HStack(spacing: 10) {
                         Text("No squares until it finishes.").ui(TypeScale.caption).foregroundStyle(t.text3.color)
-                        Button { nav.sheet = .setup } label: { Text("Open the queue ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color) }
-                            .buttonStyle(.plain).help("Run anyway, cancel or resume it in Set up a test › Running and recent")
+                        RoofButton("Open the queue ›") { nav.sheet = .setup }.fixedSize()   // LAB-2255
+                            .help("Run anyway, cancel or resume it in Set up a test › Running and recent")
                     }
                 } else {
-                    Button { nav.sheet = .setup } label: { Text("Resume or start again in the queue ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.accentText.color) }
-                        .buttonStyle(.plain)
+                    RoofButton("Resume or start again in the queue ›") { nav.sheet = .setup }.fixedSize()   // LAB-2255
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -283,7 +285,7 @@ struct EvalsCompareView: View {
     }
 
     @ViewBuilder private func pairedCard(_ lb: EvalSetupLeaderboard) -> some View {
-        let done = lb.rows.filter(\.isDone)
+        let done = lb.rows.filter { $0.isDone && (kind == nil || EvalJobKind.of($0) == kind) }   // the same rows the page shows
         if done.count >= 2 || !picked.isEmpty {
             Card(padding: 14) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -298,11 +300,11 @@ struct EvalsCompareView: View {
                         if let c = compared {
                             EvalsDiffAxis(diff: c.diff, lo: c.ci95.first ?? c.diff, hi: c.ci95.last ?? c.diff).frame(height: 34).frame(maxWidth: 420)
                             Text("\(a.label) minus \(b.label) over \(c.paired ? "\(c.n) shared bugs" : "no shared bugs (unpaired)")").ui(TypeScale.caption).foregroundStyle(t.text3.color)
-                            (Text(EvalsACompare.onlyLine(c, a: a.label, b: b.label) + "  ")
-                             + (c.discordant.isEmpty ? Text("") : Text("See the \(c.discordant.count) bugs ›").foregroundColor(t.accentText.color)))
+                            Text(EvalsACompare.onlyLine(c, a: a.label, b: b.label))
                                 .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-                                .onTapGesture { if let ra = a.run, let rb = b.run, !c.discordant.isEmpty { nav.openRun(ra, only: c.discordant, other: rb) } }
-                                .accessibilityAddTraits(.isButton)
+                            if !c.discordant.isEmpty, let ra = a.run, let rb = b.run {   // LAB-2255: a button, not tappable text
+                                RoofButton("See the \(c.discordant.count) bugs ›") { nav.openRun(ra, only: c.discordant, other: rb) }.fixedSize()
+                            }
                         }
                         if let e = compareError { Text(e).ui(TypeScale.caption).foregroundStyle(t.needsText.color) }
                     } else {
@@ -334,11 +336,11 @@ struct EvalsCompareView: View {
                         .ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Picker("Our rules", selection: $gridRules) {
-                        Text("Rules off (clean)").tag(false)
-                        Text("Rules on").tag(true)
+                        Text("With our rules").tag(true)
+                        Text("Clean (no rules)").tag(false)
                     }
                     .pickerStyle(.segmented).frame(width: 240)
-                    .help("Agent rows show only tests with our rules off, or only with them on; never both in one row")
+                    .help("Agent rows show only tests with our rules, or only clean ones (no rules); never both in one row")
                 }
                 ScrollView(.horizontal) {
                     Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
@@ -398,12 +400,8 @@ struct EvalsCompareView: View {
                 .padding(8).frame(width: 150, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                 .background(box.strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
         } else if let choice = EvalsAGrid.choice(agent: agent, column: model, rules: gridRules, lb: lb) {
-            Button { testCell(choice, lb: lb) } label: {
-                Text("not run · Test ›").ui(TypeScale.caption).foregroundStyle(t.accentText.color)
-                    .padding(8).frame(width: 150, alignment: .leading)
-                    .background(box.strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-            }
-            .buttonStyle(.plain).help("Set up a test, pre-filled with \(choice.label) on this task")
+            EvalsGridTestCell { testCell(choice, lb: lb) }   // LAB-2255: a button you can see, with a hover
+                .help("Set up a test, pre-filled with \(choice.label) on this task")
         } else {
             Text("not available").ui(TypeScale.caption).foregroundStyle(t.text3.color)
                 .padding(8).frame(width: 150, alignment: .leading)
@@ -424,7 +422,7 @@ struct EvalsCompareView: View {
 
     @ViewBuilder private func untested(_ lb: EvalSetupLeaderboard) -> some View {
         let others = sets.compactMap(board)
-        let xs = EvalsACompare.untested(lb, others: others)
+        let xs = EvalsACompare.untested(lb, others: others).filter { kind == nil || EvalJobKind.of($0) == kind }
         if !xs.isEmpty {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -440,5 +438,33 @@ struct EvalsCompareView: View {
             .padding(14)
             .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).strokeBorder(t.separatorStrong.color, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
         }
+    }
+}
+
+
+/// LAB-2255: an empty grid cell you can test from: a framed button with a hover, not dashed text.
+struct EvalsGridTestCell: View {
+    @Environment(\.theme) private var t
+    var action: () -> Void
+    @State private var hover = false
+    var body: some View {
+        let box = RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text("not run").ui(TypeScale.caption).foregroundStyle(t.text2.color)
+                Spacer(minLength: 4)
+                Text("Test ›").ui(TypeScale.caption, .semibold).foregroundStyle(t.text.color)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).fill(t.surface.color))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.button, style: .continuous).strokeBorder(t.separatorStrong.color, lineWidth: 1))
+            }
+            .padding(8).frame(width: 150, alignment: .leading)
+            .background(box.fill(hover ? t.control.color : t.surface2.color))
+            .overlay(box.strokeBorder(hover ? t.text2.color : t.separatorStrong.color, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .accessibilityLabel("Not run. Test this setup.")
     }
 }

@@ -125,8 +125,7 @@ struct EvalsLearnV2: View {
                     HStack(spacing: 6) {
                         Text("No tests on this Mac show this yet.").ui(TypeScale.small).foregroundStyle(t.text3.color)
                         if l.id != "first-eval" {
-                            Button { open("first-eval") } label: { Text("Your first test, free ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
-                                .buttonStyle(.plain)
+                            RoofButton("Your first test, free ›") { open("first-eval") }.fixedSize()   // LAB-2255
                         }
                     }
                 }
@@ -138,8 +137,8 @@ struct EvalsLearnV2: View {
                         Text(r.rangeText).ui(TypeScale.small).foregroundStyle(r.small ? t.needsText.color : t.text.color)
                             .frame(width: 130, alignment: .leading)
                             .evalHover(.range, EvalHover.range(score: r.score, n: r.n, lo: r.lo, hi: r.hi))
-                        Button { nav.openRun(r.run) } label: { Text("open ›").ui(TypeScale.small).foregroundStyle(t.accentText.color) }
-                            .buttonStyle(.plain).accessibilityLabel("Open \(r.title)")
+                        RoofButton("Open ›") { nav.openRun(r.run) }.fixedSize()
+                            .accessibilityLabel("Open \(r.title)")
                     }
                 }
                 if let s = ex.sentence {
@@ -203,11 +202,7 @@ struct EvalsLearnV2: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Where this shows up").ui(TypeScale.section, .semibold).foregroundStyle(t.text.color)
                 ForEach(l.links, id: \.route) { k in
-                    Button { EvalsLearnStore.go(k.route, nav: nav, board: board) } label: {
-                        Text(k.label + " ›").ui(TypeScale.small).foregroundStyle(t.accentText.color).multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .buttonStyle(.plain)
+                    EvalsGoTile(title: k.label) { EvalsLearnStore.go(k.route, nav: nav, board: board) }   // LAB-2255: a tile, not a text link
                 }
                 if let n = b.next(after: l.id) {
                     Button { open(n.id) } label: {
@@ -257,6 +252,9 @@ enum EvalsLearnStore {
 
     /// A lesson's "Where this shows up" link (EvalLessons.knownRoutes).
     static func go(_ route: String, nav: EvalsNav, board: EvalsBoard) {
+        // 2.0.5 (LAB-2261): a v3 page by its self-test name; "loops" opens One Roof › Loops.
+        if route == "loops" { nav.sheet = nil; nav.openLoops(nil); return }
+        if let v3 = EvalsV3Screen.allCases.first(where: { $0.selfTestName == route }) { nav.open(v3); return }
         // 2.0.3 route keys (lessons.json, EvalLessons.knownRoutes) → their 2.0.4 homes.
         switch route {
         case "overview": nav.go(EvalsTabV2.overview)
@@ -288,7 +286,7 @@ struct EvalsTryIt: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(widget == "harness" || widget == "golden" || widget == "frozen" ? "Picture it" : "Try it")
+                    Text(Self.pictures.contains(widget) ? "Picture it" : "Try it")
                         .ui(TypeScale.body, .bold).foregroundStyle(t.text.color)
                     Text(prompt).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 }
@@ -297,6 +295,9 @@ struct EvalsTryIt: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+
+    /// The widgets that are a picture, not maths to play with.
+    static let pictures: Set<String> = ["harness", "golden", "frozen", "jobKinds", "loopRuns"]
 
     private var prompt: String {
         switch widget {
@@ -314,6 +315,8 @@ struct EvalsTryIt: View {
         case "cost": return "What each solved task costs."
         case "golden": return "How a fix in your history becomes a question."
         case "frozen": return "What happens when the set changes."
+        case "jobKinds": return "Two kinds of job, and what tests each."
+        case "loopRuns": return "What a loop's runs can show, and what they can't yet."
         case "saturation": return "How much room is left above the best score?"
         case "contamination": return "An old benchmark and a fresh one of the same kind."
         default: return ""
@@ -349,6 +352,14 @@ struct EvalsTryIt: View {
                                             ("Build v2", "v1's cases plus the fixes since, previewed first"),
                                             ("v2 · frozen", "A new version with its own results"),
                                             ("Compare", "Only runs on the same version, side by side")])
+        case "jobKinds": StepsPicture(steps: [("One-shot job", "One prompt to a model, one answer. Tested as the model alone"),
+                                              ("Public tests", "Others' questions on the same model: context for one-shot jobs"),
+                                              ("Agent job", "Claude Code or Codex on our code, with our rules, skills and tools"),
+                                              ("Our tests", "The only fair test of an agent job: our tasks, rules on (or clean to compare)")])
+        case "loopRuns": StepsPicture(steps: [("A run", "Every round of a loop, from its outcome ledger"),
+                                              ("Ran · failed · dry", "Counted today, for every loop that uses a model"),
+                                              ("A good run", "By kind: right and read · verdicts match · gaps real · spoke up · change stayed in"),
+                                              ("Not recorded", "Until each run is judged; loops with no model are not judged here")])
         default: EmptyView()
         }
     }
@@ -788,10 +799,8 @@ struct EvalHoverLayer: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text(EvalHover.definition(s.kind)).ui(TypeScale.small, .semibold).foregroundStyle(t.text.color).fixedSize(horizontal: false, vertical: true)
             Text(s.line).ui(TypeScale.small).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
-            Button { center.hide(); center.openLesson(lesson) } label: {
-                Text("Lesson: \(EvalsLearnStore.book?.lesson(lesson)?.title ?? "Learn") ›").ui(TypeScale.small, .semibold).foregroundStyle(t.accentText.color)
-            }
-            .buttonStyle(.plain)
+            RoofButton("Lesson: \(EvalsLearnStore.book?.lesson(lesson)?.title ?? "Learn") ›") { center.hide(); center.openLesson(lesson) }
+                .fixedSize()   // LAB-2255: a button you can see
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(t.surface.color)
