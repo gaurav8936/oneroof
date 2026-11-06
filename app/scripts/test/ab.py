@@ -13,7 +13,12 @@ smaller than the Mac's own run-to-run noise never fails.
 
 Layout written by oneroof-test: <out>/perf-ab/{prev,cand}-<r>/scenarios/result.json (perf-check) and
 <out>/perf-ab/{prev,cand}-g<r>/st-log.txt (gesture journey), r = 1, 2."""
-import json, pathlib, re, shutil, statistics, sys
+import json, os, pathlib, re, shutil, statistics, sys
+
+# LAB-2251: nothing the harness starts may touch the login Keychain. The A/B app runs themselves go through run-app.sh and
+# perf-check.sh (both set ONEROOF_NO_KEYCHAIN=1 and ONEROOF_FRESH_PROFILE=1: a previous release ignores the first, and the
+# second points it at a Hugging Face item that does not exist); this keeps the flag in anything ab.py starts too.
+os.environ.setdefault("ONEROOF_NO_KEYCHAIN", "1")
 
 SCEN_KEYS = ['app_cpu', 'roofd_cpu', 'main_busy', 'stalls_50_per_min', 'stall_ms_per_s', 'longest_stall_ms', 'model_changes_per_s',
              'children_per_min', 'footprint_mb', 'mb_per_terminal']

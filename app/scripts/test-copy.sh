@@ -23,7 +23,7 @@ trap cleanup EXIT INT TERM
 ditto "$SRC" "$COPY" || exit 1
 export COPY RD H
 if [ $# -gt 0 ]; then
-  ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" "$@"
+  ONEROOF_NO_KEYCHAIN=1 ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" "$@"
 else
-  ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" "$COPY/Contents/MacOS/OneRoof"
+  ONEROOF_NO_KEYCHAIN=1 ROOFD_DIR="$RD" CFFIXED_USER_HOME="$H" "$COPY/Contents/MacOS/OneRoof"   # LAB-2251: no Keychain call
 fi

@@ -673,7 +673,7 @@ struct V2DockHost: View {
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
     let controller: MainWindowController
-    var body: some View { V2Dock(model: model, resources: model.resources, controller: controller).themed(model.themes.sidebar, scale: 1) }
+    var body: some View { V2Dock(model: model, resources: model.resources, controller: controller, onLoops: win.place == .loops).themed(model.themes.sidebar, scale: 1) }
 }
 
 /// The Plan column: the 270 pt inspector at step 0 (today's Plan panel until M2 redraws it) or the edge tab.

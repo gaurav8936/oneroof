@@ -167,7 +167,7 @@ public final class LoopLedger {
         return picked.reversed().map {
             Run(id: $0["id"] ?? "", loop: $0["loop"] ?? "", engine: $0["engine"] ?? "", mode: $0["mode"] ?? "",
                 started: $0["started"] ?? "", ended: $0["ended"] ?? "", result: $0["result"] ?? "",
-                cost: $0["cost_usd"].flatMap(Double.init), summary: $0["summary"] ?? "")
+                cost: $0["cost_usd"].flatMap(Double.init), summary: $0["summary"] ?? "", journalRef: $0["journal_ref"] ?? "")
         }
     }
 
@@ -308,13 +308,16 @@ public final class LoopLedger {
         public var id: String, loop: String, engine: String, mode: String, started: String, ended: String, result: String
         public var cost: Double?
         public var summary: String
+        /// LAB-2293 · where the run's log is: a kit run's journal report (`runs/YYYY/MM/<date>_<loop>_<run>.md`, relative
+        /// to the journal root), a roofd run's `<loop>/rounds.jsonl`; "" when the writer gave none.
+        public var journalRef = ""
     }
 
     public func runs(loop: String, limit: Int = 50) -> [Run] {
         rows("SELECT * FROM runs WHERE loop=? ORDER BY started DESC LIMIT \(max(1, limit))", [loop]).map {
             Run(id: $0["id"] ?? "", loop: $0["loop"] ?? "", engine: $0["engine"] ?? "", mode: $0["mode"] ?? "",
                 started: $0["started"] ?? "", ended: $0["ended"] ?? "", result: $0["result"] ?? "",
-                cost: $0["cost_usd"].flatMap(Double.init), summary: $0["summary"] ?? "")
+                cost: $0["cost_usd"].flatMap(Double.init), summary: $0["summary"] ?? "", journalRef: $0["journal_ref"] ?? "")
         }
     }
 }

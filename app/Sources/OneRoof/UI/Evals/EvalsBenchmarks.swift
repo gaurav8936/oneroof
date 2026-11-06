@@ -29,7 +29,7 @@ struct EvalsBenchmarksView: View {
                 table
                 uses
             }
-            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)   // LAB-2273: flexes with the window
             .padding(.bottom, 20)
         }
         .onAppear(perform: loadPublished)
