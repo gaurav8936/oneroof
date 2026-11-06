@@ -587,6 +587,10 @@ struct SettingsView: View {
                          : "Optional add-on, not installed: captions and task sorting use the built-in rules. See Help › Seats and routing.")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
+                // LAB-2275: off by default; the model holds ~2 GB while it runs.
+                Toggle("Start on first use (uses about 2 GB of memory while One Roof is open)", isOn: $model.settings.localModelAutoStart)
+                    .font(.caption).disabled(!exists)
+                    .help("Off: One Roof never starts llama-server; captions and task sorting use the built-in rules. A server you run yourself on 127.0.0.1:\(LocalModel.port) is still used.")
                 if exists, let warning = LocalModel.licenceWarning(path: inUse) {
                     Label(warning, systemImage: "exclamationmark.triangle").font(.caption)
                         .foregroundStyle(Pastel.named("peach")!.lightInk.color).fixedSize(horizontal: false, vertical: true)

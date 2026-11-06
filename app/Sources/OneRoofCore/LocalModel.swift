@@ -2,8 +2,10 @@ import Foundation
 
 /// The small on-device model (owner, 2026-10-17: required): Qwen3-1.7B (Apache-2.0, LAB-674; Arch-Router 1.5B up to
 /// 0.5.1) run by llama.cpp's `llama-server` on 127.0.0.1. It only sorts a task into a kind (research, design, code,
-/// review, test, docs, chore); the router's rules then pick the agent. ~0.13 s per call, offline, free. One Roof starts
-/// the server on first use and stops it on quit; a watchdog stops it when One Roof ends any other way (LAB-549).
+/// review, test, docs, chore); the router's rules then pick the agent. ~0.13 s per call, offline, free. With Settings ›
+/// On-device model › Start on first use (LAB-2275: off by default, it held ~2 GB while idle) One Roof starts the server on
+/// first use and stops it on quit; a watchdog stops it when One Roof ends any other way (LAB-549). Off, only a server
+/// already answering on the port is used, and callers fall back to the built-in rules.
 /// Why this model: docs/decisions/20261023_01_on-device-model-qwen3.md (test set: app/scripts/route-eval).
 public final class LocalModel: @unchecked Sendable {
     public static let shared = LocalModel()
@@ -37,6 +39,18 @@ public final class LocalModel: @unchecked Sendable {
         return configured ?? defaultModelPath
     }
     public static func configure(path: String) { configLock.lock(); configured = path; configLock.unlock() }
+
+    nonisolated(unsafe) private static var autoStartSetting = false
+    /// LAB-2275 · May One Roof start llama-server itself? `ONEROOF_LOCAL_MODEL=1` turns it on, else the Settings value
+    /// (`configure(autoStart:)`, off by default).
+    public static var autoStart: Bool {
+        configLock.lock(); defer { configLock.unlock() }
+        return autoStartAllowed(setting: autoStartSetting)
+    }
+    public static func configure(autoStart: Bool) { configLock.lock(); autoStartSetting = autoStart; configLock.unlock() }
+    public static func autoStartAllowed(setting: Bool, environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment["ONEROOF_LOCAL_MODEL"] == "1" || setting
+    }
 
     /// `ONEROOF_MODEL` wins, then the Settings value, then `defaultModelPath`.
     public static func resolve(setting: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
@@ -91,7 +105,8 @@ public final class LocalModel: @unchecked Sendable {
             return "optional model not found at \(modelPath.replacingOccurrences(of: NSHomeDirectory(), with: "~")) (heuristics are used)"
         }
         let name = Self.name(forPath: modelPath)
-        return healthy() ? "\(name) running on 127.0.0.1:\(Self.port)" : "\(name) ready (starts on first use)"
+        if healthy() { return "\(name) running on 127.0.0.1:\(Self.port)" }
+        return Self.autoStart ? "\(name) ready (starts on first use)" : "\(name) off (built-in rules; Settings › On-device model › Start on first use)"
     }
 
     public func healthy() -> Bool {
@@ -108,9 +123,11 @@ public final class LocalModel: @unchecked Sendable {
         return ok
     }
 
-    /// Start llama-server if nothing answers on the port; waits up to 20 s for it to load.
-    public func ensureRunning(modelPath: String = LocalModel.modelPath) -> Bool {
+    /// Start llama-server if nothing answers on the port; waits up to 20 s for it to load. With auto-start off
+    /// (LAB-2275, the default) it starts nothing and is true only when a server already answers.
+    public func ensureRunning(modelPath: String = LocalModel.modelPath, autoStart: Bool = LocalModel.autoStart) -> Bool {
         if healthy() { return true }
+        guard autoStart else { return false }
         lock.lock(); defer { lock.unlock() }
         guard let bin = serverBinary, FileManager.default.fileExists(atPath: modelPath) else { return false }
         if process?.isRunning != true {
