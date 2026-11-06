@@ -43,6 +43,11 @@ import OneRoofCore
 ///                                               report:<ledger run id> = 7k (that run's journal report)
 ///                                               LAB-2287–2290: kind:<family> = 7b · loop:<id> = 7c (the loop's page) ·
 ///                                               popout:<id> = 2.0.5's card · needs = 7d · needs:<item id> = 7d, that row open
+///                                               LAB-2294 · LAB-2295 (lane C): library · library:<id> = 7h (that loop
+///                                               selected) · new = 7i (LOOPDESCRIBE=<text> drafts it) · new:<template id> ·
+///                                               edit:<id> = 7m (LOOPDELETE=1 opens the delete dialog) · setkind = the Set
+///                                               kind sheet over 7a · empty = 7n no loops; LOOPSTATE=kitunknown reads the kit
+///                                               as unreadable (7n kit state unknown), LOOPSTATE=setup opens the setup card
 ///   ONEROOF_SELFTEST_LOOPQUESTION=<loop id>     LAB-2290 (7l): a loop round asks permission (`swift package resolve`), as a
 ///                                               self-test seed labelled so in its title (no live question needed); with
 ///                                               PLACE=needsYou the Inbox shows its card, with LOOPVIEW=needs 7d's top row

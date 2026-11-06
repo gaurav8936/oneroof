@@ -17,6 +17,8 @@ struct LoopKindPage: View {
     let actions: LoopsV7Actions
     @State private var chip: LoopsV7.KindChip = .all
     @State private var confirm: LoopsV7.AskAction?
+    /// LAB-2295 · LP-2: the Set kind sheet's loops.
+    @State private var setKind: [String]?
 
     static let runsW: CGFloat = 110, lastW: CGFloat = 160, byW: CGFloat = 80, stateW: CGFloat = 104
 
@@ -53,6 +55,9 @@ struct LoopKindPage: View {
             Button(LoopWriteConfirm.button(a)) { LoopWriteConfirm.run(a, board: board, model: model); confirm = nil }
             Button("Cancel", role: .cancel) { confirm = nil }
         } message: { a in Text(LoopWriteConfirm.message(a, board: board)) }
+        .sheet(item: Binding(get: { setKind.map { LoopSetKindRequest(ids: $0) } }, set: { setKind = $0?.ids })) { r in
+            LoopSetKindSheet(board: board, ids: r.ids) { setKind = nil }.themed(t.name)
+        }
     }
 
     // MARK: Head
@@ -104,12 +109,8 @@ struct LoopKindPage: View {
             if !c.asks.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(Array(c.asks.enumerated()), id: \.element.id) { i, a in
-                        if case .setKind = a.action {
-                            LoopButton(a.button, reason: "Not connected yet: Set kind will write `kind:` to each loop's file (LP-2)") {}
-                        } else {
-                            LoopButton(a.button, (edge == .forYou && i == 0) ? .primary : .secondary) { perform(a.action) }
-                                .help(a.text)
-                        }
+                        LoopButton(a.button, (edge == .forYou && i == 0) ? .primary : .secondary) { perform(a.action) }
+                            .help(a.text)
                     }
                 }
                 .padding(.top, 4)
@@ -137,11 +138,11 @@ struct LoopKindPage: View {
     private func perform(_ a: LoopsV7.AskAction) {
         switch a {
         case .runNow, .turnOn: confirm = a
-        case .setUp(let id): actions.popout(id)   // the pop-out's setup box (Open config) until 7i/7h land
+        case .setUp(let id): nav.librarySelected = id; nav.setRoot(.library)   // LAB-2294 · 7h: its setup and Set up
         case .open(let id): nav.open(.loop(id))
         case .review(let loop, let item): nav.open(.needsYou(loop: loop, item: item))
         case .kind(let f): switchKind(f)
-        case .setKind: break
+        case .setKind(let ids): setKind = ids   // LAB-2295 · LP-2
         }
     }
 
@@ -257,8 +258,8 @@ struct LoopKindPage: View {
                 if r.engine == .kit && !board.kitKnown {
                     LoopStateWords(row: r, kitKnown: false)
                 } else if needsSetup {
-                    RoofButton("Set up") { actions.popout(r.id) }
-                        .help("Needs a setting or a tool first: the loop's card says what and where (Open config)")
+                    RoofButton("Set up") { nav.librarySelected = r.id; nav.setRoot(.library) }
+                        .help("Needs a setting or a tool first: the Library says what and where (Set up opens the config at the key)")
                 } else {
                     RoofButton("Turn on") { confirm = .turnOn(r.id) }
                         .help("Turns it on; it starts with trial runs that only say what they would do")

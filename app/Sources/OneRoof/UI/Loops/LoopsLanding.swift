@@ -5,7 +5,7 @@ import OneRoofCore
 // LAB-2286 · 7a Landing · kinds as lanes (handover 01-7a.png, pages/7a-landing): the state pills and This week line,
 // one lane per kind (kind · on/all · bar · blurb | the loops that are on, their last runs, last · next · by | For you),
 // and the footnote. Real data: LoopBoard.rows (the kit's on/off and mode, ledger runs, missed runs) and the Needs you
-// items (LoopInboxState). Buttons do the real action or open where it is done; Set kind is not connected yet and says so.
+// items (LoopInboxState). Buttons do the real action or open where it is done; Set kind opens the Set kind sheet (LAB-2295, LP-2).
 
 struct LoopsLanding: View {
     @Environment(\.theme) private var t
@@ -16,6 +16,8 @@ struct LoopsLanding: View {
     let actions: LoopsV7Actions
     /// A write the owner confirms first (Run now, Turn on): what it runs is said before it runs.
     @State private var confirm: LoopsV7.AskAction?
+    /// LAB-2295 · LP-2: the kind-less loops the Set kind sheet is open for.
+    @State private var setKind: [String]?
 
     var body: some View {
         let rows = board.rows
@@ -41,6 +43,9 @@ struct LoopsLanding: View {
             Button("Cancel", role: .cancel) { confirm = nil }
         } message: { a in
             Text(confirmMessage(a))
+        }
+        .sheet(item: Binding(get: { setKind.map { LoopSetKindRequest(ids: $0) } }, set: { setKind = $0?.ids })) { r in
+            LoopSetKindSheet(board: board, ids: r.ids) { setKind = nil }.themed(t.name)
         }
     }
 
@@ -103,7 +108,7 @@ struct LoopsLanding: View {
         case .setUp(let id), .open(let id): actions.openLoop(id)   // the pop-out has the setup box (Open config) and every control
         case .review(let loop, let item): nav.open(.needsYou(loop: loop, item: item))
         case .kind(let f): nav.open(.kind(f))
-        case .setKind: break   // not connected yet (LP-2): the button says so
+        case .setKind(let ids): setKind = ids   // LAB-2295 · LP-2: pick a kind per loop (owner suggestions pre-selected)
         }
     }
 
@@ -233,11 +238,7 @@ struct LoopLaneRow: View {
             Text(a.text).ui(12.5).foregroundStyle((muted ? t.text2 : t.text).color)
                 .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                 .help(a.detail.isEmpty ? a.text : a.text + ". Its goal: " + a.detail)
-            if case .setKind = a.action {
-                LoopButton(a.button, reason: "Not connected yet: Set kind will write `kind:` to each loop's file (LP-2, with the Library)") {}
-            } else {
-                LoopButton(a.button, a.primary ? .primary : .secondary) { ask(a.action) }
-            }
+            LoopButton(a.button, a.primary ? .primary : .secondary) { ask(a.action) }
         }
     }
 }

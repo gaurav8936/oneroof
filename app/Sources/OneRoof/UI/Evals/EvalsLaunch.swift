@@ -12,8 +12,14 @@ struct EvalsLaunchView: View {
     @ObservedObject private var loops = EvalsLoopsStore.shared
     @ObservedObject private var store = EvalsAStore.shared
     @Environment(\.theme) private var t
+    /// LAB-2273: the page's width. The sheets flex with the window; the bars, the layer stack and the agent sheet grow in
+    /// proportion (each between its 2.0.5 size and a cap), so nothing is left empty at 1700 pt and wider.
+    @State private var pageWidth: CGFloat = 1100
 
     private var benchmarks: [EvalBenchmark] { board.catalog?.benchmarks.filter { !$0.isOwn } ?? [] }
+    private var barWidth: CGFloat { min(max(pageWidth * 0.40, 420), 760) }
+    private var agentWidth: CGFloat { min(max(pageWidth * 0.52, 640), 1100) }
+    private var stackWidth: CGFloat { min(max(pageWidth * 0.34, 380), 640) }
     /// QA #4: agent-harness benchmarks count on the agent side ("Public agent benchmarks"), never in the one-shot bar.
     private var agentBenchmarks: Set<String> { EvalEvidence.agentBenchmarks(board.catalog?.benchmarks ?? []) }
 
@@ -33,8 +39,9 @@ struct EvalsLaunchView: View {
                     Text(g).ui(TypeScale.caption).foregroundStyle(t.text3.color)
                 }
             }
-            .frame(maxWidth: 1100, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)   // LAB-2273: was capped at 1100 pt
             .padding(.bottom, 26)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         }
         .onAppear { loops.refresh(); store.refreshBoards(board) }
     }
@@ -45,11 +52,11 @@ struct EvalsLaunchView: View {
         VStack(alignment: .leading, spacing: 12) {
             sheetHead(.oneShot)
             chips(.oneShot)
-            EvalsLayerStack(kind: .oneShot).frame(maxWidth: 380)
-            EvalsEvidenceBar(kind: .oneShot, evidence: evidence(.oneShot), width: 420) { nav.open(.segment(.oneShot, $0)) }
+            EvalsLayerStack(kind: .oneShot).frame(maxWidth: stackWidth)
+            EvalsEvidenceBar(kind: .oneShot, evidence: evidence(.oneShot), width: barWidth) { nav.open(.segment(.oneShot, $0)) }
             HStack {
                 Spacer(minLength: 0)
-                agentSheet.frame(maxWidth: 640)
+                agentSheet.frame(maxWidth: agentWidth)
             }
             .padding(.top, 6)
         }
@@ -66,7 +73,7 @@ struct EvalsLaunchView: View {
             sheetHead(.agent)
             chips(.agent)
             EvalsLayerStack(kind: .agent)
-            EvalsEvidenceBar(kind: .agent, evidence: evidence(.agent), width: 420) { nav.open(.segment(.agent, $0)) }
+            EvalsEvidenceBar(kind: .agent, evidence: evidence(.agent), width: min(barWidth, agentWidth - 44)) { nav.open(.segment(.agent, $0)) }
             Text("No public segment: nobody else has our code or setup.").ui(TypeScale.caption).foregroundStyle(t.text2.color)
             EvalsGoTile(title: "Public agent benchmarks · \(agentBench)",
                         detail: "Out of the box, never our setup. " + (pubAgent > 0 ? "\(EvalsAWords.count(pubAgent, "run")) here, for context." : "For context."),

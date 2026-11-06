@@ -89,7 +89,9 @@ struct LoopPage: View {
                                      : LoopLook.disabledReason("Run now", l)
         LoopButton("Run now", reason: runReason) { confirm = .runNow(loopId) }
         if kit {
-            LoopButton("Pause", reason: "The kit's loops are turned off with `ae loops off \(loopId)`; that is not connected here yet.") {}
+            // LAB-2295: the kit's loops are turned off in the kit (`ae loops off`), from 7m's kit card (with a confirmation).
+            RoofButton(r.on ? "Turn off…" : "Turn on…") { actions.edit(loopId) }
+                .help("The kit turns its loops on and off (`ae loops \(r.on ? "off" : "on") \(loopId)`): opens its kit card")
         } else if l.state == .paused || l.state == .stopped && l.run == nil && l.trigger.isArmed {
             RoofButton("Resume") { board.resume(loopId) }.help("Resumes its scheduled runs")
         } else {
@@ -142,8 +144,8 @@ struct LoopPage: View {
                 nav.open(.needsYou(loop: loopId, item: nil))
             }
             tab("Track record", selected: false, badge: nil, help: "This week, filtered to this loop") { trackRecord(r) }
-            tab("How it's set up", selected: false, badge: nil, help: "Every field: origin, schedule, kind, goal, check, agent, repo, worktree, limits, output, gates, fences") {
-                actions.popout(loopId)
+            tab("How it's set up", selected: false, badge: nil, help: "Its definition in the Library (7h): kind, goal, when and who runs it, may act by, file") {
+                nav.librarySelected = loopId; nav.setRoot(.library)   // LAB-2294 · 7h with this loop selected
             }
             Spacer(minLength: 0)
         }
@@ -305,7 +307,8 @@ struct LoopPage: View {
         case .runNow: confirm = .runNow(loopId)
         case .turnOn: confirm = .turnOn(loopId)
         case .pause: board.pause(loopId)
-        case .setUp, .open: actions.popout(loopId)
+        case .setUp: nav.librarySelected = loopId; nav.setRoot(.library)   // LAB-2294 · 7h: Set up opens the config at the key
+        case .open: actions.popout(loopId)
         }
     }
 

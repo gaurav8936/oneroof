@@ -5,7 +5,8 @@
 #
 # <profile dir> holds sessions.sqlite + defaults.plist (a copy; oneroof-test makes it). The run gets its own store copy,
 # its own roofd (short ROOFD_DIR under /tmp/claude-$UID, socket path ≤104 chars) and a minimal environment (env -i), so
-# the installed app, its roofd and the owner's store are never touched. Afterwards the run's roofd is stopped and the
+# the installed app, its roofd and the owner's store are never touched. LAB-2251: ONEROOF_NO_KEYCHAIN=1, so the run makes no
+# Keychain call; an older build (an A/B baseline) ignores it but runs on a fresh profile, whose Hugging Face item does not exist. Afterwards the run's roofd is stopped and the
 # bundle unregistered from Launch Services. Output: <run dir>/st-log.txt, st-*.png/json/txt, app.log.
 set -u
 APP=$1; SCRIPT=$2; RUN=$3; PROFILE=$4; LIMIT=${5:-600}
@@ -20,7 +21,7 @@ BASE=/tmp/claude-$(id -u); mkdir -p "$BASE"; RD=$(mktemp -d "$BASE/ort.XXXX"); c
 SHARED="${ONEROOF_TEST_SHARED:-$RUN/shared}"; bash "$HERE/scratch-shared.sh" "$SHARED" >/dev/null
 env -i HOME="$HOME" USER="${USER:-$(id -un)}" LOGNAME="${LOGNAME:-$(id -un)}" SHELL="${SHELL:-/bin/zsh}" \
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" LANG=en_US.UTF-8 TMPDIR="${TMPDIR:-/tmp/}" \
-    ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED="$PROFILE/defaults.plist" ONEROOF_STORE="$RUN/store.sqlite" \
+    ONEROOF_NO_KEYCHAIN=1 ONEROOF_FRESH_PROFILE=1 ONEROOF_PROFILE_SEED="$PROFILE/defaults.plist" ONEROOF_STORE="$RUN/store.sqlite" \
     ONEROOF_SHARED="$SHARED" ONEROOF_SELFTEST_DEMO=0 ONEROOF_SELFTEST_UI2=1 ONEROOF_SELFTEST_SCRIPT="$RUN/script.txt" ONEROOF_SELFTEST_OUT="$RUN/st" \
     ROOFD_DIR="$RD" "$BIN" > "$RUN/app.log" 2>&1 &
 PID=$!

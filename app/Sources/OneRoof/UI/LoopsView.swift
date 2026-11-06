@@ -32,6 +32,12 @@ final class LoopBoard: ObservableObject {
     /// LAB-2291 · LAB-2292: each loop's real schedule (the kit's cron for kit loops, roofd's trigger for its own):
     /// This week's missed and still-to-come cells, Today's hollow dots, Next up and Tonight.
     @Published private(set) var crons: [String: CronSpec] = [:]
+    /// LAB-2294 · 7n: every loop missing a setting or a tool, with the config key (LP-11).
+    @Published private(set) var setupItems: [LoopsV7Setup.SetupItem] = []
+    /// LAB-2294 · 7n "A write failed": the failed write, to try again.
+    private(set) var retry: (() -> Void)?
+    /// Self-tests (LOOPSTATE=kitunknown): read the kit as unreadable, so the "kit state unknown" state shows.
+    var selfTestKitUnknown = false
     /// Runs re-read only when the ledger changed (or every 30 s): the board reloads every 3 s.
     private var runsCache: (stamp: Date?, at: Date, byLoop: [String: [LoopRun7]]) = (nil, .distantPast, [:])
 
@@ -64,7 +70,8 @@ final class LoopBoard: ObservableObject {
             let byLoop = Dictionary(grouping: led?.outcomes(limit: 1000) ?? [], by: \.loop)
             let runs = Dictionary(uniqueKeysWithValues: ls.map { ($0.id, led?.runs(loop: $0.id, limit: 10) ?? []) })
             let (setup, cfgPath) = self?.readSetup(ls.map(\.id)) ?? ([:], nil)
-            let kit = KitLoopsCache.shared.get(maxAge: 30)
+            let items = self.map { b in LoopsV7Setup.setupItems(loops: ls, config: b.configCache.text) { b.toolCache.installed[$0] ?? LoopSetup.installed($0) } } ?? []
+            let kit = self?.selfTestKitUnknown == true ? nil : KitLoopsCache.shared.get(maxAge: 30)
             let runs7 = self?.readRuns(led, path: path) ?? [:]
             let v7 = LoopsV7.rows(loops: ls, kit: kit, runs: runs7)
             let flat = runs7.values.flatMap { $0 }.sorted { $0.started < $1.started }
@@ -83,6 +90,7 @@ final class LoopBoard: ObservableObject {
                 if self.runsByLoop != runs { self.runsByLoop = runs }
                 if self.setup != setup { self.setup = setup }
                 if self.aeConfigPath != cfgPath { self.aeConfigPath = cfgPath }
+                if self.setupItems != items { self.setupItems = items }
             }
         }
     }
@@ -124,11 +132,59 @@ final class LoopBoard: ObservableObject {
     private func write(_ what: String, _ body: @escaping (LoopStore) throws -> Void) {
         let s = store
         io.async { [weak self] in
-            do { try body(s); DispatchQueue.main.async { self?.error = nil } }
-            catch { DispatchQueue.main.async { self?.error = "\(what): \(error)" } }
+            do { try body(s); DispatchQueue.main.async { self?.error = nil; self?.retry = nil } }
+            catch {
+                DispatchQueue.main.async {
+                    self?.error = "\(what): \(error)"
+                    self?.retry = { [weak self] in self?.write(what, body) }   // LAB-2294 · 7n Try again
+                }
+            }
             self?.reload()
         }
     }
+
+    /// LAB-2294 · 7n: a kit action off the main thread, its error shown as a failed write (Try again repeats it).
+    private func kitWrite(_ what: String, _ body: @escaping () throws -> Void) {
+        io.async { [weak self] in
+            do { try body(); DispatchQueue.main.async { self?.error = nil; self?.retry = nil } }
+            catch {
+                DispatchQueue.main.async {
+                    self?.error = "\(what): \(error)"
+                    self?.retry = { [weak self] in self?.kitWrite(what, body) }
+                }
+            }
+            self?.reload()
+        }
+    }
+
+    /// 7n · Try again: the last failed write once more. Dismiss: forget it.
+    func tryAgain() { let r = retry; error = nil; retry = nil; r?() }
+    func dismissError() { error = nil; retry = nil }
+
+    /// LAB-2295 · 7i: a new loop, saved off ("Save, off") or on ("Start the trial": armed, or its first run now when it
+    /// only runs on Run now). One Roof's engine has no shadow mode: its first runs are the trial (labelled, LP-12).
+    func saveNew(_ loop: Loop, on: Bool) {
+        write("Save") { s in
+            var l = loop
+            l.state = on && l.trigger.isArmed ? .waiting : .stopped
+            try s.save(l)
+            if on && !l.trigger.isArmed { try s.update(l.id) { $0 = LoopController.runNow($0) } }
+        }
+    }
+
+    /// LAB-2295 · LP-2 · Set kind: a kit file through `ae loops edit <name> --set kind=` (the kit validates and writes
+    /// it); a One Roof loop in its loop.json through LoopStore. Built-in loops keep their catalog kind.
+    func setKind(_ id: String, kind: String) {
+        guard let l = loops.first(where: { $0.id == id }) else { return }
+        switch LoopsV7Setup.kindEdit(l) {
+        case .kitFile: kitWrite("Set kind") { try KitLoops.setKind(id, kind: kind) }
+        case .oneRoof: write("Set kind") { s in try s.update(id) { $0.kind = kind } }
+        case .builtIn: break
+        }
+    }
+
+    /// LAB-2295 · 7m "Turn off in the kit": `ae loops off <name>`.
+    func turnOffKit(_ id: String) { kitWrite("Turn off") { try KitLoops.turnOff(id) } }
 
     func runNow(_ id: String) { write("Run now") { try $0.update(id) { $0 = LoopController.runNow($0) } } }
     func pause(_ id: String) { write("Pause") { try $0.update(id) { $0 = LoopController.pause($0) } } }
@@ -187,13 +243,7 @@ final class LoopBoard: ObservableObject {
     }
 
     /// LAB-2286 · Turn on a kit loop (`ae loops on`): it starts with trial runs (LP-12).
-    func turnOnKit(_ id: String) {
-        io.async { [weak self] in
-            do { _ = try KitLoops.turnOn(id); DispatchQueue.main.async { self?.error = nil } }
-            catch { DispatchQueue.main.async { self?.error = "Turn on: \(error)" } }
-            self?.reload()
-        }
-    }
+    func turnOnKit(_ id: String) { kitWrite("Turn on") { _ = try KitLoops.turnOn(id) } }
 }
 
 /// Loops (I12 slice 1, LAB-678): every loop, pinned first, with its state, rounds and last check; the detail shows the
@@ -206,6 +256,9 @@ struct LoopsView: View {
     @State private var selected: String?
     @State private var editing: LoopDraft?
     @State private var confirmDelete: Loop?
+    /// LAB-2295 · 7m: the v2 window's delete dialog (the 2.0.5 alert's copy, with what still waits for you).
+    @State private var deleteV2: Loop?
+    @State private var setKindIds: [String]?
     @State private var gallery = false
     @ObservedObject private var inbox = LoopInboxState.shared
     @Environment(\.v2Window) private var v2
@@ -228,23 +281,24 @@ struct LoopsView: View {
         .overlay {
             // LAB-2055: the pop-out card (the landing, a kind's page, Activity, the Inbox's Open loop all open it).
             if v2, let id = popout, let l = board.loops.first(where: { $0.id == id }) {
+                // LAB-2295: Edit opens 7m, Duplicate opens 7i, Delete the 7m dialog.
                 LoopPopout(loop: l, rounds: board.rounds[l.id] ?? [], model: model, board: board, win: win,
-                           edit: { editing = LoopDraft(loop: l, isNew: false) },
-                           duplicate: { editing = LoopDraft.duplicate(from: l) },
-                           delete: { confirmDelete = l },
+                           edit: { popout = nil; nav.open(.edit(id: l.id, name: l.displayTitle)) },
+                           duplicate: { popout = nil; nav.newLoop(LoopDraft.duplicate(from: l)) },
+                           delete: { deleteV2 = l },
                            close: { popout = nil })
             }
         }
         .onAppear {
             board.start()
             if let f = inbox.focus { focus(f); inbox.focus = nil }
-            if let d = inbox.draftRequest { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil }
+            if let d = inbox.draftRequest { newLoop(LoopDraft(loop: d, isNew: true)); inbox.draftRequest = nil }
             selfTest()
         }
         .onDisappear { board.stop() }
         .onChange(of: inbox.focus) { _, f in if let f { focus(f); inbox.focus = nil } }
-        .onChange(of: inbox.draftRequest) { _, d in if let d { editing = LoopDraft(loop: d, isNew: true); inbox.draftRequest = nil } }
-        .onReceive(NotificationCenter.default.publisher(for: .newLoop)) { _ in editing = LoopDraft.new() }
+        .onChange(of: inbox.draftRequest) { _, d in if let d { newLoop(LoopDraft(loop: d, isNew: true)); inbox.draftRequest = nil } }
+        .onReceive(NotificationCenter.default.publisher(for: .newLoop)) { _ in newLoop(LoopDraft.new()) }
         .sheet(item: $editing) { d in
             LoopEditor(draft: d, settings: model.settings, onSave: { loop, run in
                 board.save(loop, isNew: d.isNew, run: run)
@@ -253,6 +307,15 @@ struct LoopsView: View {
                 editing = nil
             }, onCancel: { editing = nil })
             .themed(t.name)
+        }
+        .sheet(item: $deleteV2) { l in
+            LoopDeleteDialog(loop: l, staged: board.outcomesByLoop[l.id] ?? []) {
+                board.delete(l.id); if popout == l.id { popout = nil }; nav.stack.removeAll { $0 == .edit(id: l.id, name: l.displayTitle) }; deleteV2 = nil
+            } cancel: { deleteV2 = nil }
+            .themed(t.name)
+        }
+        .sheet(item: Binding(get: { setKindIds.map { LoopSetKindRequest(ids: $0) } }, set: { setKindIds = $0?.ids })) { r in
+            LoopSetKindSheet(board: board, ids: r.ids) { setKindIds = nil }.themed(t.name)
         }
         .alert("Delete this loop?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
                presenting: confirmDelete) { l in
@@ -266,18 +329,20 @@ struct LoopsView: View {
     /// LAB-2286 · the v7 shell: the landing (kinds as lanes) and the segments; screens not built yet show today's views.
     private var v7Page: some View {
         LoopsV7Shell(model: model, win: win, board: board, nav: nav,
-                     actions: LoopsV7Actions(openLoop: { nav.open(.loop($0)) }, newLoop: { editing = LoopDraft.new() },   // LAB-2288: a loop opens 7c
-                                             startFrom: { l in editing = LoopDraft.duplicate(from: l) },
+                     actions: LoopsV7Actions(openLoop: { nav.open(.loop($0)) }, newLoop: { nav.newLoop(LoopDraft.new()) },   // LAB-2288: a loop opens 7c · LAB-2295: 7i
+                                             startFrom: { l in nav.newLoop(LoopDraft.duplicate(from: l)) },
                                              newLoopOfKind: { f in
                                                  var d = LoopDraft.new()
                                                  d.loop.kind = LoopKinds.family(f)?.kinds.first   // LAB-2287: + New <kind> loop
-                                                 editing = d
+                                                 nav.newLoop(d)
                                              },
                                              popout: { popout = $0 },
+                                             // LAB-2295: Edit opens 7m (One Roof loops: every field; kit loops: the kit card).
                                              edit: { id in
                                                  guard let l = board.loops.first(where: { $0.id == id }) else { return }
-                                                 if let file = l.specFile { model.openInViewer(file) } else { editing = LoopDraft(loop: l, isNew: false) }
-                                             }),
+                                                 nav.open(.edit(id: l.id, name: l.displayTitle))
+                                             },
+                                             fullEditor: { d in editing = d }),
                      activity: {
                          // 2.0.5's Activity (v2 A9, C5.1), unchanged: This week until 7e lands.
                          HStack(alignment: .top, spacing: 18) {
@@ -289,7 +354,7 @@ struct LoopsView: View {
                              V2TonightPanel(model: model, board: board).frame(width: 250)
                          }
                      },
-                     empty: { empty.frame(maxWidth: .infinity, alignment: .top) },
+                     empty: { LoopsEmptyState(nav: nav) { nav.newLoop(LoopDraft.new()) }.frame(maxWidth: .infinity, alignment: .topLeading) },   // 7n
                      forceEmpty: selfTestEmpty)
     }
 
@@ -369,6 +434,9 @@ struct LoopsView: View {
         }
     }
 
+    /// LAB-2295: a new loop opens 7i in the v2 window, the 2.0.5 editor sheet in the classic one.
+    private func newLoop(_ d: LoopDraft) { if v2 { nav.newLoop(d) } else { editing = d } }
+
     /// Open a loop from elsewhere (the Inbox's Open loop, Evals, a self-test): v2 opens its page (7c, LAB-2288).
     private func focus(_ id: String) {
         if v2 { popout = nil; nav.open(.loop(id)) } else { selected = id; gallery = false }
@@ -381,10 +449,29 @@ struct LoopsView: View {
         let env = ProcessInfo.processInfo.environment
         if v2, let v = env["ONEROOF_SELFTEST_LOOPVIEW"] ?? (env["ONEROOF_SELFTEST_LOOPGALLERY"] == "1" ? "library" : nil) {
             nav.persist = false
+            if env["ONEROOF_SELFTEST_LOOPSTATE"] == "kitunknown" { board.selfTestKitUnknown = true; board.reload() }
             switch v {
             case "week", "activity": nav.setRoot(.thisWeek)
             case "today": nav.setRoot(.today)
             case "library": nav.setRoot(.library)
+            // LAB-2294 · LAB-2295 (lane C): library:<id> (7h, that loop selected) · new (7i; LOOPDESCRIBE=<text> drafts
+            // it) · new:<template id> · edit:<id> (7m; LOOPDELETE=1 opens the delete dialog) · setkind (the Set kind
+            // sheet for the kind-less loops, over the landing). LOOPSTATE=kitunknown reads the kit as unreadable (7n),
+            // LOOPSTATE=setup opens the needs-setup card.
+            case _ where v.hasPrefix("library:"): nav.setRoot(.library); nav.librarySelected = String(v.dropFirst(8))
+            case "new": nav.setRoot(.library); nav.newLoop(LoopDraft.new())
+            case _ where v.hasPrefix("new:"):
+                let id = String(v.dropFirst(4))
+                let tpl = (LoopTemplates.all + LoopTemplates.builtInTemplates()).first { $0.id == id }
+                var d = LoopDraft.new(template: tpl); d.loop.kind = tpl?.kind
+                nav.setRoot(.library); nav.newLoop(d)
+            case _ where v.hasPrefix("edit:"):
+                let id = String(v.dropFirst(5))
+                nav.setRoot(.library); nav.librarySelected = id
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { nav.open(.edit(id: id, name: board.loops.first { $0.id == id }?.displayTitle ?? id)) }
+            case "setkind":
+                nav.setRoot(.byKind)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { setKindIds = board.rows.filter { $0.family == "other" }.map(\.id) }
             case "empty": nav.setRoot(.byKind); selfTestEmpty = true
             case "needs": nav.setRoot(.byKind); nav.open(.needsYou(loop: nil, item: nil))
             case "runs": nav.setRoot(.byKind); nav.open(.runs)

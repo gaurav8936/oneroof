@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 APP="${1:-$ROOT/app/build/One Roof.app}"
 OUT="$(mktemp -d)/basics"
 RD="$(mktemp -d /tmp/oneroof-basics.XXXX)"   # its own roofd folder: never touches your sessions
-env ROOFD_DIR="$RD" ONEROOF_FRESH_PROFILE=1 ONEROOF_STORE="$OUT.sqlite" ONEROOF_SELFTEST_QUIT=1 ONEROOF_SELFTEST_OUT="$OUT" \
+env ONEROOF_NO_KEYCHAIN=1 ROOFD_DIR="$RD" ONEROOF_FRESH_PROFILE=1 ONEROOF_STORE="$OUT.sqlite" ONEROOF_SELFTEST_QUIT=1 ONEROOF_SELFTEST_OUT="$OUT" \
     ONEROOF_SELFTEST_TERMINAL=1 ONEROOF_SELFTEST_WAIT=7 ONEROOF_SELFTEST_TYPE="echo ONEROOF-COPY-MARKER-42" \
     ONEROOF_SELFTEST_COPYTEST=1 "$APP/Contents/MacOS/OneRoof" >/dev/null 2>&1 &
 pid=$!

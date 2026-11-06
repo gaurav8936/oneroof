@@ -45,7 +45,7 @@ struct EvalsCompareView: View {
                 }
                 content
             }
-            .frame(maxWidth: 1240, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)   // LAB-2273: flexes with the window
             .padding(.bottom, 20)
         }
         .onAppear {
