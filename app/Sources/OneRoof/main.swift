@@ -66,6 +66,7 @@ if CommandLine.arguments.contains("--linear") {
 // `OneRoof --route "<task>"`: on-device model → kind → router suggestion (and stop the model server after).
 if let i = CommandLine.arguments.firstIndex(of: "--route"), i + 1 < CommandLine.arguments.count {
     let text = CommandLine.arguments[i + 1]
+    LocalModel.configure(autoStart: true)  // LAB-2275: asking for --route is asking for the model
     let t0 = Date()
     let kind = LocalModel.shared.classify(text, kinds: RoutingPolicy.kindDescriptions())
     let r = Router.suggest(kind: kind, usage: Usage.all(), policy: RoutingPolicy.load())
