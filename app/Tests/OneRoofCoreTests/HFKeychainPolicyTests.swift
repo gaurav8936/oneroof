@@ -21,8 +21,8 @@ final class HFKeychainPolicyTests: XCTestCase {
         XCTAssertFalse(HFKeychainPolicy.mayRead(env: [:], bundlePath: app, trusted: false, prompt: false))
         XCTAssertFalse(HFKeychainPolicy.mayRead(env: [:], bundlePath: app, trusted: false, prompt: true), "a prompt never widens it")
         // Developer ID signed, but a copy elsewhere: a candidate in a release folder, a test copy, a scratch bundle.
-        for p in ["/Users/me/Projects/labs/oneroof/app/build/One Roof.app", "/tmp/claude-501/ort.x/One Roof.app",
-                  "/Applications/Old/One Roof.app", "/Users/me/Applications/One Roof.app", "/Applications/../tmp/One Roof.app"] {
+        for p in ["/Users/you/Projects/labs/oneroof/app/build/One Roof.app", "/tmp/claude-501/ort.x/One Roof.app",
+                  "/Applications/Old/One Roof.app", "/Users/you/Applications/One Roof.app", "/Applications/../tmp/One Roof.app"] {
             XCTAssertEqual(HFKeychainPolicy.decision(env: [:], bundlePath: p, trusted: true), .untrustedCopy, p)
         }
     }
