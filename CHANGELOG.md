@@ -22,8 +22,9 @@ outcome ledger.
 - **One loop's page.** State, schedule, recent runs, what waits for you, and its actions, instead of the pop-out.
 - **A round's question** shows the command, the worktree and why; Allow once and Deny are your answers. Always for this
   loop writes one exact allow rule into that loop's own agent settings, never a blanket one.
-- **Library, New and Edit.** Every loop's definition with the same filter bar; new and turned-on loops start with trial
-  runs; Set kind for your own loops.
+- **Library, New and Edit.** Every loop's definition with the same filter bar; Set kind for your own loops. A kit loop
+  you turn on starts with trial (shadow) runs that only say what they would do; a One Roof loop is marked "trial" for
+  its first 3 runs, which work on the loop's own branch.
 - **Evals fills the window.** The Evals pages no longer stop at a fixed width. (LAB-2273)
 - **No more Hugging Face password prompts from test copies.** Only One Roof running from /Applications reads the
   Hugging Face token; test and candidate copies never touch the Keychain. (LAB-2246, LAB-2251)
