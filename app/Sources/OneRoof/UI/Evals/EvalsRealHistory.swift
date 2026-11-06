@@ -75,7 +75,7 @@ struct EvalsRealHistoryView: View {
                 Button("Back to our tasks' repos") { reposPref = "" }
             }
             Segmented(options: [(30, "30 days"), (60, "60 days"), (90, "90 days")], selection: $days).fixedSize()
-            RoofButton("Read again", .plain) {
+            RoofButton("Read again") {   // LAB-2255: an action, a button you can see
                 store.forgetCommitLists(repos: repos, days: days)
                 store.refreshXRay(board, repos: repos, days: days, force: true)
             }
@@ -255,7 +255,7 @@ struct EvalsRealHistoryView: View {
                     }
                 }
             }
-            RoofButton("Open Compare ›", .secondary) { nav.go(.compare) }   // LAB-2255: a visible button, not a bare link
+            RoofButton("Our tests ›", .secondary) { nav.open(.agentOurs) }   // QA #11: 2.0.5 name; LAB-2255: a visible button
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(t.selection.color.opacity(0.35)))

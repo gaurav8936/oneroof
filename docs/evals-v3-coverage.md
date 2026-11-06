@@ -47,7 +47,7 @@ Keys: ⌃⌥0 the launch view · ⌃⌥1–5 the five segment pages · ⌃⌥6 P
 | Overview: waiting count | Overview | Launch view bar hover; waiting rows on Our tests | Moved | Evals (launch view) |
 | Overview: N agent tasks outside | Overview | The Public agent benchmarks button under the agent bar | Moved | Agent jobs › Public agent benchmarks |
 | Overview: grader runs counted apart | Overview | Launch view: grader runs counted apart from setups | Moved | Evals (launch view) |
-| Overview: counted from the run store note | Overview | Launch view bar hover | Moved | Evals (launch view) |
+| Overview: counted from the run store note | Overview | Launch view: the line under the legend, counted from this Mac's run store and the loops' ledger (30 days) | Moved | Evals (launch view) |
 | Overview: base band, the full setup | Overview | Launch view: the Agent jobs bar (Our tests · Our loop runs) | Merged | Evals (launch view) |
 | Overview: band clicks | Overview | Each bar segment opens its page | Kept | Evals (launch view) |
 | Overview: How to read Evals and the first-test link | Overview | Lessons (header button) › Your first test, free | Moved | Lessons |
@@ -56,8 +56,8 @@ Keys: ⌃⌥0 the launch view · ⌃⌥1–5 the five segment pages · ⌃⌥6 P
 | Overview: question 1 mini-chart with the blind-guess tick | Overview | Our tests rows: squares with the blind-guess tick | Merged | One-shot jobs › Our tests |
 | Overview: question 1, to answer it properly | Overview | Our tests pages, under the answer | Moved | One-shot jobs › Our tests |
 | Overview: question 2, did my last change help | Overview | Agent jobs › Changes; the launch view's Did my last change help? button | Moved | Changes |
-| Overview: what a test records today | Overview | Agent jobs › Our tests: What a test records today; Lessons | Moved | Agent jobs › Our tests |
-| Overview: question 2 fix (model per commit) | Overview | Agent jobs › Our tests: What a test records today | Moved | Agent jobs › Our tests |
+| Overview: what a test records today | Overview | Launch view › Question 2 card: What a test records today; Lessons | Moved | Evals (launch view) |
+| Overview: question 2 fix (model per commit) | Overview | Launch view › Question 2 card: the fix under What a test records today | Moved | Evals (launch view) |
 | Overview: question 3, what git says | Overview | Agent jobs › Real history; the launch view's What does git say about our real work? button | Moved | Real history |
 | Overview: question 3 bars per agent | Overview | Real history: one card and bar per agent | Merged | Real history |
 | Overview: question 3 fix (sign every commit) | Overview | Real history: the No agent name card | Merged | Real history |

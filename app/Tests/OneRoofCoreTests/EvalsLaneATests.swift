@@ -249,6 +249,8 @@ final class EvalsLaneATests: XCTestCase {
         XCTAssertEqual(EvalsACompare.missedText(lb.rows[1], in: lb), "Missed LAB-2094 and LAB-2088: nobody has solved those yet.")
         XCTAssertNil(EvalsACompare.missedText(lb.rows[0], in: lb))
         XCTAssertEqual(EvalsACompare.statusText(lb.rows[0]), "Waiting since Nov 1: seat use unknown")
+        var stuck = lb.rows[0]; stuck.statusNote = "stuck: waiting since 2026-11-01 without knowing the seat use"
+        XCTAssertEqual(EvalsACompare.statusText(stuck), "Stuck: waiting since 2026-11-01 without knowing the seat use")   // QA #6: the date once
         var r = lb.rows[0]; r.status = "expired"; r.statusNote = nil
         XCTAssertEqual(EvalsACompare.statusText(r), "Expired: waited 6 hours with seat use unknown")
     }
