@@ -181,12 +181,15 @@ public struct LoopRun7: Equatable, Sendable, Identifiable {
     public var result: Result
     public var cost: Double?
     public var summary: String
+    /// LAB-2293 · the ledger's journal_ref (a kit run's report .md relative to the journal root; roofd: rounds.jsonl).
+    public var journalRef: String = ""
     /// LP-14: time per run, from started and ended.
     public var seconds: TimeInterval? { ended.map { $0.timeIntervalSince(started) } }
 
-    public init(id: String, loop: String, engine: LoopEngine, started: Date, ended: Date?, result: Result, cost: Double?, summary: String) {
+    public init(id: String, loop: String, engine: LoopEngine, started: Date, ended: Date?, result: Result, cost: Double?, summary: String,
+                journalRef: String = "") {
         self.id = id; self.loop = loop; self.engine = engine; self.started = started; self.ended = ended
-        self.result = result; self.cost = cost; self.summary = summary
+        self.result = result; self.cost = cost; self.summary = summary; self.journalRef = journalRef
     }
 
     public init?(_ r: LoopLedger.Run) {
@@ -196,7 +199,7 @@ public struct LoopRun7: Equatable, Sendable, Identifiable {
         else if ["fail", "failed", "error"].contains(r.result) { res = .failed }
         else { res = .passed }   // pass · done · promoted
         self.init(id: r.id, loop: r.loop, engine: r.engine == "roofd" ? .oneRoof : .kit, started: s, ended: Self.date(r.ended),
-                  result: res, cost: r.cost, summary: r.summary)
+                  result: res, cost: r.cost, summary: r.summary, journalRef: r.journalRef)
     }
 
     public static func date(_ s: String) -> Date? {

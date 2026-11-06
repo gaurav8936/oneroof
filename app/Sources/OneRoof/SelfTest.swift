@@ -38,6 +38,9 @@ import OneRoofCore
 ///                                               LAB-2286 (Loops v7, v2 window): lanes|kinds = 7a kinds as lanes ·
 ///                                               week|activity · today · library · needs · runs · kind:<family> ·
 ///                                               loop:<id> · empty (LOOPGALLERY=1 = library)
+///                                               LAB-2291–2293 (lane B): week = 7e · today = 7f · tonight = 7g ·
+///                                               day:<yyyy-MM-dd> (7f for that day) · runs / run:<ledger run id> = 7j ·
+///                                               report:<ledger run id> = 7k (that run's journal report)
 ///   ONEROOF_SELFTEST_TRANSCRIPT=<jsonl>         LAB-1286: every pane's Table view reads this Claude transcript
 ///   ONEROOF_SELFTEST_TERMTEXT=<file>            LAB-1286: the Table view's terminal text (a locked screen has no surface)
 ///   ONEROOF_SELFTEST_TERMCOLS=<n>               LAB-1299: the width the TERMTEXT rows were cut at (rows that long rejoin)
