@@ -334,11 +334,11 @@ final class EvalsLoopsStore: ObservableObject {
         last = Date()
         q.async {
             let all = LoopStore().all()
-            var runs: [LoopLedger.Run] = []
+            var counts: [LoopLedger.WindowCount] = []
             var err: String?
-            do { runs = try LoopLedger().runs(from: Date().addingTimeInterval(-30 * 86_400), to: Date().addingTimeInterval(3_600), limit: 1_000_000) }   // whole window: counts, never a display cap
+            do { counts = try LoopLedger().counts(since: Date().addingTimeInterval(-30 * 86_400)) }   // counted in SQLite: the whole window
             catch { err = "The loops' outcome ledger could not be read: \(error)" }
-            let rows = EvalLoopRuns.summarize(loops: all, runs: runs)
+            let rows = EvalLoopRuns.summarize(loops: all, counts: counts)
             DispatchQueue.main.async { self.rows = rows; self.error = err; self.loaded = true }
         }
     }
