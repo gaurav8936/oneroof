@@ -188,10 +188,10 @@ place loops
 snap j10c-loops-runs
 place sessions
 
-## J10d · Scroll moved to History (LAB-2044): the old Scroll layout opens History; Single is back on the terminals
+## J10d · Scroll moved to History (LAB-2044): the old Scroll layout opens History (in Trace since 2.0.8, LAB-2332); Single is back on the terminals
 place sessions
 layout scroll
-expect place = history
+expect place = trace
 snap j10d-history
 place sessions
 layout single
