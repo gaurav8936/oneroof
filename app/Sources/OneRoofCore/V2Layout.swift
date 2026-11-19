@@ -172,12 +172,17 @@ public enum V2Layout {
         /// Where macOS starts the first toolbar item, after the traffic lights' reserved room (measured, 1.9.28:
         /// 91 pt whatever the buttons' own position); the icon row (step 1) starts here.
         public static let lights: Double = 91
-        /// The places icon row (step 1): the `Place.iconRow` places plus a "more" menu, 26 pt each with 2 pt gaps and
-        /// 4 pt of padding. LAB-2332: worked out from the place count (it was a measured 7-place constant, 198 pt);
-        /// six places + more keeps the 1.9.28 width, so the toolbar and the Sessions column do not move.
+        /// The places icon row (step 1): every place, 20 pt icons with 1 pt gaps, a hairline between the rail's groups
+        /// (`iconGroupGap` wide) and 4 pt of padding. LAB-2332 option C (owner 2026-11-19): all 13 with no "more" menu;
+        /// the icons are smaller than the 26 pt of 1.9.28 so the Sessions column grows by about 110 pt, not 200.
+        public static let iconButton: Double = 20
+        public static let iconGap: Double = 1
+        public static let iconGroupGap: Double = 7
         public static var placesRow: Double {
-            let n = Double(Place.iconRow.count + 1)
-            return 4 + n * 26 + (n - 1) * 2
+            let groups = Place.iconRowGroups
+            let n = Double(groups.reduce(0) { $0 + $1.count })
+            let gaps = Double(groups.reduce(0) { $0 + $1.count - 1 })
+            return 4 + n * iconButton + gaps * iconGap + Double(groups.count - 1) * iconGroupGap
         }
     }
 

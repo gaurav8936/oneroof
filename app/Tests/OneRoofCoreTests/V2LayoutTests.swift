@@ -101,7 +101,7 @@ final class V2LayoutTests: XCTestCase {
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: nil), V2Layout.focusLane)
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: 320, focusWide: 260), 260)
         XCTAssertEqual(V2Layout.columnWidth(step: .focus, saved: nil, focusWide: 900), 440)
-        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 360, focusWide: 260), 360, "other steps keep theirs")
+        XCTAssertEqual(V2Layout.columnWidth(step: .sessions, saved: 430, focusWide: 260), 430, "other steps keep theirs")
         XCTAssertNil(V2Layout.focusLaneSnap(dragged: 52))
         XCTAssertNil(V2Layout.focusLaneSnap(dragged: 109))
         XCTAssertEqual(V2Layout.focusLaneSnap(dragged: 700), 440)
