@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.0.8 — Thirteen places on the rail, and the first Agent factory recipes (19 Nov 2026)
+
+One Roof grows beyond a coding tool. The rail now holds every place it will have, in six groups, and the places that
+are still being built say what they will do and where to go today.
+
+- **Thirteen places in six groups.** Home · Inbox · Sessions · Projects | Agents · Factory | Loops · Trace · Resources |
+  Evals · Train | Ship | Learn, with a thin line between the groups. (LAB-2332)
+- **Planned places.** Agents, Factory, Train and Ship carry a grey PLANNED tag. Each opens a page with what it is for,
+  what is coming, where the nearest thing lives today, and the tickets that build it. (LAB-2332)
+- **Trace holds History.** History is now the first tab of Trace, next to X-ray and Cost (both planned). A window saved
+  on History opens on Trace. Shortcuts: Trace ⌃⌘9, Agents ⌃⌘A, Factory ⌃⌘P, Train ⌃⌘R, Ship ⌃⌘S; the old ones stay.
+- **More room on the rail.** The places spread out in a tall window and close up in a short one, so all 13 and
+  Settings fit at 700 pt without scrolling; icons are a little larger. (LAB-2331)
+- **All 13 in the toolbar row.** When the rail is hidden (the Sessions step), the toolbar shows every place as a small
+  icon in the same groups; planned places are faded. (LAB-2332)
+- **Agent factory recipes.** A recipe says which agents play which roles, how they work together (maker and checker,
+  pipeline, fan out and merge, two answers and a judge, loop until a check passes), the check that proves the task is
+  done, and the budget. Five come built in; your own are JSON files in the recipes folder. The Factory page lists them;
+  running one waits for the orchestrator. (LAB-2329, LAB-2330)
+
 ## 2.0.7 — Sessions that really end, a Resources page that adds up, one set of status names (19 Nov 2026)
 
 - **A loop's last round closes.** A loop run used to leave its final agent session open at its prompt; seven

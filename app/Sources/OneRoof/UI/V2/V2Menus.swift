@@ -75,7 +75,7 @@ extension AppDelegate {
     }
 
     @objc func v2ToggleRail(_ sender: Any?) { if isV2Window { main.v2ToggleRail() } }
-    @objc func v2OpenHistory(_ sender: Any?) { if isV2Window { main.v2Open(.history) } }   // LAB-2044
+    @objc func v2OpenHistory(_ sender: Any?) { if isV2Window { main.v2Open(.trace) } }   // LAB-2044; LAB-2332: History is inside Trace
     @objc func v2OpenActionLog(_ sender: Any?) {   // LAB-2047
         guard isV2Window else { return }
         main.v2Page = nil

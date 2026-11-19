@@ -14,13 +14,17 @@ extension Place {
         switch self {
         case .home: return .overview
         case .needsYou: return .decisions
-        case .history: return .history   // LAB-2044
         case .sessions: return .workspace
         case .work: return .work
-        case .machine: return .resources
+        case .agents: return .agents   // LAB-2332: planned
+        case .factory: return .factory
         case .loops: return .loops
-        case .learn: return .learn
+        case .trace: return .history   // LAB-2332: Trace holds History (the centre keeps its stored name)
+        case .machine: return .resources
         case .evals: return .evals
+        case .train: return .train
+        case .ship: return .ship
+        case .learn: return .learn
         }
     }
 }
@@ -38,7 +42,11 @@ extension CentreView {
         case .loops: return .loops
         case .learn: return .learn
         case .evals: return .evals
-        case .history: return .history   // LAB-2044
+        case .history: return .trace   // LAB-2044; LAB-2332: inside Trace
+        case .agents: return .agents
+        case .factory: return .factory
+        case .train: return .train
+        case .ship: return .ship
         case .subagents, .objective, .editor, .review: return nil
         }
     }
@@ -61,8 +69,10 @@ enum V2Counts {
     }
 }
 
-/// The 66 pt place rail (steps 0 and 2): icon + label per place, the Inbox badged, Look at the foot; at step 2 the
-/// seat bars sit above Look instead of a dock.
+/// The 66 pt place rail (steps 0 and 2): icon + label per place in six groups, the Inbox badged, Settings at the
+/// foot; at step 2 the seat bars sit above Settings instead of a dock. LAB-2331/2332: the places spread out to fill
+/// the rail (`V2Layout.Rail.fit`), a hairline between groups; a short window tightens them and, last, scrolls them,
+/// so Settings always shows.
 struct V2Rail: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -70,34 +80,66 @@ struct V2Rail: View {
     let controller: MainWindowController
 
     var body: some View {
-        VStack(spacing: 4) {
-            ForEach(Place.allCases) { p in
-                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : p == .loops ? V2Counts.loops(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
-                              labelled: true) { controller.v2Open(p) }
+        VStack(spacing: 0) {
+            GeometryReader { geo in
+                let fit = V2Layout.Rail.fit(available: geo.size.height)
+                if fit.scrolls {
+                    ScrollView(.vertical, showsIndicators: false) { places(fit) }
+                } else {
+                    places(fit).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
             }
-            Spacer(minLength: 8)
+            .padding(.top, V2Layout.Rail.top)
+            Spacer(minLength: 8).frame(maxHeight: 8)
             StepReader(step: win.step) { s in   // LAB-1736: only this part follows the step
                 if s.focusStep == .wide { V2RailSeats(model: model) { controller.v2OpenSettings(tab: 2) }.padding(.bottom, 6) }
             }
             Button { controller.v2OpenSettings(tab: 0) } label: {   // LAB-2040: Settings, not only the look
                 VStack(spacing: 3) {
-                    Image(systemName: "gearshape").font(.system(size: 19, weight: .medium))
-                        .foregroundStyle(t.accentText.color).frame(height: 22)   // LAB-2002: as the places above
+                    Image(systemName: "gearshape").font(.system(size: V2Layout.Rail.icon, weight: .medium))
+                        .foregroundStyle(t.accentText.color).frame(height: V2Layout.Rail.iconFrame)   // LAB-2002: as the places above
                     Text("Settings").ui(10.5)
                 }
-                .foregroundStyle(t.text2.color).frame(minWidth: 54, maxWidth: .infinity, minHeight: 44, maxHeight: 44).padding(.horizontal, 5).contentShape(Rectangle())
+                .foregroundStyle(t.text2.color)
+                .frame(minWidth: 54, maxWidth: .infinity, minHeight: V2Layout.Rail.button, maxHeight: V2Layout.Rail.button)
+                .padding(.horizontal, 5).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Settings: agents, seats, appearance and looks, notifications, shortcuts (⌘,)")
             .accessibilityLabel("Settings")
         }
-        .padding(.top, 8).padding(.bottom, 10)
+        .padding(.bottom, V2Layout.Rail.bottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(t.control.color)
     }
+
+    private func places(_ fit: V2Layout.Rail.Fit) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(PlaceGroup.allCases.enumerated()), id: \.element) { i, g in
+                if i > 0 {
+                    Rectangle().fill(t.separator.color).frame(height: 1).padding(.horizontal, 16)
+                        .padding(.vertical, max(0, (fit.groupGap - 1) / 2)).accessibilityHidden(true)
+                }
+                VStack(spacing: fit.gap) {
+                    ForEach(g.places) { p in
+                        V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: V2Counts.badge(p, model), critical: p == .needsYou && V2Counts.critical(model),
+                                      labelled: true, height: fit.button) { controller.v2Open(p) }
+                    }
+                }
+            }
+        }
+    }
 }
 
-/// The icon row (step 1): the seven places as icons in the toolbar band of the session column.
+extension V2Counts {
+    /// The number on a place's icon: the Inbox's waiting count, the Loops' needs-you count.
+    @MainActor static func badge(_ p: Place, _ model: AppModel) -> Int {
+        p == .needsYou ? needsYou(model) : p == .loops ? loops(model) : 0
+    }
+}
+
+/// The icon row (step 1): every place as a small icon in the toolbar band of the session column, in the rail's
+/// groups with a hairline between them (LAB-2332 option C, owner 2026-11-19: all 13, no "more" menu).
 struct V2PlacesIconRow: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
@@ -105,12 +147,22 @@ struct V2PlacesIconRow: View {
     let controller: MainWindowController
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(Place.allCases) { p in
-                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: p == .needsYou ? V2Counts.needsYou(model) : p == .loops ? V2Counts.loops(model) : 0, critical: p == .needsYou && V2Counts.critical(model),
-                              labelled: false) { controller.v2Open(p) }
+        HStack(spacing: 0) {
+            ForEach(Array(Place.iconRowGroups.enumerated()), id: \.offset) { i, group in
+                if i > 0 {
+                    Rectangle().fill(t.separator.color).frame(width: 1, height: 14)
+                        .padding(.horizontal, (V2Layout.Bar.iconGroupGap - 1) / 2)
+                }
+                HStack(spacing: V2Layout.Bar.iconGap) {
+                    ForEach(group) { p in
+                        V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: V2Counts.badge(p, model),
+                                      critical: p == .needsYou && V2Counts.critical(model), labelled: false) { controller.v2Open(p) }
+                            .zIndex(V2Counts.badge(p, model) > 0 ? 1 : 0)   // a badge draws over its neighbour's chip
+                    }
+                }
             }
         }
+        .padding(.horizontal, 2)
     }
 }
 
@@ -121,49 +173,87 @@ struct V2PlaceButton: View {
     let badge: Int
     var critical = false
     let labelled: Bool
+    var height: Double = V2Layout.Rail.button
     let action: () -> Void
+    private let bar = V2Layout.Bar.iconButton
+
+    /// LAB-2072 / LAB-2332: a one-line tag above the icon's right shoulder: Evals' DRAFT, a planned place's PLANNED.
+    private var tag: String? {
+        if place.isPlanned { return PlannedPlaceCopy.tag }
+        if place == .evals && EvalsDraft.isDraft { return EvalsDraft.tag }
+        return nil
+    }
+    private var note: String? {
+        if place.isPlanned { return PlannedPlaceCopy.tag.lowercased() }
+        if place == .evals && EvalsDraft.isDraft { return EvalsDraft.banner }
+        return nil
+    }
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                // LAB-2002: bigger icons in the accent text colour so they read at a glance; the label keeps its size and
-                // grey, and the frames below are unchanged, so the rail and the toolbar row keep their widths.
-                Image(systemName: place.symbol(count: badge)).font(.system(size: labelled ? 19 : 15, weight: selected ? .semibold : .medium))
-                    .foregroundStyle(t.accentText.color)
-                    .frame(height: labelled ? 22 : 18)
-                    .overlay(alignment: .topTrailing) {
-                        if badge > 0 {
-                            Text("\(badge)").ui(9, .bold).foregroundStyle(t.onAccent.color)
-                                .padding(.horizontal, 4).frame(minWidth: 14, minHeight: 14)
-                                .background(Capsule().fill((critical ? t.statusColor(.needsYou) : t.accent).color))   // LAB-2112
-                                .offset(x: labelled ? 11 : 9, y: labelled ? -6 : -7)
-                        }
-                    }
-                if labelled { Text(place.title).ui(10.5, selected ? .semibold : .regular).lineLimit(1).minimumScaleFactor(0.8) }
-            }
-            .overlay(alignment: .top) {
-                // LAB-2072: Evals is a draft until its redesign ships: a one-line tag above the icon's right shoulder.
-                if place == .evals && EvalsDraft.isDraft {
-                    Text(EvalsDraft.tag.uppercased()).ui(labelled ? 7.5 : 6.5, .bold).foregroundStyle(t.onAccent.color)
-                        .lineLimit(1).fixedSize()
-                        .padding(.horizontal, 3).padding(.vertical, 1)
-                        .background(Capsule().fill(t.accent.color))   // LAB-2170: the same blue as the banner, not the needs-you colour
-                        .offset(x: labelled ? 16 : 10, y: labelled ? -5 : -7)
-                        .accessibilityHidden(true)
-                }
-            }
-            .foregroundStyle(selected ? t.text.color : t.text2.color)
-            .frame(minWidth: labelled ? 56 : 26, maxWidth: labelled ? .infinity : 26, minHeight: labelled ? 44 : 24, maxHeight: labelled ? 44 : 24)
-            .padding(.horizontal, labelled ? 5 : 0)   // LAB-1829: a wider rail gives the label room
-            .background(RoundedRectangle(cornerRadius: labelled ? 9 : 7, style: .continuous)
-                .fill(selected ? t.surface.color : .clear)
-                .shadow(color: selected ? t.separator.color : .clear, radius: 0.5, y: 0.5))
-            .contentShape(Rectangle())
+            content
+                .foregroundStyle(selected ? t.text.color : t.text2.color)
+                .frame(minWidth: labelled ? 56 : bar, maxWidth: labelled ? .infinity : bar, minHeight: labelled ? height : bar + 2, maxHeight: labelled ? height : bar + 2)
+                .padding(.horizontal, labelled ? 5 : 0)   // LAB-1829: a wider rail gives the label room
+                .background(RoundedRectangle(cornerRadius: labelled ? 9 : 5, style: .continuous)
+                    .fill(selected ? t.surface.color : .clear)
+                    .shadow(color: selected ? t.separator.color : .clear, radius: 0.5, y: 0.5))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         // The icon row sits in the toolbar, where only an AppKit tooltip shows (LAB-1236); the rail is in the window.
-        .modifier(PlaceHelp(text: place.title + (place == .evals && EvalsDraft.isDraft ? " · " + EvalsDraft.banner : "") + " (⌃⌘\(place.controlKey))", inToolbar: !labelled))
-        .accessibilityLabel(place.title + (place == .evals && EvalsDraft.isDraft ? ", " + EvalsDraft.banner : "") + (badge > 0 ? ", \(badge) waiting" : "") + (selected ? ", selected" : ""))
+        .modifier(PlaceHelp(text: helpText, inToolbar: !labelled))
+        .accessibilityLabel(axLabel)
+    }
+
+    private var helpText: String { place.title + (note.map { " · " + $0 } ?? "") + " (⌃⌘\(place.controlKey))" }
+    private var axLabel: String {
+        place.title + (note.map { ", " + $0 } ?? "") + (badge > 0 ? ", \(badge) waiting" : "") + (selected ? ", selected" : "")
+    }
+
+    private var content: some View {
+        VStack(spacing: height < 42 ? 2 : 3) {
+            icon
+            if labelled { Text(place.title).ui(height < 40 ? 10 : 10.5, selected ? .semibold : .regular).lineLimit(1).minimumScaleFactor(0.8) }
+        }
+        .overlay(alignment: .top) { tagView }
+    }
+
+    // LAB-2002: icons in the accent text colour so they read at a glance. LAB-2331: 21 pt in a 24 pt frame.
+    private var icon: some View {
+        let frame = V2Layout.Rail.iconFrame(button: height)
+        return Image(systemName: place.symbol(count: badge))
+            .font(.system(size: labelled ? min(V2Layout.Rail.icon, frame - 3) : 12.5, weight: selected ? .semibold : .medium))
+            .foregroundStyle(t.accentText.color)
+            // LAB-2332: in the toolbar a planned place is a faded icon (its PLANNED tag would cover its neighbours)
+            .opacity(!labelled && place.isPlanned ? 0.45 : 1)
+            .frame(height: labelled ? frame : 15)
+            .overlay(alignment: .topTrailing) { badgeView }
+    }
+
+    @ViewBuilder private var badgeView: some View {
+        if badge > 0 {
+            let fill: Color = (critical ? t.statusColor(.needsYou) : t.accent).color   // LAB-2112
+            Text(labelled || badge < 100 ? "\(badge)" : "99+").ui(labelled ? 9 : 7.5, .bold).foregroundStyle(t.onAccent.color)
+                .padding(.horizontal, labelled ? 4 : 2.5).frame(minWidth: labelled ? 14 : 11, minHeight: labelled ? 14 : 11)
+                .background(Capsule().fill(fill))
+                .offset(x: labelled ? 11 : 8, y: labelled ? -6 : -6)
+        }
+    }
+
+    @ViewBuilder private var tagView: some View {
+        if let tag, labelled {   // the toolbar row has no room for tags: planned fades, the help says DRAFT
+            let planned = place.isPlanned
+            let size: Double = planned ? 7 : 7.5
+            let fill: Color = planned ? t.text3.color : t.accent.color   // LAB-2170: the banner's blue; planned: grey, not yet there
+            let dx: Double = planned ? 13 : 16
+            Text(tag.uppercased()).ui(size, .bold).foregroundStyle(t.onAccent.color)
+                .lineLimit(1).fixedSize()
+                .padding(.horizontal, 3).padding(.vertical, 1)
+                .background(Capsule().fill(fill))
+                .offset(x: dx, y: -5)
+                .accessibilityHidden(true)
+        }
     }
 }
 

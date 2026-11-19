@@ -185,7 +185,7 @@ enum SelfTest {
         if app.model.settings.ui2, let p = env["ONEROOF_SELFTEST_PLACE"], let place = Place(rawValue: p) { app.model.active.open(place) }
         if let l = env["ONEROOF_SELFTEST_LAYOUT"], let layout = SessionLayout(rawValue: l) {
             app.model.active.layout = layout
-        } else if env["ONEROOF_SELFTEST_LAYOUT"] == "scroll", app.model.settings.ui2 { app.model.active.open(.history) }   // LAB-2044
+        } else if env["ONEROOF_SELFTEST_LAYOUT"] == "scroll", app.model.settings.ui2 { app.model.active.open(.trace) }   // LAB-2044; LAB-2332: History is inside Trace
         if let f = Int(env["ONEROOF_SELFTEST_FOCUS"] ?? ""), let step = FocusStep(rawValue: f) { app.model.active.focusStep = step }
         // SELECTFIRST=1 selects the window's first session (demo ids are random) so the Plan and session tabs have one.
         if env["ONEROOF_SELFTEST_SELECTFIRST"] == "1" {

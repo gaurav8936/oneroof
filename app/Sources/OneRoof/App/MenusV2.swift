@@ -56,14 +56,19 @@ struct MenuSpecV2 {
         v += place("Home", "place.home", K.home, .home)
         v += place("Inbox", "place.needsYou", K.needsYou, .needsYou)
         v += [i("Action Log", "inbox.actionLog")]                                                                                      // ★ LAB-2047
-        v += place("History", "place.history", nil, .history)                                                                          // ★ LAB-2044 (⌃⌘9)
         v += place("Sessions", "place.sessions", K.focusTerminal, .sessions)
         v += place("Projects", "place.work", K.work, .work)
         v += [i("Board", "work.board", K.board)]
-        v += place("Resources", "place.machine", K.machine, .machine)
+        v += place("Agents (Planned)", "place.agents", nil, .agents)                                                                 // ★ LAB-2332
+        v += place("Factory (Planned)", "place.factory", nil, .factory)
         v += place("Loops", "place.loops", nil, .loops)
-        v += place("Learn", "place.learn", K.learn, .learn)
+        v += place("Trace", "place.trace", nil, .trace)                                                                              // ★ LAB-2332: History moved in (⌃⌘9)
+        v += [i("History", "place.trace")]
+        v += place("Resources", "place.machine", K.machine, .machine)
         v += place(EvalsDraft.isDraft ? EvalsDraft.menuTitle : "Evals", "place.evals", nil, .evals)   // LAB-EVALS; LAB-2072 draft
+        v += place("Train (Planned)", "place.train", nil, .train)
+        v += place("Ship (Planned)", "place.ship", nil, .ship)
+        v += place("Learn", "place.learn", K.learn, .learn)
         v += [i("Subagents", "home.subagents", K.subagents), sep]
         v += [i("Single", "layout.single", K.layouts[0]), i("Grid", "layout.grid", K.layouts[1]), i("Wall", "layout.wall", K.layouts[2]),   // LAB-2044: Scroll → History
               i("Focus: Step On", "focus.next", K.focusForward), i("Focus: Step Back", "focus.previous", K.focusBack), sep]                  // ★ back

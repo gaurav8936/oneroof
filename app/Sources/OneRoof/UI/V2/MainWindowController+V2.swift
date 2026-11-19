@@ -419,7 +419,8 @@ extension MainWindowController {
     var v2TitleDrawnSpan: V2Layout.BarSpan? {
         guard let tb = window?.toolbar, (tb.visibleItems ?? []).contains(where: { $0.itemIdentifier == V2ToolbarDelegate.title }),
               let v = tb.items.first(where: { $0.itemIdentifier == V2ToolbarDelegate.title })?.view, v.window != nil,
-              v2TitleShift.maxWidth != 0, v2TitleShift.drawnWidth > 0.5 else { return nil }
+              v2TitleShift.maxWidth != 0, v2Bar.titleWidth > 0,   // LAB-2332: no room → the title view is empty; its last width is stale
+              v2TitleShift.drawnWidth > 0.5 else { return nil }
         let x = Double(v.convert(CGPoint.zero, to: nil).x) + V2Layout.Bar.titleLead + Double(v2TitleShift.x)
         return V2Layout.BarSpan("title", x, x + Double(v2TitleShift.drawnWidth))
     }
