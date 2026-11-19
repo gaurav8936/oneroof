@@ -7,7 +7,8 @@ import OneRoofCore
 /// the default. Replaces v0.1's six mode flags (boardMode, workMode, launchpadMode, learnMode, objectiveId, viewerPath).
 enum CentreView: String, CaseIterable, Codable {
     case workspace, overview, resources, board, decisions, subagents, work, learn, objective, editor, review, loops, catalog, evals
-    case history   // LAB-2044: the History place (was the Scroll layout page)
+    case history   // LAB-2044: the History place (was the Scroll layout page); LAB-2332: Trace, History its first tab
+    case agents, factory, train, ship   // LAB-2332: the planned places
 
     var title: String {
         switch self {
@@ -25,7 +26,11 @@ enum CentreView: String, CaseIterable, Codable {
         case .loops: return "Loops"
         case .catalog: return "Session catalog"   // LAB-1509
         case .evals: return "Evals"   // LAB-EVALS
-        case .history: return "History"   // LAB-2044
+        case .history: return "Trace"   // LAB-2044; LAB-2332: Trace (History is its first tab)
+        case .agents: return "Agents"
+        case .factory: return "Factory"
+        case .train: return "Train"
+        case .ship: return "Ship"
         }
     }
 
@@ -33,7 +38,7 @@ enum CentreView: String, CaseIterable, Codable {
     static let switcher: [CentreView] = [.workspace, .overview, .resources, .board, .decisions, .work, .learn]
 
     /// Fleet views fold the Sessions panel away (v0.1 rule); the Plan panel stays for details.
-    var foldsSessions: Bool { [.overview, .resources, .board, .decisions, .subagents, .work, .learn, .loops, .catalog, .evals, .history].contains(self) }
+    var foldsSessions: Bool { [.overview, .resources, .board, .decisions, .subagents, .work, .learn, .loops, .catalog, .evals, .history, .agents, .factory, .train, .ship].contains(self) }
 }
 
 /// One main window = one workspace (WINDOW_SHELL §1): its own sessions, selection, centre view and text size. All

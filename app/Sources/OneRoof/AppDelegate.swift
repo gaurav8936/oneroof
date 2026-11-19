@@ -389,8 +389,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let n = m.needsYouBadge
             add("Inbox", "\(n) waiting (⌘I) · Needs you · Decisions", Place.needsYou.symbol(count: n), "View") { m.centre = .decisions }
             // LAB-2044 · LAB-2047: History (Scroll and transcript are words to find it by) and the Action log.
-            add("History", "every session's important moments, newest first (⌃⌘9) · Scroll · transcript", Place.history.symbol, "View") { [weak self] in
-                self?.main.v2Open(.history)
+            add("History", "Trace › History: every session's important moments, newest first (⌃⌘9) · Scroll · transcript", Place.trace.symbol, "View") { [weak self] in
+                self?.main.v2Open(.trace)   // LAB-2332: History is inside Trace
             }
             add("Decided", "what you decided, newest first (⇧⌘I) · Action log", "checkmark.circle", "View") { [weak self] in
                 self?.main.v2Page = nil; self?.main.win.openActionLog(.decisions)
@@ -730,7 +730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                        item("Split Editor", #selector(v2SplitEditor(_:)), "\\", [.command])]
                       + Place.allCases.map({ p -> NSMenuItem in
                           // Own title: shortcut overrides are keyed by title, and "Learn", "Loops", "Home"… are visible items too.
-                          let i = item("Open \(p.title)", #selector(v2OpenPlace(_:)), String(p.controlKey), [.command, .control])
+                          let i = item("Open \(p.title)", #selector(v2OpenPlace(_:)), String(p.controlKey).lowercased(), [.command, .control])   // LAB-2332: letters lower case (upper = ⇧)
                           i.representedObject = p.rawValue
                           return i
                       }) where model.settings.ui2 {

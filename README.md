@@ -27,7 +27,7 @@
 
 <p align="center"><sub>Free · open source · MIT · signed and notarized · needs macOS 14 or later on Apple silicon</sub></p>
 
-> **Status: version 2.0.7.** Free and open source under the MIT licence. Tested on Apple-silicon Macs only.
+> **Status: version 2.0.8.** Free and open source under the MIT licence. Tested on Apple-silicon Macs only.
 > Evals is still a draft, and is marked as one in the app. Please
 > [open an issue](https://github.com/gaurav8936/oneroof/issues) with anything that breaks or reads badly; see
 > [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -69,7 +69,9 @@ Each one is easy with one session. Each one adds up with five.
 
 ## The tour
 
-The window has a rail of places, each with one job.
+The window has a rail of 13 places in six groups, each with one job: **Work** (Home, Inbox, Sessions, Projects),
+**Agents** (Agents, Factory), **Run** (Loops, Trace, Resources), **Models** (Evals, Train), **Ship** and **Learn**.
+Places marked **Planned** are coming: their page says what will live there and where to go today.
 
 ### Home: a front page for the morning
 Built from your own sessions and loops. The lead story is the thing that matters most. **Decide now** lists what
@@ -91,7 +93,7 @@ agent, the account, the folder and a live one-line status. Show one terminal, a 
 **roofd**, a small background service, so they keep going when you close the app, and come back with their screens
 when you open it again.
 
-### History: what happened while you were away
+### Trace › History: what happened while you were away
 A read-only record of each session's important moments: steps, findings, errors, what the agent asked and what you
 answered, hand-offs between sessions. Each session's run of moments is one card, in its own colour. Search it, or
 filter by session, agent, kind and date. Kept for 30 days.
@@ -131,6 +133,13 @@ The cost shows before anything starts.
   your own API key; without it, Projects shows a single Connect Linear card.
 - **Learn:** a course on agentic engineering. The narrated Agentic Engineering deck and a timeline of papers that
   shaped coding agents. The narration is an AI-generated voice, and says so.
+
+### Coming next on the rail (marked Planned)
+- **Agents:** the roster. Every agent and account that can work for you: signed in, limits left, cost, models.
+- **Factory:** the playbook. Teams of agents for a kind of task (maker → checker, pipeline, fan-out → merge, two
+  answers → judge, loop until the check passes). The recipe library is already there; running one comes next.
+- **Train:** fine-tune and RL jobs on GPUs, fed by Evals.
+- **Ship:** live → lift → develop → main for many people and teams, releases and deploy status.
 
 ## Safe by default
 
