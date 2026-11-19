@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.7 — Sessions that really end, a Resources page that adds up, one set of status names (19 Nov 2026)
+
+- **A loop's last round closes.** A loop run used to leave its final agent session open at its prompt; seven
+  nightly sessions held about 3 GB. The last round now closes when the run ends, and roofd closes any loop round left
+  idle for 2 hours. (LAB-2310)
+- **No orphan sessions.** Relaunching One Roof no longer starts -2 and -3 copies of a session, and Remove and Delete
+  forever close the session's shell too. Shells that no One Roof row claims are found every minute and listed under
+  Other with a Close button. (LAB-2311)
+- **Resources numbers add up.** Memory per app is what sits in RAM (swap is shown once, for the whole Mac), One Roof is
+  counted once, Chrome is one row, and roofd shows its real processes. (LAB-2312)
+- **Resources: the summary first.** Six tiles on top (sessions by state, One Roof, this Mac, swap, roofd, and anything
+  that needs you), then every detail from before in sections that fold and remember how you left them. Swap turns
+  amber above 4 GB, the same line Home uses. Leftover sessions have names, such as "Claude in ~/Projects". (LAB-2313)
+- **One set of status names.** Projects and tickets use the same six: Backlog · Planned · In Progress · QA · Shipped ·
+  Canceled. Each project row shows how many of its tickets are in QA, waiting for you. The old names (Todo, In Review,
+  Done) still work. (LAB-2307, LAB-2318)
+
 ## 2.0.6 — Loops, made over: what needs you, what's running, is it worth it (6 Nov 2026)
 
 Loops opens on its kinds as lanes and splits what the old page mixed together: what needs you, what is running and
