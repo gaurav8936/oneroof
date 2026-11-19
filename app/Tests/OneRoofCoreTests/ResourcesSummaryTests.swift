@@ -131,7 +131,7 @@ final class ResourcesSummaryTests: XCTestCase {
     }
 
     func test_LAB2313_orphanNamesFromWhatRoofdSays() {
-        let home = "/Users/owner"
+        let home = "/Users/you"
         XCTAssertEqual(ResourceOrphanName.name(runtimeId: "roof-15e2b579-2", isAgent: true, agentName: "claude", cwd: home + "/Projects", title: "zsh", home: home),
                        "roof-15e2b579-2 · Claude in ~/Projects")
         XCTAssertEqual(ResourceOrphanName.name(runtimeId: "roof-15e2b579", isAgent: false, agentName: nil, cwd: home + "/Projects", title: nil, home: home),
@@ -146,7 +146,7 @@ final class ResourcesSummaryTests: XCTestCase {
         XCTAssertEqual(ResourceOrphanName.name(runtimeId: "roof-1", isAgent: nil, agentName: nil, cwd: nil, title: "Nightly export", home: home),
                        "roof-1 · Nightly export")
         XCTAssertEqual(ResourceOrphanName.name(runtimeId: "roof-1", isAgent: nil, agentName: nil, cwd: "", title: nil, home: home), "roof-1")
-        XCTAssertEqual(ResourceOrphanName.folder("/Users/ownerx/a", home: home), "/Users/ownerx/a")   // not under home
+        XCTAssertEqual(ResourceOrphanName.folder("/Users/someone/a", home: home), "/Users/someone/a")   // not under home
         XCTAssertEqual(ResourceOrphanName.folder(home + "/a/b", home: home + "/"), "~/a/b")
     }
 
