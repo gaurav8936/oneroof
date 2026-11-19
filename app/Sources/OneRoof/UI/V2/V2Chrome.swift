@@ -138,37 +138,31 @@ extension V2Counts {
     }
 }
 
-/// The icon row (step 1): the most used places as icons in the toolbar band of the session column, the rest under
-/// "more" (LAB-2332: 13 icons would not fit over the column; `Place.iconRow`).
+/// The icon row (step 1): every place as a small icon in the toolbar band of the session column, in the rail's
+/// groups with a hairline between them (LAB-2332 option C, owner 2026-11-19: all 13, no "more" menu).
 struct V2PlacesIconRow: View {
     @Environment(\.theme) private var t
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
     let controller: MainWindowController
 
-    private var rest: [Place] { Place.allCases.filter { !Place.iconRow.contains($0) } }
-
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(Place.iconRow) { p in
-                V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: V2Counts.badge(p, model), critical: p == .needsYou && V2Counts.critical(model),
-                              labelled: false) { controller.v2Open(p) }
-            }
-            Menu {
-                ForEach(rest) { p in
-                    Button { controller.v2Open(p) } label: {
-                        Label(p.title + (p.isPlanned ? " · " + PlannedPlaceCopy.tag.lowercased() : ""), systemImage: p.symbol)
+        HStack(spacing: 0) {
+            ForEach(Array(Place.iconRowGroups.enumerated()), id: \.offset) { i, group in
+                if i > 0 {
+                    Rectangle().fill(t.separator.color).frame(width: 1, height: 14)
+                        .padding(.horizontal, (V2Layout.Bar.iconGroupGap - 1) / 2)
+                }
+                HStack(spacing: V2Layout.Bar.iconGap) {
+                    ForEach(group) { p in
+                        V2PlaceButton(place: p, selected: win.place == p && !controller.v2OnPage, badge: V2Counts.badge(p, model),
+                                      critical: p == .needsYou && V2Counts.critical(model), labelled: false) { controller.v2Open(p) }
+                            .zIndex(V2Counts.badge(p, model) > 0 ? 1 : 0)   // a badge draws over its neighbour's chip
                     }
                 }
-            } label: {
-                Image(systemName: rest.contains(win.place) && !controller.v2OnPage ? "ellipsis.circle.fill" : "ellipsis.circle")
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(t.accentText.color)
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .frame(width: 26, height: 24)
-            .barHelp("More places: " + rest.map(\.title).joined(separator: ", "))
-            .accessibilityLabel("More places")
         }
+        .padding(.horizontal, 2)
     }
 }
 
@@ -181,6 +175,7 @@ struct V2PlaceButton: View {
     let labelled: Bool
     var height: Double = V2Layout.Rail.button
     let action: () -> Void
+    private let bar = V2Layout.Bar.iconButton
 
     /// LAB-2072 / LAB-2332: a one-line tag above the icon's right shoulder: Evals' DRAFT, a planned place's PLANNED.
     private var tag: String? {
@@ -198,9 +193,9 @@ struct V2PlaceButton: View {
         Button(action: action) {
             content
                 .foregroundStyle(selected ? t.text.color : t.text2.color)
-                .frame(minWidth: labelled ? 56 : 26, maxWidth: labelled ? .infinity : 26, minHeight: labelled ? height : 24, maxHeight: labelled ? height : 24)
+                .frame(minWidth: labelled ? 56 : bar, maxWidth: labelled ? .infinity : bar, minHeight: labelled ? height : bar + 2, maxHeight: labelled ? height : bar + 2)
                 .padding(.horizontal, labelled ? 5 : 0)   // LAB-1829: a wider rail gives the label room
-                .background(RoundedRectangle(cornerRadius: labelled ? 9 : 7, style: .continuous)
+                .background(RoundedRectangle(cornerRadius: labelled ? 9 : 5, style: .continuous)
                     .fill(selected ? t.surface.color : .clear)
                     .shadow(color: selected ? t.separator.color : .clear, radius: 0.5, y: 0.5))
                 .contentShape(Rectangle())
@@ -228,33 +223,35 @@ struct V2PlaceButton: View {
     private var icon: some View {
         let frame = V2Layout.Rail.iconFrame(button: height)
         return Image(systemName: place.symbol(count: badge))
-            .font(.system(size: labelled ? min(V2Layout.Rail.icon, frame - 3) : 15, weight: selected ? .semibold : .medium))
+            .font(.system(size: labelled ? min(V2Layout.Rail.icon, frame - 3) : 12.5, weight: selected ? .semibold : .medium))
             .foregroundStyle(t.accentText.color)
-            .frame(height: labelled ? frame : 18)
+            // LAB-2332: in the toolbar a planned place is a faded icon (its PLANNED tag would cover its neighbours)
+            .opacity(!labelled && place.isPlanned ? 0.45 : 1)
+            .frame(height: labelled ? frame : 15)
             .overlay(alignment: .topTrailing) { badgeView }
     }
 
     @ViewBuilder private var badgeView: some View {
         if badge > 0 {
             let fill: Color = (critical ? t.statusColor(.needsYou) : t.accent).color   // LAB-2112
-            Text("\(badge)").ui(9, .bold).foregroundStyle(t.onAccent.color)
-                .padding(.horizontal, 4).frame(minWidth: 14, minHeight: 14)
+            Text(labelled || badge < 100 ? "\(badge)" : "99+").ui(labelled ? 9 : 7.5, .bold).foregroundStyle(t.onAccent.color)
+                .padding(.horizontal, labelled ? 4 : 2.5).frame(minWidth: labelled ? 14 : 11, minHeight: labelled ? 14 : 11)
                 .background(Capsule().fill(fill))
-                .offset(x: labelled ? 11 : 9, y: labelled ? -6 : -7)
+                .offset(x: labelled ? 11 : 8, y: labelled ? -6 : -6)
         }
     }
 
     @ViewBuilder private var tagView: some View {
-        if let tag {
+        if let tag, labelled {   // the toolbar row has no room for tags: planned fades, the help says DRAFT
             let planned = place.isPlanned
-            let size: Double = labelled ? (planned ? 7 : 7.5) : 6.5
+            let size: Double = planned ? 7 : 7.5
             let fill: Color = planned ? t.text3.color : t.accent.color   // LAB-2170: the banner's blue; planned: grey, not yet there
-            let dx: Double = labelled ? (planned ? 13 : 16) : 10
+            let dx: Double = planned ? 13 : 16
             Text(tag.uppercased()).ui(size, .bold).foregroundStyle(t.onAccent.color)
                 .lineLimit(1).fixedSize()
                 .padding(.horizontal, 3).padding(.vertical, 1)
                 .background(Capsule().fill(fill))
-                .offset(x: dx, y: labelled ? -5 : -7)
+                .offset(x: dx, y: -5)
                 .accessibilityHidden(true)
         }
     }

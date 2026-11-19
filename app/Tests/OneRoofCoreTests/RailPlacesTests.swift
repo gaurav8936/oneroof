@@ -49,10 +49,15 @@ final class RailPlacesTests: XCTestCase {
         XCTAssertNil(PlannedPlaceCopy.workspace(fromLinearURLs: ["https://linear.app/"]))
     }
 
-    func testIconRowKeepsTheToolbarWidth() {
-        XCTAssertEqual(V2Layout.Bar.placesRow, 198, "six icons + more = the 1.9.28 row, so the toolbar does not move")
-        XCTAssertTrue(Place.iconRow.allSatisfy { !$0.isPlanned })
-        XCTAssertEqual(V2Layout.toolbarStart(divider: 200, placesRow: true), 91 + 198 + V2Layout.Bar.sectionLead)
+    func testIconRowShowsAllThirteenInTheRailGroups() {
+        XCTAssertEqual(Place.iconRowGroups.flatMap { $0 }, Array(Place.allCases), "every place, rail order, no more menu")
+        XCTAssertEqual(Place.iconRowGroups.count, 6)
+        // 4 padding + 13 × 20 + 7 in-group gaps × 1 + 5 group gaps × 7
+        XCTAssertEqual(V2Layout.Bar.placesRow, 306)
+        XCTAssertEqual(V2Layout.sessionsColumnMin(), 91 + 306 + 12)
+        XCTAssertEqual(V2Layout.toolbarStart(divider: 200, placesRow: true), 91 + 306 + V2Layout.Bar.sectionLead)
+        XCTAssertGreaterThanOrEqual(V2Layout.sessionsColumnMin(windowWidth: 1280), V2Layout.Bar.lights + V2Layout.Bar.placesRow,
+                                    "a 1280 pt window still holds the whole row over the column")
     }
 
     // MARK: LAB-2331 spacing

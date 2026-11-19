@@ -27,8 +27,9 @@ then the gaps between groups, then the buttons. Only below that does the list sc
 **Planned places** carry a grey PLANNED tag on the rail. Their page says what the place is for, what is coming, where
 the nearest thing lives today (buttons), and the Linear tickets that build it.
 
-**The step-1 icon row** in the toolbar shows Home, Inbox, Sessions, Projects, Loops and Trace; the ⋯ button lists the
-rest.
+**The step-1 icon row** in the toolbar shows all 13 places as small icons, in the rail's order and groups, with a thin
+line between the groups. Planned places are drawn faded. Hover an icon for its name and shortcut. The Sessions column
+is about 410 pt wide at step 1, so the whole row fits above it.
 
 ## Factory: recipes
 

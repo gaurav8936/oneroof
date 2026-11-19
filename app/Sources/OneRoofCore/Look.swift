@@ -134,9 +134,9 @@ public enum Place: String, CaseIterable, Identifiable, Codable, Sendable {
     }
     /// LAB-2332: places that are coming: their page is a placeholder (`PlannedPlaceCopy`) and the rail tags them.
     public var isPlanned: Bool { PlannedPlaceCopy.of(self) != nil }
-    /// LAB-2332: the step-1 icon row in the toolbar shows these places; the rest are under its "more" menu (13 icons
-    /// would not fit over the Sessions column).
-    public static let iconRow: [Place] = [.home, .needsYou, .sessions, .work, .loops, .trace]
+    /// LAB-2332: the step-1 icon row in the toolbar shows every place, in the rail's groups, with no "more" menu
+    /// (owner 2026-11-19, option C: small icons so all 13 fit over the Sessions column).
+    public static var iconRowGroups: [[Place]] { PlaceGroup.allCases.map(\.places).filter { !$0.isEmpty } }
     /// Step a place opens at.
     public var defaultStep: FocusStep { self == .sessions ? .sessions : .full }
 }
