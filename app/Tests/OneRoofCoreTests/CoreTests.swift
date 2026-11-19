@@ -339,7 +339,7 @@ final class IntakeTests: XCTestCase {
         let w = LinearWorkstream(id: "p", name: "WS-WEB-12 · New checkout", state: "started", url: "", team: "ENG", milestones: [])
         XCTAssertEqual(w.wsId, "WS-WEB-12")
         XCTAssertEqual(w.title, "New checkout")
-        XCTAssertEqual(w.stateLabel, "Active")
+        XCTAssertEqual(w.stateLabel, "In Progress")
     }
 }
 

@@ -10,11 +10,11 @@ public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
 
     public var label: String {
         switch self {
-        case .active: return "Active"
+        case .active: return "In Progress"
         case .planned: return "Planned"
         case .backlog: return "Backlog"
         case .shipped: return "Shipped"
-        case .cancelled: return "Cancelled"
+        case .cancelled: return "Canceled"
         }
     }
 
@@ -173,8 +173,8 @@ public enum ProjectList {
         return parts.joined(separator: ", ")
     }
 
-    /// LAB-2307: the row's count of tickets In Review: "1 to check" / "3 to check" / "50+ to check".
-    public static func toCheckLabel(_ n: Int) -> String { n >= 50 ? "50+ to check" : "\(n) to check" }
+    /// LAB-2307/2318: the row's count of tickets in QA: "1 in QA" / "3 in QA" / "50+ in QA".
+    public static func toCheckLabel(_ n: Int) -> String { n >= 50 ? "50+ in QA" : "\(n) in QA" }
 
     /// ↑/↓ through the visible rows: the next (or previous) id, the first (or last) when nothing is picked.
     public static func step(from id: String?, by delta: Int, in rows: [LinearWorkstream]) -> String? {

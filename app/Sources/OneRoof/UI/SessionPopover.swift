@@ -146,7 +146,7 @@ extension AppModel {
         a.addButton(withTitle: "Cancel")
         // One box per issue the session worked on (LAB-474): each can go to In Review or stay where it is.
         let boxes = item.session.allTickets.map { i -> (String, NSButton) in
-            let b = NSButton(checkboxWithTitle: "Comment on \(i.key) and move it to In Review", target: nil, action: nil)
+            let b = NSButton(checkboxWithTitle: "Comment on \(i.key) and move it to QA", target: nil, action: nil)
             b.state = .on
             return (i.key, b)
         }
@@ -158,7 +158,7 @@ extension AppModel {
         }
         if a.runModal() == .alertFirstButtonReturn {
             let keys = Set(boxes.filter { $0.1.state == .on }.map(\.0))
-            if !keys.isEmpty { moveTickets(of: item, keys: keys, to: "In Review") }
+            if !keys.isEmpty { moveTickets(of: item, keys: keys, to: "QA") }
             closeAgent(item)
         }
     }

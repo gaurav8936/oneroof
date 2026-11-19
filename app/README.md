@@ -81,7 +81,7 @@ works; deviations and moved shortcuts are in `IMPLEMENTATION_NOTES.md`. Rollback
   tickets (status, type), the sessions working on it, and links to its tracker pane and docs. Plan a session from any
   ticket (launching it moves the ticket to In Progress); the session row shows the ticket key. Change a ticket's state
   from its pill; closing a ticket's session posts a summary comment (run time, newest handoff, notes) and moves it to
-  In Review; the plan panel shows the live ticket with In Progress / In Review / Done.
+  QA; the plan panel shows the live ticket with In Progress / QA / Shipped (status names: _common/docs/standards/linear-status-names.md).
 - **New work item (⌘⇧N): decide what it is before creating it.** One Roof suggests project, ticket (deliverable,
   defect, spike, decision, chore) or just a session, checks the project for a similar ticket, then creates the
   ticket in Linear. A new project is created in Linear with its milestones, then a planned Claude session sets up its docs

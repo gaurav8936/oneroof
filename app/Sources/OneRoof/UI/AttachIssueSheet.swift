@@ -76,7 +76,7 @@ struct AttachIssueSheet: View {
                            isOn: $tellAgent).ui(12.5)
                 }
                 if live.session.ticket != nil {
-                    Text("It joins the session's issues; closing or reviewing the session offers to move each one to In Review.")
+                    Text("It joins the session's issues; closing or reviewing the session offers to move each one to QA.")
                         .ui(11.5).foregroundStyle(t.text3.color)
                 }
             }

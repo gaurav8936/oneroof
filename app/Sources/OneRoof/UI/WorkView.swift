@@ -5,7 +5,7 @@ import OneRoofCore
 /// Projects (⌘⇧W): every Linear project grouped by team, filtered by status, and the open project's roadmap
 /// (phases → tickets). Linear holds the tickets and their status; the master tracker holds the narrative; One Roof shows
 /// both and is where new work starts (through the intake filter), so tab names, tracker and Linear stop drifting apart.
-/// LAB-2050: teams fold (with counts), status chips as in All sessions (LAB-2307: the owner's Linear tab names, default Active), title first.
+/// LAB-2050: teams fold (with counts), status chips as in All sessions (LAB-2307: the owner's Linear tab names, default In Progress), title first.
 /// LAB-2051: a project page shows the project only (no Sessions block); ▷ on an issue still plans a session.
 struct WorkView: View {
     @ObservedObject var model: AppModel
@@ -90,7 +90,7 @@ struct WorkView: View {
             HStack(spacing: 10) {
                 if !ProjectList.isDefault(statuses: statuses, query: query) {
                     RoofButton("Reset", .plain) { reset() }
-                        .help("Back to Active, no filter text")
+                        .help("Back to In Progress, no filter text")
                 }
                 Spacer()
                 Button { reloadAll() } label: { Image(systemName: "arrow.clockwise") }
@@ -230,7 +230,7 @@ struct WorkView: View {
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Capsule().fill(Pastel.named("lavender")!.fillColor(scheme)))
                             .fixedSize()
-                            .help("Tickets In Review, waiting for your check")
+                            .help("Tickets in QA: built and tested, waiting for your check")
                     }
                     if live > 0 {
                         Text("\(live)").font(.system(size: 10, weight: .heavy, design: .rounded))
@@ -317,9 +317,9 @@ struct WorkView: View {
 func statePastel(_ state: String) -> Pastel {
     switch state {
     case "started", "In Progress": return Pastel.named("sky")!
-    case "completed", "Done": return Pastel.named("mint")!
-    case "In Review": return Pastel.named("lavender")!
-    case "planned", "Todo", "unstarted": return Pastel.named("peach")!
+    case "completed", "Shipped", "Done": return Pastel.named("mint")!
+    case "QA", "In Review": return Pastel.named("lavender")!
+    case "planned", "Planned", "Todo", "unstarted": return Pastel.named("peach")!
     case "canceled", "Canceled", "Duplicate": return Pastel.named("stone")!
     default: return Pastel.named("butter")!
     }

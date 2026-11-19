@@ -73,14 +73,14 @@ case "report":
     exit(0)
 case "issue":
     // LAB-518: an agent updates one of its session's Linear issues through One Roof:
-    //   roofd issue <KEY> [--state "In Progress"|"In Review"] [--comment <text> | --comment-file <path> | --comment -]
+    //   roofd issue <KEY> [--state "In Progress"|"QA"]   ("In Review" still accepted, LAB-2318) [--comment <text> | --comment-file <path> | --comment -]
     // The app applies it with the owner's Linear key; this waits up to 20 s for its answer.
     let env = ProcessInfo.processInfo.environment
     guard let id = env["ONEROOF_SESSION"], let control = env["ONEROOF_ROOFD"], Paths.validId(id) else {
         fail("issue: run this inside a One Roof session")
     }
     guard args.count > 1, !args[1].hasPrefix("-") else {
-        fail("usage: roofd issue <KEY> [--state \"In Progress\"|\"In Review\"] [--comment <text> | --comment-file <path> | --comment -]")
+        fail("usage: roofd issue <KEY> [--state \"In Progress\"|\"QA\"] [--comment <text> | --comment-file <path> | --comment -]")
     }
     var req: [String: Any] = ["op": "issue", "key": args[1].uppercased()]
     var i = 2

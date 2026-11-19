@@ -11,8 +11,8 @@ final class LinearMappingTests: XCTestCase {
 
     func test_LAB2102_standardMappingKeepsTodaysNames() {
         let m = LinearMapping.standard
-        XCTAssertEqual(LinearMapping.canonicalStates.map(m.stateName), ["Backlog", "Todo", "In Progress", "In Review", "Done", "Canceled"])
-        XCTAssertEqual(m.reviewState, "In Review")
+        XCTAssertEqual(LinearMapping.canonicalStates.map(m.stateName), ["Backlog", "Planned", "In Progress", "QA", "Shipped", "Canceled"])
+        XCTAssertEqual(m.reviewState, "QA")
         XCTAssertEqual(m.labelNames(.defect), ["Bug", "type:defect"])
         XCTAssertEqual(m.kind(fromLabel: "Task"), .chore)
         XCTAssertTrue(m.isStandard)
@@ -20,14 +20,14 @@ final class LinearMappingTests: XCTestCase {
 
     func test_LAB2102_onlyDifferencesAreStored() {
         var m = LinearMapping.standard
-        m.setState("Done", to: "Shipped")
-        m.setState("Todo", to: "Todo")          // same as recommended: not stored
+        m.setState("Shipped", to: "Released")
+        m.setState("Planned", to: "Planned")    // same as recommended: not stored
         m.setLabel(.defect, to: "Defect")
         m.setLabel(.chore, to: " Task ")        // recommended (trimmed): not stored
-        XCTAssertEqual(m.states, ["Done": "Shipped"])
+        XCTAssertEqual(m.states, ["Shipped": "Released"])
         XCTAssertEqual(m.typeLabels, ["defect": "Defect"])
         m.setState("Done", to: "")
-        XCTAssertNil(m.states["Done"], "blank goes back to the recommended name")
+        XCTAssertNil(m.states["Shipped"], "blank goes back to the recommended name (old name Done reads as Shipped)")
     }
 
     func test_LAB2102_resolveStateByMappedNameThenCaseThenType() {
@@ -39,7 +39,7 @@ final class LinearMappingTests: XCTestCase {
         XCTAssertEqual(m.resolveState("canceled", in: teamStates)?.id, "s6")
         XCTAssertEqual(LinearMapping.standard.resolveState("In Review", in: teamStates)?.id, "s4", "a started state named …review")
         XCTAssertNil(m.resolveState("Blocked", in: teamStates), "not one of One Roof's states")
-        XCTAssertEqual(m.canonical(forTeamState: "code review"), "In Review")
+        XCTAssertEqual(m.canonical(forTeamState: "code review"), "QA")
     }
 
     func test_LAB2102_mappedLabelsReadAndWritten() {
@@ -68,7 +68,7 @@ final class LinearMappingTests: XCTestCase {
         XCTAssertTrue(p.isEmpty == false)
         XCTAssertTrue(p.contains("WEB: no Deliverable label (Type: deliverable)"))
         XCTAssertFalse(p.contains { $0.contains("state") }, "every state resolves")
-        XCTAssertTrue(m.problems(teamKey: "WEB", states: [], labels: []).contains("WEB: no state for Done (looked for \"Done\")"))
+        XCTAssertTrue(m.problems(teamKey: "WEB", states: [], labels: []).contains("WEB: no state for Shipped (looked for \"Shipped\")"))
     }
 
     func test_LAB2102_mappingSavedAndLoaded() throws {
@@ -77,11 +77,12 @@ final class LinearMappingTests: XCTestCase {
         let path = dir.appendingPathComponent("linear-mapping.json").path
         XCTAssertEqual(LinearMapping.load(path: path), .standard, "no file = the recommended names")
         var m = LinearMapping.standard
-        m.setState("Done", to: "Shipped"); m.setTeam("OPS", shown: false)
+        m.setState("Shipped", to: "Released"); m.setTeam("OPS", shown: false)
         try m.save(to: path)
         XCTAssertEqual(LinearMapping.load(path: path), m)
         try Data("{\"states\":{\"Todo\":\"Ready\"}}".utf8).write(to: URL(fileURLWithPath: path))
         XCTAssertEqual(LinearMapping.load(path: path).stateName("Todo"), "Ready", "older or partial files still load")
+        XCTAssertEqual(LinearMapping.load(path: path).stateName("Planned"), "Ready", "an old key (Todo) is read as its new name")
     }
 
     /// The client uses the mapping: the review state goes into the project query, and moves resolve through it.
@@ -105,7 +106,7 @@ final class LinearMappingTests: XCTestCase {
             return (200, try JSONSerialization.data(withJSONObject: ["data": data]))
         }
         _ = try c.workstreams()
-        XCTAssertEqual((bodies.last?["variables"] as? [String: Any])?["review"] as? String, "Code review")
+        XCTAssertEqual((bodies.last?["variables"] as? [String: Any])?["review"] as? [String], ["Code review", "QA", "In Review"])
         let team = LinearTeam(id: "t", key: "WEB", states: teamStates, labels: [:])
         try c.setState(issue: "i1", team: team, named: "In Review")
         XCTAssertEqual(((bodies.last?["variables"] as? [String: Any])?["s"] as? String), "s4")
@@ -119,5 +120,21 @@ final class LinearMappingTests: XCTestCase {
     func test_LAB2102_noKeyPointsToSettings() {
         XCTAssertTrue("\(LinearClient.Failure.noKey)".contains("Settings › Linear"))
         XCTAssertThrowsError(try LinearClient(key: nil).testConnection())
+    }
+
+    /// LAB-2318: one status list for tickets and projects. The old names still work, before and after Linear is renamed.
+    func test_LAB2318_oldAndNewNamesBothResolve() {
+        let before: [(id: String, name: String, type: String)] = [("b", "Backlog", "backlog"), ("t", "Todo", "unstarted"),
+            ("p", "In Progress", "started"), ("r", "In Review", "started"), ("d", "Done", "completed"), ("c", "Canceled", "canceled")]
+        let after: [(id: String, name: String, type: String)] = [("b", "Backlog", "backlog"), ("pl", "Planned", "unstarted"),
+            ("p", "In Progress", "started"), ("q", "QA", "started"), ("s", "Shipped", "completed"), ("c", "Canceled", "canceled")]
+        let m = LinearMapping.standard
+        XCTAssertEqual(["Planned", "In Progress", "QA", "Shipped"].map { m.resolveState($0, in: before)?.id }, ["t", "p", "r", "d"])
+        XCTAssertEqual(["Planned", "In Progress", "QA", "Shipped"].map { m.resolveState($0, in: after)?.id }, ["pl", "p", "q", "s"])
+        XCTAssertEqual(["Todo", "In Review", "Done", "Cancelled"].map { m.resolveState($0, in: after)?.id }, ["pl", "q", "s", "c"],
+                       "an agent still asking for the old names gets the new state")
+        XCTAssertEqual(m.canonical(forTeamState: "In Review"), "QA")
+        XCTAssertEqual(m.reviewStates, ["QA", "In Review"], "Projects counts QA tickets under either name")
+        XCTAssertTrue(m.problems(teamKey: "LAB", states: before, labels: []).allSatisfy { !$0.contains("state") })
     }
 }
