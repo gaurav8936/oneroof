@@ -168,6 +168,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Observab
         // SwiftUI panels must not report a preferred/maximum size, or AppKit shrinks the window when a panel closes.
         sidebar.sizingOptions = []; plan.sizingOptions = []; files.sizingOptions = []
         centre = CentreController(model: model, win: win, terminalArea: terminalArea, v2: isV2)
+        centre.owner = self   // LAB-2332
 
         split = RoofSplitViewController()
         split.splitView.isVertical = true
@@ -607,6 +608,8 @@ final class CentreController: NSViewController {
     private let v2: Bool
     private var cardFrame: NSView?
     private var bag = Set<AnyCancellable>()
+    /// LAB-2332: the window controller, for pages whose buttons open places and Settings (the planned places).
+    weak var owner: MainWindowController?
 
     init(model: AppModel, win: WindowState, terminalArea: TerminalAreaController, v2: Bool = false) {
         self.model = model; self.win = win; self.terminalArea = terminalArea; self.v2 = v2
@@ -713,7 +716,10 @@ final class CentreController: NSViewController {
         case .loops: v = AnyView(CentreThemed(model: m, win: w) { LoopsView(model: m, win: w) })
         case .catalog: v = AnyView(CentreThemed(model: m, win: w) { CatalogView(model: m, win: w) })   // LAB-1509
         case .evals: v = AnyView(CentreThemed(model: m, win: w) { EvalsPlace(model: m, win: w) })   // LAB-EVALS; LAB-2061 redesign behind its flag
-        case .history: v = AnyView(CentreThemed(model: m, win: w) { V2HistoryPage(model: m, win: w) })   // LAB-2044
+        case .history: v = AnyView(CentreThemed(model: m, win: w) { V2TracePage(model: m, win: w) })   // LAB-2044; LAB-2332: Trace › History
+        case .agents, .factory, .train, .ship:   // LAB-2332: the planned places
+            let place = c.place ?? .agents, o = owner
+            v = AnyView(CentreThemed(model: m, win: w) { PlannedPlacePage(place: place, model: m, win: w, controller: o) })
         }
         let h = NSHostingView(rootView: v)
         h.sizingOptions = []

@@ -70,8 +70,8 @@ final class LookTests: XCTestCase {
         for p in [Place.home, .needsYou, .work, .machine, .loops] { XCTAssertEqual(p.defaultStep, .full, "\(p)") }
         XCTAssertEqual(SessionLayout.grid.defaultStep, .wide)
         XCTAssertEqual(SessionLayout.wall.defaultStep, .wide)
-        // LAB-2114: History is last on the rail and keeps ⌃⌘9; every other place keeps its digit.
-        XCTAssertEqual(Place.allCases.map(\.controlKey), ["1", "2", "3", "4", "5", "6", "7", "8", "9"])
+        // LAB-2332: rail order; the old places keep their digits, Trace takes History's ⌃⌘9, the new ones letters.
+        XCTAssertEqual(Place.allCases.map(\.controlKey), ["1", "2", "3", "4", "A", "P", "6", "9", "5", "8", "R", "S", "7"])
         XCTAssertEqual(Place.home.symbol, "house")
         XCTAssertEqual(Place.learn.symbol, "graduationcap")
     }

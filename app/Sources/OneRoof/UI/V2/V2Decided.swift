@@ -280,7 +280,7 @@ enum V2Conversation {
     static func openInHistory(win: WindowState, sessionId: String, momentId: String) {
         win.historyQuery.sessions = [sessionId]
         win.historyQuery.range = .last30
-        win.open(.history)
+        win.open(.trace)   // LAB-2332: History is inside Trace
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { NotificationCenter.default.post(name: .historySelfTestScroll, object: momentId) }
     }
 }

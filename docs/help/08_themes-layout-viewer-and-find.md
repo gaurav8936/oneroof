@@ -97,7 +97,7 @@ Session › Open in New Window (⌥⌘O) moves a running session's terminal into
 
 **The Focus lane.** At Focus the session column is a thin lane of avatars. Drag its right edge out and the session list appears as you drag, names cut off at first and more of them as it widens; let go and it stays that wide. Drag it back under about 110 pt and it returns to avatars. **+N** under the avatars widens it too. Click **Focus** (or ⌥⌘F) while the lane is wide to snap it back to the avatars; Focus always opens with the thin lane (LAB-1366, LAB-1382, LAB-1383).
 
-**Scroll is History now (2.0.0, LAB-2044).** Single · Grid · Wall (⌃⌥⌘1–3) arrange terminals only. The feed of every session's important moments that sat beside them as Scroll (⌃⌥⌘4, 1.9.34) is the **History** place, right under the Inbox on the rail (⌃⌘9): see Sessions › History. A window saved with Scroll opens as Single; a shortcut you set on Scroll moves to History.
+**Scroll is History now (2.0.0, LAB-2044).** Single · Grid · Wall (⌃⌥⌘1–3) arrange terminals only. The feed of every session's important moments that sat beside them as Scroll (⌃⌥⌘4, 1.9.34) is **History**, the first tab of the **Trace** place on the rail (⌃⌘9; 2.0.8 moved it into Trace): see Sessions › History. A window saved with Scroll opens as Single; a shortcut you set on Scroll moves to History.
 
 **The Inbox keeps what you decided.** Answered asks stay at the foot of the Inbox under **Decided · N ▸**, newest first, for as long as their session is alive; open it to see what was asked, what you answered and when (1.9.34, LAB-1831). Since 2.0 the Inbox is one column with no list to resize (LAB-2042).
 

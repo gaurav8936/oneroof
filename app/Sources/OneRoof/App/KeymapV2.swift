@@ -70,7 +70,10 @@ enum KeymapV2 {
         .home: Key("1", [.control, .command]), .needsYou: Key("2", [.control, .command]), .sessions: Key("3", [.control, .command]),
         .work: Key("4", [.control, .command]), .machine: Key("5", [.control, .command]), .loops: Key("6", [.control, .command]),
         .learn: Key("7", [.control, .command]), .evals: Key("8", [.control, .command]),
-        .history: Key("9", [.control, .command])]   // LAB-2044: History, right under the Inbox on the rail; the others keep theirs
+        .trace: Key("9", [.control, .command]),   // LAB-2044: was History's; LAB-2332: Trace holds History
+        // LAB-2332: the new places take letters (Place.controlKey); ⌃⌘F stays macOS's full screen, so Factory is ⌃⌘P.
+        .agents: Key("a", [.control, .command]), .factory: Key("p", [.control, .command]),
+        .train: Key("r", [.control, .command]), .ship: Key("s", [.control, .command])]
     static let layouts: [Key] = (1...3).map { Key("\($0)", [.control, .option, .command]) }  // Single, Grid, Wall (LAB-2044: Scroll → History)
     static let focusBack = Key("f", [.shift, .option, .command])
     static let dockToggle = Key("j", [.control, .command])
