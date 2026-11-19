@@ -3,11 +3,11 @@ import OneRoofCore
 
 /// LAB-2050 · ONEROOF_SELFTEST_PROJECTS=1 (with ONEROOF_SELFTEST_DEMO=1): the Projects page reads a fixture Linear
 /// instead of the network. Six teams (API DOC LAB MOB OPS WEB) and 18 projects in every status (Backlog, Planned,
-/// In progress (some with tickets In Review, shown as a count), Completed, Canceled), with milestones and issues.
+/// Active (some with tickets In Review, shown as a count), Shipped, Paused or cancelled), with milestones and issues.
 /// The fixture answers through `LinearClient.transport`, so the real parse path runs; it never reaches Linear, and
 /// any write (a mutation) fails with "self-test fixture: read-only".
 /// PROJECTSTATUSES=<comma list of chip ids, or "all"> · PROJECTSQUERY=<text> · PROJECTSFOLD=<team keys, or "all">
-/// set the page's remembered filter and folds for this run (captures: default view, a team folded, Completed only,
+/// set the page's remembered filter and folds for this run (captures: default view, a team folded, Shipped only,
 /// no match). Written to Prefs.viewState, a self-test suite emptied at launch: never the owner's settings.
 enum SelfTestProjects {
     static var active: Bool { ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PROJECTS"] == "1" }
