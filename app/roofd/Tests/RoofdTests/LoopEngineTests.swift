@@ -171,6 +171,88 @@ final class LoopEngineTests: XCTestCase {
         XCTAssertEqual(row.repoPath, wt)
     }
 
+    /// LAB-2310: start round 1 of a loop whose check fails, then record the round as checked (as the engine does once
+    /// the agent is back at its prompt) while its session is still alive at that prompt.
+    func startAndCheckRound(_ id: String, passed: Bool, store: LoopStore, sessions: SessionStore) throws -> String {
+        var l = Loop(id: id, name: id, goal: "g", check: "false", repoPath: projects + "/acme/web", agent: .shell)
+        l.limits = LoopLimits(maxRounds: 1)
+        l = LoopController.runNow(l)
+        try store.save(l)
+        LoopEngine.step(id, store: store, sessions: sessions, again: true)
+        let active = try XCTUnwrap(store.load(id)?.run?.active, "round 1 started")
+        XCTAssertEqual(LoopEngine.probe(active.runtimeId, now: Date()), .working)
+        var line: LoopRound?
+        _ = try store.update(id) { cur in
+            let (next, ln) = LoopController.checked(cur, result: LoopCheckResult(passed: passed, exitCode: passed ? 0 : 1, output: "x"), now: Date())
+            cur = next; line = ln
+        }
+        try store.append(XCTUnwrap(line), to: id)
+        return active.runtimeId
+    }
+
+    func waitGone(_ runtimeId: String) -> Bool {
+        for _ in 0..<50 where LoopEngine.probe(runtimeId, now: Date()) != .gone { usleep(100_000) }
+        return LoopEngine.probe(runtimeId, now: Date()) == .gone
+    }
+
+    /// LAB-2310: a run that ends done closes its last round's session (it used to sit at its prompt for days).
+    func testARunThatEndsDoneClosesItsLastRound() throws {
+        let store = LoopStore()
+        let sessions = try SessionStore(path: dir + "/sessions.sqlite")
+        let rid = try startAndCheckRound("ends-done", passed: true, store: store, sessions: sessions)
+        LoopEngine.step("ends-done", store: store, sessions: sessions, again: true)
+        XCTAssertEqual(store.load("ends-done")?.state, .done)
+        XCTAssertTrue(waitGone(rid), "the last round's session was closed")
+    }
+
+    /// LAB-2310: a run that stops on a limit closes its last round's session too.
+    func testARunThatStopsClosesItsLastRound() throws {
+        let store = LoopStore()
+        let sessions = try SessionStore(path: dir + "/sessions.sqlite")
+        let rid = try startAndCheckRound("ends-stop", passed: false, store: store, sessions: sessions)
+        LoopEngine.step("ends-stop", store: store, sessions: sessions, again: true)
+        XCTAssertEqual(store.load("ends-stop")?.state, .failed)
+        XCTAssertEqual(store.rounds("ends-stop").map(\.kind), [.check, .round, .stop])
+        XCTAssertTrue(waitGone(rid), "the last round's session was closed")
+    }
+
+    /// LAB-2310: with One Roof closed, roofd's own pass closes a loop round left idle at its prompt for
+    /// idleRoundClose, and leaves one that is newer, and the round a loop still waits on.
+    func testTheSweepClosesALoopRoundIdleForHours() throws {
+        let store = LoopStore()
+        let sessions = try SessionStore(path: dir + "/sessions.sqlite")
+        let rid = try startAndCheckRound("left-open", passed: false, store: store, sessions: sessions)
+        // A round the engine still owns (in flight) is never swept.
+        var other = Loop(id: "in-flight", name: "in-flight", goal: "g", check: "false", repoPath: projects + "/acme/web", agent: .shell)
+        other = LoopController.runNow(other)
+        try store.save(other)
+        LoopEngine.step("in-flight", store: store, sessions: sessions, again: true)
+        let owned = try XCTUnwrap(store.load("in-flight")?.run?.active?.runtimeId)
+        // Wait until the shell is at its prompt.
+        for _ in 0..<50 where !LoopEngine.idleAtPrompt((try? Sock.holderRequest(Paths.session(rid), ["op": "info"], timeout: 1)) ?? [:],
+                                                         now: Date(), after: 0) { usleep(100_000) }
+        let ids = ["left-open", "in-flight"]
+        LoopEngine.sweepIdleRounds(store: store, ids: ids, sessions: sessions, now: Date().addingTimeInterval(60))
+        XCTAssertNotEqual(LoopEngine.probe(rid, now: Date()), .gone, "a minute idle: kept")
+        LoopEngine.sweepIdleRounds(store: store, ids: ids, sessions: sessions, now: Date().addingTimeInterval(LoopEngine.idleRoundClose + 60))
+        XCTAssertTrue(waitGone(rid), "idle past idleRoundClose: closed")
+        XCTAssertNotEqual(LoopEngine.probe(owned, now: Date()), .gone, "the round a loop waits on is the engine's")
+    }
+
+    /// LAB-2310: what counts as idle at the prompt for the sweep; a round that asks something, or that you watch, stays.
+    func testIdleAtPromptKeepsRoundsThatNeedYou() {
+        let now = Date()
+        let old = now.addingTimeInterval(-3 * 3600).timeIntervalSince1970
+        let idle: [String: Any] = ["status": "idle", "opening": "done", "attached": false, "active": old]
+        XCTAssertTrue(LoopEngine.idleAtPrompt(idle, now: now, after: LoopEngine.idleRoundClose))
+        XCTAssertFalse(LoopEngine.idleAtPrompt(idle, now: now, after: 4 * 3600), "not idle long enough")
+        XCTAssertFalse(LoopEngine.idleAtPrompt(idle.merging(["status": "blocked"]) { $1 }, now: now, after: 0), "asks something")
+        XCTAssertFalse(LoopEngine.idleAtPrompt(idle.merging(["status": "working"]) { $1 }, now: now, after: 0))
+        XCTAssertFalse(LoopEngine.idleAtPrompt(idle.merging(["opening": "failed"]) { $1 }, now: now, after: 0))
+        XCTAssertFalse(LoopEngine.idleAtPrompt(idle.merging(["attached": true]) { $1 }, now: now, after: 0), "you are looking at it")
+        XCTAssertFalse(LoopEngine.idleAtPrompt(idle.merging(["exited": 0]) { $1 }, now: now, after: 0))
+    }
+
     func testAnUnconfiguredDaemonRunsNoLoops() {
         LoopEngine.tick(config: nil)   // returns at once; nothing to assert beyond not touching the shared folder
         XCTAssertFalse(FileManager.default.fileExists(atPath: projects + "/_common/loops"))
