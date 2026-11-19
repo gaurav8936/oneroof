@@ -159,7 +159,7 @@ public enum LinearSetupGuide {
         ("Teams", "One team per area of work (for example Web, Mobile, Docs). Projects groups by team."),
         ("Projects", "One Linear project per body of work, named \"CODE · title\" (CODE like WEB-CHECKOUT). One Roof lists every project."),
         ("Milestones", "A project's milestones are its phases: the roadmap groups tickets by them, in Linear's order."),
-        ("Project statuses", "Backlog · Planned · In progress · Completed · Canceled, exactly as Linear has them. Tickets In Review show as a \"to check\" count on the project, not as a status."),
+        ("Project statuses", "Active · Planned · Backlog · Shipped · Paused or cancelled, as the Linear project tabs name them. Tickets In Review show as a \"to check\" count on the project, not as a status."),
         ("Ticket statuses", "Backlog · Todo · In Progress · In Review · Done · Canceled. One Roof moves tickets between these (a session launching moves its ticket to In Progress)."),
         ("Type labels", "One label per ticket: Deliverable · Bug · Task · Spike · Decision. New items from One Roof get one; the roadmap shows it as a sticker."),
     ]

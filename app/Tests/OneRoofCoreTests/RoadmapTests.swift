@@ -12,27 +12,27 @@ final class RoadmapTests: XCTestCase {
 
     func test_LAB2101_completedProjectShowsDoneTicketsByDefault() {
         let all = (1...32).map { issue($0, "completed") }
-        XCTAssertTrue(Roadmap.showDoneByDefault(status: .completed, tickets: all))
+        XCTAssertTrue(Roadmap.showDoneByDefault(status: .shipped, tickets: all))
         let phases = Roadmap.phases(milestones: [], tickets: all)
         XCTAssertEqual(phases.count, 1)
         XCTAssertEqual(phases[0].name, Roadmap.loosePhase)
         XCTAssertEqual(phases[0].doneCount, 32)
-        let on = Roadmap.showDone(choice: nil, status: .completed, tickets: all)
+        let on = Roadmap.showDone(choice: nil, status: .shipped, tickets: all)
         XCTAssertEqual(phases[0].shown(showDone: on).count, 32, "2.0.0 listed none of them")
         XCTAssertNil(phases[0].emptyLine(showDone: on))
     }
 
     func test_LAB2101_canceledAndAllClosedProjectsDefaultOn_openProjectDefaultsOff() {
-        XCTAssertTrue(Roadmap.showDoneByDefault(status: .canceled, tickets: []))
-        XCTAssertTrue(Roadmap.showDoneByDefault(status: .inProgress, tickets: [issue(1, "completed"), issue(2, "canceled")]))
-        XCTAssertFalse(Roadmap.showDoneByDefault(status: .inProgress, tickets: [issue(1, "completed"), issue(2, "started")]))
+        XCTAssertTrue(Roadmap.showDoneByDefault(status: .pausedOrCancelled, tickets: []))
+        XCTAssertTrue(Roadmap.showDoneByDefault(status: .active, tickets: [issue(1, "completed"), issue(2, "canceled")]))
+        XCTAssertFalse(Roadmap.showDoneByDefault(status: .active, tickets: [issue(1, "completed"), issue(2, "started")]))
         XCTAssertFalse(Roadmap.showDoneByDefault(status: .backlog, tickets: []), "no tickets: nothing to show either way")
     }
 
     func test_LAB2101_ownerChoiceWins() {
         let all = [issue(1, "completed")]
-        XCTAssertFalse(Roadmap.showDone(choice: false, status: .completed, tickets: all))
-        XCTAssertTrue(Roadmap.showDone(choice: true, status: .inProgress, tickets: [issue(2, "started")]))
+        XCTAssertFalse(Roadmap.showDone(choice: false, status: .shipped, tickets: all))
+        XCTAssertTrue(Roadmap.showDone(choice: true, status: .active, tickets: [issue(2, "started")]))
     }
 
     func test_LAB2101_phasesInMilestoneOrderWithLooseLast() {
