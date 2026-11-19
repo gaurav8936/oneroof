@@ -11,20 +11,19 @@ public struct LinearWorkstream: Identifiable, Equatable, Sendable {
     public var url: String
     public var team: String         // CMN, GBL, HYP, AGM
     public var milestones: [LinearMilestone]
-    /// LAB-2050: the project status's name ("In Progress"; a status named "In Review" counts as In review).
+    /// LAB-2050: the project status's name in Linear ("In Progress").
     public var statusName: String = ""
-    /// LAB-2050: it has an open issue In Progress (`working`) / In Review (`reviewing`), read with the project list.
-    public var working: Bool = false
-    public var reviewing: Bool = false
+    /// LAB-2307: open tickets In Review, waiting for the owner's check (a count on the row, never a status; 50 = 50+).
+    public var toCheck: Int = 0
 
     public init(id: String, name: String, state: String, url: String, team: String, milestones: [LinearMilestone],
-                statusName: String = "", working: Bool = false, reviewing: Bool = false) {
+                statusName: String = "", toCheck: Int = 0) {
         self.id = id; self.name = name; self.state = state; self.url = url; self.team = team; self.milestones = milestones
-        self.statusName = statusName; self.working = working; self.reviewing = reviewing
+        self.statusName = statusName; self.toCheck = toCheck
     }
 
-    /// The Projects page status (chip and pill): In review is worked out from the issues (ProjectList.swift).
-    public var status: ProjectStatus { ProjectStatus.of(type: state, name: statusName, working: working, reviewing: reviewing) }
+    /// The Projects page status (chip and pill): Linear's project status, as Linear has it (LAB-2307).
+    public var status: ProjectStatus { ProjectStatus.of(type: state) }
 
     /// The project code at the start of the name (TEAM-TOPIC, or an older WS- id).
     public var wsId: String? { Workspace.projectCode(name: name) }
@@ -232,8 +231,7 @@ public final class LinearClient: @unchecked Sendable {
             query($after: String, $review: String!) { projects(first: 50, after: $after) {
               pageInfo { hasNextPage endCursor }
               nodes { id name state status { name type } url teams(first: 1) { nodes { key } } projectMilestones(first: 20) { nodes { id name sortOrder } }
-                working: issues(first: 1, filter: { state: { type: { eq: "started" }, name: { neqIgnoreCase: $review } } }) { nodes { id } }
-                reviewing: issues(first: 1, filter: { state: { name: { eqIgnoreCase: $review } } }) { nodes { id } } } } }
+                toCheck: issues(first: 50, filter: { state: { name: { eqIgnoreCase: $review } } }) { nodes { id } } } } }
             """, after.map { ["after": $0, "review": mapping.reviewState] } ?? ["review": mapping.reviewState])
             let p = d["projects"] as? [String: Any] ?? [:]
             for n in p["nodes"] as? [[String: Any]] ?? [] {
@@ -241,14 +239,14 @@ public final class LinearClient: @unchecked Sendable {
                     LinearMilestone(id: $0["id"] as? String ?? "", name: $0["name"] as? String ?? "", sortOrder: $0["sortOrder"] as? Double ?? 0)
                 }.sorted { $0.sortOrder < $1.sortOrder }
                 let team = (((n["teams"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first?["key"] as? String) ?? ""
-                // LAB-2050: `status { name type }` (the deprecated `state` is the fallback), and whether any open issue is
-                // In Progress / In Review (In review is worked out from those).
+                // LAB-2050: `status { name type }` (the deprecated `state` is the fallback); LAB-2307: how many tickets
+                // are In Review (the row's "to check" count).
                 let status = n["status"] as? [String: Any]
-                func has(_ k: String) -> Bool { !(((n[k] as? [String: Any])?["nodes"] as? [Any]) ?? []).isEmpty }
+                let toCheck = (((n["toCheck"] as? [String: Any])?["nodes"] as? [Any]) ?? []).count
                 out.append(LinearWorkstream(id: n["id"] as? String ?? "", name: n["name"] as? String ?? "",
                                             state: status?["type"] as? String ?? n["state"] as? String ?? "",
                                             url: n["url"] as? String ?? "", team: team, milestones: ms,
-                                            statusName: status?["name"] as? String ?? "", working: has("working"), reviewing: has("reviewing")))
+                                            statusName: status?["name"] as? String ?? "", toCheck: toCheck))
             }
             let info = p["pageInfo"] as? [String: Any] ?? [:]
             after = (info["hasNextPage"] as? Bool ?? false) ? info["endCursor"] as? String : nil
