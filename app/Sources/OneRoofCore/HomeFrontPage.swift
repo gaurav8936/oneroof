@@ -328,7 +328,7 @@ public enum HomeFrontPage {
                              tone: pct >= 90 ? .bad : .warn, actions: [Action("Open Sessions", .sessions)]))
         }
         // 8. The Mac.
-        if let m = i.mac, m.pressure != .normal || m.swapUsed > 4 << 30 {
+        if let m = i.mac, m.pressure != .normal || m.heavySwap {   // LAB-2313: the line the Swap tile uses
             out.append(Story(kicker: "MAC", headline: m.pressure == .critical ? "The Mac is out of memory"
                                        : m.pressure == .normal ? "The Mac is using a lot of swap"   // LAB-2139: Resources says normal
                                        : "The Mac is short of memory",

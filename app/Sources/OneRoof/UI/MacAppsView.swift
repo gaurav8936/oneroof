@@ -11,9 +11,12 @@ import OneRoofCore
 /// tinted with a leading amber bar, the process panel at full surface2). LAB-2053: an open browser shows its windows and
 /// tabs, then only the helpers "using a lot" (over 250 MB or 10 % CPU, held 30 s), one line about memory per tab, and
 /// "All processes (N)" for today's full list. LAB-2054 / LAB-2060: tabs and windows close from here (Chrome, Safari).
+/// LAB-2313: the card folds to its header line (used of total, swap, apps, processes); folded by default, the choice
+/// remembered (`resources.fold.mac`).
 struct MacAppsCard: View {
     @Environment(\.theme) private var t
     @ObservedObject var res: ResourceMonitor
+    @ObservedObject var folds: ResourcesFoldStore
     @State private var open: Set<String> = []
     @State private var showAll = false
     @State private var showAllProcs: Set<String> = []
@@ -43,12 +46,18 @@ struct MacAppsCard: View {
 
     var body: some View { watchedBody.modifier(WatchesResources(res: res)) }   // LAB-1333
     @ViewBuilder private var watchedBody: some View {
+        let isOpen = folds.isOpen(.mac)
         Card {
             VStack(alignment: .leading, spacing: 0) {
-                if let b = res.mac { content(b) } else {
-                    header(detail: "reading…")
-                    Hairline()
-                    Text("Reading every app's memory and CPU…").ui(12.5).foregroundStyle(t.text2.color).padding(14)
+                if let b = res.mac {
+                    header(detail: detail(b), open: isOpen)
+                    if isOpen { content(b) }
+                } else {
+                    header(detail: "reading…", open: isOpen)
+                    if isOpen {
+                        Hairline()
+                        Text("Reading every app's memory and CPU…").ui(12.5).foregroundStyle(t.text2.color).padding(14)
+                    }
                 }
             }
         }
@@ -76,7 +85,6 @@ struct MacAppsCard: View {
 
     @ViewBuilder private func content(_ b: MacBreakdown) -> some View {
         let groups = showAll ? b.groups : Array(b.groups.prefix(Self.firstApps))
-        header(detail: detail(b))
         Hairline()
         if let message {
             HStack(spacing: 8) {
@@ -109,14 +117,25 @@ struct MacAppsCard: View {
         .padding(.horizontal, 14).padding(.vertical, 9)
     }
 
-    private func header(detail: String) -> some View {
-        HStack(spacing: 8) {
-            Text("This Mac, by app").ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
-            Text(detail).ui(12).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
-            Spacer()
+    /// LAB-2313: the header is the fold button; its detail line is the folded summary.
+    private func header(detail: String, open: Bool) -> some View {
+        Button { folds.toggle(.mac) } label: {
+            HStack(spacing: 8) {
+                FoldChevron(open: open)
+                Text("This Mac, by app").ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                Text(detail).ui(12).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
+                Spacer()
+            }
+            .padding(.horizontal, 14).frame(height: 36)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14).frame(height: 36)
-        .accessibilityAddTraits(.isHeader)
+        .buttonStyle(.plain)
+        .hoverHighlight(over: t.surface, radius: Radius.card)
+        .help(open ? "Fold this card" : "Open this card")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ResourcesFold.label("This Mac, by app", open: open, summary: detail))
+        .accessibilityHint(open ? "Folds the card" : "Opens the card")
+        .accessibilityAddTraits([.isHeader, .isButton])
     }
 
     private func detail(_ b: MacBreakdown) -> String {
