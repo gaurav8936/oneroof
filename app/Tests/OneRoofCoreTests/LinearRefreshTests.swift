@@ -98,17 +98,17 @@ final class LinearProjectStatusParseTests: XCTestCase {
         let list = try c.workstreams().sorted { $0.id < $1.id }   // workstreams() sorts by name
         XCTAssertTrue(q().contains("status { name type }"))
         XCTAssertTrue(q().contains("toCheck: issues(") && !q().contains("working: issues("))
-        XCTAssertEqual(list.map(\.status), [.inProgress, .planned, .inProgress], "Linear's status type, nothing worked out")
+        XCTAssertEqual(list.map(\.status), [.active, .planned, .active], "Linear's status type, nothing worked out")
         XCTAssertEqual(list.map(\.toCheck), [2, 0, 0])
         XCTAssertEqual(list[0].statusName, "In Progress")
-        XCTAssertEqual(list[0].stateLabel, "In progress")
+        XCTAssertEqual(list[0].stateLabel, "Active")
     }
 
     func test_LAB2050_oldStateIsTheFallback() throws {
         let (c, _) = client([["id": "1", "name": "WS-OLD-1 · Old", "state": "completed", "teams": ["nodes": [["key": "CMN"]]]]])
         let list = try c.workstreams()
         XCTAssertEqual(list.first?.state, "completed")
-        XCTAssertEqual(list.first?.status, .completed)
-        XCTAssertEqual(list.first?.stateLabel, "Completed")
+        XCTAssertEqual(list.first?.status, .shipped)
+        XCTAssertEqual(list.first?.stateLabel, "Shipped")
     }
 }

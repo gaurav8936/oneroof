@@ -1,54 +1,57 @@
 import Foundation
 
 /// LAB-2050 · the status a project shows on the Projects page: its chip and its pill use the same words.
-/// LAB-2307 (owner, 2026-11-19: "simple and consistent"): One Roof mirrors Linear's project statuses exactly —
-/// Backlog · Planned · In Progress · Completed · Canceled (Paused on older workspaces reads as In progress). It works out
-/// no status of its own; tickets waiting for the owner's check show as a count on the row (`LinearWorkstream.toCheck`).
+/// LAB-2307 (owner, 2026-11-19): One Roof uses Linear's project statuses and the owner's own Linear tab names for them,
+/// in the tabs' order: Active · Planned · Backlog · Shipped · Paused or cancelled (All projects = no chip chosen). It works
+/// out no status of its own; tickets waiting for the owner's check show as a count on the row (`LinearWorkstream.toCheck`).
 public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
-    case backlog, planned, inProgress, completed, canceled
+    case active, planned, backlog, shipped, pausedOrCancelled
 
     public var label: String {
         switch self {
-        case .backlog: return "Backlog"
+        case .active: return "Active"
         case .planned: return "Planned"
-        case .inProgress: return "In progress"
-        case .completed: return "Completed"
-        case .canceled: return "Canceled"
+        case .backlog: return "Backlog"
+        case .shipped: return "Shipped"
+        case .pausedOrCancelled: return "Paused or cancelled"
         }
     }
 
     /// The pastel of its pill (Stickers.swift names).
     public var pastel: String {
         switch self {
-        case .backlog: return "butter"
+        case .active: return "sky"
         case .planned: return "peach"
-        case .inProgress: return "sky"
-        case .completed: return "mint"
-        case .canceled: return "stone"
+        case .backlog: return "butter"
+        case .shipped: return "mint"
+        case .pausedOrCancelled: return "stone"
         }
     }
 
-    /// The default (LAB-2307): In progress.
-    public static let defaultSet: Set<ProjectStatus> = [.inProgress]
+    /// The default (LAB-2307): Active.
+    public static let defaultSet: Set<ProjectStatus> = [.active]
 
-    /// From Linear's project status type, as Linear has it.
+    /// From Linear's project status type, as the owner's Linear tabs group them.
     public static func of(type: String) -> ProjectStatus {
         switch type.lowercased() {
         case "backlog": return .backlog
         case "planned": return .planned
-        case "started", "paused": return .inProgress
-        case "completed": return .completed
-        case "canceled", "cancelled": return .canceled
+        case "started": return .active
+        case "completed": return .shipped
+        case "paused", "canceled", "cancelled": return .pausedOrCancelled
         default: return .backlog
         }
     }
 
-    /// A remembered selection ("inProgress,completed"); unknown words are skipped. `nil` (never saved) is the default,
-    /// and so is a saved choice left with nothing known in it (LAB-2307: an old "inReview" alone).
+    /// Saved choices from before LAB-2307 ("inProgress,completed") read as the new tabs.
+    private static let renamed: [String: ProjectStatus] = ["inProgress": .active, "completed": .shipped, "canceled": .pausedOrCancelled]
+
+    /// A remembered selection ("active,shipped"); unknown words are skipped. `nil` (never saved) is the default, and so
+    /// is a saved choice left with nothing known in it (an old "inReview" alone).
     public static func decode(_ stored: String?) -> Set<ProjectStatus> {
         guard let stored else { return defaultSet }
         let words = stored.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        let known = Set(words.compactMap(ProjectStatus.init(rawValue:)))
+        let known = Set(words.compactMap { ProjectStatus(rawValue: $0) ?? renamed[$0] })
         return known.isEmpty && !words.isEmpty ? defaultSet : known
     }
 
@@ -121,7 +124,7 @@ public enum ProjectList {
         return Result(groups: groups, hiddenTeams: hidden, counts: counts(projects, query: query))
     }
 
-    /// Whether the filter differs from the default (In progress, no text): then Reset shows.
+    /// Whether the filter differs from the default (Active, no text): then Reset shows.
     public static func isDefault(statuses: Set<ProjectStatus>, query: String) -> Bool {
         statuses == ProjectStatus.defaultSet && query.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -152,11 +155,14 @@ public enum ProjectList {
     }
 
     /// VoiceOver for a chip: "In progress, 12 projects, showing" or "…, hidden".
+    /// LAB-2307: the first chip, as the owner's first Linear tab: every status (no chip chosen).
+    public static let allLabel = "All projects"
+
     public static func chipLabel(_ s: ProjectStatus, count n: Int, on: Bool) -> String {
         "\(s.label), \(Self.count(n)), \(on ? "showing" : "hidden")"
     }
 
-    /// VoiceOver for a row: "<title>, <code>, In progress, 2 live sessions".
+    /// VoiceOver for a row: "<title>, <code>, Active, 2 live sessions".
     public static func rowLabel(_ w: LinearWorkstream, live: Int) -> String {
         var parts = [w.title]
         if let code = w.wsId { parts.append(code) }

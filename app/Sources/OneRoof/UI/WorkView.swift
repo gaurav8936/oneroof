@@ -5,7 +5,7 @@ import OneRoofCore
 /// Projects (⌘⇧W): every Linear project grouped by team, filtered by status, and the open project's roadmap
 /// (phases → tickets). Linear holds the tickets and their status; the master tracker holds the narrative; One Roof shows
 /// both and is where new work starts (through the intake filter), so tab names, tracker and Linear stop drifting apart.
-/// LAB-2050: teams fold (with counts), status chips as in All sessions (default In progress; LAB-2307: Linear's statuses only), title first.
+/// LAB-2050: teams fold (with counts), status chips as in All sessions (LAB-2307: the owner's Linear tab names, default Active), title first.
 /// LAB-2051: a project page shows the project only (no Sessions block); ▷ on an issue still plans a session.
 struct WorkView: View {
     @ObservedObject var model: AppModel
@@ -90,7 +90,7 @@ struct WorkView: View {
             HStack(spacing: 10) {
                 if !ProjectList.isDefault(statuses: statuses, query: query) {
                     RoofButton("Reset", .plain) { reset() }
-                        .help("Back to In progress, no filter text")
+                        .help("Back to Active, no filter text")
                 }
                 Spacer()
                 Button { reloadAll() } label: { Image(systemName: "arrow.clockwise") }
@@ -131,6 +131,12 @@ struct WorkView: View {
     /// count after the text filter. The row wraps when narrow.
     private func chips(_ r: ProjectList.Result) -> some View {
         FlowLayout(spacing: 6) {
+            // LAB-2307: All projects first, as in Linear: on when no status is chosen; choosing it clears the others.
+            let all = statuses.isEmpty, total = r.counts.values.reduce(0, +)
+            RoofButton("\(ProjectList.allLabel) \(total)", all ? .primary : .secondary) { statusesRaw = "" }
+                .help("Show every project")
+                .accessibilityLabel("\(ProjectList.allLabel), \(ProjectList.count(total)), \(all ? "showing" : "hidden")")
+                .accessibilityAddTraits(all ? .isSelected : [])
             ForEach(ProjectStatus.allCases, id: \.self) { s in
                 let on = statuses.contains(s), n = r.counts[s] ?? 0
                 RoofButton("\(s.label) \(n)", on ? .primary : .secondary) { toggle(s) }
