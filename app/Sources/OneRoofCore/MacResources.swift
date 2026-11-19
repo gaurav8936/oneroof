@@ -16,16 +16,22 @@ public struct MacProc: Equatable, Sendable, Identifiable {
     public var path: String
     /// What a helper is ("Tab or site", "Extension", "GPU" …), or a One Roof role ("Local model").
     public var kind: String?
+    /// Compressed, swapped and GPU memory included (`RawUsage.footprint`).
     public var footprint: UInt64
+    /// LAB-2312: in RAM now, what the page shows and adds up (`RawUsage.resident`).
+    public var resident: UInt64
+    /// % of one core.
     public var cpu: Double?
     /// From the page: may be ended (SIGTERM, then force).
     public var endable: Bool
     public var id: Int32 { pid }
     public init(pid: Int32, ppid: Int32, name: String, path: String, kind: String? = nil, footprint: UInt64, cpu: Double? = nil,
-                endable: Bool = false) {
+                endable: Bool = false, resident: UInt64? = nil) {
         self.pid = pid; self.ppid = ppid; self.name = name; self.path = path; self.kind = kind
-        self.footprint = footprint; self.cpu = cpu; self.endable = endable
+        self.footprint = footprint; self.resident = resident ?? footprint; self.cpu = cpu; self.endable = endable
     }
+    /// What the footprint counts beyond RAM: compressed pages at full size, swapped-out pages, GPU memory.
+    public var notResident: UInt64 { footprint > resident ? footprint - resident : 0 }
 }
 
 /// Every process one app is responsible for (its own, its helpers, XPC services it started).
@@ -44,6 +50,11 @@ public struct MacAppGroup: Equatable, Sendable, Identifiable {
     /// The page may quit this app (not One Roof itself, not the system).
     public var quittable: Bool
     public var footprint: UInt64 { procs.reduce(0) { $0 + $1.footprint } }
+    /// LAB-2312: in RAM, what the row shows.
+    public var resident: UInt64 { procs.reduce(0) { $0 + $1.resident } }
+    /// LAB-2312: what its footprint holds outside RAM (compressed, swapped or GPU memory), shown as its own figure.
+    public var notResident: UInt64 { procs.reduce(0) { $0 + $1.notResident } }
+    /// % of one core, summed over its processes.
     public var cpu: Double { procs.reduce(0) { $0 + ($1.cpu ?? 0) } }
     public init(id: String, name: String, bundlePath: String? = nil, mainPid: Int32? = nil, procs: [MacProc], isOneRoof: Bool = false,
                 leftovers: [MacProc] = [], quittable: Bool = false) {
@@ -64,9 +75,18 @@ public struct MacBreakdown: Equatable, Sendable {
     public init(at: Date = Date(), groups: [MacAppGroup] = [], unreadable: Int = 0, mac: MacMemory? = nil, costNanos: UInt64 = 0) {
         self.at = at; self.groups = groups; self.unreadable = unreadable; self.mac = mac; self.costNanos = costNanos
     }
-    public var counted: UInt64 { groups.reduce(0) { $0 + $1.footprint } }
-    /// Memory in use that no readable process accounts for: the system (kernel, WindowServer …), other users, caches.
+    /// LAB-2312: the rows' memory in RAM (it was their footprints, which pass RAM: 22 GB of rows, 13 GB in use).
+    public var counted: UInt64 { groups.reduce(0) { $0 + $1.resident } }
+    /// Memory in use that no readable process accounts for: the system (kernel, WindowServer …), other users, the
+    /// compressor. rows + `uncounted` = in use, unless the rows pass it (`overcounted`).
     public var uncounted: UInt64 { mac.map { $0.used > counted ? $0.used - counted : 0 } ?? 0 }
+    /// LAB-2312: how far the rows pass "in use" (pages shared between processes count once per process); said, not
+    /// hidden behind a zero.
+    public var overcounted: UInt64 { mac.map { counted > $0.used ? counted - $0.used : 0 } ?? 0 }
+    /// What the rows hold outside RAM (compressed, swapped, GPU), the figure the old rows added on top of RAM.
+    public var notResident: UInt64 { groups.reduce(0) { $0 + $1.notResident } }
+    /// One Roof's row.
+    public var oneRoof: MacAppGroup? { groups.first { $0.isOneRoof } }
     public var processCount: Int { groups.reduce(0) { $0 + $1.procs.count } }
     public var leftovers: [MacProc] { groups.flatMap(\.leftovers) }
 }
@@ -131,12 +151,69 @@ public enum MacResources {
                                         "WindowManager", "Spotlight", "WindowServer"]
 
     public static func isSystem(_ path: String) -> Bool { path.isEmpty || systemPrefixes.contains { path.hasPrefix($0) } }
+
+    /// LAB-2312: a copy of an app outside its install (Chrome runs its helpers from a code-sign clone under
+    /// /private/var/folders/…/com.google.Chrome.code_sign_clone/…/Google Chrome.app), which grouped as a second row.
+    public static func isClone(_ bundle: String) -> Bool {
+        bundle.contains("code_sign_clone") || bundle.hasPrefix("/private/var/folders/") || bundle.hasPrefix("/var/folders/")
+    }
+
+    /// LAB-2312: one row per app name. Groups with the same name (one bundle and its clone, or a bundle and a bare
+    /// process of that name) become one, kept under the installed copy's id and bundle: the one with the app's own
+    /// process, else one that is not a clone, else the shortest path.
+    public static func mergeByName(_ groups: [MacAppGroup]) -> [MacAppGroup] {
+        func rank(_ g: MacAppGroup) -> (Int, Int, Int, String) {
+            (g.mainPid == nil ? 1 : 0, g.bundlePath.map(isClone) ?? true ? 1 : 0, g.bundlePath?.count ?? Int.max, g.id)
+        }
+        var order: [String] = []
+        var byName: [String: [MacAppGroup]] = [:]
+        for g in groups {
+            let k = g.isOneRoof ? "·oneroof" : g.name
+            if byName[k] == nil { order.append(k) }
+            byName[k, default: []].append(g)
+        }
+        return order.map { k in
+            let gs = byName[k]!.sorted { rank($0) < rank($1) }
+            var m = gs[0]
+            for g in gs.dropFirst() {
+                m.procs += g.procs
+                m.leftovers += g.leftovers
+                if m.mainPid == nil { m.mainPid = g.mainPid }
+            }
+            return m
+        }
+    }
+}
+
+/// LAB-2312: the One Roof figures the Resources page puts in its header, from the same processes and the same CPU
+/// readings as One Roof's row in "This Mac, by app" (the header said 4.3 GB · 22 % · 73 processes while the row said
+/// 4.4 GB · 74 % · 77). With the whole-Mac sample: that row exactly (One Roof's own tree plus what macOS holds it
+/// responsible for and its leftovers). Without one: One Roof's own tree.
+public struct OneRoofTotals: Equatable, Sendable {
+    /// In RAM.
+    public var memory: UInt64
+    /// % of one core.
+    public var cpu: Double
+    public var processes: Int
+    /// Of `memory`, what a local model or roofd an earlier run left holds.
+    public var leftover: UInt64
+    public init(memory: UInt64, cpu: Double, processes: Int, leftover: UInt64 = 0) {
+        self.memory = memory; self.cpu = cpu; self.processes = processes; self.leftover = leftover
+    }
+
+    public static func of(_ snap: ResourceSnapshot, mac: MacBreakdown?) -> OneRoofTotals {
+        if let g = mac?.oneRoof {
+            return OneRoofTotals(memory: g.resident, cpu: g.cpu, processes: g.procs.count, leftover: g.leftovers.reduce(0) { $0 + $1.resident })
+        }
+        return OneRoofTotals(memory: snap.resident, cpu: snap.cpu, processes: snap.processCount)
+    }
 }
 
 /// Reads the whole Mac once per tick. Not thread safe: one serial queue owns it.
 public final class MacSampler {
     let source: ResourceSource
-    private var cpu = CPUMeter()
+    /// LAB-2312: only runs while a Resources page shows, so a reading across a pause is dropped (`CPUMeter.window`).
+    private var cpu = CPUMeter(maxWindowNanos: CPUMeter.window)
     /// Per pid, read once: path, argv-derived kind, the responsible pid, whether it is One Roof's local model.
     private struct Static {
         var path: String; var name: String; var kind: String?; var responsible: Int32; var localModel: Bool
@@ -149,7 +226,11 @@ public final class MacSampler {
 
     /// `appPid` = this One Roof; `oneRoofPids` = every process the running One Roof owns (its tree, the daemon, holders
     /// and their sessions); `regularApps` = pids of apps in the Dock (they may be quit).
-    public func sample(appPid: Int32 = getpid(), oneRoofPids: Set<Int32> = [], regularApps: Set<Int32> = [], at date: Date = Date()) -> MacBreakdown {
+    /// LAB-2312: `known` = this tick's `ResourceSnapshot` readings by pid. Those processes are One Roof's whatever their
+    /// path says, and their memory and CPU are taken as read there, so the header and One Roof's row agree.
+    public func sample(appPid: Int32 = getpid(), oneRoofPids: Set<Int32> = [], known: [Int32: ProcUsage] = [:], regularApps: Set<Int32> = [],
+                       at date: Date = Date()) -> MacBreakdown {
+        let oneRoofPids = oneRoofPids.union(known.keys)
         let t0 = source.nowNanos()
         let table = ProcTable(source.processes())
         let now = source.nowNanos()
@@ -193,7 +274,7 @@ public final class MacSampler {
             let key = bundle ?? "name:" + name
             // Any One Roof bundle counts (an older copy such as "One Roof-0.4.6.app" still running its roofd).
             let isOneRoof = bundle != nil && bundle == oneRoofBundle || (bundle.map { MacResources.appName($0).hasPrefix("One Roof") } ?? false)
-                || st.localModel || ResourceSampler.isRoofd(e.name)
+                || st.localModel || ResourceSampler.isRoofd(e.name) || oneRoofPids.contains(pid)
             let groupKey = isOneRoof ? "·oneroof" : key
 
             // One Roof's own but not this app's: a local model or roofd left by an earlier run.
@@ -203,8 +284,10 @@ public final class MacSampler {
                 : ResourceSampler.isRoofd(e.name) && leftover ? "roofd not used by this One Roof" : st.kind
             let endable = pid != appPid && pid > 1 && !MacResources.isSystem(st.path)
                 && (!isOneRoof || leftover || st.localModel)
-            let proc = MacProc(pid: pid, ppid: e.ppid, name: name, path: st.path, kind: kind, footprint: u.footprint,
-                               cpu: cpu.percent(pid: pid, cpuNanos: u.cpuNanos, at: now), endable: endable)
+            let ownCPU = cpu.percent(pid: pid, cpuNanos: u.cpuNanos, at: now)
+            let k = known[pid]
+            let proc = MacProc(pid: pid, ppid: e.ppid, name: name, path: st.path, kind: kind, footprint: k?.footprint ?? u.footprint,
+                               cpu: k.map(\.cpu) ?? ownCPU, endable: endable, resident: k?.resident ?? u.resident)
 
             var g = byGroup[groupKey] ?? MacAppGroup(id: groupKey, name: isOneRoof ? "One Roof" : bundle.map(MacResources.appName) ?? name,
                                                      bundlePath: isOneRoof ? oneRoofBundle : bundle, procs: [], isOneRoof: isOneRoof)
@@ -216,14 +299,14 @@ public final class MacSampler {
             }
             byGroup[groupKey] = g
         }
-        let groups = byGroup.values.map { g -> MacAppGroup in
+        let groups = MacResources.mergeByName(byGroup.values.sorted { $0.id < $1.id }).map { g -> MacAppGroup in
             var g = g
-            g.procs.sort { ($0.footprint, $1.pid) > ($1.footprint, $0.pid) }
-            g.leftovers.sort { $0.footprint > $1.footprint }
+            g.procs.sort { ($0.resident, $1.pid) > ($1.resident, $0.pid) }
+            g.leftovers.sort { $0.resident > $1.resident }
             g.quittable = !g.isOneRoof && g.mainPid != nil && !MacResources.keepApps.contains(g.name)
                 && !(g.bundlePath.map(MacResources.isSystem) ?? true)
             return g
-        }.sorted { a, b in a.footprint != b.footprint ? a.footprint > b.footprint : a.name < b.name }
+        }.sorted { a, b in a.resident != b.resident ? a.resident > b.resident : a.name < b.name }
 
         cpu.keep(seen)
         statics = statics.filter { seen.contains($0.key) }

@@ -104,7 +104,7 @@ struct MacAppsCard: View {
                     .buttonStyle(.link).ui(12)
             }
             Spacer()
-            Text(footnote(b)).ui(11).foregroundStyle(t.text2.color).lineLimit(2).multilineTextAlignment(.trailing)
+            Text(footnote(b)).ui(11).foregroundStyle(t.text2.color).lineLimit(3).multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
     }
@@ -121,13 +121,17 @@ struct MacAppsCard: View {
 
     private func detail(_ b: MacBreakdown) -> String {
         var s = "\(b.groups.count) apps · \(b.processCount) processes"
-        if let m = b.mac { s = "\(ResourceFormat.bytes(m.used)) of \(ResourceFormat.bytes(m.total)) in use · swap \(ResourceFormat.bytes(m.swapUsed)) · " + s }
+        if let m = b.mac { s = "\(ResourceFormat.bytes(m.used)) of \(ResourceFormat.bytes(m.total)) in RAM · swap \(ResourceFormat.bytes(m.swapUsed)) · " + s }
         return s
     }
 
+    /// LAB-2312: what the figures are and how they add up: rows (in RAM) + the rest = in use, swap on its own.
     private func footnote(_ b: MacBreakdown) -> String {
-        var s = "\(b.unreadable) system and other users' processes are not counted (macOS shows them to administrators only)"
-        if b.uncounted > 0 { s += " · \(ResourceFormat.bytes(b.uncounted)) in use outside the apps listed" }
+        var s = "Memory = in RAM now; CPU = \(ResourceFormat.cpuUnit)"
+        if b.uncounted > 0 { s += " · \(ResourceFormat.bytes(b.uncounted)) in use outside the apps listed (the system, compressed memory, other users' processes)" }
+        if b.overcounted > 0 { s += " · the apps listed pass in use by \(ResourceFormat.bytes(b.overcounted)) (memory shared between processes counts in each)" }
+        if b.notResident > 0 { s += " · the apps also hold \(ResourceFormat.bytes(b.notResident)) compressed or swapped out, not counted above" }
+        s += " · \(b.unreadable) system and other users' processes cannot be read (macOS shows them to administrators only)"
         return s
     }
 
@@ -145,9 +149,9 @@ struct MacAppsCard: View {
                     .ui(11.5).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Text(ResourceFormat.bytes(p.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(m.nowText.color)
+            Text(ResourceFormat.bytes(p.resident)).ui(12.5, .semibold, mono: true).foregroundStyle(m.nowText.color)
             Button("Stop") { pending = .end(p, force: false) }.controlSize(.small)
-                .accessibilityLabel("Stop \(p.kind ?? p.name), \(ResourceFormat.bytes(p.footprint))")
+                .accessibilityLabel("Stop \(p.kind ?? p.name), \(ResourceFormat.bytes(p.resident))")
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
         .background(m.nowTint.color)
@@ -159,7 +163,7 @@ struct MacAppsCard: View {
 
     private func appRow(_ g: MacAppGroup, _ b: MacBreakdown) -> some View {
         let isOpen = open.contains(g.id)
-        let share = Double(g.footprint) / Double(max(b.mac?.used ?? b.counted, 1))
+        let share = Double(g.resident) / Double(max(b.mac?.used ?? b.counted, 1))
         return HStack(spacing: 10) {
             Button {
                 if isOpen { open.remove(g.id) } else { open.insert(g.id) }
@@ -174,13 +178,13 @@ struct MacAppsCard: View {
                     Spacer(minLength: 8)
                     Meter(fraction: share, colour: t.resourceMarks.bar).frame(width: 70)
                     Text(ResourceFormat.cpu(g.cpu)).ui(12.5, mono: true).foregroundStyle(t.text2.color).frame(width: 58, alignment: .trailing)
-                    Text(ResourceFormat.bytes(g.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(t.text.color)
+                    Text(ResourceFormat.bytes(g.resident)).ui(12.5, .semibold, mono: true).foregroundStyle(t.text.color)
                         .frame(width: 72, alignment: .trailing)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(g.name), \(g.procs.count) processes, memory \(ResourceFormat.bytes(g.footprint)), CPU \(ResourceFormat.cpu(g.cpu))")
+            .accessibilityLabel("\(g.name), \(g.procs.count) processes, memory \(ResourceFormat.bytes(g.resident)), CPU \(ResourceFormat.cpu(g.cpu))")
             .accessibilityHint(isOpen ? "Hides its processes" : "Shows its processes")
             Group {
                 if g.quittable {
@@ -208,6 +212,8 @@ struct MacAppsCard: View {
         let tabs = g.procs.filter { $0.kind == "Tab or site" }.count
         if tabs > 0 { s += " · \(tabs) tabs or sites" }
         if g.isOneRoof { s += " · app, roofd, sessions and the local model" }
+        // LAB-2312: memory not in RAM as its own figure, never added to the row's.
+        if g.notResident >= 64 << 20 { s += " · +\(ResourceFormat.bytes(g.notResident)) compressed or swapped" }
         return s
     }
 
@@ -289,12 +295,12 @@ struct MacAppsCard: View {
                 .help("\(p.name), pid \(p.pid)\n\(p.path)")
             Text(ResourceFormat.cpu(p.cpu)).ui(11.5, mono: true).foregroundStyle(((p.cpu ?? 0) > BrowserTabs.bigCPU ? t.text : t.text2).color)
                 .frame(width: 50, alignment: .trailing)
-            Text(ResourceFormat.bytes(p.footprint)).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 66, alignment: .trailing)
+            Text(ResourceFormat.bytes(p.resident)).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 66, alignment: .trailing)
             endMenu(p).frame(width: 44, alignment: .trailing)
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(p.kind == BrowserTabs.rendererKind ? "A tab or site" : (p.kind ?? p.name)), process \(p.pid), memory \(ResourceFormat.bytes(p.footprint)), CPU \(ResourceFormat.cpu(p.cpu))")
+        .accessibilityLabel("\(p.kind == BrowserTabs.rendererKind ? "A tab or site" : (p.kind ?? p.name)), process \(p.pid), memory \(ResourceFormat.bytes(p.resident)), CPU \(ResourceFormat.cpu(p.cpu))")
     }
 
     /// Today's process list (every app; for a browser it sits under "All processes"): the breakdown by kind, a browser's
@@ -366,7 +372,7 @@ struct MacAppsCard: View {
     /// "67 Tab or site 10 GB · GPU 690 MB · …", heaviest first, for apps whose processes have kinds.
     private func kindSummary(_ g: MacAppGroup) -> String {
         var by: [String: (n: Int, bytes: UInt64)] = [:]
-        for p in g.procs { if let k = p.kind { by[k, default: (0, 0)].n += 1; by[k]!.bytes += p.footprint } }
+        for p in g.procs { if let k = p.kind { by[k, default: (0, 0)].n += 1; by[k]!.bytes += p.resident } }
         guard !by.isEmpty else { return "" }
         return by.sorted { $0.value.bytes > $1.value.bytes }.map { k, v in
             (v.n > 1 ? "\(v.n) × " : "") + "\(k) \(ResourceFormat.bytes(v.bytes))"
@@ -383,12 +389,12 @@ struct MacAppsCard: View {
             .help(p.path)
             Text("\(p.pid)").ui(11, mono: true).foregroundStyle(t.text2.color).frame(width: 56, alignment: .trailing)
             Text(ResourceFormat.cpu(p.cpu)).ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 50, alignment: .trailing)
-            Text(ResourceFormat.bytes(p.footprint)).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 66, alignment: .trailing)
+            Text(ResourceFormat.bytes(p.resident)).ui(11.5, .semibold, mono: true).foregroundStyle(t.text.color).frame(width: 66, alignment: .trailing)
             endMenu(p).frame(width: 44, alignment: .trailing)
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(p.kind ?? p.name), process \(p.pid), CPU \(ResourceFormat.cpu(p.cpu)), memory \(ResourceFormat.bytes(p.footprint))")
+        .accessibilityLabel("\(p.kind ?? p.name), process \(p.pid), CPU \(ResourceFormat.cpu(p.cpu)), memory \(ResourceFormat.bytes(p.resident))")
     }
 
     /// End ▾ Force end, each after today's confirmation.
@@ -427,9 +433,9 @@ struct MacAppsCard: View {
     private func dialogMessage(_ p: Pending) -> String {
         switch p {
         case .quit(let g, let f):
-            return "Frees about \(ResourceFormat.bytes(g.footprint)). " + (f ? "Force quit closes it at once: anything unsaved is lost." : "\(g.name) may ask to save first.")
+            return "Frees about \(ResourceFormat.bytes(g.resident)) of RAM" + (g.notResident > 0 ? " and \(ResourceFormat.bytes(g.notResident)) compressed or swapped" : "") + ". " + (f ? "Force quit closes it at once: anything unsaved is lost." : "\(g.name) may ask to save first.")
         case .end(let p, let f):
-            var s = "\(p.name), pid \(p.pid), uses \(ResourceFormat.bytes(p.footprint)). "
+            var s = "\(p.name), pid \(p.pid), uses \(ResourceFormat.bytes(p.resident)) of RAM. "
             if p.kind == "Tab or site" { s += "Its tab or site stops and shows as crashed until reloaded. " }
             if p.kind?.hasPrefix("Local model") == true { s += "One Roof starts a fresh local model the next time it needs one. " }
             s += f ? "Force end stops it at once." : "It gets the chance to tidy up first."

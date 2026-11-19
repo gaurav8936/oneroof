@@ -5,7 +5,7 @@ import OneRoofCore
 /// other app on the Mac (MacAppsCard), with Quit and End. A summary strip (One Roof
 /// total memory and CPU with ten-minute sparklines, process count, the Mac's memory and pressure), One Roof's own
 /// processes (the app and the roofd daemon), then every running session by window, heaviest first, with its holder's
-/// headroom against roofd's memory guard (LAB-310: warn 1 GB, end at 2 GB). Clicking a session reveals it.
+/// headroom against roofd's memory guard (LAB-310; the lines as roofd runs them, LAB-2312). Clicking a session reveals it.
 struct ResourcesView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var win: WindowState
@@ -54,13 +54,16 @@ struct ResourcesView: View {
         .onDisappear { res.watchMac(false) }
     }
 
+    /// LAB-2312: the header's One Roof figures are One Roof's row in "This Mac, by app" (same processes, same readings).
+    private func totals(_ s: ResourceSnapshot) -> OneRoofTotals { OneRoofTotals.of(s, mac: res.mac) }
+
     private func subtitle(_ s: ResourceSnapshot) -> String {
         let n = s.sessions.count
-        let left = res.mac?.leftovers.reduce(UInt64(0)) { $0 + $1.footprint } ?? 0
-        if left > 0 {
-            return "One Roof uses \(ResourceFormat.bytes(s.footprint)), plus \(ResourceFormat.bytes(left)) left over from an earlier run · \(n) running session\(n == 1 ? "" : "s") · every 3 s"
+        let o = totals(s)
+        if o.leftover > 0 {
+            return "One Roof uses \(ResourceFormat.bytes(o.memory)) in RAM, \(ResourceFormat.bytes(o.leftover)) of it left over from an earlier run · \(n) running session\(n == 1 ? "" : "s") · every 3 s"
         }
-        return "One Roof uses \(ResourceFormat.bytes(s.footprint)) and \(ResourceFormat.cpu(s.cpu)) CPU across \(s.processCount) processes · \(n) running session\(n == 1 ? "" : "s") · every 3 s, last 10 minutes"
+        return "One Roof uses \(ResourceFormat.bytes(o.memory)) in RAM and \(ResourceFormat.cpu(o.cpu)) CPU (\(ResourceFormat.cpuUnit)) across \(o.processes) processes · \(n) running session\(n == 1 ? "" : "s") · every 3 s, last 10 minutes"
     }
 
     // MARK: Rows
@@ -81,12 +84,13 @@ struct ResourcesView: View {
     private func v2Body(_ snap: ResourceSnapshot, _ groups: [ResourceWindowGroup]) -> some View {
         let total = res.history.points(ResourceHistory.totalKey)
         let mine = groups.filter { $0.id == win.id } + groups.filter { $0.id != win.id }   // this window first, the rest as sorted
+        let o = totals(snap)
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                v2Meter("One Roof memory", ResourceFormat.bytes(snap.footprint), "\(snap.processCount) processes", tint: nil) {
+                v2Meter("One Roof memory", ResourceFormat.bytes(o.memory), "in RAM · \(o.processes) processes", tint: nil) {
                     Sparkline(values: total.map { Double($0.footprint) }, color: t.resourceMarks.bar).frame(height: 26)
                 }
-                v2Meter("One Roof CPU", ResourceFormat.cpu(snap.cpu), "last 10 minutes", tint: nil) {
+                v2Meter("One Roof CPU", ResourceFormat.cpu(o.cpu), "\(ResourceFormat.cpuUnit) · last 10 minutes", tint: nil) {
                     Sparkline(values: total.map(\.cpu), color: t.resourceMarks.bar, floor: 100).frame(height: 26)
                 }
                 if let m = snap.mac {
@@ -94,9 +98,9 @@ struct ResourcesView: View {
                         Meter(fraction: Double(m.used) / Double(max(m.total, 1)), colour: pressureColour(m.pressure) ?? t.resourceMarks.bar)
                     }
                 }
-                v2Meter("roofd", snap.daemon.map { ResourceFormat.bytes($0.footprint) } ?? "not found",
+                v2Meter("roofd", snap.daemon.map { ResourceFormat.bytes($0.resident) } ?? "not found",
                         snap.daemon.map { d in (d.started.map { "up " + ResourceFormat.uptime(Date().timeIntervalSince($0)) + " · " } ?? "") + "\(snap.sessions.count) sessions" } ?? "the session manager is not running", tint: nil) {
-                    if let d = snap.daemon { HeadroomBar(headroom: snap.daemonHeadroom, footprint: d.footprint) }
+                    if let d = snap.daemon { HeadroomBar(headroom: snap.daemonHeadroom, footprint: d.footprint, label: "roofd") }
                 }
             }
             HStack(alignment: .top, spacing: 14) {
@@ -112,7 +116,9 @@ struct ResourcesView: View {
                             }
                         }
                         ForEach(mine) { g in windowCard(g) }
-                        Text("roofd warns at 1.0 GB and ends a session at 2.0 GB.").ui(11.5).foregroundStyle(t.text2.color)
+                        // LAB-2312: the lines roofd runs with, not a hard-coded "1.0 GB".
+                        Text(ResourceFormat.guardNote(snap)).ui(11.5).foregroundStyle(t.text2.color)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.bottom, 8)
                 }
@@ -139,17 +145,18 @@ struct ResourcesView: View {
 
     private func summary(_ s: ResourceSnapshot) -> some View {
         let total = res.history.points(ResourceHistory.totalKey)
+        let o = totals(s)
         return Card(padding: 16) {
             HStack(alignment: .top, spacing: 22) {
-                stat("One Roof memory", ResourceFormat.bytes(s.footprint), tint: nil) {
+                stat("One Roof memory", ResourceFormat.bytes(o.memory), tint: nil) {
                     Sparkline(values: total.map { Double($0.footprint) }, color: t.resourceMarks.bar).frame(height: 30)
                 }
-                .accessibilityLabel("One Roof memory \(ResourceFormat.bytes(s.footprint))")
-                stat("One Roof CPU", ResourceFormat.cpu(s.cpu), tint: nil) {
+                .accessibilityLabel("One Roof memory in RAM \(ResourceFormat.bytes(o.memory))")
+                stat("One Roof CPU", ResourceFormat.cpu(o.cpu), tint: nil) {
                     Sparkline(values: total.map(\.cpu), color: t.resourceMarks.bar, floor: 100).frame(height: 30)
                 }
-                .accessibilityLabel("One Roof CPU \(ResourceFormat.cpu(s.cpu))")
-                stat("Processes", "\(s.processCount)", tint: nil) {
+                .accessibilityLabel("One Roof CPU \(ResourceFormat.cpu(o.cpu)), \(ResourceFormat.cpuUnit)")
+                stat("Processes", "\(o.processes)", tint: nil) {
                     Text("app, roofd, holders and everything they run").ui(11.5).foregroundStyle(t.text2.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -194,14 +201,17 @@ struct ResourcesView: View {
                 header("One Roof itself", detail: nil)
                 Hairline()
                 if let app = s.app.first {
+                    // LAB-2312: the figures are the app and what it started together, not the app process alone; say so.
                     let kids = s.app.count - 1
-                    ownRow(name: "One Roof app", note: kids > 0 ? "with \(kids) helper\(kids == 1 ? "" : "s") (terminal attach)" : nil,
-                           pid: app.pid, cpu: s.appCPU, memory: s.appFootprint, started: app.started, headroom: nil)
+                    let model = s.app.contains { $0.name.hasPrefix("llama-server") }
+                    let what = model ? "terminal attach, local model" : "terminal attach"
+                    ownRow(name: "One Roof app", note: kids > 0 ? "app + \(kids) helper\(kids == 1 ? "" : "s") it started (\(what)), together" : "the app process",
+                           pid: app.pid, cpu: s.appCPU, memory: s.appResident, started: app.started, headroom: nil)
                 }
                 if let d = s.daemon {
                     Hairline().padding(.leading, 14)
-                    ownRow(name: "roofd daemon", note: "keeps sessions running", pid: d.pid, cpu: d.cpu, memory: d.footprint,
-                           started: d.started, headroom: s.daemonHeadroom)
+                    ownRow(name: "roofd daemon", note: "keeps sessions running", pid: d.pid, cpu: d.cpu, memory: d.resident,
+                           started: d.started, headroom: s.daemonHeadroom, holder: d.footprint, gauge: "roofd")
                 } else {
                     Hairline().padding(.leading, 14)
                     Text("roofd daemon: not found").ui(12.5).foregroundStyle(t.text2.color).padding(.horizontal, 14).padding(.vertical, 10)
@@ -209,14 +219,14 @@ struct ResourcesView: View {
                 ForEach(s.unclaimed, id: \.runtimeId) { u in
                     Hairline().padding(.leading, 14)
                     ownRow(name: "Holder without a live session", note: "an ended session still winding down", pid: u.holderPid ?? 0,
-                           cpu: u.cpu, memory: u.footprint, started: u.procs.first?.started, headroom: u.headroom, holder: u.holderFootprint)
+                           cpu: u.cpu, memory: u.resident, started: u.procs.first?.started, headroom: u.headroom, holder: u.holderFootprint, gauge: "holder")
                 }
             }
         }
     }
 
     private func ownRow(name: String, note: String?, pid: Int32, cpu: Double?, memory: UInt64, started: Date?,
-                        headroom: Headroom?, holder: UInt64? = nil) -> some View {
+                        headroom: Headroom?, holder: UInt64? = nil, gauge: String? = nil) -> some View {
         let level = headroom?.level(holder ?? memory) ?? .ok
         return HStack(spacing: 12) {
             // LAB-2052: the name keeps one line ("One / Roof / app" wrapped at 1280); the note and the bar give way.
@@ -233,13 +243,13 @@ struct ResourcesView: View {
             Text(ResourceFormat.bytes(memory)).ui(12.5, .semibold, mono: true).foregroundStyle(memoryColour(level).color)
                 .frame(width: 72, alignment: .trailing)
             Group {
-                if let headroom { HeadroomBar(headroom: headroom, footprint: holder ?? memory) } else { Color.clear }
+                if let headroom { HeadroomBar(headroom: headroom, footprint: holder ?? memory, label: gauge) } else { Color.clear }
             }
             .frame(minWidth: 106, idealWidth: 150, maxWidth: 150)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(name), process \(pid), CPU \(ResourceFormat.cpu(cpu)), memory \(ResourceFormat.bytes(memory))"
+        .accessibilityLabel("\(name), process \(pid), CPU \(ResourceFormat.cpu(cpu)) of one core, memory in RAM \(ResourceFormat.bytes(memory))"
             + (headroom.map { ", limit \(ResourceFormat.bytes($0.limitBytes))" } ?? ""))
     }
 
@@ -303,8 +313,8 @@ struct ResourcesView: View {
         let u = r.usage
         var s = r.name
         if let st = item?.status ?? SelfTestMacFixture.sessionStatus(r.id) { s += ", " + StatusPalette.label(st) }
-        s += ", memory \(ResourceFormat.bytes(u.footprint)), CPU \(ResourceFormat.cpu(u.cpu))"
-        if u.holderPid != nil { s += ", holder \(ResourceFormat.bytes(u.holderFootprint)) of \(ResourceFormat.bytes(u.headroom.limitBytes))" }
+        s += ", session total \(ResourceFormat.bytes(u.resident)) in RAM, CPU \(ResourceFormat.cpu(u.cpu)) of one core"
+        if u.holderPid != nil { s += ", holder alone \(ResourceFormat.bytes(u.holderFootprint)) of its \(ResourceFormat.bytes(u.headroom.limitBytes)) limit" }
         return s
     }
 
@@ -319,7 +329,8 @@ struct ResourcesView: View {
         let points: [Double] = res.history.points(u.runtimeId).map { Double($0.footprint) }
         let lineColour: RGB = u.level == .ok ? t.resourceMarks.bar : memoryColour(u.level)
         let n = u.procs.count
-        let sub = "\(n) process\(n == 1 ? "" : "es")" + (item == nil && SelfTestMacFixture.sessionStatus(r.id) == nil ? " · not a One Roof row" : "")
+        // LAB-2312: the total is the whole session; the gauge beside it is the holder alone (what the limit checks).
+        let sub = "session total, \(n) process\(n == 1 ? "" : "es")" + (item == nil && SelfTestMacFixture.sessionStatus(r.id) == nil ? " · not a One Roof row" : "")
         return HStack(spacing: 10) {
             badge(item)
             VStack(alignment: .leading, spacing: 1) {
@@ -334,8 +345,9 @@ struct ResourcesView: View {
             // LAB-2052: the sparkline and the headroom bar give way at 1280 so nothing runs past the card.
             Sparkline(values: points, color: lineColour).frame(minWidth: 40, idealWidth: 96, maxWidth: 96).frame(height: 22)
             Text(ResourceFormat.cpu(u.cpu)).ui(12.5, mono: true).foregroundStyle(t.text2.color).frame(width: 50, alignment: .trailing)
-            Text(ResourceFormat.bytes(u.footprint)).ui(12.5, .semibold, mono: true).foregroundStyle(memoryColour(u.level).color)
+            Text(ResourceFormat.bytes(u.resident)).ui(12.5, .semibold, mono: true).foregroundStyle(memoryColour(u.level).color)
                 .frame(width: 66, alignment: .trailing)
+                .help("Session total in RAM: the holder and everything under it")
             headroom(u).frame(minWidth: 106, idealWidth: 150, maxWidth: 150, alignment: .leading)
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
@@ -344,7 +356,8 @@ struct ResourcesView: View {
 
     @ViewBuilder private func headroom(_ u: SessionUsage) -> some View {
         if u.holderPid != nil {
-            HeadroomBar(headroom: u.headroom, footprint: u.holderFootprint, warned: u.memoryWarning)
+            HeadroomBar(headroom: u.headroom, footprint: u.holderFootprint, warned: u.memoryWarning, label: "holder")
+                .help("The holder process alone (roofd session), what roofd's limit checks")
         } else {
             Text("holder unknown").ui(11).foregroundStyle(t.text2.color)
         }
@@ -412,6 +425,8 @@ struct HeadroomBar: View {
     let headroom: Headroom
     let footprint: UInt64
     var warned = false
+    /// LAB-2312: what the bar measures ("holder" next to a session total), so the two figures are not read as one.
+    var label: String? = nil
 
     var body: some View {
         let m = t.resourceMarks
@@ -430,11 +445,11 @@ struct HeadroomBar: View {
                 .frame(height: 10)
             }
             .frame(height: 10)
-            Text("\(ResourceFormat.bytes(footprint)) of \(ResourceFormat.bytes(headroom.limitBytes))")
+            Text((label.map { $0 + " " } ?? "") + "\(ResourceFormat.bytes(footprint)) of \(ResourceFormat.bytes(headroom.limitBytes))")
                 .ui(10.5, mono: true).foregroundStyle((level == .ok ? t.text2 : colour).color).lineLimit(1)
         }
         .accessibilityElement()
-        .accessibilityLabel("Holder memory \(ResourceFormat.bytes(footprint)) of the \(ResourceFormat.bytes(headroom.limitBytes)) limit, warning at \(ResourceFormat.bytes(headroom.warnBytes))")
+        .accessibilityLabel("\(label == "roofd" ? "roofd" : "Holder") memory \(ResourceFormat.bytes(footprint)) of the \(ResourceFormat.bytes(headroom.limitBytes)) limit, warning at \(ResourceFormat.bytes(headroom.warnBytes))")
     }
 }
 
@@ -467,12 +482,12 @@ struct SessionResourcesTab: View {
         let points = res.history.points(u.runtimeId)
         HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: 3) {
-                MicroLabel("Memory")
-                Text(ResourceFormat.bytes(u.footprint)).ui(20, .semibold).monospacedDigit().foregroundStyle(colour(u.level).color)
+                MicroLabel("Memory, session total")
+                Text(ResourceFormat.bytes(u.resident)).ui(20, .semibold).monospacedDigit().foregroundStyle(colour(u.level).color)
             }
             .accessibilityElement(children: .combine)
             VStack(alignment: .leading, spacing: 3) {
-                MicroLabel("CPU")
+                MicroLabel("CPU, \(ResourceFormat.cpuUnit)")
                 Text(ResourceFormat.cpu(u.cpu)).ui(20, .semibold).monospacedDigit().foregroundStyle(t.text.color)
             }
             .accessibilityElement(children: .combine)
@@ -491,7 +506,7 @@ struct SessionResourcesTab: View {
         if u.holderPid != nil {
             VStack(alignment: .leading, spacing: 6) {
                 MicroLabel("Memory guard")
-                HeadroomBar(headroom: u.headroom, footprint: u.holderFootprint, warned: u.memoryWarning)
+                HeadroomBar(headroom: u.headroom, footprint: u.holderFootprint, warned: u.memoryWarning, label: "holder")
                 Text("roofd warns when this session's holder passes \(ResourceFormat.bytes(u.headroom.warnBytes)) and ends the session at \(ResourceFormat.bytes(u.headroom.limitBytes)). \(ResourceFormat.bytes(u.headroom.left(u.holderFootprint))) left.")
                     .ui(12).foregroundStyle(t.text2.color).fixedSize(horizontal: false, vertical: true)
                 if u.memoryWarning {
@@ -521,13 +536,13 @@ struct SessionResourcesTab: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("\(p.pid)").ui(11, mono: true).foregroundStyle(t.text2.color).frame(width: 52, alignment: .trailing)
                     Text(ResourceFormat.cpu(p.cpu)).ui(11.5, mono: true).foregroundStyle(t.text2.color).frame(width: 46, alignment: .trailing)
-                    Text(ResourceFormat.bytes(p.footprint)).ui(11.5, .semibold, mono: true)
+                    Text(ResourceFormat.bytes(p.resident)).ui(11.5, .semibold, mono: true)
                         .foregroundStyle((p.role == .holder ? colour(u.headroom.level(p.footprint)) : t.text).color)
                         .frame(width: 62, alignment: .trailing)
                 }
                 .padding(.vertical, 4)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(label(p)), process \(p.pid), CPU \(ResourceFormat.cpu(p.cpu)), memory \(ResourceFormat.bytes(p.footprint))")
+                .accessibilityLabel("\(label(p)), process \(p.pid), CPU \(ResourceFormat.cpu(p.cpu)), memory \(ResourceFormat.bytes(p.resident))")
             }
         }
     }
