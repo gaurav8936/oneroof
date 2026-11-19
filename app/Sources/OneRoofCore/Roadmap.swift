@@ -42,10 +42,10 @@ public enum Roadmap {
         return out
     }
 
-    /// Show done when the owner has not chosen: on for a Shipped or Paused-or-cancelled project, and for one whose
+    /// Show done when the owner has not chosen: on for a Shipped or Cancelled project, and for one whose
     /// tickets are all closed (nothing would be listed otherwise); off while work is open.
     public static func showDoneByDefault(status: ProjectStatus, tickets: [LinearIssue]) -> Bool {
-        if status == .shipped || status == .pausedOrCancelled { return true }
+        if status == .shipped || status == .cancelled { return true }
         return !tickets.isEmpty && tickets.allSatisfy(isClosed)
     }
 

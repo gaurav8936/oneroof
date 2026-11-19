@@ -36,9 +36,9 @@ final class ProjectListTests: XCTestCase {
         XCTAssertEqual(ProjectStatus.of(type: "backlog"), .backlog)
         XCTAssertEqual(ProjectStatus.of(type: "planned"), .planned)
         XCTAssertEqual(ProjectStatus.of(type: "started"), .active)
-        XCTAssertEqual(ProjectStatus.of(type: "paused"), .pausedOrCancelled, "paused sits with cancelled, as the Linear tab does")
+        XCTAssertEqual(ProjectStatus.of(type: "paused"), .backlog, "Paused is retired (owner 11-19): parked work is Backlog")
         XCTAssertEqual(ProjectStatus.of(type: "completed"), .shipped)
-        XCTAssertEqual(ProjectStatus.of(type: "canceled"), .pausedOrCancelled)
+        XCTAssertEqual(ProjectStatus.of(type: "canceled"), .cancelled)
     }
 
     /// LAB-2307: the chip is Linear's status, whatever the tickets are doing; tickets In Review are a count.
@@ -56,7 +56,7 @@ final class ProjectListTests: XCTestCase {
     /// LAB-2307 (owner, 2026-11-19): the chips carry the owner's Linear tab names, in the tabs' order.
     func test_LAB2307_labelsAreTheLinearTabNames() {
         XCTAssertEqual([ProjectList.allLabel] + ProjectStatus.allCases.map(\.label),
-                       ["All projects", "Active", "Planned", "Backlog", "Shipped", "Paused or cancelled"])
+                       ["All projects", "Active", "Planned", "Backlog", "Shipped", "Cancelled"])
         let done = p("LAB-X", "Done thing", team: "LAB", "completed")
         XCTAssertEqual(done.stateLabel, "Shipped")
         XCTAssertFalse(ProjectStatus.allCases.map(\.label).contains("Completed"))
@@ -70,7 +70,8 @@ final class ProjectListTests: XCTestCase {
         XCTAssertEqual(ProjectStatus.decode(""), [], "no chip chosen")
         XCTAssertEqual(ProjectStatus.decode("inReview, completed, bogus"), [.shipped], "unknown words skipped")
         XCTAssertEqual(ProjectStatus.decode("inProgress,inReview"), [.active], "the old default saved")
-        XCTAssertEqual(ProjectStatus.decode("completed,canceled"), [.shipped, .pausedOrCancelled], "old words read as the new tabs")
+        XCTAssertEqual(ProjectStatus.decode("completed,canceled"), [.shipped, .cancelled], "old words read as the new tabs")
+        XCTAssertEqual(ProjectStatus.decode("pausedOrCancelled"), [.cancelled], "the 11-19 interim name")
         XCTAssertEqual(ProjectStatus.decode("inReview"), ProjectStatus.defaultSet, "an old In review-only choice: the default, not every status")
         XCTAssertEqual(ProjectStatus.encode([.shipped, .backlog]), "backlog,shipped", "chip order")
         XCTAssertEqual(ProjectStatus.decode(ProjectStatus.encode(ProjectStatus.defaultSet)), ProjectStatus.defaultSet)
@@ -157,11 +158,11 @@ final class ProjectListTests: XCTestCase {
             }
         }
         let c = ProjectList.counts(fixture, query: "")
-        XCTAssertEqual(c[.active], 4); XCTAssertEqual(c[.backlog], 2)
-        XCTAssertEqual(c[.planned], 1); XCTAssertEqual(c[.shipped], 1); XCTAssertEqual(c[.pausedOrCancelled], 2)
+        XCTAssertEqual(c[.active], 4); XCTAssertEqual(c[.backlog], 3)
+        XCTAssertEqual(c[.planned], 1); XCTAssertEqual(c[.shipped], 1); XCTAssertEqual(c[.cancelled], 1)
         // Several chips at once.
-        let two = ProjectList.groups(projects: fixture, teams: teams, statuses: [.shipped, .pausedOrCancelled], query: "", folded: [])
-        XCTAssertEqual(two.groups.flatMap(\.projects).count, 3)
+        let two = ProjectList.groups(projects: fixture, teams: teams, statuses: [.shipped, .cancelled], query: "", folded: [])
+        XCTAssertEqual(two.groups.flatMap(\.projects).count, 2)
     }
 
     func test_LAB2050_noChipShowsEveryStatus() {
@@ -180,7 +181,7 @@ final class ProjectListTests: XCTestCase {
     }
 
     func test_LAB2050_noMatchIsEmpty() {
-        let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [.pausedOrCancelled], query: "lab", folded: [])
+        let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [.cancelled], query: "lab", folded: [])
         XCTAssertTrue(r.isEmpty)
     }
 

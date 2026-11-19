@@ -2,10 +2,11 @@ import Foundation
 
 /// LAB-2050 · the status a project shows on the Projects page: its chip and its pill use the same words.
 /// LAB-2307 (owner, 2026-11-19): One Roof uses Linear's project statuses and the owner's own Linear tab names for them,
-/// in the tabs' order: Active · Planned · Backlog · Shipped · Paused or cancelled (All projects = no chip chosen). It works
+/// in the tabs' order: Active · Planned · Backlog · Shipped · Cancelled (All projects = no chip chosen; owner 11-19: one
+/// status for stopped work, Paused retired, a paused project reads as Backlog). It works
 /// out no status of its own; tickets waiting for the owner's check show as a count on the row (`LinearWorkstream.toCheck`).
 public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
-    case active, planned, backlog, shipped, pausedOrCancelled
+    case active, planned, backlog, shipped, cancelled
 
     public var label: String {
         switch self {
@@ -13,7 +14,7 @@ public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
         case .planned: return "Planned"
         case .backlog: return "Backlog"
         case .shipped: return "Shipped"
-        case .pausedOrCancelled: return "Paused or cancelled"
+        case .cancelled: return "Cancelled"
         }
     }
 
@@ -24,7 +25,7 @@ public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
         case .planned: return "peach"
         case .backlog: return "butter"
         case .shipped: return "mint"
-        case .pausedOrCancelled: return "stone"
+        case .cancelled: return "stone"
         }
     }
 
@@ -34,17 +35,17 @@ public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
     /// From Linear's project status type, as the owner's Linear tabs group them.
     public static func of(type: String) -> ProjectStatus {
         switch type.lowercased() {
-        case "backlog": return .backlog
+        case "backlog", "paused": return .backlog
         case "planned": return .planned
         case "started": return .active
         case "completed": return .shipped
-        case "paused", "canceled", "cancelled": return .pausedOrCancelled
+        case "canceled", "cancelled": return .cancelled
         default: return .backlog
         }
     }
 
-    /// Saved choices from before LAB-2307 ("inProgress,completed") read as the new tabs.
-    private static let renamed: [String: ProjectStatus] = ["inProgress": .active, "completed": .shipped, "canceled": .pausedOrCancelled]
+    /// Saved choices from before LAB-2307 ("inProgress,completed", "pausedOrCancelled") read as the new tabs.
+    private static let renamed: [String: ProjectStatus] = ["inProgress": .active, "completed": .shipped, "canceled": .cancelled, "pausedOrCancelled": .cancelled]
 
     /// A remembered selection ("active,shipped"); unknown words are skipped. `nil` (never saved) is the default, and so
     /// is a saved choice left with nothing known in it (an old "inReview" alone).
