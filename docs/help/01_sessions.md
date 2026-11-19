@@ -103,7 +103,7 @@ Settings › Appearance switches stickers between Bold and Soft.
 
 Launch, Mark as Next, Mark as Planned, Do Not Use, Pin, Rename…, Move to Window, Schedule (Tonight 2:00 AM, Nightly at 2:00 AM, On Demand), Run Now, Interrupt (⌘.), Send Handoff, Open in New Window, Open Repo in Finder, Copy session id, Copy Working Directory, Copy Attach Command, Copy Link to Session, Close Agent…, Delete Session, Remove Exited Sessions…, Next Session (⌘]) and Previous Session (⌘[). Items that do not apply to the selected row are greyed out.
 
-- **Close Agent** asks first. If the session has a ticket, a box (on by default) also comments a summary on the ticket and moves it to In Review. The conversation stays on disk and can be resumed later.
+- **Close Agent** asks first. If the session has a ticket, a box (on by default) also comments a summary on the ticket and moves it to QA. The conversation stays on disk and can be resumed later.
 - **Delete Session** removes the row (and its notes and stickers). Sessions started outside One Roof cannot be deleted; they disappear when their agent ends.
 - **Remove Exited Sessions** clears every exited row at once, except pinned ones.
 - **Reopen Closed Session** (File menu, ⇧⌘T) brings back the last one you closed or deleted and launches it again.

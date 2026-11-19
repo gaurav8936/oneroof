@@ -705,11 +705,11 @@ struct TicketBox: View {
         }
     }
 
-    private static let states = ["Backlog", "In Progress", "In Review", "Done"]
+    private static let states = ["Backlog", "In Progress", "QA", "Shipped"]
 
     private func move(_ st: String) {
         busy = true
-        model.moveIssue(issue, to: st, comment: ["In Review", "Done"].contains(st) ? model.sessionSummary(item) : nil) { err in
+        model.moveIssue(issue, to: st, comment: ["QA", "Shipped"].contains(st) ? model.sessionSummary(item) : nil) { err in
             busy = false
             if err == nil { state = st }
         }

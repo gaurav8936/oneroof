@@ -17,7 +17,8 @@ final class IssueUpdateTests: XCTestCase {
         XCTAssertEqual(try? IssueRequest(seq: 1, key: "LAB-2", state: "In Progress").check(against: s).get().key, "LAB-2")
         XCTAssertEqual(try? IssueRequest(seq: 2, key: "lab-1", state: "in review").check(against: s).get().key, "LAB-1",
                        "key and state are matched without case")
-        XCTAssertEqual(IssueRequest(seq: 2, key: "LAB-1", state: "in review").canonicalState, "In Review")
+        XCTAssertEqual(IssueRequest(seq: 2, key: "LAB-1", state: "in review").canonicalState, "QA", "the old name reads as QA (LAB-2318)")
+        XCTAssertEqual(IssueRequest(seq: 2, key: "LAB-1", state: "qa").canonicalState, "QA")
         XCTAssertEqual(try? IssueRequest(seq: 3, key: "LAB-1", comment: "plan").check(against: s).get().key, "LAB-1", "a comment alone")
     }
 

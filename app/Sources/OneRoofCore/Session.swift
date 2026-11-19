@@ -215,7 +215,7 @@ public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var ticketTeam: String?
     /// More issues the same session works on, attached after it started (LAB-474); `ticket` stays the first one.
     public var moreTickets: [SessionIssue] = []
-    /// Issue keys already moved to In Review for this session (on a commit naming them, on close or review), so the
+    /// Issue keys already moved to QA for this session (on a commit naming them, on close or review), so the
     /// commit watch moves each one once (LAB-474).
     public var reviewedTickets: [String] = []
     /// Messages for the agent that arrived while it was working (an issue added mid-turn, LAB-474): sent together the

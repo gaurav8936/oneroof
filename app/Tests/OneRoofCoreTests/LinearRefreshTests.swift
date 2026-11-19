@@ -101,7 +101,7 @@ final class LinearProjectStatusParseTests: XCTestCase {
         XCTAssertEqual(list.map(\.status), [.active, .planned, .active], "Linear's status type, nothing worked out")
         XCTAssertEqual(list.map(\.toCheck), [2, 0, 0])
         XCTAssertEqual(list[0].statusName, "In Progress")
-        XCTAssertEqual(list[0].stateLabel, "Active")
+        XCTAssertEqual(list[0].stateLabel, "In Progress")
     }
 
     func test_LAB2050_oldStateIsTheFallback() throws {

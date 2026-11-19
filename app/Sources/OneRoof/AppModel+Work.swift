@@ -224,7 +224,7 @@ extension AppModel {
         let summary = sessionSummary(item)
         let moved = item.session.allTickets.filter { keys?.contains($0.key) ?? true }
         for i in moved { moveIssue(i, to: state, comment: summary) }
-        if state == "In Review" { update(item) { $0.reviewedTickets += moved.map(\.key) } }
+        if LinearMapping.canonicalKey(state) == "QA" { update(item) { $0.reviewedTickets += moved.map(\.key) } }
     }
 
     /// Take an issue off a session (LAB-474); it stays in Linear as it is.
@@ -278,7 +278,7 @@ extension AppModel {
 
 extension AppModel {
     /// Every minute (LAB-474): sessions launched in the last 3 days with issues not yet in review are matched against
-    /// new commits in the workspace repos; an issue whose key is in a commit subject moves to In Review once, with the
+    /// new commits in the workspace repos; an issue whose key is in a commit subject moves to QA once, with the
     /// commit in the comment. Issues already Done or Canceled are only marked, never moved back.
     func tickCommitWatch(now: Date = Date()) {
         guard !SelfTest.isActive, !commitWatchBusy, linear.hasKey else { return }
@@ -299,8 +299,8 @@ extension AppModel {
                     let finished = Set(self.issues.values.joined().filter { ["completed", "canceled"].contains($0.stateType) }.map(\.id))
                     for (issue, c) in found where !finished.contains(issue.id ?? "") {
                         let where_ = Workspace.repoLabel(for: c.repo)
-                        self.moveIssue(issue, to: "In Review",
-                                       comment: "Committed in `\(c.sha)` (\(where_)): \(c.subject)\n\nSession **\(item.session.name)** in One Roof moved this to In Review.")
+                        self.moveIssue(issue, to: "QA",
+                                       comment: "Committed in `\(c.sha)` (\(where_)): \(c.subject)\n\nSession **\(item.session.name)** in One Roof moved this to QA.")
                     }
                     self.update(item) { $0.reviewedTickets += found.map(\.0.key) }
                 }
@@ -324,7 +324,7 @@ extension AppModel {
 }
 
 extension AppModel {
-    /// Every 3 s (LAB-518): apply what agents asked for with `roofd issue` — a comment and/or In Progress / In Review on
+    /// Every 3 s (LAB-518): apply what agents asked for with `roofd issue` — a comment and/or In Progress / QA on
     /// one of their own session's issues — with the owner's Linear key, then answer the waiting agent. A request for an
     /// issue that is not on the session, or for another state, is refused with the reason.
     func applyIssueRequests() {
@@ -351,7 +351,7 @@ extension AppModel {
                     let comment = r.comment.map { $0 + "\n\n— \(item.session.agent.displayName) in One Roof session **\(item.session.name)**" }
                     if let state = r.canonicalState {
                         moveIssue(issue, to: state, comment: comment) { err in answer(err) }
-                        if state == "In Review" { update(item) { if !$0.reviewedTickets.contains(issue.key) { $0.reviewedTickets.append(issue.key) } } }
+                        if LinearMapping.canonicalKey(state) == "QA" { update(item) { if !$0.reviewedTickets.contains(issue.key) { $0.reviewedTickets.append(issue.key) } } }
                     } else if let comment, let id = issue.id {
                         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                             var err: String?

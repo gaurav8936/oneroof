@@ -1,13 +1,13 @@
 import Foundation
 
-/// LAB-523: the order and filters of the New session issue picker: work in progress, to do, backlog, and In Review last
+/// LAB-523: the order and filters of the New session issue picker: work in progress, to do, backlog, and QA last
 /// (it is mostly finished work that crowded the top of the list).
 /// LAB-527: ticking an issue never moves it. Rows keep one order whatever is picked (picked rows used to jump to the top,
 /// so the list scrolled under the pointer); the Picked chip shows just the picked ones, in pick order.
 public enum IssuePick {
     /// 0 in progress · 1 to do · 2 backlog · 3 in review.
     public static func rank(_ i: LinearIssue) -> Int {
-        if i.stateType == "started" { return i.state.localizedCaseInsensitiveContains("review") ? 3 : 0 }
+        if i.stateType == "started" { return LinearMapping.canonicalKey(i.state) == "QA" || i.state.localizedCaseInsensitiveContains("review") ? 3 : 0 }
         if i.stateType == "unstarted" { return 1 }
         return 2
     }

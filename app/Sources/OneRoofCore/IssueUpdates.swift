@@ -21,14 +21,15 @@ public struct IssueRequest: Equatable, Sendable {
         self.init(seq: seq, key: key, state: state, comment: comment)
     }
 
-    /// States an agent may set. Done and Canceled stay with the owner (humans stay in the loop).
-    public static let agentStates = ["In Progress", "In Review"]
+    /// States an agent may set. Shipped and Canceled stay with the owner (humans stay in the loop). LAB-2318: QA was
+    /// "In Review"; the old name is still accepted and read as QA.
+    public static let agentStates = ["In Progress", "QA"]
 
     /// The session issue this request may change, or why it may not: only the session's own issues, only the states
     /// above, and it must change something.
     public func check(against session: Session) -> Result<SessionIssue, IssueRequestError> {
         guard state != nil || comment != nil else { return .failure(.nothingToDo) }
-        if let s = state, !Self.agentStates.contains(where: { $0.caseInsensitiveCompare(s) == .orderedSame }) {
+        if let s = state, !Self.agentStates.contains(where: { $0 == LinearMapping.canonicalKey(s) }) {
             return .failure(.stateNotAllowed(s))
         }
         guard let issue = session.allTickets.first(where: { $0.key.caseInsensitiveCompare(key) == .orderedSame }) else {
@@ -38,9 +39,9 @@ public struct IssueRequest: Equatable, Sendable {
         return .success(issue)
     }
 
-    /// The state with the team's own spelling ("in review" → "In Review").
+    /// One Roof's name for the state ("in review" → "QA", "in progress" → "In Progress").
     public var canonicalState: String? {
-        state.map { s in Self.agentStates.first { $0.caseInsensitiveCompare(s) == .orderedSame } ?? s }
+        state.map { s in LinearMapping.canonicalKey(s).flatMap { k in Self.agentStates.first { $0 == k } } ?? s }
     }
 }
 
@@ -54,7 +55,7 @@ public enum IssueRequestError: Error, Equatable, CustomStringConvertible {
         switch self {
         case .nothingToDo: return "give --state and/or --comment"
         case .stateNotAllowed(let s):
-            return "an agent can set \(IssueRequest.agentStates.joined(separator: " or ")), not \"\(s)\" (Done and Canceled are the owner's)"
+            return "an agent can set \(IssueRequest.agentStates.joined(separator: " or ")), not \"\(s)\" (Shipped and Canceled are the owner's)"
         case .notOnSession(let k, let all):
             return "\(k) is not on this session" + (all.isEmpty ? " (it has no issues)" : " (its issues: \(all.joined(separator: ", ")))")
         case .notLinked(let k): return "\(k) has no Linear id on this session, so One Roof cannot update it"
