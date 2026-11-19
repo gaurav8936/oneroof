@@ -23,7 +23,7 @@ final class RoadmapTests: XCTestCase {
     }
 
     func test_LAB2101_canceledAndAllClosedProjectsDefaultOn_openProjectDefaultsOff() {
-        XCTAssertTrue(Roadmap.showDoneByDefault(status: .pausedOrCancelled, tickets: []))
+        XCTAssertTrue(Roadmap.showDoneByDefault(status: .cancelled, tickets: []))
         XCTAssertTrue(Roadmap.showDoneByDefault(status: .active, tickets: [issue(1, "completed"), issue(2, "canceled")]))
         XCTAssertFalse(Roadmap.showDoneByDefault(status: .active, tickets: [issue(1, "completed"), issue(2, "started")]))
         XCTAssertFalse(Roadmap.showDoneByDefault(status: .backlog, tickets: []), "no tickets: nothing to show either way")
