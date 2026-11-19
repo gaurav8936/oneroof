@@ -78,7 +78,7 @@ struct IssuePickerView: View {
             !["completed", "canceled"].contains($0.stateType) && (!activeOnly || ActiveFilter.issue($0.stateType) || selection.issues.contains($0))
         }.reversed()
     }
-    /// LAB-1571: In Progress and In Review only, until switched off (remembered; off by default: new work is in Backlog).
+    /// LAB-1571: In Progress and QA only, until switched off (remembered; off by default: new work is in Backlog).
     @AppStorage("newSession.issuesActiveOnly") private var activeOnly = false
     private var pickedNow: [LinearIssue] { selection.issues }
     private var rows: [LinearIssue] {
@@ -138,7 +138,7 @@ struct IssuePickerView: View {
             .accessibilityLabel(loading ? "Refreshing issues" : "Refresh issues from Linear")
             Spacer()
             Toggle("Active only", isOn: $activeOnly).toggleStyle(.checkbox).ui(12)
-                .help("Only issues In Progress or In Review")
+                .help("Only issues In Progress or in QA")
             TextField("", text: $query, prompt: Text("Filter by key, title or text"))
                 .textFieldStyle(.plain).ui(12.5).padding(.horizontal, 8).frame(width: 240, height: 26)
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(t.surface.color))
@@ -174,7 +174,7 @@ struct IssuePickerView: View {
             Spacer()
             if !sortOrder.isEmpty {
                 Button("Default order") { sortOrder = [] }.buttonStyle(.link).ui(11.5)
-                    .help("Back to In Progress, To do, Backlog, then In Review")
+                    .help("Back to In Progress, Planned, Backlog, then QA")
             }
             Text(pickedNow.isEmpty ? "Tick one or more" : "\(pickedNow.count) picked").ui(11.5).foregroundStyle(t.text3.color)
         }

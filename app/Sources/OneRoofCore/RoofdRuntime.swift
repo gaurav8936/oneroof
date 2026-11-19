@@ -209,12 +209,15 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
                 workPath: (s["work"] as? String).flatMap { $0.isEmpty ? nil : $0 }, activeAt: active, pid: pid, memoryWarning: warning,
                 issueRequests: requests)
             st.question = (s["question"] as? String).flatMap { $0.isEmpty ? nil : $0 }   // LAB-1606
+            st.attached = s["attached"] as? Bool ?? false   // LAB-2311
             return st
         } else {
-            return RuntimeSessionState(
+            var st = RuntimeSessionState(
                 id: id, isAgent: false, status: .unknown, ready: true, title: title, cwd: cwd, pane: id,
                 seq: s["seq"] as? Int, workPath: cwd, activeAt: active, pid: pid, memoryWarning: warning,
                 issueRequests: requests)
+            st.attached = s["attached"] as? Bool ?? false   // LAB-2311
+            return st
         }
     }
 
@@ -314,15 +317,11 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
     public func start(_ spec: LaunchSpec) throws -> RuntimeSessionRef {
         try ensureRunning()
         let live = (try? call("list")["sessions"] as? [[String: Any]]) ?? []
-        let alive = Set(live.compactMap { s -> String? in s["exited"] == nil ? s["id"] as? String : nil })
-        let all = Set(live.compactMap { $0["id"] as? String })
-        // An earlier launch that reported an error but started: link it instead of starting a second.
-        if spec.adoptOrphan, alive.contains(spec.id), !spec.claimed.contains(spec.id) {
-            return RuntimeSessionRef(id: spec.id, adopted: true)
-        }
-        var name = spec.id
-        var n = 1
-        while all.contains(name) { n += 1; name = "\(spec.id)-\(n)" }
+        let plan = RoofdRuntime.launchPlan(spec, list: live)
+        if plan.adopt { return RuntimeSessionRef(id: spec.id, adopted: true) }
+        // LAB-2311: a relaunch closes the row's old session first (its holder and `exec zsh` were orphaned before).
+        if let old = plan.close { _ = try? call("close", ["id": old]) }
+        let name = plan.name
         var params: [String: Any] = ["id": name, "label": spec.label, "cwd": spec.cwd, "env": environment(spec),
                                      "argv": argv(spec), "cols": 120, "rows": 40, "kind": spec.agent.rawValue]
         if let opening = spec.opening { params["opening"] = opening }
@@ -333,6 +332,21 @@ public final class RoofdRuntime: SessionRuntime, @unchecked Sendable {
             }
         }
         return RuntimeSessionRef(id: name)
+    }
+
+    /// What a launch does, from roofd's `list`: link an earlier launch's agent (`adopt`), close the session it replaces
+    /// (LAB-2311, a relaunch), and the name it takes (`id`, else `id-2`, `-3` … while a name is taken, an exited holder
+    /// still winding down included: roofd's `create` would return that one).
+    static func launchPlan(_ spec: LaunchSpec, list: [[String: Any]]) -> (adopt: Bool, close: RuntimeID?, name: RuntimeID) {
+        let alive = Set(list.compactMap { s -> String? in s["exited"] == nil ? s["id"] as? String : nil })
+        let all = Set(list.compactMap { $0["id"] as? String })
+        // An earlier launch that reported an error but started: link it instead of starting a second.
+        if spec.adoptOrphan, alive.contains(spec.id), !spec.claimed.contains(spec.id) { return (true, nil, spec.id) }
+        let close = spec.replaces.flatMap { all.contains($0) && !spec.claimed.contains($0) ? $0 : nil }
+        var name = spec.id
+        var n = 1
+        while all.contains(name) { n += 1; name = "\(spec.id)-\(n)" }
+        return (false, close, name)
     }
 
     // MARK: Session I/O (pane = session id)

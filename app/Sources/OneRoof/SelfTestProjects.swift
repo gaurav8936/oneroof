@@ -3,11 +3,11 @@ import OneRoofCore
 
 /// LAB-2050 · ONEROOF_SELFTEST_PROJECTS=1 (with ONEROOF_SELFTEST_DEMO=1): the Projects page reads a fixture Linear
 /// instead of the network. Six teams (API DOC LAB MOB OPS WEB) and 18 projects in every status (Backlog, Planned,
-/// In progress, In progress whose open issues are all In Review, Completed, Canceled), with milestones and issues.
+/// Active (some with tickets In Review, shown as a count), Shipped, Cancelled), with milestones and issues.
 /// The fixture answers through `LinearClient.transport`, so the real parse path runs; it never reaches Linear, and
 /// any write (a mutation) fails with "self-test fixture: read-only".
 /// PROJECTSTATUSES=<comma list of chip ids, or "all"> · PROJECTSQUERY=<text> · PROJECTSFOLD=<team keys, or "all">
-/// set the page's remembered filter and folds for this run (captures: default view, a team folded, In review only,
+/// set the page's remembered filter and folds for this run (captures: default view, a team folded, Shipped only,
 /// no match). Written to Prefs.viewState, a self-test suite emptied at launch: never the owner's settings.
 enum SelfTestProjects {
     static var active: Bool { ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_PROJECTS"] == "1" }
@@ -58,7 +58,7 @@ enum SelfTestProjects {
 
     struct Fixture {
         var id: String, name: String, team: String, type: String, statusName: String
-        var working = false, reviewing = false
+        var toCheck = 0
         var milestones: [String] = []
         var issues: [(String, String, String, Int?)] = []   // title, state name, state type, milestone index
 
@@ -67,8 +67,7 @@ enum SelfTestProjects {
                 "id": id, "name": name, "state": type, "status": ["name": statusName, "type": type],
                 "url": "https://linear.app/fixture/project/\(id)", "teams": ["nodes": [["key": team]]],
                 "projectMilestones": ["nodes": milestones.enumerated().map { ["id": "\(id)-m\($0.offset)", "name": $0.element, "sortOrder": Double($0.offset)] }],
-                "working": ["nodes": working ? [["id": "w"]] : []],
-                "reviewing": ["nodes": reviewing ? [["id": "r"]] : []],
+                "toCheck": ["nodes": (0..<toCheck).map { ["id": "r\($0)"] }],
             ]
         }
         var issueJSON: [[String: Any]] {
@@ -85,33 +84,33 @@ enum SelfTestProjects {
 
     static let projects: [Fixture] = [
         Fixture(id: "p-bugs", name: "LAB-ONEROOF-BUGS · One Roof bugs and owner observations from daily use", team: "LAB",
-                type: "started", statusName: "In Progress", working: true, reviewing: true,
+                type: "started", statusName: "In Progress", toCheck: 1,
                 milestones: ["M5 · Projects page", "M6 · Resources"],
                 issues: [("Projects list: team → project hierarchy, folding and status chips", "In Progress", "started", 0),
-                         ("Project page: remove the Sessions section", "In Review", "started", 0),
-                         ("Resources: Mac apps list", "Todo", "unstarted", 1),
-                         ("Toolbar overlaps the title at 1280", "Done", "completed", 1),
+                         ("Project page: remove the Sessions section", "QA", "started", 0),
+                         ("Resources: Mac apps list", "Planned", "unstarted", 1),
+                         ("Toolbar overlaps the title at 1280", "Shipped", "completed", 1),
                          ("Reload keeps the selected project", "Backlog", "backlog", nil)]),
         Fixture(id: "p-evals", name: "LAB-EVALS · Evals in One Roof: any model, any benchmark, the agent X-ray", team: "LAB",
-                type: "started", statusName: "In Progress", reviewing: true,
-                milestones: ["M8 · Judge"], issues: [("Judge model picker", "In Review", "started", 0)]),
-        Fixture(id: "p-loops", name: "LAB-LOOPS · Loops that run themselves", team: "LAB", type: "started", statusName: "In Progress", reviewing: true),
-        Fixture(id: "p-kit", name: "LAB-AE-KIT · Agentic Engineering gold-standard kit", team: "LAB", type: "started", statusName: "In Progress", working: true, reviewing: true),
+                type: "started", statusName: "In Progress", toCheck: 1,
+                milestones: ["M8 · Judge"], issues: [("Judge model picker", "QA", "started", 0)]),
+        Fixture(id: "p-loops", name: "LAB-LOOPS · Loops that run themselves", team: "LAB", type: "started", statusName: "In Progress", toCheck: 1),
+        Fixture(id: "p-kit", name: "LAB-AE-KIT · Agentic Engineering gold-standard kit", team: "LAB", type: "started", statusName: "In Progress", toCheck: 1),
         Fixture(id: "p-papers", name: "LAB-AE-PAPERS · Research papers track, narrated, with voice questions", team: "LAB", type: "planned", statusName: "Planned"),
         Fixture(id: "p-starter", name: "LAB-STARTER-KIT · Starter kit for a new machine", team: "LAB", type: "backlog", statusName: "Backlog"),
         Fixture(id: "p-pitch", name: "LAB-ENERGYLAB-EXPLAINED · Energy Lab pitch deck for regulatory affairs teams", team: "LAB", type: "completed", statusName: "Completed",
                 // LAB-2101: a finished project with every ticket done (2.0.0 showed only "All done" here).
                 milestones: ["Draft", "Ship"],
-                issues: [("Outline the fifteen slides", "Done", "completed", 0), ("Write the speaker notes", "Done", "completed", 0),
-                         ("Owner review of the draft", "Done", "completed", 1), ("Publish the deck", "Done", "completed", 1),
+                issues: [("Outline the fifteen slides", "Shipped", "completed", 0), ("Write the speaker notes", "Shipped", "completed", 0),
+                         ("Owner review of the draft", "Shipped", "completed", 1), ("Publish the deck", "Shipped", "completed", 1),
                          ("Old cover page", "Canceled", "canceled", nil)]),
-        Fixture(id: "p-checkout", name: "WEB-CHECKOUT · New checkout with saved cards and wallets", team: "WEB", type: "started", statusName: "In Progress", working: true),
-        Fixture(id: "p-a11y", name: "WEB-A11Y · Accessibility pass on every form", team: "WEB", type: "started", statusName: "In Progress", reviewing: true),
+        Fixture(id: "p-checkout", name: "WEB-CHECKOUT · New checkout with saved cards and wallets", team: "WEB", type: "started", statusName: "In Progress"),
+        Fixture(id: "p-a11y", name: "WEB-A11Y · Accessibility pass on every form", team: "WEB", type: "started", statusName: "In Progress", toCheck: 1),
         Fixture(id: "p-dark", name: "WEB-DARK-MODE · Dark mode for the marketing site", team: "WEB", type: "backlog", statusName: "Backlog"),
         Fixture(id: "p-legacy", name: "WEB-LEGACY-CART · Legacy cart clean-up", team: "WEB", type: "completed", statusName: "Completed"),
-        Fixture(id: "p-usage", name: "API-USAGE-EXPORT · Nightly usage export", team: "API", type: "started", statusName: "In Progress", working: true),
+        Fixture(id: "p-usage", name: "API-USAGE-EXPORT · Nightly usage export", team: "API", type: "started", statusName: "In Progress"),
         Fixture(id: "p-rate", name: "API-RATE-LIMITS · Rate limits per key", team: "API", type: "planned", statusName: "Planned"),
-        Fixture(id: "p-help", name: "DOC-HELP-MAP · Help map as a tree", team: "DOC", type: "started", statusName: "In Progress", working: true),
+        Fixture(id: "p-help", name: "DOC-HELP-MAP · Help map as a tree", team: "DOC", type: "started", statusName: "In Progress"),
         Fixture(id: "p-wiki", name: "DOC-WIKI-MOVE · Move the wiki into the repo", team: "DOC", type: "canceled", statusName: "Canceled"),
         Fixture(id: "p-push", name: "MOB-PUSH · Push notifications on both platforms", team: "MOB", type: "planned", statusName: "Planned"),
         Fixture(id: "p-offline", name: "MOB-OFFLINE · Offline mode for the field app", team: "MOB", type: "paused", statusName: "Paused"),

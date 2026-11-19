@@ -58,6 +58,8 @@ public final class FakeRuntime: SessionRuntime, @unchecked Sendable {
                 return RuntimeSessionRef(id: orphan.id, groupId: orphan.groupId, adopted: true)
             }
             if let old = spec.previousGroup { _sessions.removeAll { $0.groupId == old } }
+            // LAB-2311: a relaunch closes the session the row ran before (as RoofdRuntime does).
+            if let old = spec.replaces, !spec.claimed.contains(old) { _sessions.removeAll { $0.id == old } }
             counter += 1
             let group = "g\(counter)", pane = "p\(counter)"
             let name: RuntimeID

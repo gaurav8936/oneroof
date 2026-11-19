@@ -53,6 +53,10 @@ final class Holder {
     /// Spike only (M2): measure the forwarding path without the VT parse.
     static let skipVT = ProcessInfo.processInfo.environment["ROOFD_SPIKE_NOVT"] == "1"
     static let lingerSeconds = Double(ProcessInfo.processInfo.environment["ROOFD_LINGER"] ?? "") ?? 600
+    /// LAB-2311: after a `close`, the holder stays only this long once its program is gone (the exit frame reaches an
+    /// attached terminal), not `lingerSeconds`: the session was ended on purpose, so nobody waits for its last screen,
+    /// and a closed id stayed in `roofd list` for ten minutes (a relaunch took `-2` meanwhile).
+    static let closedLingerSeconds = min(lingerSeconds, 1)
 
     let spec: Spec
     let socketPath: String
@@ -65,6 +69,8 @@ final class Holder {
     var exitCode: Int32?
     var exitSignal: Int32?
     var exitedAt: Date?
+    /// LAB-2311: a `close` was asked for (see `closedLingerSeconds`).
+    var closeRequested = false
     let created = Date()
     var pendingInput: [UInt8] = []
     /// ROOFD_TRACE_INPUT=<file>: log every byte sent to the program, with where it came from (debugging only).
@@ -180,7 +186,7 @@ final class Holder {
 
     /// One poll turn; false ends the holder.
     private func turn(_ buf: inout [UInt8]) -> Bool {
-        if let at = exitedAt, Date().timeIntervalSince(at) > Holder.lingerSeconds { return false }
+        if let at = exitedAt, Date().timeIntervalSince(at) > (closeRequested ? Holder.closedLingerSeconds : Holder.lingerSeconds) { return false }
         var fds: [pollfd] = [pollfd(fd: listenFd, events: Int16(POLLIN), revents: 0),
                              pollfd(fd: wakeR, events: Int16(POLLIN), revents: 0)]
         if master >= 0 {
@@ -707,6 +713,7 @@ final class Holder {
             if issueAnswers.count > 50, let oldest = issueAnswers.keys.min() { issueAnswers[oldest] = nil }
             return [:]
         case "close":
+            closeRequested = true   // LAB-2311: an exited holder (or this one once its program ends) leaves at once
             if pid > 0, exitedAt == nil {
                 kill(-pid, SIGHUP)
                 kill(pid, SIGHUP)

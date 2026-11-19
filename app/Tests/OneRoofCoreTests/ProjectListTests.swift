@@ -1,14 +1,14 @@
 import XCTest
 @testable import OneRoofCore
 
-/// LAB-2050 · the Projects list: status mapping (In review worked out from the issues), the default chips, team groups
+/// LAB-2050 · the Projects list: status mapping (LAB-2307: Linear's five, nothing worked out), the default chips, team groups
 /// with counts and folding, the text filter on code and title, Reset, keyboard steps, VoiceOver words and contrast.
 final class ProjectListTests: XCTestCase {
 
     private func p(_ code: String, _ title: String, team: String, _ type: String, name: String = "",
-                   working: Bool = false, reviewing: Bool = false) -> LinearWorkstream {
+                   toCheck: Int = 0) -> LinearWorkstream {
         LinearWorkstream(id: code, name: "\(code) · \(title)", state: type, url: "", team: team, milestones: [],
-                         statusName: name, working: working, reviewing: reviewing)
+                         statusName: name, toCheck: toCheck)
     }
 
     private var teams: [LinearTeamRef] {
@@ -17,13 +17,13 @@ final class ProjectListTests: XCTestCase {
 
     private var fixture: [LinearWorkstream] {
         [
-            p("LAB-ONEROOF-BUGS", "One Roof bugs", team: "LAB", "started", working: true, reviewing: true),
-            p("LAB-EVALS", "Evals in One Roof", team: "LAB", "started", reviewing: true),
-            p("LAB-PAPERS", "Research papers", team: "LAB", "planned", reviewing: true),
+            p("LAB-ONEROOF-BUGS", "One Roof bugs", team: "LAB", "started", toCheck: 1),
+            p("LAB-EVALS", "Evals in One Roof", team: "LAB", "started", toCheck: 3),
+            p("LAB-PAPERS", "Research papers", team: "LAB", "planned", toCheck: 1),
             p("LAB-STARTER", "Starter kit", team: "LAB", "backlog"),
             p("LAB-PITCH", "Pitch deck", team: "LAB", "completed"),
-            p("HYP-LAYER", "Layering", team: "HYP", "started", working: true),
-            p("HYP-S3", "S3 for all data", team: "HYP", "started", reviewing: true),
+            p("HYP-LAYER", "Layering", team: "HYP", "started"),
+            p("HYP-S3", "S3 for all data", team: "HYP", "started", toCheck: 2),
             p("HYP-OLD", "Old dataset", team: "HYP", "canceled"),
             p("ZIB-COST", "AWS cost", team: "ZIB", "paused"),
             p("AGM-RUNTIME", "Fleet runtime", team: "AGM", "backlog"),
@@ -35,47 +35,53 @@ final class ProjectListTests: XCTestCase {
     func test_LAB2050_statusMapping() {
         XCTAssertEqual(ProjectStatus.of(type: "backlog"), .backlog)
         XCTAssertEqual(ProjectStatus.of(type: "planned"), .planned)
-        XCTAssertEqual(ProjectStatus.of(type: "started"), .inProgress)
-        XCTAssertEqual(ProjectStatus.of(type: "paused"), .inProgress, "paused → In progress (spec)")
-        XCTAssertEqual(ProjectStatus.of(type: "completed"), .completed)
-        XCTAssertEqual(ProjectStatus.of(type: "canceled"), .canceled)
-        XCTAssertEqual(ProjectStatus.of(type: "started", name: "In Review"), .inReview, "a project status named In Review")
-        XCTAssertEqual(ProjectStatus.of(type: "started", name: "in review"), .inReview)
+        XCTAssertEqual(ProjectStatus.of(type: "started"), .active)
+        XCTAssertEqual(ProjectStatus.of(type: "paused"), .backlog, "Paused is retired (owner 11-19): parked work is Backlog")
+        XCTAssertEqual(ProjectStatus.of(type: "completed"), .shipped)
+        XCTAssertEqual(ProjectStatus.of(type: "canceled"), .cancelled)
     }
 
-    /// Agent decision 2026-11-01: In review = started, some open issue In Review, none In Progress.
-    func test_LAB2050_inReviewWorkedOutFromIssues() {
-        XCTAssertEqual(ProjectStatus.of(type: "started", reviewing: true), .inReview)
-        XCTAssertEqual(ProjectStatus.of(type: "started", working: true, reviewing: true), .inProgress, "work still in progress")
-        XCTAssertEqual(ProjectStatus.of(type: "started", working: false, reviewing: false), .inProgress)
-        XCTAssertEqual(ProjectStatus.of(type: "paused", reviewing: true), .inReview)
-        XCTAssertEqual(ProjectStatus.of(type: "planned", reviewing: true), .planned, "the owner's project status wins outside started")
-        XCTAssertEqual(ProjectStatus.of(type: "completed", reviewing: true), .completed)
+    /// LAB-2307: the chip is Linear's status, whatever the tickets are doing; tickets In Review are a count.
+    func test_LAB2307_statusMirrorsLinearTicketsAreACount() {
+        let bugs = p("LAB-ONEROOF-BUGS", "One Roof bugs", team: "LAB", "started", toCheck: 1)
+        XCTAssertEqual(bugs.status, .active, "Linear says In Progress, so One Roof does")
+        XCTAssertEqual(bugs.toCheck, 1)
+        XCTAssertEqual(p("LAB-X", "Planned", team: "LAB", "planned", toCheck: 4).status, .planned)
+        XCTAssertEqual(ProjectList.toCheckLabel(1), "1 in QA")
+        XCTAssertEqual(ProjectList.toCheckLabel(3), "3 in QA")
+        XCTAssertEqual(ProjectList.toCheckLabel(50), "50+ in QA")
+        XCTAssertFalse(ProjectStatus.allCases.map(\.label).contains("In review"), "no status Linear does not have")
     }
 
-    func test_LAB2050_labelsSayCompletedNeverShipped() {
-        XCTAssertEqual(ProjectStatus.allCases.map(\.label), ["Backlog", "Planned", "In progress", "In review", "Completed", "Canceled"])
+    /// LAB-2307 (owner, 2026-11-19): the chips carry the owner's Linear tab names, in the tabs' order.
+    func test_LAB2307_labelsAreTheLinearTabNames() {
+        XCTAssertEqual([ProjectList.allLabel] + ProjectStatus.allCases.map(\.label),
+                       ["All projects", "In Progress", "Planned", "Backlog", "Shipped", "Canceled"])
         let done = p("LAB-X", "Done thing", team: "LAB", "completed")
-        XCTAssertEqual(done.stateLabel, "Completed")
-        XCTAssertFalse(ProjectStatus.allCases.map(\.label).contains("Shipped"))
+        XCTAssertEqual(done.stateLabel, "Shipped")
+        XCTAssertFalse(ProjectStatus.allCases.map(\.label).contains("Completed"))
     }
 
     // MARK: Default set and stored selection
 
-    func test_LAB2050_defaultIsInProgressAndInReview() {
-        XCTAssertEqual(ProjectStatus.defaultSet, [.inProgress, .inReview])
+    func test_LAB2307_defaultIsActive() {
+        XCTAssertEqual(ProjectStatus.defaultSet, [.active])
         XCTAssertEqual(ProjectStatus.decode(nil), ProjectStatus.defaultSet, "never saved = the default")
         XCTAssertEqual(ProjectStatus.decode(""), [], "no chip chosen")
-        XCTAssertEqual(ProjectStatus.decode("inReview, completed, bogus"), [.inReview, .completed])
-        XCTAssertEqual(ProjectStatus.encode([.completed, .backlog]), "backlog,completed", "chip order")
+        XCTAssertEqual(ProjectStatus.decode("inReview, completed, bogus"), [.shipped], "unknown words skipped")
+        XCTAssertEqual(ProjectStatus.decode("inProgress,inReview"), [.active], "the old default saved")
+        XCTAssertEqual(ProjectStatus.decode("completed,canceled"), [.shipped, .cancelled], "old words read as the new tabs")
+        XCTAssertEqual(ProjectStatus.decode("pausedOrCancelled"), [.cancelled], "the 11-19 interim name")
+        XCTAssertEqual(ProjectStatus.decode("inReview"), ProjectStatus.defaultSet, "an old In review-only choice: the default, not every status")
+        XCTAssertEqual(ProjectStatus.encode([.shipped, .backlog]), "backlog,shipped", "chip order")
         XCTAssertEqual(ProjectStatus.decode(ProjectStatus.encode(ProjectStatus.defaultSet)), ProjectStatus.defaultSet)
     }
 
-    func test_LAB2050_defaultViewShowsOnlyInProgressAndInReviewEveryTeamUnfolded() {
+    func test_LAB2307_defaultViewShowsOnlyActiveEveryTeamUnfolded() {
         let r = ProjectList.groups(projects: fixture, teams: teams, statuses: ProjectStatus.defaultSet, query: "", folded: [])
         let shown = r.groups.flatMap(\.projects)
-        XCTAssertTrue(shown.allSatisfy { [.inProgress, .inReview].contains($0.status) })
-        XCTAssertEqual(Set(shown.map { $0.wsId ?? "" }), ["LAB-ONEROOF-BUGS", "LAB-EVALS", "HYP-LAYER", "HYP-S3", "ZIB-COST"])
+        XCTAssertTrue(shown.allSatisfy { $0.status == .active })
+        XCTAssertEqual(Set(shown.map { $0.wsId ?? "" }), ["LAB-ONEROOF-BUGS", "LAB-EVALS", "HYP-LAYER", "HYP-S3"])
         XCTAssertTrue(r.groups.allSatisfy { !$0.folded })
     }
 
@@ -92,27 +98,24 @@ final class ProjectListTests: XCTestCase {
     }
 
     func test_LAB2050_emptyTeamsHiddenAndCounted() {
-        let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [.inReview], query: "", folded: [])
+        let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [.active], query: "", folded: [])
         XCTAssertEqual(r.groups.map(\.key), ["HYP", "LAB"])
-        XCTAssertEqual(r.hiddenTeams, 2, "AGM and ZIB have no In review project")
+        XCTAssertEqual(r.hiddenTeams, 2, "AGM and ZIB have no Active project")
         XCTAssertEqual(ProjectList.hiddenLine(2), "2 teams have no projects in these statuses")
         XCTAssertEqual(ProjectList.hiddenLine(1), "1 team has no projects in these statuses")
         XCTAssertNil(ProjectList.hiddenLine(0))
         // A team Linear lists with no projects at all is counted too.
         let more = teams + [LinearTeamRef(id: "GBL", key: "GBL", name: "GabbleGrid")]
-        XCTAssertEqual(ProjectList.groups(projects: fixture, teams: more, statuses: [.inReview], query: "", folded: []).hiddenTeams, 3)
+        XCTAssertEqual(ProjectList.groups(projects: fixture, teams: more, statuses: [.active], query: "", folded: []).hiddenTeams, 3)
     }
 
-    /// Done-when: "all In progress LAB projects" and "everything In review in HYP" in ≤ 2 clicks from the default view.
+    /// Done-when: "all Active LAB projects" from the default view with no click; Shipped in one more.
     func test_LAB2050_twoClickQueries() {
-        // In progress in LAB: click In review off (1). LAB's group then holds exactly its In progress projects.
-        var s = ProjectStatus.defaultSet; s.remove(.inReview)
-        let a = ProjectList.groups(projects: fixture, teams: teams, statuses: s, query: "", folded: [])
-        XCTAssertEqual(a.groups.first { $0.key == "LAB" }?.projects.map { $0.wsId ?? "" }, ["LAB-ONEROOF-BUGS"])
-        // In review in HYP: click In progress off (1). HYP's group is exactly its In review projects.
-        var s2 = ProjectStatus.defaultSet; s2.remove(.inProgress)
+        let a = ProjectList.groups(projects: fixture, teams: teams, statuses: ProjectStatus.defaultSet, query: "", folded: [])
+        XCTAssertEqual(a.groups.first { $0.key == "LAB" }?.projects.map { $0.wsId ?? "" }, ["LAB-EVALS", "LAB-ONEROOF-BUGS"])
+        var s2 = ProjectStatus.defaultSet; s2.insert(.shipped)
         let b = ProjectList.groups(projects: fixture, teams: teams, statuses: s2, query: "", folded: [])
-        XCTAssertEqual(b.groups.first { $0.key == "HYP" }?.projects.map { $0.wsId ?? "" }, ["HYP-S3"])
+        XCTAssertEqual(b.groups.first { $0.key == "LAB" }?.projects.map { $0.wsId ?? "" }, ["LAB-EVALS", "LAB-ONEROOF-BUGS", "LAB-PITCH"])
     }
 
     func test_LAB2050_foldOneAndOptionClickAll() {
@@ -155,10 +158,10 @@ final class ProjectListTests: XCTestCase {
             }
         }
         let c = ProjectList.counts(fixture, query: "")
-        XCTAssertEqual(c[.inProgress], 3); XCTAssertEqual(c[.inReview], 2); XCTAssertEqual(c[.backlog], 2)
-        XCTAssertEqual(c[.planned], 1); XCTAssertEqual(c[.completed], 1); XCTAssertEqual(c[.canceled], 1)
+        XCTAssertEqual(c[.active], 4); XCTAssertEqual(c[.backlog], 3)
+        XCTAssertEqual(c[.planned], 1); XCTAssertEqual(c[.shipped], 1); XCTAssertEqual(c[.cancelled], 1)
         // Several chips at once.
-        let two = ProjectList.groups(projects: fixture, teams: teams, statuses: [.completed, .canceled], query: "", folded: [])
+        let two = ProjectList.groups(projects: fixture, teams: teams, statuses: [.shipped, .cancelled], query: "", folded: [])
         XCTAssertEqual(two.groups.flatMap(\.projects).count, 2)
     }
 
@@ -169,7 +172,7 @@ final class ProjectListTests: XCTestCase {
 
     func test_LAB2050_resetRestoresTheDefault() {
         XCTAssertTrue(ProjectList.isDefault(statuses: ProjectStatus.defaultSet, query: ""))
-        XCTAssertFalse(ProjectList.isDefault(statuses: [.inReview], query: ""))
+        XCTAssertFalse(ProjectList.isDefault(statuses: [.shipped], query: ""))
         XCTAssertFalse(ProjectList.isDefault(statuses: ProjectStatus.defaultSet, query: "lab"))
         let r = ProjectList.reset()
         XCTAssertEqual(r.statuses, ProjectStatus.defaultSet)
@@ -178,7 +181,7 @@ final class ProjectListTests: XCTestCase {
     }
 
     func test_LAB2050_noMatchIsEmpty() {
-        let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [.canceled], query: "lab", folded: [])
+        let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [.cancelled], query: "lab", folded: [])
         XCTAssertTrue(r.isEmpty)
     }
 
@@ -201,12 +204,14 @@ final class ProjectListTests: XCTestCase {
         let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [], query: "", folded: ["ZIB"])
         XCTAssertEqual(r.groups.first { $0.key == "LAB" }?.accessibilityLabel, "LAB, Labs, 5 projects, expanded")
         XCTAssertEqual(r.groups.first { $0.key == "ZIB" }?.accessibilityLabel, "ZIB, Zibajoon, 1 project, folded")
-        XCTAssertEqual(ProjectList.chipLabel(.inProgress, count: 12, on: true), "In progress, 12 projects, showing")
-        XCTAssertEqual(ProjectList.chipLabel(.completed, count: 1, on: false), "Completed, 1 project, hidden")
-        let w = p("LAB-2050", "Projects page", team: "LAB", "started", working: true)
-        XCTAssertEqual(ProjectList.rowLabel(w, live: 2), "Projects page, LAB-2050, In progress, 2 live sessions")
-        XCTAssertEqual(ProjectList.rowLabel(w, live: 1), "Projects page, LAB-2050, In progress, 1 live session")
-        XCTAssertEqual(ProjectList.rowLabel(w, live: 0), "Projects page, LAB-2050, In progress")
+        XCTAssertEqual(ProjectList.chipLabel(.active, count: 12, on: true), "In Progress, 12 projects, showing")
+        XCTAssertEqual(ProjectList.chipLabel(.shipped, count: 1, on: false), "Shipped, 1 project, hidden")
+        let w = p("LAB-2050", "Projects page", team: "LAB", "started")
+        XCTAssertEqual(ProjectList.rowLabel(w, live: 2), "Projects page, LAB-2050, In Progress, 2 live sessions")
+        XCTAssertEqual(ProjectList.rowLabel(w, live: 1), "Projects page, LAB-2050, In Progress, 1 live session")
+        XCTAssertEqual(ProjectList.rowLabel(w, live: 0), "Projects page, LAB-2050, In Progress")
+        let r2 = p("LAB-2307", "Status mirror", team: "LAB", "started", toCheck: 2)
+        XCTAssertEqual(ProjectList.rowLabel(r2, live: 1), "Status mirror, LAB-2307, In Progress, 2 in QA, 1 live session")
     }
 
     // MARK: Contrast (pills and team headers ≥ 4.5:1 in Daylight, Graphite and Midnight)

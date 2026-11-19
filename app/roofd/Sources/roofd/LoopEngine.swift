@@ -35,8 +35,9 @@ enum LoopEngine {
         if let p = c.projects { Workspace.configure(root: p, shared: c.shared) }
         let store = LoopStore()
         let ids = ((try? FileManager.default.contentsOfDirectory(atPath: store.root)) ?? []).filter(Loop.validId)
-        guard !ids.isEmpty else { return }
         let sessions = try? SessionStore(path: c.store)
+        sweepIdleRounds(store: store, ids: ids, sessions: sessions, now: Date())
+        guard !ids.isEmpty else { return }
         let context = self.context(store: store, ids: ids, sessions: sessions, now: Date())
         for id in ids.sorted() { step(id, store: store, sessions: sessions, again: true, context: context) }
     }
@@ -141,6 +142,13 @@ enum LoopEngine {
         }
         if let line { try? store.append(line, to: id) }
         if let l = finished, let b = before, let line { record(l, before: b, line: line, root: store.root) }
+        // LAB-2310: the run's last round is closed here (before, only round N+1 starting closed round N, so every
+        // run's final round sat at its prompt for days). A round still in flight when the run ends (a time limit) is
+        // left running for you, as the stop line says; closeIfIdle keeps one you are looking at or that asks something.
+        if let b = before, b.run?.active == nil,
+           let last = rounds.last(where: { $0.runId == runId && $0.kind == .round })?.sessionId {
+            closeIfIdle(Session.runtimeName(for: last))
+        }
     }
 
     /// LAB-1917 · LAB-1848: the ended run goes into the outcome ledger (with each commit it left on the loop branch,
@@ -234,6 +242,36 @@ enum LoopEngine {
             sessions?.delete(id: s.id)
             end(fresh.id, store: store, outcome: .stop("Round \(n) could not start: \(error)"), runId: fresh.run?.id)
         }
+    }
+
+    /// LAB-2310: how long a loop round's session may sit idle at its prompt before roofd closes it, with One Roof open
+    /// or closed. The engine checks a finished round after 20 s, so a round still at its prompt this long after is one
+    /// nothing will look at again (a run that ended, a deleted loop). The app's idle rule skips loops (LAB-1535).
+    static let idleRoundClose: TimeInterval = 2 * 3600
+
+    /// LAB-2310: close every loop round's session (tag `loop:`) that has sat finished at its prompt for idleRoundClose,
+    /// except a round a loop still waits on (the engine owns it), a pinned one, one you are attached to, or one that
+    /// asks something (it stays, and shows on the Loops page).
+    static func sweepIdleRounds(store: LoopStore, ids: [String], sessions: SessionStore?, now: Date,
+                                after: TimeInterval = idleRoundClose) {
+        guard let sessions else { return }
+        let owned = Set(ids.compactMap { store.load($0)?.run?.active?.runtimeId })
+        for s in sessions.all() where IdleSessionPolicy.isLoop(s.tags) && !s.pinned {
+            let rid = s.runtimeId ?? Session.runtimeName(for: s.id)
+            guard !owned.contains(rid), let info = try? Sock.holderRequest(Paths.session(rid), ["op": "info"], timeout: 1),
+                  idleAtPrompt(info, now: now, after: after) else { continue }
+            _ = try? Sock.holderRequest(Paths.session(rid), ["op": "close"], timeout: 2)
+        }
+    }
+
+    /// LAB-2310: a holder's `info` for a session at its prompt, quiet for `after`: alive, nobody attached, not working,
+    /// not asking (blocked, or an opening message that failed or is still going in). A plain shell reports "unknown".
+    static func idleAtPrompt(_ info: [String: Any], now: Date, after: TimeInterval) -> Bool {
+        guard info["exited"] == nil, (info["attached"] as? Bool) != true,
+              ["idle", "done", "unknown"].contains(info["status"] as? String ?? "unknown"),
+              ["none", "done"].contains(info["opening"] as? String ?? "none"),
+              let active = info["active"] as? Double else { return false }
+        return now.timeIntervalSince(Date(timeIntervalSince1970: active)) >= after
     }
 
     static func closeIfIdle(_ runtimeId: String) {
