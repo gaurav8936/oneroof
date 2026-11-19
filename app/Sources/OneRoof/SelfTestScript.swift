@@ -340,11 +340,11 @@ enum SelfTestScript {
             }
         case "layout":   // LAB-1831: `layout single|grid|wall` in the active window, as the toolbar control does
             if arg == "scroll" {   // LAB-2044: Scroll is the History place now
-                log(out, "  Scroll is History now (LAB-2044)"); app.main.v2Open(.history)
+                log(out, "  Scroll is History now (LAB-2044)"); app.main.v2Open(.trace)
             } else if let l = SessionLayout(rawValue: arg) { app.main.win.layout = l } else { log(out, "  bad layout") }
             delay = 1.5
         case "history":   // LAB-2046: `history kind=errors date=7d session=<name> agent=claude text=<words> order=oldest` · `history clear`
-            app.main.v2Open(.history)
+            app.main.v2Open(.trace)
             app.main.win.historyQuery = SelfTestHistory.query(arg, base: app.main.win.historyQuery, model: m)
             log(out, "  history query: \(app.main.win.historyQuery)")
             delay = 1.5

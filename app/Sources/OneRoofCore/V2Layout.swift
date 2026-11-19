@@ -172,8 +172,67 @@ public enum V2Layout {
         /// Where macOS starts the first toolbar item, after the traffic lights' reserved room (measured, 1.9.28:
         /// 91 pt whatever the buttons' own position); the icon row (step 1) starts here.
         public static let lights: Double = 91
-        /// The places icon row: 4 + 7 × 26 + 6 × 2 (measured 198 pt, 1.9.28).
-        public static let placesRow: Double = 198
+        /// The places icon row (step 1): the `Place.iconRow` places plus a "more" menu, 26 pt each with 2 pt gaps and
+        /// 4 pt of padding. LAB-2332: worked out from the place count (it was a measured 7-place constant, 198 pt);
+        /// six places + more keeps the 1.9.28 width, so the toolbar and the Sessions column do not move.
+        public static var placesRow: Double {
+            let n = Double(Place.iconRow.count + 1)
+            return 4 + n * 26 + (n - 1) * 2
+        }
+    }
+
+    /// LAB-2331 / LAB-2332 · the place rail's sizes. The places spread out (more space between them, a gap and a
+    /// hairline between groups, a slightly larger icon); a short window takes the room back in order: the space
+    /// between places first (to 4 pt), then the group gaps (to 8 pt), then the buttons (to 34 pt, the icon shrinking with them); below that the
+    /// place list scrolls and Settings stays pinned at the foot.
+    public enum Rail {
+        public static let button: Double = 48, buttonMin: Double = 34
+        public static let icon: Double = 21, iconFrame: Double = 24
+        public static let gapMin: Double = 4, gapMax: Double = 12
+        public static let groupGap: Double = 14, groupGapMin: Double = 8
+        public static let top: Double = 8, bottom: Double = 10
+
+        public struct Fit: Equatable, Sendable {
+            public var button: Double
+            public var gap: Double
+            public var groupGap: Double
+            public var scrolls: Bool
+            public init(button: Double, gap: Double, groupGap: Double, scrolls: Bool) {
+                self.button = button; self.gap = gap; self.groupGap = groupGap; self.scrolls = scrolls
+            }
+            /// The height the place list takes at this fit.
+            public func height(places: Int, groups: Int) -> Double {
+                Double(places) * button + Double(places - groups) * gap + Double(max(0, groups - 1)) * groupGap
+            }
+        }
+
+        /// How the places fit in `available` points (the room between the rail's top and its footer).
+        public static func fit(available: Double, places: Int = Place.allCases.count, groups: Int = PlaceGroup.allCases.count) -> Fit {
+            let p = Double(places), inGroup = Double(max(0, places - groups)), between = Double(max(0, groups - 1))
+            // 1. Full buttons and group gaps; the space between places takes what is left (4…12).
+            let gap = inGroup > 0 ? (available - p * button - between * groupGap) / inGroup : gapMax
+            if gap >= gapMin { return Fit(button: button, gap: min(gapMax, gap.rounded(.down)), groupGap: groupGap, scrolls: false) }
+            // 2. Places 4 pt apart; the group gaps shrink (14 → 8).
+            let gg = between > 0 ? (available - p * button - inGroup * gapMin) / between : groupGap
+            if gg >= groupGapMin { return Fit(button: button, gap: gapMin, groupGap: min(groupGap, gg.rounded(.down)), scrolls: false) }
+            // 3. The buttons shrink (48 → 34; `iconFrame(button:)` shrinks the icon so the label still fits).
+            let b = (available - inGroup * gapMin - between * groupGapMin) / p
+            if b >= buttonMin { return Fit(button: min(button, b.rounded(.down)), gap: gapMin, groupGap: groupGapMin, scrolls: false) }
+            // 4. The list scrolls; Settings stays at the foot.
+            return Fit(button: buttonMin, gap: gapMin, groupGap: groupGapMin, scrolls: true)
+        }
+
+        /// The icon's frame at a button height: 24 pt, less on a short button (the label keeps 14 pt under it).
+        public static func iconFrame(button b: Double) -> Double { min(iconFrame, max(18, b - 14)) }
+
+        /// The rail's footer: Settings (one button), with the seat bars above it at step 2.
+        public static func footer(seats: Double = 0) -> Double { button + seats + 8 }
+
+        /// The room the place list gets in a window `height` points tall: the toolbar band and, at step 0, the dock
+        /// (about 50 pt, measured in the 2.0.8 captures) take theirs.
+        public static func available(windowHeight: Double, toolbar: Double = 52, dock: Double = 50, seats: Double = 0) -> Double {
+            windowHeight - toolbar - dock - top - bottom - footer(seats: seats)
+        }
     }
 
     /// Where the toolbar's centre section starts: after the column's divider, or after the traffic lights and the

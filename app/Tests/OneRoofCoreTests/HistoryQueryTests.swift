@@ -38,15 +38,14 @@ final class HistoryQueryTests: XCTestCase {
     // MARK: LAB-2044 the place
 
     func test_LAB2044_historyIsAPlaceUnderTheInboxWithCtrlCmd9() {
-        // LAB-2114: History moved to the bottom of the rail (was right under the Inbox); its key stays ⌃⌘9.
-        XCTAssertEqual(Place.allCases, [.home, .needsYou, .sessions, .work, .machine, .loops, .learn, .evals, .history])
-        XCTAssertEqual(Place.history.title, "History")
-        XCTAssertEqual(Place.history.symbol, "clock.arrow.circlepath")
-        XCTAssertEqual(Place.history.controlKey, "9")
+        // LAB-2332: History lives inside Trace (its first tab); Trace keeps History's ⌃⌘9, and a stored "history" reads as Trace.
+        XCTAssertEqual(Place(rawValue: "history"), .trace)
+        XCTAssertEqual(Place.trace.title, "Trace")
+        XCTAssertEqual(Place.trace.controlKey, "9")
         let old: [Place: Character] = [.home: "1", .needsYou: "2", .sessions: "3", .work: "4", .machine: "5", .loops: "6", .learn: "7", .evals: "8"]
         for (p, k) in old { XCTAssertEqual(p.controlKey, k, "\(p) keeps ⌃⌘\(k)") }
         XCTAssertEqual(Set(Place.allCases.map(\.controlKey)).count, Place.allCases.count, "no two places share a key")
-        XCTAssertEqual(Place.history.defaultStep, .full)
+        XCTAssertEqual(Place.trace.defaultStep, .full)
     }
 
     func test_LAB2044_aShortcutSavedUnderScrollReachesHistory() {
