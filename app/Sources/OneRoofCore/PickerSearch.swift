@@ -17,7 +17,7 @@ public enum PickerSearch {
 }
 
 /// LAB-1571: "Active only" in the New session pickers. A project is active when Linear has it In Progress; an issue
-/// when its state is a started one (In Progress, In Review).
+/// when its state is a started one (In Progress, QA).
 public enum ActiveFilter {
     public static func project(_ state: String) -> Bool { state == "started" }
     public static func issue(_ stateType: String) -> Bool { stateType == "started" }

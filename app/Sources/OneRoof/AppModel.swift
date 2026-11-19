@@ -284,7 +284,7 @@ final class AppModel: ObservableObject {
             if ticks % 30 == 1 { self?.refreshSeats() }
             if ticks % 10 == 2 { self?.refreshRepoStats() }
             if ticks % 30 == 5 { self?.tickSchedules() }
-            if ticks % 60 == 40 { self?.closeIdleFinishedShells(); self?.closeIdleSessions() }   // LAB-1524 · LAB-1535: once a minute
+            if ticks % 60 == 40 { self?.closeIdleFinishedShells(); self?.closeIdleSessions(); self?.closeOrphanShells() }   // LAB-1524 · LAB-1535 · LAB-2311: once a minute
             if ticks % 30 == 15 { self?.checkRoofdOwner() }
             if ticks % 60 == 40 { self?.tickCommitWatch() }
             if ticks % 15 == 3 { self?.refreshLoopInbox() }   // LAB-1866 · LAB-1919: loop items for Needs you
@@ -658,10 +658,7 @@ final class AppModel: ObservableObject {
     func delete(_ item: BoardItem) {
         guard !item.adopted else { return }
         rememberClosed(item.session)
-        if item.liveAgent == nil, let ws = item.session.runtimeGroup {
-            let id = item.session.runtimeId ?? ""
-            queue.async { [weak self] in try? self?.runtime.close(id, group: ws) }
-        }
+        closeOnRemove(item, forever: false)
         guard let k = stored.firstIndex(where: { $0.id == item.id }) else { return }
         var s = stored[k]
         s.archived = true
@@ -672,15 +669,52 @@ final class AppModel: ObservableObject {
     func deleteForever(_ item: BoardItem) {
         guard !item.adopted else { return }
         rememberClosed(item.session)
-        if item.liveAgent == nil, let ws = item.session.runtimeGroup {
-            let id = item.session.runtimeId ?? ""
-            queue.async { [weak self] in try? self?.runtime.close(id, group: ws) }
-        }
+        closeOnRemove(item, forever: true)
         stored.removeAll { $0.id == item.id }
         if let store { let id = item.id; storeQ.async { store.delete(id: id) } }   // LAB-1336: in order with the writes
         Notifier.shared.clear(session: item.id)
         if selectedId == item.id { selectedId = nil }
         rebuild()
+    }
+
+    /// LAB-2311: Remove and Delete forever close by runtime id. They closed only when the row had a runtime group, which
+    /// is always nil under roofd, so the shell (and holder) of every removed row lived on with no row.
+    private func closeOnRemove(_ item: BoardItem, forever: Bool) {
+        guard let id = OrphanSessions.removeTarget(liveAgent: item.liveAgent, endedShell: item.endedShell,
+                                                   runtimeId: item.session.runtimeId, forever: forever) else { return }
+        let group = item.session.runtimeGroup
+        queue.async { [weak self] in try? self?.runtime.close(id, group: group); self?.poll() }
+    }
+
+    /// LAB-2311 · once a minute: close One Roof's own shells no row claims (OrphanSessions.sweep), at their prompt
+    /// only. The rows are read fresh from the store, so a loop round or scheduled run roofd just saved is never one.
+    func closeOrphanShells(now: Date = Date()) {
+        guard !SelfTest.isActive, let store else { return }
+        let snap = lastSnapshot
+        storeQ.async { [weak self] in
+            let due = OrphanSessions.sweep(snapshot: snap, stored: store.all(), now: now)
+            guard !due.isEmpty else { return }
+            self?.queue.async {
+                guard let self else { return }
+                for id in due {
+                    guard let p = try? self.runtime.processes(pane: id),
+                          FinishedShellPolicy.atPrompt(shellPid: p.shellPid, foreground: p.foreground.map(\.pid)) else { continue }
+                    NSLog("One Roof: closing \(id), a shell no session owns (LAB-2311)")
+                    try? self.runtime.close(id, group: nil)
+                }
+                self.poll()
+            }
+        }
+    }
+
+    /// LAB-2311: Resources › Other's Close: end a roofd session no row owns (asked by the owner, so no quiet rule).
+    func closeOrphan(_ id: RuntimeID) {
+        guard !items.contains(where: { $0.resourceKey == id }) else { return }
+        queue.async { [weak self] in
+            do { try self?.runtime.close(id, group: nil) }
+            catch { DispatchQueue.main.async { self?.lastError = "Close failed: \(error)" } }
+            self?.poll()
+        }
     }
 
     /// Run the foundations check in the background (at launch when Settings says so, and on demand).
@@ -983,7 +1017,9 @@ final class AppModel: ObservableObject {
         let spec: LaunchSpec
         switch LaunchPlan.spec(s, stored: stored, command: pendingCommands[s.id], deliverOpening: true) {
         case .failure(let refusal): lastError = refusal.description; return
-        case .success(let sp): spec = sp
+        case .success(var sp):
+            sp.replaces = OrphanSessions.replaced(liveAgent: item.liveAgent, runtimeId: s.runtimeId)   // LAB-2311
+            spec = sp
         }
         lastError = nil
         busy.insert(s.id)
@@ -1127,7 +1163,8 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async {
                 switch LaunchPlan.spec(resumed, stored: self.stored, command: nil, deliverOpening: false) {
                 case .failure(let refusal): self.busy.remove(s.id); self.lastError = refusal.description
-                case .success(let spec):
+                case .success(var spec):
+                    spec.replaces = OrphanSessions.replaced(liveAgent: item.liveAgent, runtimeId: s.runtimeId)   // LAB-2311
                     self.queue.async {
                         do { self.finishLaunch(s, .success(try self.runtime.start(spec))) }
                         catch { self.finishLaunch(s, .failure(error)) }

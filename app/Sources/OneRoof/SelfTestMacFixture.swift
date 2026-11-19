@@ -21,6 +21,11 @@ import OneRoofCore
 ///       for ≥ 2 tabs) · hung: the browser does not answer (the Force quit path) · changed: the tab moved (refresh)
 ///   ONEROOF_SELFTEST_TABHOVER=<tabId>      draws that tab row as hovered (its ✕ shows)
 ///   ONEROOF_SELFTEST_ALLPROCS=1            LAB-2053: opens "All processes (N)" under the browser
+///   ONEROOF_SELFTEST_RESFOLD=open|folded   LAB-2313: every Resources card open, or every card folded (default: the
+///                                          page's own defaults, except "This Mac, by app" opens so Chrome shows)
+/// LAB-2313 · the fixture also has swap over 4 GB (the Swap tile in amber), a relaunched row (Needs you) and two roofd
+/// sessions no row owns (a Claude in ~/Projects that the relaunch replaced, and a shell), so the Sessions, Swap and
+/// Needs action tiles, folding and the orphans' names can be captured.
 /// Fixture tab ids are <window id> × 10 + position − 1 (window 1201's tabs are 12010 … 12016).
 enum SelfTestMacFixture {
     static var mode: String? { ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_MACFIXTURE"] }
@@ -63,7 +68,7 @@ enum SelfTestMacFixture {
                             footprint: 2_150 << 20, cpu: 0, endable: true)
         let oneRoof = MacAppGroup(id: "oneroof", name: "One Roof", procs: [model], isOneRoof: true, leftovers: [model])
         return MacBreakdown(groups: [browser, oneRoof, finder], unreadable: 212,
-                            mac: MacMemory(total: 36 << 30, used: 24 << 30, swapUsed: 1 << 30, pressure: .normal))
+                            mac: MacMemory(total: 36 << 30, used: 24 << 30, swapUsed: 6 << 30, pressure: .normal))   // LAB-2313: swap over 4 GB
     }
 
     /// What `listScript` would print for three windows (record and field separators as the script writes them), less
@@ -139,7 +144,20 @@ enum SelfTestMacFixture {
 
     // MARK: Running sessions (LAB-2052: pills, sparklines and headroom bars to capture)
 
-    static let sessionIds = ["fixture-ready", "fixture-idle", "fixture-working"]
+    static let sessionIds = ["fixture-ready", "fixture-idle", "fixture-working", "roof-f1x7ure0-2", "roof-f1x7ure0", "roof-5he11fx0"]
+
+    /// LAB-2313: every card open ("open"), every card folded ("folded"), or nil (the page's defaults).
+    static var foldMode: String? { mode == nil ? nil : ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_RESFOLD"] }
+
+    /// LAB-2313: what roofd would say about the fixture sessions no row owns (agent or shell, folder).
+    static func runtimeInfo(_ rid: String) -> (isAgent: Bool, agentName: String?, cwd: String?)? {
+        guard mode != nil else { return nil }
+        switch rid {
+        case "roof-f1x7ure0": return (true, "claude", NSHomeDirectory() + "/Projects")
+        case "roof-5he11fx0": return (false, nil, NSHomeDirectory() + "/Projects")
+        default: return nil
+        }
+    }
 
     static func sessionTitle(_ rid: String) -> String? {
         guard mode != nil else { return nil }
@@ -147,6 +165,7 @@ enum SelfTestMacFixture {
         case "fixture-ready": return "Flaky login test"
         case "fixture-idle": return "Nightly usage export"
         case "fixture-working": return "Help map as a tree"
+        case "roof-f1x7ure0-2": return "Relaunched review"
         default: return nil
         }
     }
@@ -157,6 +176,7 @@ enum SelfTestMacFixture {
         case "runtime:fixture-ready": return .done
         case "runtime:fixture-idle": return .idle
         case "runtime:fixture-working": return .running
+        case "runtime:roof-f1x7ure0-2": return .needsYou
         default: return nil
         }
     }
@@ -164,15 +184,20 @@ enum SelfTestMacFixture {
     /// The sessions' usage at sample `k` (0 = ten minutes ago … 199 = now): a gentle wave, one holder past 1 GB.
     static func sessions(at k: Int) -> [String: SessionUsage] {
         guard mode != nil else { return [:] }
-        func usage(_ rid: String, holderMB: Double, agentMB: Double, cpu: Double, pid: Int32) -> SessionUsage {
+        func usage(_ rid: String, holderMB: Double, agentMB: Double, cpu: Double, pid: Int32, up: TimeInterval = 0) -> SessionUsage {
             let wave = 1 + 0.12 * sin(Double(k) / 9 + Double(pid))
-            let holder = ProcUsage(pid: pid, ppid: 1, name: "roofd", depth: 0, role: .holder, footprint: UInt64(holderMB * wave) << 20, cpu: 0.3)
+            let holder = ProcUsage(pid: pid, ppid: 1, name: "roofd", depth: 0, role: .holder, footprint: UInt64(holderMB * wave) << 20, cpu: 0.3,
+                                   started: up > 0 ? Date().addingTimeInterval(-up) : nil)
             let agent = ProcUsage(pid: pid + 1, ppid: pid, name: "claude", depth: 1, role: .agent, footprint: UInt64(agentMB * wave) << 20,
                                   cpu: cpu * wave)
             return SessionUsage(runtimeId: rid, holderPid: pid, procs: [holder, agent])
         }
         return ["fixture-ready": usage("fixture-ready", holderMB: 380, agentMB: 410, cpu: 1.2, pid: 5100),
                 "fixture-idle": usage("fixture-idle", holderMB: 160, agentMB: 220, cpu: 0.2, pid: 5200),
-                "fixture-working": usage("fixture-working", holderMB: 1_150, agentMB: 640, cpu: 38, pid: 5300)]
+                "fixture-working": usage("fixture-working", holderMB: 1_150, agentMB: 640, cpu: 38, pid: 5300),
+                // LAB-2313: a relaunched row and the two sessions no row owns.
+                "roof-f1x7ure0-2": usage("roof-f1x7ure0-2", holderMB: 90, agentMB: 300, cpu: 2, pid: 5400, up: 4 * 3600),
+                "roof-f1x7ure0": usage("roof-f1x7ure0", holderMB: 33, agentMB: 225, cpu: 0, pid: 5500, up: 2 * 86400 + 4 * 3600),
+                "roof-5he11fx0": usage("roof-5he11fx0", holderMB: 4, agentMB: 2, cpu: 0, pid: 5600, up: 3 * 86400 + 3600)]
     }
 }

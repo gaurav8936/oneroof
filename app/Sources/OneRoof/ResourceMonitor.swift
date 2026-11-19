@@ -54,7 +54,9 @@ final class ResourceMonitor: ObservableObject {
                 self.daemonPid = roofd.daemonPid()
             }
             let snap = self.sampler.sample(ResourceTargets(appPid: getpid(), daemonPid: self.daemonPid, sessions: sessions))
-            let mac = wantsMac ? self.macSampler.sample(appPid: getpid(), oneRoofPids: Set(snap.allProcs.map(\.pid)), regularApps: regular) : nil
+            // LAB-2312: the Mac list takes this tick's One Roof readings as they are (one membership, one CPU meter).
+            let known = Dictionary(snap.allProcs.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+            let mac = wantsMac ? self.macSampler.sample(appPid: getpid(), known: known, regularApps: regular) : nil
             // LAB-549: the local model this One Roof started has grown past its cap: restart it on next use.
             if let big = snap.app.first(where: { $0.ppid != 1 && $0.name.hasPrefix("llama-server") && $0.footprint > LocalModel.restartAbove }) {
                 NSLog("One Roof: local model pid \(big.pid) uses \(big.footprint >> 20) MB, restarting it")

@@ -61,6 +61,8 @@ public struct RuntimeSessionState: Sendable, Equatable {
     public var issueRequests: [IssueRequest] = []
     /// LAB-1606: the question the agent's turn ended with, while it waits for your reply (roofd).
     public var question: String?
+    /// LAB-2311: a terminal is attached to it right now (roofd); the orphan sweep never closes one that is.
+    public var attached: Bool = false
 
     public init(id: RuntimeID, isAgent: Bool, agentName: String? = nil, status: RuntimeStatus = .unknown, ready: Bool = false,
                 title: String? = nil, cwd: String? = nil, pane: String, groupId: String? = nil, seq: Int? = nil,
@@ -106,6 +108,9 @@ public struct LaunchSpec: Sendable {
     public var opening: String?
     /// Trusted supervised launcher; hosted sessions bypass the owner login shell.
     public var executableOverride: String? = nil
+    /// LAB-2311 · a relaunch: the runtime session the row ran before (its ended shell, or an exited holder still
+    /// winding down). The runtime closes it before starting the new one, so the row's old holder is not orphaned.
+    public var replaces: RuntimeID? = nil
 
     public init(id: RuntimeID, label: String, cwd: String, env: [String: String] = [:], agent: AgentKind, args: [String] = [],
                 command: String? = nil, previousGroup: String? = nil, adoptOrphan: Bool = false, claimed: Set<RuntimeID> = []) {
