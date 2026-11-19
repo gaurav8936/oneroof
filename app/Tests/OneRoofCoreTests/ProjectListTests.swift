@@ -47,16 +47,16 @@ final class ProjectListTests: XCTestCase {
         XCTAssertEqual(bugs.status, .active, "Linear says In Progress, so One Roof does")
         XCTAssertEqual(bugs.toCheck, 1)
         XCTAssertEqual(p("LAB-X", "Planned", team: "LAB", "planned", toCheck: 4).status, .planned)
-        XCTAssertEqual(ProjectList.toCheckLabel(1), "1 to check")
-        XCTAssertEqual(ProjectList.toCheckLabel(3), "3 to check")
-        XCTAssertEqual(ProjectList.toCheckLabel(50), "50+ to check")
+        XCTAssertEqual(ProjectList.toCheckLabel(1), "1 in QA")
+        XCTAssertEqual(ProjectList.toCheckLabel(3), "3 in QA")
+        XCTAssertEqual(ProjectList.toCheckLabel(50), "50+ in QA")
         XCTAssertFalse(ProjectStatus.allCases.map(\.label).contains("In review"), "no status Linear does not have")
     }
 
     /// LAB-2307 (owner, 2026-11-19): the chips carry the owner's Linear tab names, in the tabs' order.
     func test_LAB2307_labelsAreTheLinearTabNames() {
         XCTAssertEqual([ProjectList.allLabel] + ProjectStatus.allCases.map(\.label),
-                       ["All projects", "Active", "Planned", "Backlog", "Shipped", "Cancelled"])
+                       ["All projects", "In Progress", "Planned", "Backlog", "Shipped", "Canceled"])
         let done = p("LAB-X", "Done thing", team: "LAB", "completed")
         XCTAssertEqual(done.stateLabel, "Shipped")
         XCTAssertFalse(ProjectStatus.allCases.map(\.label).contains("Completed"))
@@ -204,14 +204,14 @@ final class ProjectListTests: XCTestCase {
         let r = ProjectList.groups(projects: fixture, teams: teams, statuses: [], query: "", folded: ["ZIB"])
         XCTAssertEqual(r.groups.first { $0.key == "LAB" }?.accessibilityLabel, "LAB, Labs, 5 projects, expanded")
         XCTAssertEqual(r.groups.first { $0.key == "ZIB" }?.accessibilityLabel, "ZIB, Zibajoon, 1 project, folded")
-        XCTAssertEqual(ProjectList.chipLabel(.active, count: 12, on: true), "Active, 12 projects, showing")
+        XCTAssertEqual(ProjectList.chipLabel(.active, count: 12, on: true), "In Progress, 12 projects, showing")
         XCTAssertEqual(ProjectList.chipLabel(.shipped, count: 1, on: false), "Shipped, 1 project, hidden")
         let w = p("LAB-2050", "Projects page", team: "LAB", "started")
-        XCTAssertEqual(ProjectList.rowLabel(w, live: 2), "Projects page, LAB-2050, Active, 2 live sessions")
-        XCTAssertEqual(ProjectList.rowLabel(w, live: 1), "Projects page, LAB-2050, Active, 1 live session")
-        XCTAssertEqual(ProjectList.rowLabel(w, live: 0), "Projects page, LAB-2050, Active")
+        XCTAssertEqual(ProjectList.rowLabel(w, live: 2), "Projects page, LAB-2050, In Progress, 2 live sessions")
+        XCTAssertEqual(ProjectList.rowLabel(w, live: 1), "Projects page, LAB-2050, In Progress, 1 live session")
+        XCTAssertEqual(ProjectList.rowLabel(w, live: 0), "Projects page, LAB-2050, In Progress")
         let r2 = p("LAB-2307", "Status mirror", team: "LAB", "started", toCheck: 2)
-        XCTAssertEqual(ProjectList.rowLabel(r2, live: 1), "Status mirror, LAB-2307, Active, 2 to check, 1 live session")
+        XCTAssertEqual(ProjectList.rowLabel(r2, live: 1), "Status mirror, LAB-2307, In Progress, 2 in QA, 1 live session")
     }
 
     // MARK: Contrast (pills and team headers ≥ 4.5:1 in Daylight, Graphite and Midnight)

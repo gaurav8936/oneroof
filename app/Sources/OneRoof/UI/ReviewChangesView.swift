@@ -409,7 +409,7 @@ struct ReviewChangesView: View {
             DispatchQueue.main.async {
                 if rc == 0 {
                     status = "Committed. Nothing was pushed."
-                    if let s, move, s.session.ticket != nil { model.moveTickets(of: s, to: "In Review") }
+                    if let s, move, s.session.ticket != nil { model.moveTickets(of: s, to: "QA") }
                     if let s, handoff { model.askForHandoff(s) }
                 } else {
                     status = "git commit failed: " + out.trimmingCharacters(in: .whitespacesAndNewlines).suffix(200)
@@ -509,7 +509,7 @@ private struct ChecksColumn: View {
                 .background(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).fill(t.card.color))
                 .foregroundStyle(t.text.color)
             if let keys = session?.session.allTickets.map(\.key), !keys.isEmpty {
-                Toggle("Move \(keys.joined(separator: ", ")) to In Review", isOn: $moveTicket).ui(12.5)
+                Toggle("Move \(keys.joined(separator: ", ")) to QA", isOn: $moveTicket).ui(12.5)
             }
             Toggle("Ask \(agentName) to write the handoff", isOn: $askHandoff).ui(12.5).disabled(session?.liveAgent == nil)
             HStack(spacing: 8) {

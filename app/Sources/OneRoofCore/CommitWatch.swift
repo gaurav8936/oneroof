@@ -1,6 +1,6 @@
 import Foundation
 
-/// Move a session's issue to In Review once a commit names it (LAB-474: a session can resolve several issues, each
+/// Move a session's issue to QA once a commit names it (LAB-474: a session can resolve several issues, each
 /// committed as `KEY · [project] …`). The app reads recent commit subjects across the workspace repos; this decides
 /// which pending issue a commit closes.
 public enum CommitWatch {
@@ -36,7 +36,7 @@ public enum CommitWatch {
         return subject.range(of: "(?<![A-Za-z0-9-])\(k)(?![0-9])", options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    /// The session's issues not yet moved to In Review.
+    /// The session's issues not yet moved to QA.
     public static func pending(_ s: Session) -> [SessionIssue] {
         s.allTickets.filter { i in i.id != nil && !s.reviewedTickets.contains { $0.caseInsensitiveCompare(i.key) == .orderedSame } }
     }
