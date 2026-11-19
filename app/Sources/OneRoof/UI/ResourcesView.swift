@@ -299,14 +299,24 @@ struct ResourcesView: View {
     private func sessionRow(_ r: ResourceRow) -> some View {
         let item = model.item(r.id)
         // LAB-2052: a row without a One Roof session is no longer drawn disabled (dimmed below 4.5:1); it just does nothing.
-        return Button { if let item { model.reveal(item) } } label: { sessionRowLabel(r, item) }
+        let row = Button { if let item { model.reveal(item) } } label: { sessionRowLabel(r, item) }
             .buttonStyle(.plain)
             .hoverHighlight(over: t.surface)   // LAB-2052: a hover you can see
-            .padding(.horizontal, 4)
             .help(item == nil ? "Running in roofd without a One Roof row" : "Show \(r.name)")
             .accessibilityElement(children: .combine)
             .accessibilityLabel(rowLabel(r, item))
             .accessibilityHint(item == nil ? "" : "Shows the session")
+        // LAB-2311: a roofd session no row owns can be closed from here.
+        let orphan = item == nil && r.id.hasPrefix("runtime:") && SelfTestMacFixture.sessionStatus(r.id) == nil ? String(r.id.dropFirst("runtime:".count)) : nil
+        return HStack(spacing: 6) {
+            row
+            if let orphan {
+                RoofButton("Close") { model.closeOrphan(orphan) }
+                    .help("End \(orphan) in roofd: no One Roof session owns it")
+                    .accessibilityLabel("Close \(r.name)")
+            }
+        }
+        .padding(.horizontal, 4)
     }
 
     private func rowLabel(_ r: ResourceRow, _ item: BoardItem?) -> String {
