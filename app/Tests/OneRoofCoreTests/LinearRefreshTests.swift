@@ -86,22 +86,22 @@ final class LinearProjectStatusParseTests: XCTestCase {
         return (c, { query })
     }
 
-    func test_LAB2050_parsesStatusAndIssueProbes() throws {
+    func test_LAB2307_parsesStatusAndToCheckCount() throws {
         let (c, q) = client([
             ["id": "1", "name": "LAB-A · Alpha", "state": "started", "status": ["name": "In Progress", "type": "started"],
-             "teams": ["nodes": [["key": "LAB"]]], "working": ["nodes": []], "reviewing": ["nodes": [["id": "r"]]]],
-            ["id": "2", "name": "LAB-B · Beta", "state": "started", "status": ["name": "In Progress", "type": "started"],
-             "teams": ["nodes": [["key": "LAB"]]], "working": ["nodes": [["id": "w"]]], "reviewing": ["nodes": [["id": "r"]]]],
+             "teams": ["nodes": [["key": "LAB"]]], "toCheck": ["nodes": [["id": "r1"], ["id": "r2"]]]],
+            ["id": "2", "name": "LAB-B · Beta", "state": "planned", "status": ["name": "Planned", "type": "planned"],
+             "teams": ["nodes": [["key": "LAB"]]], "toCheck": ["nodes": []]],
             ["id": "3", "name": "HYP-C · Gamma", "state": "started", "status": ["name": "In Review", "type": "started"],
              "teams": ["nodes": [["key": "HYP"]]]],
         ])
         let list = try c.workstreams().sorted { $0.id < $1.id }   // workstreams() sorts by name
         XCTAssertTrue(q().contains("status { name type }"))
-        XCTAssertTrue(q().contains("working: issues(") && q().contains("reviewing: issues("))
-        XCTAssertEqual(list.map(\.status), [.inReview, .inProgress, .inReview])
+        XCTAssertTrue(q().contains("toCheck: issues(") && !q().contains("working: issues("))
+        XCTAssertEqual(list.map(\.status), [.inProgress, .planned, .inProgress], "Linear's status type, nothing worked out")
+        XCTAssertEqual(list.map(\.toCheck), [2, 0, 0])
         XCTAssertEqual(list[0].statusName, "In Progress")
-        XCTAssertTrue(list[0].reviewing); XCTAssertFalse(list[0].working)
-        XCTAssertEqual(list[1].stateLabel, "In progress")
+        XCTAssertEqual(list[0].stateLabel, "In progress")
     }
 
     func test_LAB2050_oldStateIsTheFallback() throws {

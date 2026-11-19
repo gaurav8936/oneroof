@@ -1,19 +1,17 @@
 import Foundation
 
 /// LAB-2050 · the status a project shows on the Projects page: its chip and its pill use the same words.
-/// Linear's project statuses are Backlog · Planned · In Progress · Completed · Canceled (and Paused on older
-/// workspaces). Linear has no In Review project status, so One Roof works it out (agent decision 2026-11-01): a project
-/// that is started (or paused) is **In review** when it has an open issue In Review and none in another started state
-/// (In Progress). A project status named "In Review" (if the owner adds one) counts too.
+/// LAB-2307 (owner, 2026-11-19: "simple and consistent"): One Roof mirrors Linear's project statuses exactly —
+/// Backlog · Planned · In Progress · Completed · Canceled (Paused on older workspaces reads as In progress). It works out
+/// no status of its own; tickets waiting for the owner's check show as a count on the row (`LinearWorkstream.toCheck`).
 public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
-    case backlog, planned, inProgress, inReview, completed, canceled
+    case backlog, planned, inProgress, completed, canceled
 
     public var label: String {
         switch self {
         case .backlog: return "Backlog"
         case .planned: return "Planned"
         case .inProgress: return "In progress"
-        case .inReview: return "In review"
         case .completed: return "Completed"
         case .canceled: return "Canceled"
         }
@@ -25,34 +23,33 @@ public enum ProjectStatus: String, CaseIterable, Sendable, Hashable {
         case .backlog: return "butter"
         case .planned: return "peach"
         case .inProgress: return "sky"
-        case .inReview: return "lavender"
         case .completed: return "mint"
         case .canceled: return "stone"
         }
     }
 
-    /// The owner's default (2026-10-31): In progress + In review.
-    public static let defaultSet: Set<ProjectStatus> = [.inProgress, .inReview]
+    /// The default (LAB-2307): In progress.
+    public static let defaultSet: Set<ProjectStatus> = [.inProgress]
 
-    /// From Linear's project status (`type`, `name`) and whether it has open issues In Progress (`working`) or In Review
-    /// (`reviewing`).
-    public static func of(type: String, name: String = "", working: Bool = false, reviewing: Bool = false) -> ProjectStatus {
+    /// From Linear's project status type, as Linear has it.
+    public static func of(type: String) -> ProjectStatus {
         switch type.lowercased() {
         case "backlog": return .backlog
         case "planned": return .planned
+        case "started", "paused": return .inProgress
         case "completed": return .completed
         case "canceled", "cancelled": return .canceled
-        case "started", "paused":
-            if name.caseInsensitiveCompare("In Review") == .orderedSame { return .inReview }
-            return reviewing && !working ? .inReview : .inProgress
         default: return .backlog
         }
     }
 
-    /// A remembered selection ("inProgress,inReview"); unknown words are skipped. `nil` (never saved) is the default.
+    /// A remembered selection ("inProgress,completed"); unknown words are skipped. `nil` (never saved) is the default,
+    /// and so is a saved choice left with nothing known in it (LAB-2307: an old "inReview" alone).
     public static func decode(_ stored: String?) -> Set<ProjectStatus> {
         guard let stored else { return defaultSet }
-        return Set(stored.split(separator: ",").compactMap { ProjectStatus(rawValue: $0.trimmingCharacters(in: .whitespaces)) })
+        let words = stored.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let known = Set(words.compactMap(ProjectStatus.init(rawValue:)))
+        return known.isEmpty && !words.isEmpty ? defaultSet : known
     }
 
     public static func encode(_ set: Set<ProjectStatus>) -> String {
@@ -124,7 +121,7 @@ public enum ProjectList {
         return Result(groups: groups, hiddenTeams: hidden, counts: counts(projects, query: query))
     }
 
-    /// Whether the filter differs from the default (In progress + In review, no text): then Reset shows.
+    /// Whether the filter differs from the default (In progress, no text): then Reset shows.
     public static func isDefault(statuses: Set<ProjectStatus>, query: String) -> Bool {
         statuses == ProjectStatus.defaultSet && query.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -164,9 +161,13 @@ public enum ProjectList {
         var parts = [w.title]
         if let code = w.wsId { parts.append(code) }
         parts.append(w.status.label)
+        if w.toCheck > 0 { parts.append(toCheckLabel(w.toCheck)) }
         if live > 0 { parts.append(live == 1 ? "1 live session" : "\(live) live sessions") }
         return parts.joined(separator: ", ")
     }
+
+    /// LAB-2307: the row's count of tickets In Review: "1 to check" / "3 to check" / "50+ to check".
+    public static func toCheckLabel(_ n: Int) -> String { n >= 50 ? "50+ to check" : "\(n) to check" }
 
     /// ↑/↓ through the visible rows: the next (or previous) id, the first (or last) when nothing is picked.
     public static func step(from id: String?, by delta: Int, in rows: [LinearWorkstream]) -> String? {
