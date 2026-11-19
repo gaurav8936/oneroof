@@ -60,9 +60,9 @@ public enum BrowserTabs {
         return out.map { w in var w = w; w.tabs.sort { $0.index < $1.index }; return w }
     }
 
-    /// The renderer ("Tab or site") processes of an app: how many, and their memory together.
+    /// The renderer ("Tab or site") processes of an app: how many, and their memory in RAM together (LAB-2312).
     public static func renderers(_ procs: [MacProc]) -> (count: Int, bytes: UInt64) {
-        procs.filter { $0.kind == rendererKind }.reduce((0, 0)) { ($0.0 + 1, $0.1 + $1.footprint) }
+        procs.filter { $0.kind == rendererKind }.reduce((0, 0)) { ($0.0 + 1, $0.1 + $1.resident) }
     }
 
     /// May One Roof read this browser's tabs? Asked of macOS without prompting (AEDeterminePermissionToAutomateTarget
@@ -229,8 +229,8 @@ public enum BrowserTabs {
     /// A process that drops below both lines stays listed this long, so the list does not flicker.
     public static let bigHold: TimeInterval = 30
 
-    /// Over 250 MB or over 10 % CPU (exactly on a line is not over it).
-    public static func isBig(_ p: MacProc) -> Bool { p.footprint > bigBytes || (p.cpu ?? 0) > bigCPU }
+    /// Over 250 MB or over 10 % CPU (exactly on a line is not over it). LAB-2312: memory in RAM, the figure the row shows.
+    public static func isBig(_ p: MacProc) -> Bool { p.resident > bigBytes || (p.cpu ?? 0) > bigCPU }
 
     /// The helpers and renderers to show under "Using a lot": over a line now, or over one within the last 30 s
     /// (`since`: when each pid was last seen over a line). The browser's own main process is not a helper (Quit is on
@@ -242,7 +242,7 @@ public enum BrowserTabs {
             if let t = since[p.pid] { return now.timeIntervalSince(t) <= bigHold }
             return false
         }
-        .sorted { a, b in a.footprint != b.footprint ? a.footprint > b.footprint : a.pid < b.pid }
+        .sorted { a, b in a.resident != b.resident ? a.resident > b.resident : a.pid < b.pid }
     }
 
     /// `since` after a new sample: every pid over a line now is stamped `now`; pids that are gone or past the hold drop.

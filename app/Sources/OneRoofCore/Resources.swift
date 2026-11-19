@@ -50,12 +50,24 @@ public struct ProcTable: Sendable {
 
 // MARK: Readings
 
-/// What the kernel says about one process: footprint (Activity Monitor's Memory column, what jetsam counts) and
-/// total CPU time so far.
+/// What the kernel says about one process: footprint (Activity Monitor's Memory column, what jetsam and roofd's watchdog
+/// count), resident size (what is in RAM now) and total CPU time so far.
+/// LAB-2312: the page showed footprints and summed them against the Mac's "in use", so rows passed RAM (22 GB of apps on
+/// a Mac with 13 GB in use and 9.2 GB of swap). `ri_phys_footprint` counts a process's compressed pages at their
+/// uncompressed size, its pages swapped out to disk and IOKit/GPU memory charged to it; "in use" counts what sits in RAM.
+/// The only per-process RAM figure macOS gives another process without its task port (task_for_pid is refused, so
+/// footprint minus swapped cannot be read) is `ri_resident_size`, Activity Monitor's "Real Memory": the pages of the
+/// process in RAM now. It counts a shared page (a framework) once per process that maps it, but those are small next to
+/// what apps allocate; the swap figure stays the Mac's own (`MacMemory.swapUsed`). So the page shows resident memory,
+/// and footprint stays for the watchdog's lines (what roofd itself checks).
 public struct RawUsage: Equatable, Sendable {
     public var footprint: UInt64
+    /// Pages in RAM now (`ri_resident_size`); nil from a source that does not read it (then = footprint).
+    public var resident: UInt64
     public var cpuNanos: UInt64
-    public init(footprint: UInt64, cpuNanos: UInt64) { self.footprint = footprint; self.cpuNanos = cpuNanos }
+    public init(footprint: UInt64, cpuNanos: UInt64, resident: UInt64? = nil) {
+        self.footprint = footprint; self.cpuNanos = cpuNanos; self.resident = resident ?? footprint
+    }
 }
 
 /// The Mac's memory as Activity Monitor shows it.
@@ -118,16 +130,23 @@ extension ResourceSource {
 
 // MARK: CPU
 
-/// CPU % between two samples of one process: delta CPU time / delta wall time × 100 (can pass 100 with several
-/// threads busy, like Activity Monitor). Remembers the last sample per pid.
+/// CPU % between two samples of one process: delta CPU time / delta wall time × 100, i.e. % of one core (100 % = one
+/// core busy; can pass 100 with several threads busy, like Activity Monitor). Remembers the last sample per pid.
 public struct CPUMeter: Sendable {
     private var last: [Int32: (cpu: UInt64, at: UInt64)] = [:]
-    public init() {}
+    /// LAB-2312: a delta over a longer gap than this is not a reading of now (the whole-Mac sample pauses while no
+    /// Resources page shows, then its first figure averaged the minutes in between): treated as a first sample.
+    public var maxWindowNanos: UInt64?
+    public init(maxWindowNanos: UInt64? = nil) { self.maxWindowNanos = maxWindowNanos }
+    /// 2.5 sample intervals (3 s): a tick that came late still counts, a paused sampler's first tick does not.
+    public static let window: UInt64 = 7_500_000_000
 
-    /// nil on the first sample of a pid (no delta yet); 0 when the counter went backwards (the pid was reused).
+    /// nil on the first sample of a pid (no delta yet) or after a gap over `maxWindowNanos`; 0 when the counter went
+    /// backwards (the pid was reused).
     public mutating func percent(pid: Int32, cpuNanos: UInt64, at: UInt64) -> Double? {
         defer { last[pid] = (cpuNanos, at) }
         guard let prev = last[pid], at > prev.at else { return nil }
+        if let w = maxWindowNanos, at - prev.at > w { return nil }
         guard cpuNanos >= prev.cpu else { return 0 }
         return Double(cpuNanos - prev.cpu) / Double(at - prev.at) * 100
     }
@@ -148,15 +167,19 @@ public struct ProcUsage: Equatable, Sendable, Identifiable {
     public var name: String
     public var depth: Int
     public var role: ProcRole
+    /// What roofd's watchdog measures (`RawUsage.footprint`).
     public var footprint: UInt64
+    /// LAB-2312: in RAM now, what the page shows and adds up (`RawUsage.resident`).
+    public var resident: UInt64
     /// nil until the second sample.
     public var cpu: Double?
     /// Set for the app, the daemon and holders.
     public var started: Date?
     public var id: Int32 { pid }
-    public init(pid: Int32, ppid: Int32, name: String, depth: Int, role: ProcRole, footprint: UInt64, cpu: Double?, started: Date? = nil) {
+    public init(pid: Int32, ppid: Int32, name: String, depth: Int, role: ProcRole, footprint: UInt64, cpu: Double?, started: Date? = nil,
+                resident: UInt64? = nil) {
         self.pid = pid; self.ppid = ppid; self.name = name; self.depth = depth; self.role = role
-        self.footprint = footprint; self.cpu = cpu; self.started = started
+        self.footprint = footprint; self.resident = resident ?? footprint; self.cpu = cpu; self.started = started
     }
 }
 
@@ -216,8 +239,10 @@ public struct SessionUsage: Equatable, Sendable {
         self.runtimeId = runtimeId; self.holderPid = holderPid; self.procs = procs; self.headroom = headroom; self.memoryWarning = memoryWarning
     }
     public var footprint: UInt64 { procs.reduce(0) { $0 + $1.footprint } }
+    /// LAB-2312: the session total, in RAM (every process under the holder, the holder included).
+    public var resident: UInt64 { procs.reduce(0) { $0 + $1.resident } }
     public var cpu: Double { procs.reduce(0) { $0 + ($1.cpu ?? 0) } }
-    /// The holder alone: what roofd's watchdog measures against its lines.
+    /// The holder alone, by footprint: what roofd's watchdog measures against its lines (the gauge, labelled "holder").
     public var holderFootprint: UInt64 { procs.first { $0.role == .holder }?.footprint ?? 0 }
     public var level: Headroom.Level { holderPid == nil ? .ok : max(headroom.level(holderFootprint), memoryWarning ? .warn : .ok) }
 }
@@ -254,9 +279,13 @@ public struct ResourceSnapshot: Equatable, Sendable {
         return out
     }
     public var footprint: UInt64 { allProcs.reduce(0) { $0 + $1.footprint } }
+    /// LAB-2312: in RAM, what the page shows.
+    public var resident: UInt64 { allProcs.reduce(0) { $0 + $1.resident } }
     public var cpu: Double { allProcs.reduce(0) { $0 + ($1.cpu ?? 0) } }
     public var processCount: Int { allProcs.count }
     public var appFootprint: UInt64 { app.reduce(0) { $0 + $1.footprint } }
+    /// The app and what it started (terminal attach helpers, the local model): not the app process alone.
+    public var appResident: UInt64 { app.reduce(0) { $0 + $1.resident } }
     public var appCPU: Double { app.reduce(0) { $0 + ($1.cpu ?? 0) } }
 }
 
@@ -284,7 +313,8 @@ public struct ResourceTargets: Equatable, Sendable {
 /// Reads One Roof's process trees once per tick. Not thread safe: one serial queue owns it.
 public final class ResourceSampler {
     let source: ResourceSource
-    private var cpu = CPUMeter()
+    /// LAB-2312: the one CPU meter for One Roof's processes; the whole-Mac list takes these same figures for them.
+    private var cpu = CPUMeter(maxWindowNanos: CPUMeter.window)
     private var names: [Int32: String] = [:]
     private var starts: [Int32: Date] = [:]
     private var holderLimits: [Int32: Headroom] = [:]
@@ -335,7 +365,7 @@ public final class ResourceSampler {
                 starts[pid] = started
             }
             return ProcUsage(pid: pid, ppid: e.ppid, name: name, depth: depth, role: role, footprint: u.footprint,
-                             cpu: cpu.percent(pid: pid, cpuNanos: u.cpuNanos, at: now), started: started)
+                             cpu: cpu.percent(pid: pid, cpuNanos: u.cpuNanos, at: now), started: started, resident: u.resident)
         }
         func group(_ root: Int32, rootRole: ProcRole, excluding: Set<Int32>) -> [ProcUsage] {
             table.tree(root, excluding: excluding).compactMap { node in
@@ -433,9 +463,10 @@ public struct ResourceHistory: Sendable {
         lastSeen[key] = p.at
     }
 
+    /// LAB-2312: the points hold memory in RAM (resident), the figure the page shows next to them.
     public mutating func record(_ s: ResourceSnapshot) {
-        record(Self.totalKey, ResourcePoint(at: s.at, footprint: s.footprint, cpu: s.cpu))
-        for (id, u) in s.sessions { record(id, ResourcePoint(at: s.at, footprint: u.footprint, cpu: u.cpu)) }
+        record(Self.totalKey, ResourcePoint(at: s.at, footprint: s.resident, cpu: s.cpu))
+        for (id, u) in s.sessions { record(id, ResourcePoint(at: s.at, footprint: u.resident, cpu: u.cpu)) }
         prune(now: s.at)
     }
 
@@ -467,7 +498,8 @@ public struct ResourceWindowGroup: Equatable, Sendable, Identifiable {
     public var id: String
     public var name: String
     public var rows: [ResourceRow]
-    public var footprint: UInt64 { rows.reduce(0) { $0 + $1.usage.footprint } }
+    /// LAB-2312: in RAM, like the rows.
+    public var footprint: UInt64 { rows.reduce(0) { $0 + $1.usage.resident } }
     public var cpu: Double { rows.reduce(0) { $0 + $1.usage.cpu } }
 }
 
@@ -481,7 +513,7 @@ public enum ResourceBoard {
         func ordered(_ r: [ResourceRow]) -> [ResourceRow] {
             r.sorted { a, b in
                 if sort == .heaviest {
-                    if a.usage.footprint != b.usage.footprint { return a.usage.footprint > b.usage.footprint }
+                    if a.usage.resident != b.usage.resident { return a.usage.resident > b.usage.resident }
                     if a.usage.cpu != b.usage.cpu { return a.usage.cpu > b.usage.cpu }
                 }
                 let c = a.name.localizedStandardCompare(b.name)
@@ -540,6 +572,23 @@ public enum ResourceFormat {
         return String(format: "%.0f%%", c)
     }
 
+    /// LAB-2312: what every CPU figure on the page is (not normalised to the Mac's cores, like Activity Monitor).
+    public static let cpuUnit = "% of one core"
+
+    /// LAB-2312: the footer under the sessions, from the lines roofd really runs with (the holders' and the daemon's
+    /// environment, else `MemoryWatchdog`'s defaults). It said "warns at 1.0 GB" whatever they were.
+    public static func guardNote(holder: Headroom, daemon: Headroom) -> String {
+        "roofd warns when a session's holder passes \(bytes(holder.warnBytes)) and ends the session at \(bytes(holder.limitBytes)); "
+            + "the daemon warns at \(bytes(daemon.warnBytes)) and stops at \(bytes(daemon.limitBytes))."
+    }
+
+    /// The lines for the footer: a running holder's (by runtime id, so it does not flip between ticks), else the
+    /// defaults; the daemon's as read.
+    public static func guardNote(_ s: ResourceSnapshot) -> String {
+        let holder = s.sessions.sorted { $0.key < $1.key }.first { $0.value.holderPid != nil }?.value.headroom ?? .holderDefault
+        return guardNote(holder: holder, daemon: s.daemonHeadroom)
+    }
+
     /// "3d 4h", "2h 5m", "12m", "40s".
     public static func uptime(_ s: TimeInterval) -> String {
         let n = max(0, Int(s))
@@ -596,7 +645,9 @@ public final class LiveResourceSource: ResourceSource {
         }
         guard rc == 0 else { return nil }
         let ticks = info.ri_user_time &+ info.ri_system_time
-        return RawUsage(footprint: info.ri_phys_footprint, cpuNanos: ticks / timebase.denom * timebase.numer + ticks % timebase.denom * timebase.numer / timebase.denom)
+        // LAB-2312: resident size too (in RAM now); see `RawUsage`.
+        return RawUsage(footprint: info.ri_phys_footprint, cpuNanos: ticks / timebase.denom * timebase.numer + ticks % timebase.denom * timebase.numer / timebase.denom,
+                        resident: info.ri_resident_size)
     }
 
     public func environment(_ pid: Int32) -> [String: String]? {
