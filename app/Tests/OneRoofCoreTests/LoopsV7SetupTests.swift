@@ -206,4 +206,27 @@ final class LoopsV7SetupTests: XCTestCase {
         XCTAssertEqual(LoopsV7Setup.splitError("Set kind: the kit refused").reason, "the kit refused")
         XCTAssertEqual(LoopsV7Setup.names(["a", "b", "c", "d", "e"]), "a, b, c +2")
     }
+
+    // LAB-2336 · categories: from tags, else the name's prefix, else Kit (built-in) or Mine.
+    func testLoopCategories() {
+        XCTAssertEqual(LoopsV7Setup.category(id: "rentals-vrbo-read", tags: ["rentals", "placeholder"], mine: true), "Rentals")
+        XCTAssertEqual(LoopsV7Setup.category(id: "x", tags: ["placeholder", "mac"], mine: true), "Mac")
+        XCTAssertEqual(LoopsV7Setup.category(id: "oneroof-nightly-bugs", tags: nil, mine: true), "One Roof")
+        XCTAssertEqual(LoopsV7Setup.category(id: "my-mac-resource-watch", tags: nil, mine: true), "Mac")
+        XCTAssertEqual(LoopsV7Setup.category(id: "cost-watch", tags: nil, mine: false), "Kit")
+        XCTAssertEqual(LoopsV7Setup.category(id: "my-weekly-review", tags: [], mine: true), "Mine")
+        XCTAssertEqual(LoopsV7Setup.category(id: "x", tags: ["garden"], mine: true), "Garden")
+        var a = LoopsV7Setup.libraryRow(row("rentals-a", family: "watch", kind: "sentinel", on: false, mine: true), loop: nil, act: nil, needsSetup: false, kitKnown: true, file: nil)
+        a.category = "Rentals"
+        let b = LoopsV7Setup.libraryRow(row("cost-watch", family: "watch", kind: "sentinel", on: true, mode: .live), loop: nil, act: "issue", needsSetup: false, kitKnown: true, file: nil)
+        XCTAssertEqual(b.category, "Kit")
+        XCTAssertEqual(LoopsV7Setup.filter([a, b], query: "", family: nil, state: nil, category: "Rentals").map(\.id), ["rentals-a"])
+        XCTAssertEqual(LoopsV7Setup.filter([a, b], query: "rentals", family: nil, state: nil).map(\.id), ["rentals-a"])
+        XCTAssertEqual(LoopsV7Setup.categoryCounts([a, b]).map(\.id), ["All", "Kit", "Rentals"])
+    }
+
+    func testLoopFileTags() {
+        let y = "name: rentals-x\ntitle: Rentals · x\ngoal: g\ntags:\n- rentals\n- placeholder\n"
+        XCTAssertEqual(LoopFiles.loop(fromYAML: y, path: "/t/rentals-x.loop.yaml", repoPath: "/r")?.tags, ["rentals", "placeholder"])
+    }
 }

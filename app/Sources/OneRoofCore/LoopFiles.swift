@@ -36,6 +36,7 @@ public enum LoopFiles {
         l.specFile = path
         l.kind = y.string("kind")
         l.act = y.map("act")["by"]
+        if let t = y.lists["tags"], !t.isEmpty { l.tags = t }
         l.externalSchedule = schedule(y)
         return l
     }

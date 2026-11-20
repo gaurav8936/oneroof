@@ -201,6 +201,8 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
     /// LAB-1922: the kit's kind (reporter, prober, fixer, judge …) and how it acts (none · issue · pr), when known.
     public var kind: String?
     public var act: String?
+    /// LAB-2336: the loop file's `tags` (e.g. rentals, mac); the Library groups and filters loops by them.
+    public var tags: [String]?
 
     public var displayTitle: String {
         if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
@@ -216,12 +218,12 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
         self.hostedConnection = nil; self.hostedRuntime = nil
         self.trigger = trigger; self.limits = limits; self.pinned = pinned; self.state = state; self.createdAt = createdAt
         self.checkTimeout = checkTimeout; self.run = nil; self.runRequested = false; self.lastRunAt = nil; self.stopReason = nil
-        self.failureSeenAt = nil; self.specFile = nil; self.externalSchedule = nil; self.harvestBase = nil; self.kind = nil; self.act = nil
+        self.failureSeenAt = nil; self.specFile = nil; self.externalSchedule = nil; self.harvestBase = nil; self.kind = nil; self.act = nil; self.tags = nil
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, title, origin, goal, check, repoPath, agent, model, hostedConnection, hostedRuntime, account, roundPrompt, trigger, limits, pinned, state,
-             createdAt, checkTimeout, run, runRequested, lastRunAt, stopReason, failureSeenAt, specFile, externalSchedule, harvestBase, kind, act
+             createdAt, checkTimeout, run, runRequested, lastRunAt, stopReason, failureSeenAt, specFile, externalSchedule, harvestBase, kind, act, tags
     }
 
     /// The failure Needs you shows (LAB-1866): the run stopped at a limit and you have not marked it seen since.
@@ -262,6 +264,7 @@ public struct Loop: Codable, Identifiable, Equatable, Sendable {
         harvestBase = try c.decodeIfPresent(String.self, forKey: .harvestBase)
         kind = try c.decodeIfPresent(String.self, forKey: .kind)
         act = try c.decodeIfPresent(String.self, forKey: .act)
+        tags = try c.decodeIfPresent([String].self, forKey: .tags)
     }
 
     /// The loop's own branch and worktree (never the live checkout).

@@ -51,6 +51,8 @@ public enum LoopsV7Setup {
         public var on: Bool
         public var needsSetup: Bool
         public var failing: Bool
+        /// LAB-2336: the loop's category ("Rentals", "Mac", "One Roof", "Kit", …), from its tags or its name.
+        public var category: String = "Other"
         /// "mine · by kit".
         public var originLine: String { origin + " · by " + (engine == .kit ? "kit" : "One Roof") }
     }
@@ -119,7 +121,27 @@ public enum LoopsV7Setup {
                           kindWords: kindWords(family: r.family, kind: r.kind), subtype: LoopKinds.kind(r.kind)?.title ?? "no kind",
                           watches: LoopsV7.shortGoal(r.goal.isEmpty ? r.name : r.goal), goal: r.goal, when: when(r, loop: loop),
                           mayAct: mayAct(act: act, kind: r.kind, engine: r.engine), stateLabel: label, tone: tone, file: file,
-                          on: r.on, needsSetup: needsSetup, failing: r.state == .failing)
+                          on: r.on, needsSetup: needsSetup, failing: r.state == .failing,
+                          category: category(id: r.id, tags: loop?.tags, mine: r.mine))
+    }
+
+    /// LAB-2336 · a loop's category: its first meaningful tag ("rentals" → Rentals), else its name's prefix (rentals-…,
+    /// oneroof-…, my-mac-…), else Kit for the kit's built-ins and Mine for the rest of yours.
+    public static func category(id: String, tags: [String]?, mine: Bool) -> String {
+        let named: [String: String] = ["rentals": "Rentals", "mac": "Mac", "oneroof": "One Roof", "one-roof": "One Roof", "agentair": "AgentAir",
+                                       "zibajoon": "Zibajoon", "hypothesys": "Hypothesys", "gabblegrid": "GabbleGrid", "evals": "Evals", "docs": "Docs"]
+        let skip: Set<String> = ["placeholder", "draft", "experimental", "resources"]
+        if let t = (tags ?? []).map({ $0.lowercased() }).first(where: { !skip.contains($0) }) {
+            return named[t] ?? t.prefix(1).uppercased() + t.dropFirst()
+        }
+        for (prefix, name) in [("rentals-", "Rentals"), ("oneroof-", "One Roof"), ("my-mac", "Mac"), ("agentair-", "AgentAir")] where id.hasPrefix(prefix) { return name }
+        return mine ? "Mine" : "Kit"
+    }
+
+    /// Categories with counts, biggest first ("All" first), for the Library's category chips.
+    public static func categoryCounts(_ rows: [LibraryRow]) -> [(id: String, count: Int)] {
+        let by = Dictionary(grouping: rows, by: \.category).map { ($0.key, $0.value.count) }.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0 < $1.0 }
+        return [("All", rows.count)] + by.map { (id: $0.0, count: $0.1) }
     }
 
     /// Schedule words, with the triggers a cron can't say ("on git.push", "when quiet", "until done").
@@ -146,10 +168,11 @@ public enum LoopsV7Setup {
     }
 
     /// Search (name, what it watches or does, its kind and subtype, its file) and the kind and state chips.
-    public static func filter(_ rows: [LibraryRow], query: String, family: String?, state: LibraryState?) -> [LibraryRow] {
+    public static func filter(_ rows: [LibraryRow], query: String, family: String?, state: LibraryState?, category: String? = nil) -> [LibraryRow] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         return rows.filter { r in
             if let f = family, f != "all", r.family != f { return false }
+            if let c = category, c != "All", r.category != c { return false }
             switch state {
             case .on?: if !r.on || r.needsSetup { return false }
             case .off?: if r.on || r.needsSetup { return false }
@@ -158,7 +181,7 @@ public enum LoopsV7Setup {
             case nil: break
             }
             guard !q.isEmpty else { return true }
-            return [r.name, r.id, r.watches, r.goal, r.kindWords, r.subtype, r.file ?? ""].contains { $0.lowercased().contains(q) }
+            return [r.name, r.id, r.watches, r.goal, r.kindWords, r.subtype, r.category, r.file ?? ""].contains { $0.lowercased().contains(q) }
         }
     }
 

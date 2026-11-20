@@ -20,6 +20,9 @@ struct LoopsLibrary: View {
     @State private var confirmOn: String?
     @State private var setKind: [String]?
     @State private var width: CGFloat = 1100
+    /// LAB-2336: a category chip (from the loop's tags or name: Rentals, Mac, One Roof, Kit, …) and how the table is grouped.
+    @State private var category = "All"
+    @AppStorage("loops.library.groupBy") private var groupBy = "kind"
     @FocusState private var searchFocused: Bool
 
     static let loopW: CGFloat = 178, kindW: CGFloat = 132, whenW: CGFloat = 104, actW: CGFloat = 86, stateW: CGFloat = 118
@@ -28,10 +31,12 @@ struct LoopsLibrary: View {
 
     var body: some View {
         let all = libraryRows
-        let shown = LoopsV7Setup.ordered(LoopsV7Setup.filter(all, query: filter.wrappedValue.query, family: filter.wrappedValue.family, state: state))
+        let filtered = LoopsV7Setup.ordered(LoopsV7Setup.filter(all, query: filter.wrappedValue.query, family: filter.wrappedValue.family, state: state, category: category))
+        let shown = groupBy == "category" ? Self.byCategory(filtered) : filtered
         let sel = shown.first { $0.id == nav.librarySelected } ?? shown.first
         VStack(alignment: .leading, spacing: 12) {
             kindTabs(all)
+            categoryRow(all)
             filterRow(shown: shown.count, all: all.count)
             if gallery {
                 ScrollView {
@@ -114,6 +119,50 @@ struct LoopsLibrary: View {
         .overlay(alignment: .bottom) { Rectangle().fill(t.separator.color).frame(height: 1) }
     }
 
+    /// Categories in the order of their size (biggest first), keeping the kind order inside each.
+    static func byCategory(_ rows: [LoopsV7Setup.LibraryRow]) -> [LoopsV7Setup.LibraryRow] {
+        let order = LoopsV7Setup.categoryCounts(rows).dropFirst().map(\.id)
+        return rows.enumerated().sorted { a, b in
+            let ia = order.firstIndex(of: a.element.category) ?? .max, ib = order.firstIndex(of: b.element.category) ?? .max
+            return ia != ib ? ia < ib : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    private func categoryRow(_ all: [LoopsV7Setup.LibraryRow]) -> some View {
+        HStack(spacing: 8) {
+            Text("Category").ui(12, .semibold).foregroundStyle(t.text2.color)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(LoopsV7Setup.categoryCounts(all), id: \.id) { c in
+                        let on = category == c.id
+                        Button { category = on && c.id != "All" ? "All" : c.id } label: {
+                            HStack(spacing: 4) {
+                                Text(c.id).ui(12.5, .semibold)
+                                Text("\(c.count)").ui(11.5, .medium).opacity(0.75)
+                            }
+                            .foregroundStyle((on ? t.onAccent : t.text).color)
+                            .padding(.vertical, 4).padding(.horizontal, 10)
+                            .background(Capsule().fill(on ? t.accent.color : .clear))
+                            .overlay(Capsule().strokeBorder((on ? t.accent : t.separatorStrong).color, lineWidth: 1))
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(PressStyle(radius: 12))
+                        .accessibilityLabel("Category \(c.id), \(c.count) loops" + (on ? ", selected" : ""))
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+            Text("Group by").ui(12, .semibold).foregroundStyle(t.text2.color)
+            Picker("Group by", selection: $groupBy) {
+                Text("Kind").tag("kind")
+                Text("Category").tag("category")
+            }
+            .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+            .help("Kind keeps the table in kind order; Category puts each category's loops together under its own heading")
+        }
+    }
+
     private func filterRow(shown: Int, all: Int) -> some View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
@@ -178,7 +227,9 @@ struct LoopsLibrary: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
-                                if i > 0 { Rectangle().fill(t.separator.color.opacity(0.6)).frame(height: 1).padding(.horizontal, 8) }
+                                if groupBy == "category", i == 0 || rows[i - 1].category != r.category {
+                                    categoryHeader(r.category, count: rows.filter { $0.category == r.category }.count, first: i == 0)
+                                } else if i > 0 { Rectangle().fill(t.separator.color.opacity(0.6)).frame(height: 1).padding(.horizontal, 8) }
                                 row(r, selected: r.id == selected)
                             }
                         }
@@ -193,12 +244,24 @@ struct LoopsLibrary: View {
 
     private func head(_ s: String) -> some View { LoopLabel(s) }
 
+    private func categoryHeader(_ name: String, count: Int, first: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text(name).ui(13, .bold).foregroundStyle(t.text.color)
+            Text("\(count) loop\(count == 1 ? "" : "s")").ui(12).foregroundStyle(t.text2.color)
+            Spacer()
+        }
+        .padding(.horizontal, 14).padding(.top, first ? 6 : 14).padding(.bottom, 6)
+        .background(t.surface.color.opacity(0.6))
+        .overlay(alignment: .bottom) { Rectangle().fill(t.separator.color).frame(height: 1) }
+        .accessibilityAddTraits(.isHeader)
+    }
+
     private func row(_ r: LoopsV7Setup.LibraryRow, selected: Bool) -> some View {
         Button { nav.librarySelected = r.id } label: {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(r.name).ui(13.5, .semibold).foregroundStyle(t.text.color).lineLimit(1).truncationMode(.tail)
-                    Text(r.originLine).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
+                    Text(groupBy == "category" ? r.originLine : r.originLine + " · " + r.category).ui(11.5).foregroundStyle(t.text2.color).lineLimit(1)
                 }
                 .frame(width: Self.loopW, alignment: .leading)
                 LoopLibraryKindTag(family: r.family, words: r.kindWords).frame(width: Self.kindW, alignment: .leading)
