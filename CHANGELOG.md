@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.10 — The Inbox stops jumping: handled rows settle in place, and Done today keeps what you did (21 Nov 2026)
+
+- **Handled rows stay where they were.** When you answer, approve or dismiss something, its row greys out in place and
+  says what happened ("✓ Replied: ship it", "✓ Approved", "✓ Dismissed"). Nothing below it moves, and the panel stays on
+  it with what you did until you press ↓. Rows that leave by themselves say why: "Answered in the terminal", "Session
+  closed", "Expired after 7 days". Counts and the badge still drop at once. (LAB-2352)
+- **Done today.** When you leave the Inbox, or after 10 minutes, settled rows fold into Done today at the bottom of the
+  list: what you did today, newest first, with a one-line summary ("replied 2 · approved 1"). It opens in place and
+  survives a restart; Decided keeps the full record. (LAB-2352)
+- **"Sessions", not "Active sessions".** The Inbox's filter reads All · Sessions · Loops: it says where an item came from.
+  "Active" now only appears on the Sessions page, where it means a session is still running. (LAB-2351)
+- **The header says what your sessions are doing.** "3 sessions open, all idle" or "3 open · 1 working · 2 idle", instead
+  of "3 other sessions working" for sessions that were idle. (LAB-2351)
+
 ## 2.0.9.1 — The Inbox, redone: one list for sessions and loops, red only when something waits on you (21 Nov 2026)
 
 The first published build of 2.0.9 (2.0.9 itself stopped at the release gate), with two fixes on top:

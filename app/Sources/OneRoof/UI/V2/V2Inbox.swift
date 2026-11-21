@@ -77,10 +77,15 @@ struct V2InboxPage: View {
     @State private var showAll: Set<UUID> = []
     @State private var failed: [String: String] = [:]
     @State private var undoRule: Decision?
-    /// A block that just left (answered here or in its terminal): shown folded for 1.5 s, where it was.
-    struct Ghost: Equatable { var block: InboxBlock; var index: Int; var line: String }
-    @State private var ghosts: [String: Ghost] = [:]
+    /// LAB-2352: rows that left stay in place, greyed, with what happened (InboxHistory), then fold into Done today.
+    @ObservedObject private var history = InboxHistory.shared
+    /// What each row looked like while it was live, so a row that left can still be drawn and explained.
+    struct Snap { var title: String; var postmark: String; var tier: InboxTier; var loopId: String?; var outcomeKind: String?; var when: Date? }
+    @State private var snaps: [String: Snap] = [:]
     @State private var lastBlocks: [InboxBlock] = []
+    /// The list as last shown (live and settled rows), for where a leaving row stays.
+    @State private var lastOrder: [String] = []
+    @State private var showDone = false
     @State private var newAbove = 0
     /// LAB-2342 (4j): loop items selected for one decision (space, ⇧↑ ⇧↓, Select all).
     @State private var batch: Set<String> = []
@@ -97,7 +102,7 @@ struct V2InboxPage: View {
             if win.inboxTab == .decided {
                 VStack(spacing: 0) {
                     // LAB-2342 (4k): "Decided N" · N decided today, sessions and loops.
-                    header(count: model.inboxDecidedToday, quiet: 0, sub: "\(model.inboxDecidedToday) decided today · sessions and loops",
+                    header(count: model.inboxDecidedToday, others: nil, sub: "\(model.inboxDecidedToday) decided today · sessions and loops",
                            all: model.inboxLayout.all.count, title: "Decided")
                     V2DecidedList(model: model, win: win)
                 }
@@ -146,17 +151,18 @@ struct V2InboxPage: View {
         let secs = InboxFeed.sections(full, filter: f, tier: tier, loopOf: loopOf)
         let layout = InboxLayout(asks: secs.flatMap(\.blocks), loops: [])   // the list as shown = keyboard order
         let decided = model.inboxDecided
-        let quiet = Inbox.quietCount(liveSessions: model.sessionItems.filter { $0.liveAgent != nil }.map(\.id), shown: full)
+        let others = sessionsLine(full)
         let loopCount = Set(full.compactMap { loopItem($0)?.loopId }).count
+        let order = shownOrder(layout, filter: f)
         return VStack(spacing: 0) {
-            header(count: c.count(f), quiet: f == .loops ? 0 : quiet, sub: InboxFeed.subLine(c, filter: f, loopCount: loopCount), all: c.all)
+            header(count: c.count(f), others: f == .loops ? nil : others, sub: InboxFeed.subLine(c, filter: f, loopCount: loopCount), all: c.all)
             if !model.runtimeOK && !loading && !SelfTest.isActive || ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_ROOFDDOWN"] == "1" { roofdBanner }
             HStack(spacing: 0) {
-                listColumn(secs, layout: layout, filter: f, counts: c)
+                listColumn(secs, layout: layout, order: order, filter: f, counts: c)
                     .frame(width: Self.listWidth)
                     .background(t.surface2.color)
                 Rectangle().fill(t.separator.color).frame(width: 1)
-                panelColumn(layout, filter: f, counts: c)
+                panelColumn(layout, order: order, filter: f, counts: c)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -165,13 +171,18 @@ struct V2InboxPage: View {
         .focusable()
         .focusEffectDisabled()
         .focused($keys)
-        .onKeyPress(phases: .down) { k in key(k, layout: layout) }
-        .background(shortcuts(layout))
-        .onChange(of: layout.all.map(\.id)) { _, _ in track(layout.all) }
+        .onKeyPress(phases: .down) { k in key(k, layout: layout, order: order) }
+        .background(shortcuts(layout, order: order))
+        .onChange(of: full.map(\.id)) { _, _ in track(full, order: order) }
+        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in history.tick() }
+        .onDisappear { history.foldAll() }   // LAB-2352: leaving the Inbox folds settled rows into Done today
         .onChange(of: model.needsPick) { _, id in pick(id, layout: layout, decided: decided) }
         .onAppear {
-            lastBlocks = layout.all
-            if focused == nil { focused = layout.all.first?.id }
+            lastBlocks = full
+            lastOrder = order
+            snaps = snapshot(full)
+            // Back on the Inbox after leaving: a row you were on has folded into Done today; start at the top.
+            if focused == nil || !(full.contains { $0.id == focused } || history.inPlace.contains { $0.id == focused }) { focused = layout.all.first?.id }
             DispatchQueue.main.async { if drafts.editing == nil { keys = true } }
             if let id = model.needsPick { pick(id, layout: layout, decided: decided) }
         }
@@ -180,6 +191,7 @@ struct V2InboxPage: View {
             if let raw = o?["filter"] as? String, let nf = InboxFilter(rawValue: raw) { setFilter(nf) }
             if let p = o?["attach"] as? String, let id = focused ?? layout.all.first?.id { drafts.attach(id, [p]) }
             if o?["decided"] as? Bool == true { win.inboxTab = .decided }
+            if o?["fold"] as? Bool == true { history.foldAll(); showDone = true; focused = layout.all.first?.id }   // LAB-2352 self-test INBOXFOLD
             if let loop = o?["batch"] as? String {   // LAB-2342: select a loop's items (self-test INBOXBATCH)
                 batch = Set(layout.all.filter { batchable($0) && loopItem($0)?.loopId == loop }.map(\.id))
             }
@@ -203,13 +215,20 @@ struct V2InboxPage: View {
         if let fid = focused, !all.contains(where: { $0.id == fid && f.admits($0) }) { focused = first?.id }
         else if focused == nil { focused = first?.id }
         newAbove = 0
+        lastOrder = shownOrder(InboxLayout(asks: InboxFeed.sections(all, filter: f, tier: tier, loopOf: loopOf).flatMap(\.blocks), loops: []), filter: f)
     }
 
     // MARK: List
 
-    private func listColumn(_ secs: [InboxSection], layout: InboxLayout, filter f: InboxFilter, counts c: InboxCounts) -> some View {
-        let section = Dictionary(secs.flatMap { s in s.blocks.map { ($0.id, s) } }, uniquingKeysWith: { a, _ in a })
-        let entries = withGhosts(layout.all)
+    private func listColumn(_ secs: [InboxSection], layout: InboxLayout, order: [String], filter f: InboxFilter, counts c: InboxCounts) -> some View {
+        var section = Dictionary(secs.flatMap { s in s.blocks.map { ($0.id, s) } }, uniquingKeysWith: { a, _ in a })
+        // A settled row stays under the heading it was under: the section of the next live row (else the one before).
+        for (i, id) in order.enumerated() where section[id] == nil {
+            if let s = order[(i + 1)...].lazy.compactMap({ section[$0] }).first ?? order[..<i].reversed().lazy.compactMap({ section[$0] }).first { section[id] = s }
+        }
+        let live = Dictionary(layout.all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let settled = Dictionary(history.rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let done = history.done
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
@@ -217,23 +236,26 @@ struct V2InboxPage: View {
                     sourceFilter(f, counts: c)
                     Text("⌘1 All · ⌘2 Sessions · ⌘3 Loops · ↑↓ move").ui(11).foregroundStyle(t.text3.color).padding(.bottom, 4)
                     if !batch.isEmpty { batchBar(batchItems(layout)) }
-                    if layout.all.isEmpty && ghosts.isEmpty {
+                    if order.isEmpty {
                         listEmpty(f, counts: c)
                     }
-                    ForEach(Array(entries.enumerated()), id: \.element.block.id) { i, e in
-                        let s = section[e.block.id]
-                        let prev = entries[..<i].last { section[$0.block.id] != nil }.flatMap { section[$0.block.id] }
+                    // A settled row is a different cell from the live row it was (the lazy stack keeps a cell by id).
+                    ForEach(Array(order.enumerated()), id: \.element) { i, id in
+                        let s = section[id]
+                        let prev = order[..<i].last { section[$0] != nil }.flatMap { section[$0] }
                         if let s, s.id != prev?.id { sectionHeader(s).padding(.top, i == 0 ? 0 : 8) }
-                        listRow(e.block, ghost: e.ghost)
+                        if let b = live[id] { listRow(b).id("live-" + id) } else if let d = settled[id] { settledRow(d).id("done-" + id) }
                     }
                     if f == .sessions, let line = InboxFeed.loopsFoldLine(c) { loopsFold(line) }
+                    if !done.isEmpty { doneFold(done) }
                     Color.clear.frame(height: 16)
                 }
                 .padding(12)
             }
             .onChange(of: focused) { _, id in
                 guard let id else { return }
-                withAnimation(Motion.fast) { proxy.scrollTo(id) }
+                let cell = (history.inPlace.contains { $0.id == id } ? "done-" : "live-") + id
+                withAnimation(Motion.fast) { proxy.scrollTo(cell) }
                 if id == layout.all.first?.id { newAbove = 0 }
             }
             .overlay(alignment: .top) {
@@ -323,9 +345,9 @@ struct V2InboxPage: View {
         .frame(maxWidth: .infinity).padding(.top, 200)
     }
 
-    /// One row: tier mark, postmark, title, age. The row you are on is blue; an answered row folds to "You: …".
-    private func listRow(_ b: InboxBlock, ghost: Ghost?) -> some View {
-        let k = t.console, sel = focused == b.id && ghost == nil
+    /// One row: tier mark, postmark, title, age. The row you are on is blue.
+    private func listRow(_ b: InboxBlock) -> some View {
+        let k = t.console, sel = focused == b.id
         let tr = tier(b)
         let picked = batch.contains(b.id)
         return HStack(spacing: 10) {
@@ -338,7 +360,7 @@ struct V2InboxPage: View {
             InboxTierMark(tier: tr)
             VStack(alignment: .leading, spacing: 4) {
                 InboxPostmarkView(text: postmarkLine(b), ink: postmarkInk(b))
-                Text(ghost?.line ?? rowTitle(b)).ui(13, ghost == nil ? .regular : .semibold).foregroundStyle(k.text.color).lineLimit(1).truncationMode(.tail)
+                Text(rowTitle(b)).ui(13).foregroundStyle(k.text.color).lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 8)
             Text(Inbox.age(b.at)).ui(11, mono: true).foregroundStyle(k.dim.color).fixedSize()
@@ -346,10 +368,8 @@ struct V2InboxPage: View {
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill((sel ? k.selected : k.ground).color))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder((sel ? k.selectedEdge : k.rowEdge).color, lineWidth: 1.5))
-        .opacity(ghost == nil ? 1 : 0.7)
-        .id(b.id)
         .contentShape(Rectangle())
-        .onTapGesture { guard ghost == nil else { return }; focused = b.id; if drafts.editing == nil { keys = true } }
+        .onTapGesture { focused = b.id; if drafts.editing == nil { keys = true } }
         .simultaneousGesture(TapGesture().modifiers(.command).onEnded { toggle(b) })   // ⌘-click selects (4j)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(tr.label + ", " + label(b))
@@ -405,9 +425,10 @@ struct V2InboxPage: View {
 
     // MARK: Panel
 
-    @ViewBuilder private func panelColumn(_ layout: InboxLayout, filter f: InboxFilter, counts c: InboxCounts) -> some View {
+    @ViewBuilder private func panelColumn(_ layout: InboxLayout, order: [String], filter f: InboxFilter, counts c: InboxCounts) -> some View {
         Group {
             if !batch.isEmpty { batchPanel(batchItems(layout)) }
+            else if let d = settledFocus { settledPanel(d, order: order) }
             else if let b = current(layout) {
                 let critical = tier(b) == .p0
                 InboxBlockFrame(focused: false, edge: critical ? t.console.needs : t.console.edge, ring: t.accent, scale: scale,
@@ -506,10 +527,10 @@ struct V2InboxPage: View {
     private var loading: Bool { !model.runtimeOK && model.runtimeState.hasPrefix("Connecting") }
 
     /// ⌘] / ⌘[ next / previous, ⌘↩ open: key equivalents (never taken from a reply box, which has no use for them).
-    private func shortcuts(_ layout: InboxLayout) -> some View {
+    private func shortcuts(_ layout: InboxLayout, order: [String]) -> some View {
         ZStack {
-            Button("") { move(1, layout) }.keyboardShortcut("]", modifiers: .command)
-            Button("") { move(-1, layout) }.keyboardShortcut("[", modifiers: .command)
+            Button("") { move(1, order) }.keyboardShortcut("]", modifiers: .command)
+            Button("") { move(-1, order) }.keyboardShortcut("[", modifiers: .command)
             Button("") { if let b = current(layout) { open(b) } }.keyboardShortcut(.return, modifiers: .command)
             Button("") { setFilter(.all) }.keyboardShortcut("1", modifiers: .command)        // LAB-2339 (G12: free here)
             Button("") { setFilter(.sessions) }.keyboardShortcut("2", modifiers: .command)
@@ -520,7 +541,7 @@ struct V2InboxPage: View {
 
     // MARK: Header
 
-    private func header(count n: Int, quiet: Int, sub: String? = nil, all: Int? = nil, title: String = "Inbox") -> some View {
+    private func header(count n: Int, others: String?, sub: String? = nil, all: Int? = nil, title: String = "Inbox") -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -529,9 +550,9 @@ struct V2InboxPage: View {
                 }
                 HStack(spacing: 0) {
                     Text(sub ?? Inbox.waitingLine(n)).ui(13).foregroundStyle(t.text2.color)
-                    if let o = Inbox.othersLine(quiet) {
+                    if let o = others {   // LAB-2351: what the open sessions are doing ("3 sessions open, all idle")
                         Text(" · ").ui(13).foregroundStyle(t.text3.color)
-                        Button { win.open(.sessions) } label: { Text(o).ui(13).foregroundStyle(t.accentText.color) }
+                        Button { win.open(.sessions) } label: { Text(o + " ›").ui(13).foregroundStyle(t.accentText.color) }
                             .buttonStyle(.plain).help("Open Sessions")
                     }
                 }
@@ -593,13 +614,13 @@ struct V2InboxPage: View {
     }
 
     private var emptyState: some View {
-        let working = model.sessionItems.filter { $0.liveAgent != nil }.count
+        let others = sessionsLine([])
         return VStack(spacing: 8) {
             Text("Nothing waits for you.").ui(17, .semibold).foregroundStyle(t.text.color)
             Button { win.inboxTab = .decided } label: { Text("\(model.inboxDecidedToday) decided today ›").ui(13).foregroundStyle(t.accentText.color) }
                 .buttonStyle(.plain)
-            if working > 0 {
-                Button { win.open(.sessions) } label: { Text("\(working) session\(working == 1 ? "" : "s") working ›").ui(12.5).foregroundStyle(t.text2.color) }
+            if let others {
+                Button { win.open(.sessions) } label: { Text(others + " ›").ui(12.5).foregroundStyle(t.text2.color) }
                     .buttonStyle(.plain)
             }
         }
@@ -911,49 +932,163 @@ struct V2InboxPage: View {
         }
     }
 
-    // MARK: Ghosts, new blocks, picks
+    // MARK: Settled rows, new blocks, picks
 
-    private struct Shown { var block: InboxBlock; var ghost: Ghost? }
-
-    private func withGhosts(_ asks: [InboxBlock]) -> [Shown] {
-        var out = asks.map { Shown(block: $0, ghost: nil) }
-        for g in ghosts.values.sorted(by: { $0.index < $1.index }) where !asks.contains(where: { $0.id == g.block.id }) {
-            out.insert(Shown(block: g.block, ghost: g), at: min(g.index, out.count))
-        }
-        return out
+    /// LAB-2351: the open sessions with nothing in the list, by what they are doing ("3 sessions open, all idle").
+    private func sessionsLine(_ shown: [InboxBlock]) -> String? {
+        let inList = Set(shown.compactMap(\.sessionId))
+        let b = model.sessionItems.filter { $0.liveAgent != nil && !inList.contains($0.id) }.compactMap { InboxSettle.bucket($0.status) }
+        return InboxSettle.sessionsLine(working: b.filter { $0 == "working" }.count, ready: b.filter { $0 == "ready" }.count,
+                                        idle: b.filter { $0 == "idle" }.count, other: !inList.isEmpty)
     }
 
-    /// Blocks that left fold away after 1.5 s with what was answered; new ones arrive at the top without moving the
-    /// block you are in ("1 new above ↑" when you are further down).
-    private func track(_ now: [InboxBlock]) {
+    /// The list as shown: live rows, with each settled row of this filter back where it was (LAB-2352).
+    private func shownOrder(_ layout: InboxLayout, filter f: InboxFilter) -> [String] {
+        let settled = history.inPlace.filter { f == .all || (f == .loops) == $0.isLoop }
+        return InboxSettle.order(live: layout.all.map(\.id), settled: settled).map(\.id)
+    }
+
+    private func snapshot(_ blocks: [InboxBlock]) -> [String: Snap] {
+        Dictionary(blocks.map { b in
+            let i = loopItem(b)
+            return (b.id, Snap(title: rowTitle(b), postmark: postmarkLine(b), tier: tier(b), loopId: i?.loopId, outcomeKind: i?.outcomeKind, when: i?.when))
+        }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// The settled row you are on, if any (the panel then says what happened).
+    private var settledFocus: InboxDone? { focused.flatMap { f in history.inPlace.first { $0.id == f } } }
+
+    /// What happened to a row that left: what you did here, else why it left by itself.
+    private func outcome(_ b: InboxBlock, _ s: Snap) -> (line: String, verb: String) {
+        let alive = b.sessionId.map { model.item($0)?.liveAgent != nil } ?? true
+        switch b.kind {
+        case .loop:
+            if let id = b.loopItemId, let i = loopInbox.intent(for: id, loop: s.loopId) { return InboxSettle.loopOutcome(status: i.status, reason: i.reason) }
+            if ["report", "slack"].contains(s.outcomeKind ?? ""), let w = s.when,
+               Date().timeIntervalSince(w) >= Double(LoopInbox.expiryDays) * 86_400 { return (InboxSettle.line(.expired), "expired") }
+            return (InboxSettle.line(.elsewhere), "handled elsewhere")
+        case .plan:
+            let o = model.objectives.first { $0.id == b.planId }
+            return o?.status == .review ? (InboxSettle.line(.elsewhere), "handled elsewhere") : ("✓ Plan decided", "decided")
+        case .waiting:
+            return alive ? (InboxSettle.line(.seenInTerminal), "seen in the terminal") : (InboxSettle.line(.sessionClosed), "session closed")
+        default:
+            if let d = b.decision, let a = (model.decisions + model.selfTestDecisions).first(where: { $0.id == d.id }), !a.isOpen {
+                return InboxSettle.outcome(a)
+            }
+            return alive ? (InboxSettle.line(.answeredInTerminal), "answered in the terminal") : (InboxSettle.line(.sessionClosed), "session closed")
+        }
+    }
+
+    /// LAB-2352: rows that left settle where they were (greyed, with what happened) and the row you are on keeps the
+    /// focus, so nothing jumps; new ones arrive at the top without moving the block you are in ("1 new above ↑").
+    private func track(_ now: [InboxBlock], order: [String]) {
         let before = lastBlocks
         lastBlocks = now
         let ids = Set(now.map(\.id))
-        let all = model.decisions + model.selfTestDecisions
-        for (i, b) in before.enumerated() where !ids.contains(b.id) && b.kind != .loop {
-            let line: String
-            if let d = b.decision, let a = all.first(where: { $0.id == d.id }), !a.isOpen { line = Inbox.answeredLine(a) }
-            else if b.kind == .plan { line = "You: decided the plan" }
-            else { line = "Answered in its terminal" }
-            ghosts[b.id] = Ghost(block: b, index: i, line: line)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { withAnimation(Motion.base) { _ = ghosts.removeValue(forKey: b.id) } }
+        history.revive(ids)
+        for b in before where !ids.contains(b.id) {
+            guard let s = snaps[b.id] else { continue }
+            let o = outcome(b, s)
+            let at = lastOrder.firstIndex(of: b.id) ?? before.firstIndex { $0.id == b.id } ?? 0
+            history.settle(InboxDone(id: b.id, title: s.title, postmark: s.postmark, tier: s.tier.rawValue, outcome: o.line,
+                                     verb: o.verb, isLoop: b.kind == .loop, at: Date(), index: at))
+            if b.id == focused { announce(o.line) }
+        }
+        snaps = snapshot(now)
+        lastOrder = order   // the next leave finds its place here (settled rows are put back where they were)
+        for d in history.inPlace.sorted(by: { $0.index < $1.index }) where !lastOrder.contains(d.id) {
+            lastOrder.insert(d.id, at: min(d.index, lastOrder.count))
         }
         // Only blocks that landed above the one you are in count as "new above" (newest arrive at the top).
-        if let f = focused, let fi = now.firstIndex(where: { $0.id == f }) {
-            newAbove += now.prefix(fi).filter { b in !before.contains { $0.id == b.id } }.count
+        if let f = focused, let fi = order.firstIndex(of: f) {
+            newAbove += order.prefix(fi).filter { id in ids.contains(id) && !before.contains { $0.id == id } }.count
         }
-        if focused == nil || !ids.contains(focused ?? "") {   // the block you answered left: the next one takes the focus
-            let i = before.firstIndex { $0.id == focused } ?? 0
-            let next = now.isEmpty ? nil : now[min(i, now.count - 1)]
-            focused = next?.id
-            if let next, !before.isEmpty { announce(next) }
+        if focused == nil || (!ids.contains(focused ?? "") && !history.inPlace.contains { $0.id == focused }) {
+            focused = order.first { ids.contains($0) }
         }
     }
 
-    private func announce(_ next: InboxBlock) {
-        let name = next.sessionId.flatMap { model.item($0)?.session.name } ?? next.kind.tag
+    private func announce(_ line: String) {
         NSAccessibility.post(element: NSApp.mainWindow as Any, notification: .announcementRequested,
-                             userInfo: [.announcement: "Answered. Next: \(name)", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+                             userInfo: [.announcement: line + ". Down arrow for the next item.", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
+    /// A settled row: greyed, the outcome under its title, where it was (LAB-2352).
+    private func settledRow(_ d: InboxDone) -> some View {
+        let sel = focused == d.id && !d.folded
+        return HStack(spacing: 10) {
+            Text(InboxTier(rawValue: d.tier)?.label ?? "").ui(10.5, .bold, mono: true).foregroundStyle(t.text3.color)
+                .frame(width: 26, height: 18)
+                .background(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(t.separatorStrong.color))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(d.postmark).ui(10.5, .semibold, mono: true).tracking(0.4).foregroundStyle(t.text3.color).lineLimit(1)
+                Text(d.title).ui(13).foregroundStyle(t.text2.color).lineLimit(1).truncationMode(.tail)
+                Text(d.outcome).ui(12, .semibold).foregroundStyle((d.outcome.hasPrefix("✓") ? t.diffAddText : t.text2).color).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Text(Inbox.age(d.at)).ui(11, mono: true).foregroundStyle(t.text3.color).fixedSize()
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.control.color))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder((sel ? t.accent : t.separator).color, lineWidth: sel ? 1.5 : 1))
+        .contentShape(Rectangle())
+        .onTapGesture { focused = d.id; if drafts.editing == nil { keys = true } }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Done: " + d.title + ", " + d.outcome)
+        .accessibilityAddTraits(sel ? [.isSelected, .isButton] : .isButton)
+        .transition(.opacity)
+    }
+
+    /// The panel for a settled row: what happened, and where to go next.
+    private func settledPanel(_ d: InboxDone, order: [String]) -> some View {
+        let k = t.console
+        return InboxBlockFrame(focused: false, edge: k.edge, ring: t.accent, scale: scale, lineWidth: 1.5) {
+            VStack(alignment: .leading, spacing: 12) {
+                InboxPostmarkView(text: d.postmark, ink: k.dim)
+                Text(d.title).ui(15, .semibold).foregroundStyle(k.text.color).fixedSize(horizontal: false, vertical: true)
+                Text(d.outcome + " · " + (Inbox.age(d.at) == "now" ? "just now" : Inbox.age(d.at) + " ago")).ui(14, .semibold)
+                    .foregroundStyle((d.outcome.hasPrefix("✓") ? k.add : k.dim).color).fixedSize(horizontal: false, vertical: true)
+                Text("Nothing more to do here. It stays in the list until you leave the Inbox, then moves to Done today.")
+                    .ui(12.5).foregroundStyle(k.dim.color).fixedSize(horizontal: false, vertical: true)
+                FlowLayout(spacing: 8) {
+                    RoofButton("Next ↓", .primary) { move(1, order) }
+                    RoofButton("Decided ›") { win.inboxTab = .decided }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Done: " + d.title + ", " + d.outcome)
+    }
+
+    /// Done today: what left the list today, folded at the bottom; opens in place, newest first (LAB-2352).
+    private func doneFold(_ rows: [InboxDone]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button { withAnimation(Motion.base) { showDone.toggle() } } label: {
+                    HStack(spacing: 8) {
+                        Text(showDone ? "▾" : "▸").ui(12).foregroundStyle(t.text2.color)
+                        Text("Done today · \(rows.count)").ui(13, .semibold).foregroundStyle(t.text.color)
+                        Text(InboxSettle.summary(rows)).ui(12.5).foregroundStyle(t.text2.color).lineLimit(1)
+                        Spacer(minLength: 8)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Done today, \(rows.count): " + InboxSettle.summary(rows))
+                .accessibilityHint(showDone ? "Folds the list" : "Shows the list")
+                Button { win.inboxTab = .decided } label: { Text("Decided ›").ui(12.5).foregroundStyle(t.accentText.color) }
+                    .buttonStyle(.plain).help("The full record, newest first (⇧⌘I)")
+            }
+            if showDone { ForEach(rows) { settledRow($0) } }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.window.color))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(t.separator.color))
+        .padding(.top, 8)
     }
 
     private func pick(_ id: String?, layout: InboxLayout, decided: [Decision]) {
@@ -962,15 +1097,21 @@ struct V2InboxPage: View {
         else if decided.contains(where: { $0.id.uuidString == id }) { win.inboxTab = .decided }   // LAB-2110: Decided is a tab
     }
 
-    private func current(_ layout: InboxLayout) -> InboxBlock? { layout.all.first { $0.id == focused } ?? layout.all.first }
+    /// The live block you are on; nil while you are on a settled row (its panel says what happened).
+    private func current(_ layout: InboxLayout) -> InboxBlock? {
+        layout.all.first { $0.id == focused } ?? (settledFocus == nil ? layout.all.first : nil)
+    }
 
-    private func move(_ delta: Int, _ layout: InboxLayout) {
-        focused = Inbox.step(from: focused, by: delta, in: layout.all)
+    /// ↑ ↓ walk the list as shown, settled rows included.
+    private func move(_ delta: Int, _ order: [String]) {
+        guard !order.isEmpty else { focused = nil; return }
+        guard let f = focused, let i = order.firstIndex(of: f) else { focused = order[0]; return }
+        focused = order[(i + delta + order.count * 2) % order.count]
     }
 
     // MARK: Keys
 
-    private func key(_ k: KeyPress, layout: InboxLayout) -> KeyPress.Result {
+    private func key(_ k: KeyPress, layout: InboxLayout, order: [String]) -> KeyPress.Result {
         guard drafts.editing == nil, k.modifiers.intersection([.command, .control, .option]).isEmpty else { return .ignored }
         let b = current(layout)
         switch k.key {
@@ -978,9 +1119,9 @@ struct V2InboxPage: View {
             let d = k.key == .downArrow ? 1 : -1
             if k.modifiers.contains(.shift) {   // 4j: ⇧↑ ⇧↓ extend the selection
                 if let b { if batchable(b) { batch.insert(b.id) } }
-                move(d, layout)
+                move(d, order)
                 if let n = current(layout), batchable(n) { batch.insert(n.id) }
-            } else { move(d, layout) }
+            } else { move(d, order) }
             return .handled
         case .space:
             if let b, batchable(b) { toggle(b); return .handled }
