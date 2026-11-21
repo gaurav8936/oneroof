@@ -134,7 +134,7 @@ struct V2Rail: View {
 extension V2Counts {
     /// The number on a place's icon: the Inbox's waiting count, the Loops' needs-you count.
     @MainActor static func badge(_ p: Place, _ model: AppModel) -> Int {
-        p == .needsYou ? needsYou(model) : p == .loops ? loops(model) : 0
+        p == .needsYou ? needsYou(model) : 0   // LAB-2343 (IBO-5): Loops no longer repeats the Inbox's loop items
     }
 }
 
