@@ -104,49 +104,33 @@ struct V2InboxPage: View {
 
     // MARK: Page
 
+    // LAB-2339 · Inbox v4.0: a list of every item on the left (source filter on top, a tier and a postmark on each
+    // row), the selected item in full on the right, in a dark console. The keyboard walks the list as shown.
+    private func loopItem(_ b: InboxBlock) -> LoopInbox.Item? { b.loopItemId.flatMap { id in loopInbox.items.first { $0.id == id } } }
+    private func tier(_ b: InboxBlock) -> InboxTier { InboxTier.of(b, loopItem: loopItem(b)) }
+    private func loopOf(_ b: InboxBlock) -> (id: String, title: String) {
+        let i = loopItem(b)
+        return (i?.loopId ?? "loop", i?.loopTitle ?? "Loop")
+    }
+    private func filter(_ all: [InboxBlock]) -> InboxFilter { win.inboxFilter ?? InboxFilter.defaultFilter(all, tier: tier) }
+
     private var page: some View {
-        let layout = model.inboxLayout
+        let full = model.inboxLayout.all
+        let f = filter(full)
+        let c = InboxFeed.counts(full, tier: tier)
+        let secs = InboxFeed.sections(full, filter: f, tier: tier, loopOf: loopOf)
+        let layout = InboxLayout(asks: secs.flatMap(\.blocks), loops: [])   // the list as shown = keyboard order
         let decided = model.inboxDecided
-        let n = model.needsYouBadge
-        let quiet = Inbox.quietCount(liveSessions: model.sessionItems.filter { $0.liveAgent != nil }.map(\.id), shown: layout.all)
-        let asks = withGhosts(layout.asks)
+        let quiet = Inbox.quietCount(liveSessions: model.sessionItems.filter { $0.liveAgent != nil }.map(\.id), shown: full)
+        let loopCount = Set(full.compactMap { loopItem($0)?.loopId }).count
         return VStack(spacing: 0) {
-            header(count: n, quiet: quiet)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        Color.clear.frame(height: 0).id("inbox-top")
-                        if layout.all.isEmpty && ghosts.isEmpty {
-                            if loading { loadingState } else { emptyState }
-                        }
-                        ForEach(asks, id: \.block.id) { e in row(e.block, ghost: e.ghost) }
-                        if !layout.loops.isEmpty {
-                            MicroLabel("Loops · Today · \(layout.loops.count)").padding(.top, asks.isEmpty ? 0 : 8).padding(.leading, 2)
-                            ForEach(layout.loops) { b in row(b, ghost: nil) }
-                        }
-                        Color.clear.frame(height: 24)
-                    }
-                    .frame(maxWidth: Self.blockWidth, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .frame(maxWidth: .infinity)
-                }
-                .onChange(of: focused) { _, id in
-                    guard let id else { return }
-                    withAnimation(Motion.fast) { proxy.scrollTo(id) }
-                    if id == layout.all.first?.id { newAbove = 0 }
-                }
-                .onChange(of: layout.all.map(\.id)) { _, _ in track(layout.all) }
-                .onChange(of: model.needsPick) { _, id in pick(id, layout: layout, decided: decided) }
-                .overlay(alignment: .top) {
-                    if newAbove > 0 {
-                        Button { newAbove = 0; focused = layout.all.first?.id; withAnimation(Motion.base) { proxy.scrollTo("inbox-top", anchor: .top) } } label: {
-                            Text(Inbox.newAboveLine(newAbove)).ui(12, .semibold).foregroundStyle(t.onAccent.color)
-                                .padding(.horizontal, 12).frame(height: 26).background(Capsule().fill(t.accent.color))
-                        }
-                        .buttonStyle(.plain).padding(.top, 8)
-                        .accessibilityLabel(Inbox.newAboveLine(newAbove).replacingOccurrences(of: " ↑", with: ""))
-                    }
-                }
+            header(count: c.count(f), quiet: f == .loops ? 0 : quiet, sub: InboxFeed.subLine(c, filter: f, loopCount: loopCount), all: c.all)
+            HStack(spacing: 0) {
+                listColumn(secs, layout: layout, filter: f, counts: c)
+                    .frame(width: Self.listWidth)
+                    .background(t.surface2.color)
+                Rectangle().fill(t.separator.color).frame(width: 1)
+                panelColumn(layout, filter: f, counts: c)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -157,6 +141,8 @@ struct V2InboxPage: View {
         .focused($keys)
         .onKeyPress(phases: .down) { k in key(k, layout: layout) }
         .background(shortcuts(layout))
+        .onChange(of: layout.all.map(\.id)) { _, _ in track(layout.all) }
+        .onChange(of: model.needsPick) { _, id in pick(id, layout: layout, decided: decided) }
         .onAppear {
             lastBlocks = layout.all
             if focused == nil { focused = layout.all.first?.id }
@@ -164,16 +150,266 @@ struct V2InboxPage: View {
             if let id = model.needsPick { pick(id, layout: layout, decided: decided) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .inboxSelfTest)) { n in
-            if let p = (n.object as? [String: Any])?["attach"] as? String, let id = focused ?? layout.all.first?.id { drafts.attach(id, [p]) }
-            if (n.object as? [String: Any])?["decided"] as? Bool == true { win.inboxTab = .decided }
+            let o = n.object as? [String: Any]
+            if let raw = o?["filter"] as? String, let nf = InboxFilter(rawValue: raw) { setFilter(nf) }
+            if let p = o?["attach"] as? String, let id = focused ?? layout.all.first?.id { drafts.attach(id, [p]) }
+            if o?["decided"] as? Bool == true { win.inboxTab = .decided }
             if let b = current(layout) {
-                if let text = (n.object as? [String: Any])?["reply"] as? String { drafts.text[b.id] = text; sendBox(b) }
-                if let k = (n.object as? [String: Any])?["press"] as? Int, let d = b.decision,
+                if let text = o?["reply"] as? String { drafts.text[b.id] = text; sendBox(b) }
+                if let k = o?["press"] as? Int, let d = b.decision,
                    let btn = Inbox.numbered(k, in: Inbox.buttons(d, repo: d.repo)) { press(btn, b) }
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Inbox: \(Inbox.waitingLine(n))")
+        .accessibilityLabel("Inbox: \(Inbox.waitingLine(c.all))")
+    }
+
+    static let listWidth: CGFloat = 440
+
+    private func setFilter(_ f: InboxFilter) {
+        win.inboxFilter = f
+        let all = model.inboxLayout.all
+        let first = InboxFeed.sections(all, filter: f, tier: tier, loopOf: loopOf).first?.blocks.first
+        if let fid = focused, !all.contains(where: { $0.id == fid && f.admits($0) }) { focused = first?.id }
+        else if focused == nil { focused = first?.id }
+        newAbove = 0
+    }
+
+    // MARK: List
+
+    private func listColumn(_ secs: [InboxSection], layout: InboxLayout, filter f: InboxFilter, counts c: InboxCounts) -> some View {
+        let section = Dictionary(secs.flatMap { s in s.blocks.map { ($0.id, s) } }, uniquingKeysWith: { a, _ in a })
+        let entries = withGhosts(layout.all)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    Color.clear.frame(height: 0).id("inbox-top")
+                    sourceFilter(f, counts: c)
+                    Text("⌘1 All · ⌘2 Sessions · ⌘3 Loops · ↑↓ move").ui(11).foregroundStyle(t.text3.color).padding(.bottom, 4)
+                    if layout.all.isEmpty && ghosts.isEmpty {
+                        listEmpty(f, counts: c)
+                    }
+                    ForEach(Array(entries.enumerated()), id: \.element.block.id) { i, e in
+                        let s = section[e.block.id]
+                        let prev = entries[..<i].last { section[$0.block.id] != nil }.flatMap { section[$0.block.id] }
+                        if let s, s.id != prev?.id { sectionHeader(s).padding(.top, i == 0 ? 0 : 8) }
+                        listRow(e.block, ghost: e.ghost)
+                    }
+                    if f == .sessions, let line = InboxFeed.loopsFoldLine(c) { loopsFold(line) }
+                    Color.clear.frame(height: 16)
+                }
+                .padding(12)
+            }
+            .onChange(of: focused) { _, id in
+                guard let id else { return }
+                withAnimation(Motion.fast) { proxy.scrollTo(id) }
+                if id == layout.all.first?.id { newAbove = 0 }
+            }
+            .overlay(alignment: .top) {
+                if newAbove > 0 {
+                    Button { newAbove = 0; focused = layout.all.first?.id; withAnimation(Motion.base) { proxy.scrollTo("inbox-top", anchor: .top) } } label: {
+                        Text(Inbox.newAboveLine(newAbove)).ui(12, .semibold).foregroundStyle(t.onAccent.color)
+                            .padding(.horizontal, 12).frame(height: 26).background(Capsule().fill(t.accent.color))
+                    }
+                    .buttonStyle(.plain).padding(.top, 8)
+                    .accessibilityLabel(Inbox.newAboveLine(newAbove).replacingOccurrences(of: " ↑", with: ""))
+                }
+            }
+        }
+    }
+
+    /// All · Active sessions · Loops, each with its count (red when it holds something blocked on you).
+    private func sourceFilter(_ f: InboxFilter, counts c: InboxCounts) -> some View {
+        HStack(spacing: 2) {
+            ForEach(InboxFilter.allCases, id: \.self) { x in
+                let on = x == f, red = c.p0(x) > 0 && x != .all
+                Button { setFilter(x) } label: {
+                    HStack(spacing: 6) {
+                        Text(x.title).ui(13, on ? .semibold : .regular).foregroundStyle((on ? t.text : t.text2).color)
+                        Text("\(c.count(x))").ui(11, .bold).foregroundStyle(t.onAccent.color)
+                            .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 16)
+                            .background(Capsule().fill((red ? t.needsText : t.text2).color))
+                    }
+                    .padding(.horizontal, 12).frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.window.color : .clear)
+                        .shadow(color: .black.opacity(on ? 0.12 : 0), radius: 1, y: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("\(x.title) (⌘\(InboxFilter.allCases.firstIndex(of: x)! + 1))")
+                .accessibilityLabel("\(x.title), \(c.count(x))")
+                .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
+            }
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.selection.color))
+        .fixedSize()
+    }
+
+    @ViewBuilder private func sectionHeader(_ s: InboxSection) -> some View {
+        switch s.kind {
+        case .waitingOnYou: micro("Waiting on you · \(s.blocks.count)")
+        case .notWaitingOnYou: micro("Not waiting on you")
+        case .loops: micro("Loops · \(s.blocks.count)")
+        case .loop(_, let title):
+            HStack(spacing: 8) {
+                Text("↻").ui(11, .semibold).foregroundStyle(t.accentText.color).frame(width: 20, height: 20)
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(t.selection.color)).accessibilityHidden(true)
+                Text(title).ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
+                Text(loopSummary(s.blocks)).ui(12).foregroundStyle(t.text2.color).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private func micro(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            MicroLabel(text)
+            Rectangle().fill(t.separator.color).frame(height: 1)
+        }
+        .padding(.top, 2)
+    }
+
+    /// "1 proposal · 3 reports", "1 stopped".
+    private func loopSummary(_ blocks: [InboxBlock]) -> String {
+        var n: [Postmark: Int] = [:]
+        for b in blocks { n[Postmark.of(b, loopItem: loopItem(b)), default: 0] += 1 }
+        func part(_ p: Postmark, _ one: String, _ many: String) -> String? { n[p].map { "\($0) \($0 == 1 ? one : many)" } }
+        return [part(.loopFailed, "stopped", "stopped"), part(.roundAsks, "round asks", "rounds ask"), part(.commits, "PR", "PRs"),
+                part(.proposal, "proposal", "proposals"), part(.fileUpdate, "file update", "file updates"),
+                part(.missed, "missed run", "missed runs"), part(.report, "report", "reports")].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func loopsFold(_ line: String) -> some View {
+        HStack(spacing: 8) {
+            Text(line).ui(13).foregroundStyle(t.text2.color)
+            Spacer(minLength: 8)
+            RoofButton("Show loops ⌘3") { setFilter(.loops) }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.window.color))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(t.separator.color))
+        .padding(.top, 8)
+    }
+
+    @ViewBuilder private func listEmpty(_ f: InboxFilter, counts c: InboxCounts) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(c.all == 0 ? "All clear" : "Nothing from \(f == .loops ? "loops" : "sessions") right now").ui(13, .semibold).foregroundStyle(t.text.color)
+            if c.all > 0 { Button { setFilter(.all) } label: { Text("Clear filter ›").ui(12.5).foregroundStyle(t.accentText.color) }.buttonStyle(.plain) }
+        }
+        .padding(.vertical, 12)
+    }
+
+    /// One row: tier mark, postmark, title, age. The row you are on is blue; an answered row folds to "You: …".
+    private func listRow(_ b: InboxBlock, ghost: Ghost?) -> some View {
+        let k = t.console, sel = focused == b.id && ghost == nil
+        let tr = tier(b)
+        return HStack(spacing: 10) {
+            InboxTierMark(tier: tr)
+            VStack(alignment: .leading, spacing: 4) {
+                InboxPostmarkView(text: postmarkLine(b), ink: postmarkInk(b))
+                Text(ghost?.line ?? rowTitle(b)).ui(13, ghost == nil ? .regular : .semibold).foregroundStyle(k.text.color).lineLimit(1).truncationMode(.tail)
+            }
+            Spacer(minLength: 8)
+            Text(Inbox.age(b.at)).ui(11, mono: true).foregroundStyle(k.dim.color).fixedSize()
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill((sel ? k.selected : k.ground).color))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder((sel ? k.selectedEdge : k.rowEdge).color, lineWidth: 1.5))
+        .opacity(ghost == nil ? 1 : 0.7)
+        .id(b.id)
+        .contentShape(Rectangle())
+        .onTapGesture { guard ghost == nil else { return }; focused = b.id; if drafts.editing == nil { keys = true } }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(tr.label + ", " + label(b))
+        .accessibilityAddTraits(sel ? [.isSelected, .isButton] : .isButton)
+        .transition(.opacity)
+    }
+
+    /// The row's one line: "Flaky login test · swift test", "OneRoof · Bug fixes · plan to approve", a loop's headline.
+    private func rowTitle(_ b: InboxBlock) -> String {
+        switch b.kind {
+        case .plan:
+            let o = model.objectives.first { $0.id == b.planId }
+            return (o?.title ?? "Plan") + " · plan to approve"
+        case .loop:
+            guard let i = loopItem(b) else { return "Loop item" }
+            return InboxRowText.loopTitle(i)
+        case .waiting:
+            return (b.sessionId.flatMap { model.item($0)?.session.name } ?? "Session") + " · prompt not read yet"
+        default:
+            let name = b.sessionId.flatMap { model.item($0)?.session.name } ?? "Session"
+            guard let d = b.decision else { return name }
+            return name + " · " + InboxRowText.ask(d)
+        }
+    }
+
+    private func sender(_ b: InboxBlock) -> String {
+        switch b.kind {
+        case .plan: return "Planner"
+        case .loop: return loopItem(b)?.loopId ?? ""
+        default:
+            guard let sid = b.sessionId else { return b.decision?.agent.displayName ?? "" }
+            return model.item(sid).map { $0.account ?? $0.session.agent.displayName } ?? (b.decision?.agent.displayName ?? "")
+        }
+    }
+
+    private func postmarkLine(_ b: InboxBlock) -> String {
+        Postmark.line(Postmark.of(b, loopItem: loopItem(b)), sender: sender(b), copies: loopItem(b)?.outcomes.count ?? 1)
+    }
+
+    private func postmarkInk(_ b: InboxBlock) -> RGB {
+        let k = t.console, p = Postmark.of(b, loopItem: loopItem(b))
+        switch p.ink {
+        case .agent:
+            let item = b.sessionId.flatMap { model.item($0) }
+            let agent = item?.session.agent ?? b.decision?.agent ?? .claude
+            return k.agentInk(SeatMark(agent: agent, account: item?.account ?? item?.session.account))
+        case .plan: return k.plan
+        case .loop: return k.loop
+        case .stopped: return k.stopped
+        case .system: return k.system
+        }
+    }
+
+    // MARK: Panel
+
+    @ViewBuilder private func panelColumn(_ layout: InboxLayout, filter f: InboxFilter, counts c: InboxCounts) -> some View {
+        Group {
+            if let b = current(layout) {
+                let critical = tier(b) == .p0
+                InboxBlockFrame(focused: false, edge: critical ? t.console.needs : t.console.edge, ring: t.accent, scale: scale,
+                                lineWidth: critical ? 3 : 1.5) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        strip(b, critical: critical)
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) { content(b) }
+                                .padding(.horizontal, 16).padding(.vertical, 14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                }
+                .id("panel-" + b.id)
+                .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
+                    guard let d = b.decision, Inbox.placeholder(d, agentName: who(d)) != nil, !d.agent.isHosted else { return false }
+                    return drop(providers, into: b.id)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(label(b))
+            } else if loading { loadingState } else if c.all == 0 { emptyState } else { filterEmpty(f) }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func filterEmpty(_ f: InboxFilter) -> some View {
+        VStack(spacing: 8) {
+            Text(f == .loops ? "No loop items." : "No session needs you.").ui(20, .semibold).foregroundStyle(t.text.color)
+            Button { setFilter(.all) } label: { Text("Clear filter ›").ui(13).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity).padding(.top, 120)
     }
 
     private var loading: Bool { !model.runtimeOK && model.runtimeState.hasPrefix("Connecting") }
@@ -184,13 +420,16 @@ struct V2InboxPage: View {
             Button("") { move(1, layout) }.keyboardShortcut("]", modifiers: .command)
             Button("") { move(-1, layout) }.keyboardShortcut("[", modifiers: .command)
             Button("") { if let b = current(layout) { open(b) } }.keyboardShortcut(.return, modifiers: .command)
+            Button("") { setFilter(.all) }.keyboardShortcut("1", modifiers: .command)        // LAB-2339 (G12: free here)
+            Button("") { setFilter(.sessions) }.keyboardShortcut("2", modifiers: .command)
+            Button("") { setFilter(.loops) }.keyboardShortcut("3", modifiers: .command)
         }
         .buttonStyle(.plain).frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
     }
 
     // MARK: Header
 
-    private func header(count n: Int, quiet: Int) -> some View {
+    private func header(count n: Int, quiet: Int, sub: String? = nil, all: Int? = nil) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -198,7 +437,7 @@ struct V2InboxPage: View {
                     if n > 0 { Text("\(n)").ui(24, .regular).foregroundStyle(t.text3.color) }
                 }
                 HStack(spacing: 0) {
-                    Text(Inbox.waitingLine(n)).ui(13).foregroundStyle(t.text2.color)
+                    Text(sub ?? Inbox.waitingLine(n)).ui(13).foregroundStyle(t.text2.color)
                     if let o = Inbox.othersLine(quiet) {
                         Text(" · ").ui(13).foregroundStyle(t.text3.color)
                         Button { win.open(.sessions) } label: { Text(o).ui(13).foregroundStyle(t.accentText.color) }
@@ -207,10 +446,9 @@ struct V2InboxPage: View {
                 }
             }
             Spacer()
-            tabBar.padding(.top, 4)
+            tabBar(all: all).padding(.top, 4)
         }
-        .frame(maxWidth: Self.blockWidth)
-        .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 14)
+        .padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 14)
         .frame(maxWidth: .infinity)
         .background(t.window.color)
         .overlay(alignment: .bottom) { Hairline() }
@@ -218,8 +456,8 @@ struct V2InboxPage: View {
 
     /// LAB-2110: the place's tabs, pinned in the header: Inbox (the count waiting) · Decided (today's count). ⇧⌘I opens
     /// Decided from anywhere (View › Decided); ⌘⌥← / ⌘⌥→ switch tabs here.
-    private var tabBar: some View {
-        let n = model.needsYouBadge, today = model.inboxDecidedToday
+    private func tabBar(all: Int?) -> some View {
+        let n = all ?? model.needsYouBadge, today = model.inboxDecidedToday
         return HStack(spacing: 2) {
             tabButton(n > 0 ? "Inbox · \(n)" : "Inbox", .inbox, help: "Only what waits on you now")
             tabButton(Decided.tabTitle(today: today), .decided, help: "What you decided, newest first (⇧⌘I)")
@@ -280,41 +518,6 @@ struct V2InboxPage: View {
 
     // MARK: Blocks
 
-    @ViewBuilder private func row(_ b: InboxBlock, ghost: Ghost?) -> some View {
-        let critical = ghost == nil && InboxUrgency.of(b) == .critical
-        let hue = b.sessionId.map { SessionHue.cached(sessionId: $0, on: t) }
-        HStack(alignment: .top, spacing: 10) {
-            V2InboxSessionCard(model: model, block: b, hue: hue, loopTitle: loopInbox.items.first { $0.id == b.loopItemId }?.loopTitle)
-                .frame(width: Self.cardWidth)
-            // LAB-2112: a critical ask (the agent is blocked until you act) gets a bold red border; LAB-2109: the others
-            // carry their session's colour on the edge.
-            InboxBlockFrame(focused: focused == b.id && ghost == nil, edge: critical ? t.needsText : (hue?.ink ?? t.separatorStrong),
-                            ring: t.accent, scale: scale, lineWidth: critical ? 3 : 1.5) {
-            VStack(alignment: .leading, spacing: 0) {
-                strip(b, critical: critical)
-                VStack(alignment: .leading, spacing: 12) {
-                    if let g = ghost {
-                        Text(g.line).ui(13, .semibold).foregroundStyle(Self.mt.text.color)
-                    } else {
-                        content(b)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 14)
-            }
-            }
-        }
-        .id(b.id)
-        .contentShape(Rectangle())
-        .onTapGesture { focused = b.id; if drafts.editing == nil { keys = true } }
-        .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
-            guard let d = b.decision, Inbox.placeholder(d, agentName: who(d)) != nil, !d.agent.isHosted else { return false }
-            return drop(providers, into: b.id)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(label(b))
-        .transition(.opacity)
-    }
-
     /// Midnight's tokens: blocks are dark in every theme (owner: "dark, terminal-like").
     static let mt = ThemeName.midnight.tokens
 
@@ -336,47 +539,53 @@ struct V2InboxPage: View {
         }
     }
 
-    /// The 32 pt header strip: badge, name, context, kind tag · age, Open session ↗ ⌘↩.
+    /// LAB-2339 · the panel strip: tier · postmark · name · context · kind · Needs your decision; then N more · age ·
+    /// Open session ↗ ⌘↩ (on a second line when the panel is narrow).
     private func strip(_ b: InboxBlock, critical: Bool = false) -> some View {
         let m = Self.mt
-        return HStack(spacing: 8) {
+        let lead = HStack(spacing: 8) {
+            InboxTierMark(tier: tier(b))
+            InboxPostmarkView(text: postmarkLine(b), ink: postmarkInk(b)).fixedSize()
             switch b.kind {
             case .plan:
                 let o = model.objectives.first { $0.id == b.planId }
-                AgentBadge(AgentMark.claude1, size: 20)
-                Text("Planner").ui(13, .semibold).foregroundStyle(m.text.color).accessibilityAddTraits(.isHeader)
+                Text(o?.title ?? "Plan").ui(13, .semibold).foregroundStyle(m.text.color).lineLimit(1).accessibilityAddTraits(.isHeader)
                 Text("· " + (o.map { Workspace.repoLabel(for: $0.repoPath) } ?? "")).ui(12).foregroundStyle(m.text2.color).lineLimit(1)
             case .loop:
-                let i = loopInbox.items.first { $0.id == b.loopItemId }
-                Text("↻").ui(13, .semibold).foregroundStyle(m.accentText.color).frame(width: 20, height: 20)
-                    .background(RoundedRectangle(cornerRadius: Radius.squircle20, style: .continuous).fill(m.surface.color)).accessibilityHidden(true)
-                Text(i?.loopTitle ?? "Loop").ui(13, .semibold).foregroundStyle(m.text.color).lineLimit(1).accessibilityAddTraits(.isHeader)
-                if let i { Text("· " + LoopNeedRow.tag(i)).ui(12).foregroundStyle(m.text2.color).lineLimit(1) }
+                let i = loopItem(b)
+                Text(i.map(InboxRowText.loopTitle) ?? "Loop").ui(13, .semibold).foregroundStyle(m.text.color).lineLimit(1).accessibilityAddTraits(.isHeader)
             default:
                 let item = b.sessionId.flatMap { model.item($0) }
-                if let item { AgentBadge(item: item, size: 20, status: false) }
                 Text(item?.session.name ?? "Session").ui(13, .semibold).foregroundStyle(m.text.color).lineLimit(1).accessibilityAddTraits(.isHeader)
                 Text(context(item)).ui(12).foregroundStyle(m.text2.color).lineLimit(1).truncationMode(.tail)
             }
-            Text(b.kind.tag).ui(11, .semibold).foregroundStyle(tagColor(b).color).lineLimit(1).fixedSize()
-                .padding(.horizontal, 7).frame(height: 18)
-                .background(Capsule().fill(m.surface.color))
-            if critical {   // LAB-2112
-                Text("Needs your decision").ui(11, .bold).foregroundStyle(m.needsText.color).lineLimit(1).fixedSize()
+            Text(b.kind == .loop ? (loopItem(b).map { LoopNeedRow.tag($0) } ?? "Loop") : b.kind.tag)
+                .ui(12, .semibold).foregroundStyle(tagColor(b).color).lineLimit(1).fixedSize()
+            if critical {   // LAB-2112: only P0 (LAB-2338)
+                Text("Needs your decision").ui(11, .bold).foregroundStyle(t.console.needs.color).lineLimit(1).fixedSize()
                     .padding(.horizontal, 7).frame(height: 18)
-                    .overlay(Capsule().strokeBorder(m.needsText.color))
+                    .overlay(Capsule().strokeBorder(t.console.needs.color))
                     .accessibilityLabel("Critical: needs your decision")
             }
-            Spacer(minLength: 8)
+        }
+        let trail = HStack(spacing: 8) {
             if let more = Inbox.moreLine(b.more) { Text(more).ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize() }
             Text(Inbox.age(b.at)).ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize()
             if b.sessionId != nil || b.kind == .plan {
-                Button { open(b) } label: { Text(b.kind == .plan ? "Open plan ↗" : "Open session ↗ ⌘↩").ui(12, .semibold).foregroundStyle(m.accentText.color).fixedSize() }
+                Button { open(b) } label: { Text(b.kind == .plan ? "Open plan ↗" : "Open session ↗ ⌘↩").ui(12, .semibold).foregroundStyle(t.console.link.color).fixedSize() }
                     .buttonStyle(.plain).help(b.kind == .plan ? "Open the plan" : "Open the session's terminal (⌘↩)")
+            } else if let i = loopItem(b) {
+                Button { model.openLoop(i.loopId, in: win) } label: { Text("Open loop ↗").ui(12, .semibold).foregroundStyle(t.console.link.color).fixedSize() }
+                    .buttonStyle(.plain).help("Open this loop in Loops")
             }
         }
-        .padding(.horizontal, 12).frame(height: 32)
-        .background(m.terminal.paneHeader.color)
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { lead; Spacer(minLength: 8); trail }
+            VStack(alignment: .leading, spacing: 4) { lead; HStack { Spacer(minLength: 0); trail } }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(t.console.strip.color)
     }
 
     private func tagColor(_ b: InboxBlock) -> RGB {
@@ -965,5 +1174,29 @@ struct InboxCapsuleStyle: ButtonStyle {
     let fill: RGB
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.background(configuration.isPressed ? fill.color : .clear)
+    }
+}
+
+/// LAB-2339 · P0 · P1 · P2, mono on its tier colour (red only for P0).
+struct InboxTierMark: View {
+    @Environment(\.theme) private var t
+    let tier: InboxTier
+    var body: some View {
+        let c = t.console.tier(tier)
+        Text(tier.label).ui(10.5, .bold, mono: true).foregroundStyle(c.text.color)
+            .frame(width: 26, height: 18)
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(c.fill.color))
+            .accessibilityLabel(tier == .p0 ? "Blocked on you" : tier == .p1 ? "Waits for a decision" : "To read")
+    }
+}
+
+/// LAB-2339 · who sent it: an outlined mono stamp in the sender's ink ("⌁ SESSION · Claude1", "↻ PROPOSAL · docs-drift · ×17").
+struct InboxPostmarkView: View {
+    let text: String
+    let ink: RGB
+    var body: some View {
+        Text(text).ui(10.5, .semibold, mono: true).tracking(0.4).foregroundStyle(ink.color).lineLimit(1)
+            .padding(.horizontal, 6).frame(height: 18)
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(ink.color, lineWidth: 1))
     }
 }
