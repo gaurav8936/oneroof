@@ -150,6 +150,7 @@ struct V2InboxPage: View {
         let loopCount = Set(full.compactMap { loopItem($0)?.loopId }).count
         return VStack(spacing: 0) {
             header(count: c.count(f), quiet: f == .loops ? 0 : quiet, sub: InboxFeed.subLine(c, filter: f, loopCount: loopCount), all: c.all)
+            if !model.runtimeOK && !loading && !SelfTest.isActive || ProcessInfo.processInfo.environment["ONEROOF_SELFTEST_ROOFDDOWN"] == "1" { roofdBanner }
             HStack(spacing: 0) {
                 listColumn(secs, layout: layout, filter: f, counts: c)
                     .frame(width: Self.listWidth)
@@ -315,11 +316,11 @@ struct V2InboxPage: View {
     }
 
     @ViewBuilder private func listEmpty(_ f: InboxFilter, counts c: InboxCounts) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(c.all == 0 ? "All clear" : "Nothing from \(f == .loops ? "loops" : "sessions") right now").ui(13, .semibold).foregroundStyle(t.text.color)
-            if c.all > 0 { Button { setFilter(.all) } label: { Text("Clear filter ›").ui(12.5).foregroundStyle(t.accentText.color) }.buttonStyle(.plain) }
+        VStack(alignment: .center, spacing: 8) {
+            Text(c.all == 0 ? "All clear" : f == .loops ? "No loop items match." : "No session items match.").ui(12.5).foregroundStyle(t.text2.color)
+            if c.all > 0 { RoofButton("Clear filter") { setFilter(.all) } }
         }
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity).padding(.top, 200)
     }
 
     /// One row: tier mark, postmark, title, age. The row you are on is blue; an answered row folds to "You: …".
@@ -488,11 +489,18 @@ struct V2InboxPage: View {
     }
 
     private func filterEmpty(_ f: InboxFilter) -> some View {
-        VStack(spacing: 8) {
-            Text(f == .loops ? "No loop items." : "No session needs you.").ui(20, .semibold).foregroundStyle(t.text.color)
-            Button { setFilter(.all) } label: { Text("Clear filter ›").ui(13).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
+        let c = InboxFeed.counts(model.inboxLayout.all, tier: tier)
+        let other: InboxFilter = f == .loops ? .sessions : .loops
+        return VStack(spacing: 8) {
+            Text(f == .loops ? "No loop items." : "No session needs you.").ui(17, .semibold).foregroundStyle(t.text.color)
+            if c.count(other) > 0 {
+                HStack(spacing: 4) {
+                    Text("\(other.title) · \(c.count(other)) \(c.count(other) == 1 ? "is" : "are") still waiting.").ui(13).foregroundStyle(t.text2.color)
+                    Button { setFilter(other) } label: { Text("Show them ⌘\(other == .sessions ? 2 : 3)").ui(13).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
+                }
+            }
         }
-        .frame(maxWidth: .infinity).padding(.top, 120)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var loading: Bool { !model.runtimeOK && model.runtimeState.hasPrefix("Connecting") }
@@ -517,7 +525,7 @@ struct V2InboxPage: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(title).ui(24, .semibold).foregroundStyle(t.text.color).accessibilityAddTraits(.isHeader)
-                    if n > 0 { Text("\(n)").ui(24, .regular).foregroundStyle(t.text3.color) }
+                    Text("\(n)").ui(24, .regular).foregroundStyle(t.text3.color)   // LAB-2343: "Inbox 0" too
                 }
                 HStack(spacing: 0) {
                     Text(sub ?? Inbox.waitingLine(n)).ui(13).foregroundStyle(t.text2.color)
@@ -587,16 +595,35 @@ struct V2InboxPage: View {
     private var emptyState: some View {
         let working = model.sessionItems.filter { $0.liveAgent != nil }.count
         return VStack(spacing: 8) {
-            Text("Nothing waits for you.").ui(20, .semibold).foregroundStyle(t.text.color)
-            Text(working == 0 ? "When an agent asks you something, it shows up here, ready to answer."
-                 : "\(working) session\(working == 1 ? "" : "s") working. When one asks you something, it shows up here.")
-                .ui(13.5).foregroundStyle(t.text2.color)
-            HStack(spacing: 0) {
-                Text("\(model.inboxDecidedToday) decided today · ").ui(12).foregroundStyle(t.text3.color)
-                Button { win.inboxTab = .decided } label: { Text("Decided ›").ui(12).foregroundStyle(t.accentText.color) }.buttonStyle(.plain)
+            Text("Nothing waits for you.").ui(17, .semibold).foregroundStyle(t.text.color)
+            Button { win.inboxTab = .decided } label: { Text("\(model.inboxDecidedToday) decided today ›").ui(13).foregroundStyle(t.accentText.color) }
+                .buttonStyle(.plain)
+            if working > 0 {
+                Button { win.open(.sessions) } label: { Text("\(working) session\(working == 1 ? "" : "s") working ›").ui(12.5).foregroundStyle(t.text2.color) }
+                    .buttonStyle(.plain)
             }
         }
-        .frame(maxWidth: .infinity).padding(.top, 120)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// LAB-2343 (4l): roofd is not running. Session asks still arrive (they are read from the terminals); One Roof's
+    /// own loops wait for it; the kit's loops run on launchd.
+    private var roofdBanner: some View {
+        HStack(spacing: 10) {
+            Circle().fill(t.needsText.color).frame(width: 8, height: 8)
+            Text("roofd is not running. Session asks still arrive; One Roof's own loops wait for it (the kit's loops run on launchd).")
+                .ui(13, .semibold).foregroundStyle(t.needsText.color).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            RoofButton("Start roofd") {
+                let m = model
+                DispatchQueue.global(qos: .userInitiated).async { try? m.runtime.ensureRunning() }
+            }
+            .help(model.runtimeState + " · One Roof also retries every 5 s on its own")
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.needsText.color.opacity(0.1)))
+        .padding(.horizontal, 28).padding(.top, 10)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Blocks

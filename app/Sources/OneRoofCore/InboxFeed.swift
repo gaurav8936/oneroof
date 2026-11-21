@@ -194,7 +194,9 @@ public enum InboxFeed {
 
     /// The header's sub line: "3 waiting on you · 2 finished" (Active sessions and All), "15 items from 6 loops" (Loops).
     public static func subLine(_ c: InboxCounts, filter: InboxFilter, loopCount: Int) -> String {
-        if c.all == 0 { return "Nothing waiting" }
+        if c.all == 0 { return "Nothing waits for you" }
+        if filter == .loops, c.loops == 0 { return "No loop items · \(c.sessions) session\(c.sessions == 1 ? "" : "s") waiting" }
+        if filter == .sessions, c.sessions == 0 { return "No session needs you · \(c.loops) loop item\(c.loops == 1 ? "" : "s")" }
         if filter == .loops {
             return "\(c.loops) item\(c.loops == 1 ? "" : "s") from \(loopCount) loop\(loopCount == 1 ? "" : "s")"
                 + (c.p0Loops > 0 ? " · \(c.p0Loops) stopped" : "")
