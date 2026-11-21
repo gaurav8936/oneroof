@@ -87,8 +87,8 @@ extension AppModel {
     /// LAB-2343 (IB-9): the one count — items blocked on you (P0), from sessions and loops. Proposals, reports and
     /// finished turns wait in the Inbox but don't badge.
     var needsYouBadge: Int {
-        let loops = loopInbox
-        return inboxLayout.all.filter { b in InboxTier.of(b, loopItem: b.loopItemId.flatMap { id in loops.first { $0.id == id } }) == .p0 }.count
+        InboxTier.p0Count(open: openDecisions, plansWaiting: objectives.filter { $0.status == .review && $0.plan != nil }.count,
+                          loops: loopInbox)
     }
 
     func answer(_ d: Decision, _ a: Answer, reply: String? = nil, choice: DecisionChoice? = nil) {
