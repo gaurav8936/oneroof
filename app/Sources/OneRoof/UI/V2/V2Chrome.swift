@@ -59,7 +59,7 @@ enum V2Counts {
     }
     /// LAB-2112: something critical waits (an agent blocked until you act): the badge turns red.
     @MainActor static func critical(_ model: AppModel) -> Bool {
-        model.openDecisions.contains { InboxUrgency.of($0) == .critical } || model.loopInbox.contains { _ in true }
+        model.openDecisions.contains { InboxUrgency.of($0) == .critical } || model.loopInbox.contains { InboxTier.of($0) == .p0 }   // LAB-2338: staged loop output is never red
     }
     /// LAB-2286 · the Loops place's badge: what loops need from you, one per decision (the same number as the
     /// landing's "need you" chip and the Inbox's loop items).
@@ -134,7 +134,7 @@ struct V2Rail: View {
 extension V2Counts {
     /// The number on a place's icon: the Inbox's waiting count, the Loops' needs-you count.
     @MainActor static func badge(_ p: Place, _ model: AppModel) -> Int {
-        p == .needsYou ? needsYou(model) : p == .loops ? loops(model) : 0
+        p == .needsYou ? needsYou(model) : 0   // LAB-2343 (IBO-5): Loops no longer repeats the Inbox's loop items
     }
 }
 

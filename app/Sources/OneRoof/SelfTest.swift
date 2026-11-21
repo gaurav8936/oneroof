@@ -183,6 +183,8 @@ enum SelfTest {
         // P6 (v2): ONEROOF_SELFTEST_PLACE=<home|needsYou|sessions|work|machine|loops|learn>, ONEROOF_SELFTEST_FOCUS=<0-3>,
         // ONEROOF_SELFTEST_LAYOUT=<single|grid|wall>. Place first (it sets its default step), then the step.
         if app.model.settings.ui2, let p = env["ONEROOF_SELFTEST_PLACE"], let place = Place(rawValue: p) { app.model.active.open(place) }
+        // LAB-2339: INBOXFILTER=<all|sessions|loops> sets the Inbox's source filter.
+        if let f = env["ONEROOF_SELFTEST_INBOXFILTER"], let x = InboxFilter(rawValue: f) { app.model.active.inboxFilter = x }
         if let l = env["ONEROOF_SELFTEST_LAYOUT"], let layout = SessionLayout(rawValue: l) {
             app.model.active.layout = layout
         } else if env["ONEROOF_SELFTEST_LAYOUT"] == "scroll", app.model.settings.ui2 { app.model.active.open(.trace) }   // LAB-2044; LAB-2332: History is inside Trace
@@ -243,9 +245,20 @@ enum SelfTest {
                 if env["ONEROOF_SELFTEST_INBOXDECIDED"] == "1" { NotificationCenter.default.post(name: .inboxSelfTest, object: ["decided": true]) }
                 if env["ONEROOF_SELFTEST_INBOXPICK"] == "decided", let d = app.model.inboxDecided.first {   // the newest decided ask
                     app.model.needsPick = d.id.uuidString
+                } else if let k = env["ONEROOF_SELFTEST_INBOXPICK"], k.hasPrefix("loop:") {   // LAB-2341: loop:<outcome kind | failed | missed | asks>
+                    let want = String(k.dropFirst(5))
+                    for delay in [0.0, 1.5, 3.0, 4.5] {   // loop items arrive with the first ledger read
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            if let i = LoopInboxState.shared.items.first(where: { $0.outcomeKind == want || $0.kind.rawValue == want }),
+                               app.model.needsPick != "loop-" + i.id { app.model.needsPick = "loop-" + i.id }
+                        }
+                    }
                 } else if let i = Int(env["ONEROOF_SELFTEST_INBOXPICK"] ?? ""), i < app.model.inboxLayout.all.count {
                     app.model.needsPick = app.model.inboxLayout.all[i].id
                 }
+            }
+            if let loop = env["ONEROOF_SELFTEST_INBOXBATCH"] {   // LAB-2342: select every decidable item of that loop
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["batch": loop]) }
             }
             if let text = env["ONEROOF_SELFTEST_INBOXREPLY"] {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["reply": text]) }

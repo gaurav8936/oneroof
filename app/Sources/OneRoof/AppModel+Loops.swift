@@ -19,6 +19,8 @@ final class LoopInboxState: ObservableObject {
     @Published var busy: Set<String> = []
     /// LAB-2286 · the status bar's loops part ("14 loops on · next: Mac resource watch 10:40"); nil before the first read.
     @Published private(set) var statusLine: String?
+    /// LAB-2342 (IBO-8): loop decisions someone made today (Decided · N today counts them with session answers).
+    @Published private(set) var decidedToday = 0
     /// LAB-2286 · false when the kit could not be read (`ae loops list --json`): kit loops are "kit state unknown".
     @Published private(set) var kitKnown = true
 
@@ -49,21 +51,60 @@ final class LoopInboxState: ObservableObject {
             let s = Self.store()
             let loops = s.all()
             let led = Self.ledger(s.root)
-            let staged = led?.outcomes(status: "staged", limit: 300) ?? []
+            var staged = led?.outcomes(status: "staged", limit: 300) ?? []
+            // LAB-2341 (IB-6, IBO-1): reports and slack notes expire after 7 days; they show in Decided as Expired.
+            if let led, !SelfTest.isActive {
+                let old = LoopInbox.expired(staged)
+                for o in old { _ = try? led.decide(o.id, status: "expired", by: "One Roof (after \(LoopInbox.expiryDays) days)") }
+                if !old.isEmpty { staged = led.outcomes(status: "staged", limit: 300) }
+            }
             // LAB-2286: the kit's real on/off (read at most once a minute here, shared with the Loops page) and the
             // last 8 days of runs, so a loop that missed its runs is one item too and the status bar has its line.
             let kit = KitLoopsCache.shared.get(maxAge: 60)
             let rows = LoopsV7.rows(loops: loops, kit: kit, runs: LoopsV7.runsByLoop(led))
-            let found = LoopInbox.items(loops: loops, staged: staged, rows: rows)
+            // LAB-2341 (IB-1, IB-2): each item in its own words, re-filed copies folded into one; muted proposals
+            // ("Dismiss and stop re-filing") stay out.
+            let muted = Set(UserDefaults.standard.stringArray(forKey: Self.mutedKey) ?? [])
+            let found = LoopInbox.fold(LoopInbox.attach(LoopInbox.items(loops: loops, staged: staged, rows: rows),
+                                                        proposals: Self.proposalDocs()))
+                .filter { LoopInbox.muteKey($0).map { !muted.contains($0) } ?? true }
             let line = LoopsV7.statusBar(rows: rows)
+            let today = led?.decidedByPeopleCount(since: Calendar.current.startOfDay(for: Date())) ?? 0
             DispatchQueue.main.async {
                 guard let self else { return }
                 if self.statusLine != line { self.statusLine = line }
+                if self.decidedToday != today { self.decidedToday = today }
                 if self.kitKnown != (kit != nil) { self.kitKnown = kit != nil }
                 let next = found + self.selfTestSeed   // LAB-2042: ONEROOF_SELFTEST_INBOX's loop item (self-test only)
                 if self.items != next { self.items = next; done?() }
             }
         }
+    }
+
+    static let mutedKey = "inbox.mutedProposals"
+
+    /// LAB-2341 (IB-1): the kit's proposal files (`<journal>/proposals/<date>_<id>_<slug>.md`), read and parsed, by id.
+    static func proposalDocs() -> [String: LoopDoc] {
+        let cfg = AEConfig.find().flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+        var out: [String: LoopDoc] = [:]
+        for root in AEConfig.journalRoots(config: cfg).reversed() {   // the first root wins
+            let dir = (root as NSString).appendingPathComponent("proposals")
+            guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { continue }
+            for (id, path) in LoopDocs.index(names, folder: dir) {
+                if let text = try? String(contentsOfFile: path, encoding: .utf8) { out[id] = LoopDocs.proposal(text, path: path) }
+            }
+        }
+        return out
+    }
+
+    /// "Dismiss and stop re-filing": dismiss every copy, and keep later filings of the same proposal out of the Inbox
+    /// (the loop still writes them to its journal).
+    func dismissAndMute(_ item: LoopInbox.Item, then: @escaping () -> Void = {}) {
+        if let k = LoopInbox.muteKey(item) {
+            var m = UserDefaults.standard.stringArray(forKey: Self.mutedKey) ?? []
+            if !m.contains(k) { m.append(k); UserDefaults.standard.set(m, forKey: Self.mutedKey) }
+        }
+        decide(item, "rejected", reason: "stop re-filing", then: then)
     }
 
     // MARK: Actions (each writes through LoopStore / the ledger, then re-reads)
@@ -89,6 +130,11 @@ final class LoopInboxState: ObservableObject {
     /// (shadow) runs that only say what they would do (LP-12).
     func turnOn(_ loopId: String, then: @escaping () -> Void = {}) {
         perform(loopId, "Turn on", then) { "On, in trial: " + (try KitLoops.turnOn(loopId)) }
+    }
+
+    /// LAB-2341 (4h): Pause loop from the Inbox (nothing starts until Resume in Loops).
+    func pause(_ loopId: String, then: @escaping () -> Void = {}) {
+        perform(loopId, "Pause", then) { try Self.store().update(loopId) { $0 = LoopController.pause($0) }; return "Paused: nothing starts until you resume it in Loops." }
     }
 
     func markSeen(_ loopId: String, then: @escaping () -> Void = {}) {
