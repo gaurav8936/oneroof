@@ -59,7 +59,7 @@ enum V2Counts {
     }
     /// LAB-2112: something critical waits (an agent blocked until you act): the badge turns red.
     @MainActor static func critical(_ model: AppModel) -> Bool {
-        model.openDecisions.contains { InboxUrgency.of($0) == .critical } || model.loopInbox.contains { _ in true }
+        model.openDecisions.contains { InboxUrgency.of($0) == .critical } || model.loopInbox.contains { InboxTier.of($0) == .p0 }   // LAB-2338: staged loop output is never red
     }
     /// LAB-2286 · the Loops place's badge: what loops need from you, one per decision (the same number as the
     /// landing's "need you" chip and the Inbox's loop items).
