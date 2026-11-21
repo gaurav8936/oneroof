@@ -11,6 +11,7 @@ import OneRoofCore
 ///                                               n ≥ 6 adds an answered ask), see SelfTestInbox.swift; INBOXPICK=<i> focuses
 ///                                               block i (=decided: the newest decided ask), INBOXDECIDED=1 opens Decided, INBOXIMAGE=<png> attaches an image,
 ///                                               INBOXREPLY=<text> sends a reply, INBOXPRESS=<n> presses option n,
+///                                               INBOXFOLD=<s> folds settled rows into Done today at <s> (LAB-2352),
 ///                                               INBOXOFFLINE=1 makes the seeded sessions unreachable
 ///   ONEROOF_SELFTEST_HISTORY=<n> · HISTORYFILTER=<f> · HISTORYNEW=<n> · ACTIONLOG=decisions|rules|open:<i> · ACTIONLOGFILTER=<f>
 ///                                               LAB-2044–2048: seed History (one moment of every kind over three days, a
@@ -268,6 +269,9 @@ enum SelfTest {
             if let k = Int(env["ONEROOF_SELFTEST_INBOXPRESS"] ?? "") {
                 let at = Double(env["ONEROOF_SELFTEST_INBOXPRESSAT"] ?? "") ?? 6.2
                 DispatchQueue.main.asyncAfter(deadline: .now() + at) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["press": k]) }
+            }
+            if let at = Double(env["ONEROOF_SELFTEST_INBOXFOLD"] ?? "") {   // LAB-2352: fold settled rows into Done today (opened) at <s>
+                DispatchQueue.main.asyncAfter(deadline: .now() + at) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["fold": true]) }
             }
             if let png = env["ONEROOF_SELFTEST_INBOXIMAGE"] {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["attach": png]) }
