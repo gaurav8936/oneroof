@@ -119,6 +119,8 @@ public struct InboxCounts: Equatable, Sendable {
     /// Session items that are blocked on you vs only finished or waiting (the header sub line).
     public var waitingOnYou = 0, finished = 0
 
+    public init() {}
+
     public func count(_ f: InboxFilter) -> Int { f == .all ? all : f == .sessions ? sessions : loops }
     public func p0(_ f: InboxFilter) -> Int { f == .all ? p0 : f == .sessions ? p0Sessions : p0Loops }
 }

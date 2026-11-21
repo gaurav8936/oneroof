@@ -27,8 +27,10 @@ extension AppModel {
         return (real + selfTestDecisions.filter { !$0.isOpen }).sorted { ($0.answeredAt ?? $0.askedAt) > ($1.answeredAt ?? $1.askedAt) }
     }
 
+    /// IB-11 (IBO-8): every decision today, sessions and loops (loop decisions someone made, folded copies count once each).
     var inboxDecidedToday: Int {
         (decisions + selfTestDecisions).filter { !$0.isOpen && Calendar.current.isDateInToday($0.answeredAt ?? .distantPast) }.count
+            + LoopInboxState.shared.decidedToday
     }
 }
 
@@ -94,7 +96,9 @@ struct V2InboxPage: View {
         Group {
             if win.inboxTab == .decided {
                 VStack(spacing: 0) {
-                    header(count: model.needsYouBadge, quiet: 0)
+                    // LAB-2342 (4k): "Decided N" · N decided today, sessions and loops.
+                    header(count: model.inboxDecidedToday, quiet: 0, sub: "\(model.inboxDecidedToday) decided today · sessions and loops",
+                           all: model.inboxLayout.all.count, title: "Decided")
                     V2DecidedList(model: model, win: win)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -244,32 +248,8 @@ struct V2InboxPage: View {
         }
     }
 
-    /// All · Active sessions · Loops, each with its count (red when it holds something blocked on you).
     private func sourceFilter(_ f: InboxFilter, counts c: InboxCounts) -> some View {
-        HStack(spacing: 2) {
-            ForEach(InboxFilter.allCases, id: \.self) { x in
-                let on = x == f, red = c.p0(x) > 0 && x != .all
-                Button { setFilter(x) } label: {
-                    HStack(spacing: 6) {
-                        Text(x.title).ui(13, on ? .semibold : .regular).foregroundStyle((on ? t.text : t.text2).color)
-                        Text("\(c.count(x))").ui(11, .bold).foregroundStyle(t.onAccent.color)
-                            .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 16)
-                            .background(Capsule().fill((red ? t.needsText : t.text2).color))
-                    }
-                    .padding(.horizontal, 12).frame(height: 28)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? t.window.color : .clear)
-                        .shadow(color: .black.opacity(on ? 0.12 : 0), radius: 1, y: 1))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("\(x.title) (⌘\(InboxFilter.allCases.firstIndex(of: x)! + 1))")
-                .accessibilityLabel("\(x.title), \(c.count(x))")
-                .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
-            }
-        }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.selection.color))
-        .fixedSize()
+        InboxSourceFilter(filter: f, counts: c) { setFilter($0) }
     }
 
     @ViewBuilder private func sectionHeader(_ s: InboxSection) -> some View {
@@ -532,11 +512,11 @@ struct V2InboxPage: View {
 
     // MARK: Header
 
-    private func header(count n: Int, quiet: Int, sub: String? = nil, all: Int? = nil) -> some View {
+    private func header(count n: Int, quiet: Int, sub: String? = nil, all: Int? = nil, title: String = "Inbox") -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Inbox").ui(24, .semibold).foregroundStyle(t.text.color).accessibilityAddTraits(.isHeader)
+                    Text(title).ui(24, .semibold).foregroundStyle(t.text.color).accessibilityAddTraits(.isHeader)
                     if n > 0 { Text("\(n)").ui(24, .regular).foregroundStyle(t.text3.color) }
                 }
                 HStack(spacing: 0) {

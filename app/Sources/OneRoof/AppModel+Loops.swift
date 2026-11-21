@@ -19,6 +19,8 @@ final class LoopInboxState: ObservableObject {
     @Published var busy: Set<String> = []
     /// LAB-2286 · the status bar's loops part ("14 loops on · next: Mac resource watch 10:40"); nil before the first read.
     @Published private(set) var statusLine: String?
+    /// LAB-2342 (IBO-8): loop decisions someone made today (Decided · N today counts them with session answers).
+    @Published private(set) var decidedToday = 0
     /// LAB-2286 · false when the kit could not be read (`ae loops list --json`): kit loops are "kit state unknown".
     @Published private(set) var kitKnown = true
 
@@ -67,9 +69,11 @@ final class LoopInboxState: ObservableObject {
                                                         proposals: Self.proposalDocs()))
                 .filter { LoopInbox.muteKey($0).map { !muted.contains($0) } ?? true }
             let line = LoopsV7.statusBar(rows: rows)
+            let today = led?.decidedByPeopleCount(since: Calendar.current.startOfDay(for: Date())) ?? 0
             DispatchQueue.main.async {
                 guard let self else { return }
                 if self.statusLine != line { self.statusLine = line }
+                if self.decidedToday != today { self.decidedToday = today }
                 if self.kitKnown != (kit != nil) { self.kitKnown = kit != nil }
                 let next = found + self.selfTestSeed   // LAB-2042: ONEROOF_SELFTEST_INBOX's loop item (self-test only)
                 if self.items != next { self.items = next; done?() }

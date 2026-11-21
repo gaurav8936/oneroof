@@ -290,6 +290,47 @@ extension LoopInbox {
         }
     }
 
+    /// LAB-2342 (IB-11): decided outcomes folded like the Inbox folds them: the same loop, kind and proposal slug (else
+    /// title), decided in the same minute, is one Decided row ("closed 17 copies"). Newest decision first.
+    public struct DecidedGroup: Equatable, Sendable, Identifiable {
+        public var outcomes: [LoopLedger.Outcome]
+        public var doc: LoopDoc?
+        public var id: String { "loopd-\(outcomes.first?.id ?? 0)" }
+        public var first: LoopLedger.Outcome { outcomes[0] }
+        public var at: Date { first.decidedAt.flatMap(LoopInbox.iso) ?? .distantPast }
+        public var title: String {
+            if let t = doc?.title, !t.isEmpty { return t }
+            return LoopDocs.note(first).title
+        }
+        /// "Approved", "Dismissed · closed 17 copies", "Seen", "Expired after 7 days".
+        public var answer: String {
+            let reason = first.detailValue("reason")
+            var a: String
+            switch first.status {
+            case "approved": a = reason == "seen" ? "Seen" : "Approved"
+            case "rejected": a = reason == "stop re-filing" ? "Dismissed and stopped re-filing" : "Dismissed" + (reason.map { ": " + $0 } ?? "")
+            case "applied": a = "Applied"
+            case "merged": a = "Merged"
+            case "expired": a = "Expired after \(LoopInbox.expiryDays) days"
+            default: a = first.status.capitalized
+            }
+            if outcomes.count > 1 { a += " · closed \(outcomes.count) copies" }
+            return a
+        }
+    }
+
+    public static func foldDecided(_ os: [LoopLedger.Outcome], proposals: [String: LoopDoc] = [:]) -> [DecidedGroup] {
+        var order: [String] = [], groups: [String: DecidedGroup] = [:]
+        for o in os {
+            let doc = LoopDocs.proposalId(o).flatMap { proposals[$0] } ?? (["report", "slack", "issue"].contains(o.kind) ? LoopDocs.note(o) : nil)
+            let what = doc?.slug ?? doc?.title ?? o.title
+            let key = "\(o.loop)|\(o.kind)|\(o.status)|\(what)|\((o.decidedAt ?? "").prefix(16))"
+            if groups[key] == nil { order.append(key); groups[key] = DecidedGroup(outcomes: [o], doc: doc) }
+            else { groups[key]!.outcomes.append(o) }
+        }
+        return order.compactMap { groups[$0] }
+    }
+
     /// "Dismiss and stop re-filing": the keys of muted proposals ("loop|slug"); a muted item stays out of the Inbox.
     public static func muteKey(_ i: Item) -> String? { i.doc?.slug.map { "\(i.loopId)|\($0)" } }
 }
