@@ -588,12 +588,34 @@ final class ToolbarBackdrop: NSView {
     var fill = ThemeName.daylight.tokens.toolbar { didSet { needsDisplay = true } }
     var line = ThemeName.daylight.tokens.separator { didSet { needsDisplay = true } }
     var lineWidth: CGFloat = 1 { didSet { needsDisplay = true } }
+    /// 2.0.9.1 (owner 2026-11-21): column edges carried up through the band, from the top of the window to its bottom,
+    /// drawn after the window's stripe so they cross it: (x, width) in window points, and the dividers' own colour.
+    /// v2: the rail's edge, so the rail reads as one column from the window buttons down (LAB-1783 had every column
+    /// line end at the band's bottom edge, which cut the rail's border at the stripe).
+    var edges: [V2Layout.Edge] = [] { didSet { if edges != oldValue { needsDisplay = true } } }
+    var edgeColour: NSColor = .separatorColor { didSet { needsDisplay = true } }
+    /// The split view whose dividers the edges continue (it draws them, so the colour is the same).
+    weak var dividerSource: NSSplitView?
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         fill.nsColor.setFill(); bounds.fill()
         var x: CGFloat = 0
         for (end, colour) in segments where end > x { colour.nsColor.setFill(); NSRect(x: x, y: 0, width: end - x, height: bounds.height).fill(); x = end }
         line.nsColor.setFill(); NSRect(x: 0, y: bounds.height - lineWidth, width: bounds.width, height: lineWidth).fill()
+        for e in edges {
+            // Drawn by the split view itself, so the band's edge is the same pixels as the dividers below it.
+            if let split = dividerSource {
+                split.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    var x = CGFloat(e.x)
+                    while x < CGFloat(e.x + e.width) - 0.01 {
+                        split.drawDivider(in: NSRect(x: x, y: 0, width: split.dividerThickness, height: bounds.height))
+                        x += max(split.dividerThickness, 1)
+                    }
+                }
+            } else {
+                edgeColour.setFill(); NSRect(x: CGFloat(e.x), y: 0, width: CGFloat(e.width), height: bounds.height).fill()
+            }
+        }
     }
 }
 

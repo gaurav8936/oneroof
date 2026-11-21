@@ -233,4 +233,15 @@ final class V2NarrowWindowTests: XCTestCase {
         XCTAssertEqual(V2Layout.toolbarStart(divider: 200, placesRow: true), V2Layout.Bar.lights + V2Layout.Bar.placesRow + V2Layout.Bar.sectionLead)
         XCTAssertEqual(V2Layout.toolbarStart(divider: 52, placesRow: false), V2Layout.Bar.lights + V2Layout.Bar.sectionLead, "Focus: after the traffic lights")
     }
+
+    // 2.0.9.1 · the rail's edge runs through the band (owner 2026-11-21)
+    func test_2091_railEdgeRunsThroughTheBand() {
+        XCTAssertEqual(V2Layout.bandEdges(railMaxX: 66, divider: 1), [V2Layout.Edge(x: 66, width: 1)], "at the rail's divider, its own thickness")
+        XCTAssertEqual(V2Layout.bandEdges(railMaxX: nil, divider: 1), [], "no rail, no edge")
+        XCTAssertEqual(V2Layout.bandEdges(railMaxX: 0, divider: 1), [])
+        XCTAssertEqual(V2Layout.bandEdges(railMaxX: 66, divider: 0), [])
+        XCTAssertEqual(V2Layout.bandEdges(railMaxX: 66, nextColumnX: 69, divider: 1), [V2Layout.Edge(x: 66, width: 3)],
+                       "folded Sessions and Files leave their dividers beside the rail's: the band draws all three")
+        XCTAssertEqual(V2Layout.bandEdges(railMaxX: 66, nextColumnX: 67, divider: 1), [V2Layout.Edge(x: 66, width: 1)])
+    }
 }
