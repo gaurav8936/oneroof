@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.0.9 — The Inbox, redone: one list for sessions and loops, red only when something waits on you (21 Nov 2026)
+
+The Inbox used to show every loop result as a red block of its own; on a real Mac that was 78 identical alarms for
+about 15 decisions. It is now a list with the selected item in full beside it, and only what is blocked on you is red.
+
+- **A list and a panel.** On the left, every item as one row: how soon it needs you (P0 blocked, P1 decide, P2 read),
+  who sent it (a session, a plan, a loop) and a short title. On the right, the selected item in the dark console, answered
+  in place as before: the agent's own options, the reply box, ↩, esc, 1–9. (LAB-2339, LAB-2340)
+- **All · Active sessions · Loops.** A filter on top of the list (⌘1 · ⌘2 · ⌘3) with counts. The Inbox opens on Active
+  sessions when a session is blocked on you. Sessions split into Waiting on you and Not waiting on you; loops are grouped
+  by loop. (LAB-2339)
+- **Red only when something is stopped.** A permission, a question menu, a plan, a loop round that asks and a loop that
+  stopped are red. Proposals, reports, commits and file updates never are, however old. (LAB-2338)
+- **Loop results in their own words.** A proposal shows its real title, its evidence, what approving changes and the
+  rule behind it; a report shows its finding; commits show the gate, the push and the PR command Approve runs, the commits
+  and the diff. (LAB-2341)
+- **Repeats folded.** A loop that files the same thing every night is one row, "filed ×17"; one decision closes every
+  copy. "Dismiss and stop re-filing" keeps later copies out of the Inbox. A report links to the proposal it is about.
+  Reports and notes expire after 7 days. (LAB-2341)
+- **Decide many at once.** Space, ⇧↑ ⇧↓ or Select all, then Approve N or Dismiss N. (LAB-2342)
+- **Decided, for sessions and loops.** The same list and panel, with the same filter; loop decisions you made are in it
+  too, and "Decided · N today" counts both. (LAB-2342)
+- **One count.** The Inbox badge on the rail, the menu bar, the Dock and the status bar counts only what is blocked on
+  you. The Loops badge no longer repeats the same items. A banner says when roofd is not running. (LAB-2343)
+
 ## 2.0.8 — Thirteen places on the rail, and the first Agent factory recipes (19 Nov 2026)
 
 One Roof grows beyond a coding tool. The rail now holds every place it will have, in six groups, and the places that
