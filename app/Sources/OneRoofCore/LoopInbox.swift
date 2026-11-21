@@ -26,6 +26,10 @@ public enum LoopInbox {
         public var outcomes: [LoopLedger.Outcome]
         /// For `.asks`: the round's session.
         public var sessionId: String?
+        /// LAB-2341 (IB-1): the outcome's own words (a proposal's title, evidence, change; a report's finding).
+        public var doc: LoopDoc? = nil
+        /// LAB-2341 (IB-2): when the newest folded copy was filed (`when` is the first).
+        public var lastWhen: Date? = nil
 
         /// The outcome kind of a staged item (commit · pr · issue · report · proposal · file · slack · promotion).
         public init(id: String, kind: Kind, loopId: String, loopTitle: String, headline: String, detail: String, when: Date,
@@ -35,6 +39,8 @@ public enum LoopInbox {
         }
 
         public var outcomeKind: String { outcomes.first?.kind ?? "" }
+        /// LAB-2341: how many filings this item stands for (commits of one run count as one filing).
+        public var copies: Int { outcomeKind == "commit" ? 1 : max(1, outcomes.count) }
         public var outcomeIds: [Int] { outcomes.map(\.id) }
     }
 
@@ -141,6 +147,151 @@ public enum LoopInbox {
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f.date(from: s)
     }
+}
+
+// MARK: - LAB-2341 · Inbox v4.0: titles, evidence, folding, related, expiry (IB-1, IB-2, IB-6, IB-12)
+
+/// What an outcome says in its own words: a proposal file's title, evidence, change and target; a report's finding.
+public struct LoopDoc: Equatable, Sendable {
+    public var title: String
+    public var evidence: [String] = []
+    /// The proposal's kind of change ("rule", "tracker", "doc") and what it changes ("~/.claude/skills", "Linear").
+    public var change: String? = nil
+    public var target: String? = nil
+    /// The rule it follows (the proposal's quoted line).
+    public var why: String? = nil
+    /// The proposal's slug (its file name after the id): the same slug = the same proposal filed again.
+    public var slug: String? = nil
+    public var path: String? = nil
+    public var id: String? = nil
+
+    public init(title: String, evidence: [String] = [], change: String? = nil, target: String? = nil, why: String? = nil,
+                slug: String? = nil, path: String? = nil, id: String? = nil) {
+        self.title = title; self.evidence = evidence; self.change = change; self.target = target; self.why = why
+        self.slug = slug; self.path = path; self.id = id
+    }
+}
+
+public enum LoopDocs {
+    /// A proposal file as the kit writes it (`ae/journal.py`): "# Proposal: <title>", a "**Change:** x · **Target:** y"
+    /// line, a quoted rule, "## Evidence" bullets.
+    public static func proposal(_ text: String, path: String? = nil) -> LoopDoc {
+        var title = "", evidence: [String] = [], change: String?, target: String?, why: String?
+        var section = ""
+        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let l = String(raw).trimmingCharacters(in: .whitespaces)
+            if l.hasPrefix("# ") && title.isEmpty {
+                title = String(l.dropFirst(2)).replacingOccurrences(of: "Proposal: ", with: "")
+            } else if l.hasPrefix("## ") {
+                section = String(l.dropFirst(3)).lowercased()
+            } else if l.hasPrefix("**Loop:**") {
+                change = field(l, "Change"); target = field(l, "Target")
+            } else if l.hasPrefix("> "), why == nil, section.isEmpty {
+                why = String(l.dropFirst(2))
+            } else if section == "evidence", l.hasPrefix("- ") || l.hasPrefix("* ") {
+                evidence.append(String(l.dropFirst(2)))
+            }
+        }
+        let name = path.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension } ?? ""
+        let parts = name.split(separator: "_", maxSplits: 2).map(String.init)   // <date>_<id>_<slug>
+        return LoopDoc(title: title, evidence: evidence, change: change, target: target, why: why,
+                       slug: parts.count == 3 ? parts[2] : nil, path: path, id: parts.count >= 2 ? parts[1] : nil)
+    }
+
+    /// "**Loop:** x · **Run:** y · **Change:** rule · **Target:** ~/.claude/skills" → the value after `**key:**`.
+    static func field(_ line: String, _ key: String) -> String? {
+        guard let r = line.range(of: "**\(key):**") else { return nil }
+        let rest = line[r.upperBound...]
+        let v = (rest.range(of: " · ").map { rest[..<$0.lowerBound] } ?? rest).trimmingCharacters(in: .whitespaces)
+        return v.isEmpty ? nil : v
+    }
+
+    /// A report, issue or slack note: the ledger title without the "[loop] " prefix; the finding is the detail's body.
+    public static func note(_ o: LoopLedger.Outcome) -> LoopDoc {
+        var t = o.title
+        if t.hasPrefix("[\(o.loop)] ") { t.removeFirst(o.loop.count + 3) }
+        let body = (o.detailValue("body") ?? o.detailValue("error") ?? "").split(separator: "\n").map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return LoopDoc(title: t, evidence: Array(body.prefix(12)))
+    }
+
+    /// The proposal id of an outcome link ("journal:p-6421" → "p-6421").
+    public static func proposalId(_ o: LoopLedger.Outcome) -> String? {
+        if case .journal(let rel) = o.target, InboxRowText.isBareId(rel) { return rel }
+        return InboxRowText.isBareId(o.title) ? o.title : nil
+    }
+
+    /// "<date>_<id>_<slug>.md" file names in a proposals folder, by id.
+    public static func index(_ names: [String], folder: String) -> [String: String] {
+        var out: [String: String] = [:]
+        for n in names where n.hasSuffix(".md") {
+            let parts = n.split(separator: "_", maxSplits: 2)
+            if parts.count >= 2 { out[String(parts[1])] = (folder as NSString).appendingPathComponent(n) }
+        }
+        return out
+    }
+}
+
+extension LoopInbox {
+    /// IB-1: give each staged item its own words (proposal files by id; reports, issues and slack from the ledger).
+    public static func attach(_ items: [Item], proposals: [String: LoopDoc]) -> [Item] {
+        items.map { i in
+            guard i.kind == .staged, let o = i.outcomes.first else { return i }
+            var x = i
+            switch o.kind {
+            case "proposal", "promotion": if let id = LoopDocs.proposalId(o), let d = proposals[id] { x.doc = d }
+            case "report", "slack", "issue": x.doc = LoopDocs.note(o)
+            default: break
+            }
+            return x
+        }
+    }
+
+    /// IB-2: the same loop filing the same thing again (same proposal slug, else the same title) is one item: its
+    /// outcomes are every copy, `when` the first filing, `lastWhen` the last. A decision writes every copy.
+    /// Commits keep one item per run.
+    public static func fold(_ items: [Item]) -> [Item] {
+        var order: [String] = [], merged: [String: Item] = [:]
+        for i in items {
+            let key: String
+            if i.kind == .staged, i.outcomeKind != "commit", i.outcomeKind != "pr" {
+                let what = i.doc?.slug ?? i.doc?.title ?? i.outcomes.first?.title ?? i.id
+                key = "\(i.loopId)|\(i.outcomeKind)|\(what)"
+            } else { key = i.id }
+            if var m = merged[key] {
+                m.outcomes += i.outcomes
+                if i.when < m.when { m.when = i.when }
+                let last = max(m.lastWhen ?? m.when, i.lastWhen ?? i.when)
+                m.lastWhen = last
+                if (i.lastWhen ?? i.when) >= last { m.doc = i.doc ?? m.doc }   // the newest copy's words
+                merged[key] = m
+            } else { order.append(key); merged[key] = i }
+        }
+        return order.compactMap { merged[$0] }
+    }
+
+    /// IB-12: the open proposal a report is about (same loop, the proposal's target named in the report's title).
+    public static func relatedProposal(_ report: Item, in items: [Item]) -> Item? {
+        guard ["report", "slack"].contains(report.outcomeKind), let t = report.doc?.title ?? report.outcomes.first?.title else { return nil }
+        return items.first { $0.loopId == report.loopId && $0.outcomeKind == "proposal"
+            && ($0.doc?.target).map { !$0.isEmpty && t.contains($0) } == true }
+    }
+
+    public static func relatedReports(_ proposal: Item, in items: [Item]) -> [Item] {
+        items.filter { relatedProposal($0, in: items)?.id == proposal.id }
+    }
+
+    /// IB-6 (IBO-1: reports and slack notes after 7 days): staged outcomes that have expired.
+    public static let expiryDays = 7
+    public static func expired(_ staged: [LoopLedger.Outcome], now: Date = Date()) -> [LoopLedger.Outcome] {
+        staged.filter { o in
+            ["report", "slack"].contains(o.kind) && o.status == "staged"
+                && (iso(o.created).map { now.timeIntervalSince($0) > Double(expiryDays) * 86_400 } ?? false)
+        }
+    }
+
+    /// "Dismiss and stop re-filing": the keys of muted proposals ("loop|slug"); a muted item stays out of the Inbox.
+    public static func muteKey(_ i: Item) -> String? { i.doc?.slug.map { "\(i.loopId)|\($0)" } }
 }
 
 /// LAB-1922: the kinds of loops (the kit's `KINDS`), in plain words: what a loop of that kind is for and what it

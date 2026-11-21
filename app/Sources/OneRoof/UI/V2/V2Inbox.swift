@@ -258,6 +258,13 @@ struct V2InboxPage: View {
                 Text(title).ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                 Text(loopSummary(s.blocks)).ui(12).foregroundStyle(t.text2.color).lineLimit(1)
                 Spacer(minLength: 0)
+                let reports = s.blocks.compactMap(loopItem).filter { ["report", "slack"].contains($0.outcomeKind) }
+                if !reports.isEmpty {
+                    RoofButton("Mark reports seen") {
+                        for r in reports { LoopInboxState.shared.decide(r, "approved", reason: "seen") { model.refreshLoopInbox() } }
+                    }
+                    .help("Marks \(reports.reduce(0) { $0 + $1.copies }) report filings seen; each shows in Decided.")
+                }
             }
             .padding(.top, 2)
         }
@@ -356,7 +363,7 @@ struct V2InboxPage: View {
     }
 
     private func postmarkLine(_ b: InboxBlock) -> String {
-        Postmark.line(Postmark.of(b, loopItem: loopItem(b)), sender: sender(b), copies: loopItem(b)?.outcomes.count ?? 1)
+        Postmark.line(Postmark.of(b, loopItem: loopItem(b)), sender: sender(b), copies: loopItem(b)?.copies ?? 1)
     }
 
     private func postmarkInk(_ b: InboxBlock) -> RGB {
@@ -559,7 +566,7 @@ struct V2InboxPage: View {
                 Text(item?.session.name ?? "Session").ui(13, .semibold).foregroundStyle(m.text.color).lineLimit(1).accessibilityAddTraits(.isHeader)
                 Text(context(item)).ui(12).foregroundStyle(m.text2.color).lineLimit(1).truncationMode(.tail)
             }
-            Text(b.kind == .loop ? (loopItem(b).map { LoopNeedRow.tag($0) } ?? "Loop") : b.kind.tag)
+            Text(b.kind == .loop ? (loopItem(b).map(InboxRowText.kindTag) ?? "Loop") : b.kind.tag)
                 .ui(12, .semibold).foregroundStyle(tagColor(b).color).lineLimit(1).fixedSize()
             if critical {   // LAB-2112: only P0 (LAB-2338)
                 Text("Needs your decision").ui(11, .bold).foregroundStyle(t.console.needs.color).lineLimit(1).fixedSize()
@@ -570,7 +577,13 @@ struct V2InboxPage: View {
         }
         let trail = HStack(spacing: 8) {
             if let more = Inbox.moreLine(b.more) { Text(more).ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize() }
-            Text(Inbox.age(b.at)).ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize()
+            if let i = loopItem(b), i.copies > 1 {   // LAB-2341: folded copies
+                Text("filed ×\(i.copies)").ui(11, .semibold).foregroundStyle(t.console.loop.color).fixedSize()
+                    .padding(.horizontal, 7).frame(height: 18).background(Capsule().fill(t.console.filedFill.color))
+                Text("first \(Inbox.age(i.when)) ago · last \(Inbox.age(i.lastWhen ?? i.when))").ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize()
+            } else {
+                Text(Inbox.age(b.at)).ui(11.5).foregroundStyle(m.text2.color).lineLimit(1).fixedSize()
+            }
             if b.sessionId != nil || b.kind == .plan {
                 Button { open(b) } label: { Text(b.kind == .plan ? "Open plan ↗" : "Open session ↗ ⌘↩").ui(12, .semibold).foregroundStyle(t.console.link.color).fixedSize() }
                     .buttonStyle(.plain).help(b.kind == .plan ? "Open the plan" : "Open the session's terminal (⌘↩)")
@@ -612,7 +625,8 @@ struct V2InboxPage: View {
         case .plan:
             if let o = model.objectives.first(where: { $0.id == b.planId }) { planContent(o) }
         case .loop:
-            if let i = loopInbox.items.first(where: { $0.id == b.loopItemId }) { LoopNeedDetail(model: model, item: i, win: win, embedded: true) }
+            // LAB-2341: each loop kind in its own panel (4e–4i).
+            if let i = loopItem(b) { InboxLoopPanel(model: model, item: i, win: win, select: { id in focused = id }) }
         case .waiting:
             Text("Waiting for you. One Roof has not read its prompt yet: open the session to answer it there.")
                 .ui(13).foregroundStyle(Self.mt.text2.color)
@@ -862,6 +876,12 @@ struct V2InboxPage: View {
         case .tab:
             if let b, let d = b.decision, Inbox.placeholder(d, agentName: who(d)) != nil { drafts.focusRequest = b.id; return .handled }
             return .ignored
+        case .return where b?.kind == .loop:
+            if let b, let i = loopItem(b) { InboxLoopActions.primary(i, model: model, win: win) }
+            return .handled
+        case .escape where b?.kind == .loop:
+            if let b, let i = loopItem(b) { InboxLoopActions.cancel(i, model: model) }
+            return .handled
         case .return:
             guard let b, let d = b.decision, let btn = Inbox.defaultButton(Inbox.buttons(d, repo: d.repo)) else {
                 if let b, b.kind == .plan, let o = model.objectives.first(where: { $0.id == b.planId }) { model.approve(o); return .handled }

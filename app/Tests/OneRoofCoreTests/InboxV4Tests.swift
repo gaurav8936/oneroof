@@ -97,4 +97,67 @@ final class InboxV4Tests: XCTestCase {
             XCTAssertGreaterThanOrEqual(RGB.contrast(k.agentInk(SeatMark(agent: a, account: nil)), k.ground), 4.5, "\(a)")
         }
     }
+
+    // MARK: LAB-2341 · loop items in their own words, folded
+
+    private func outcome(_ id: Int, _ kind: String, title: String, link: String = "", created: String, detail: String = "{}") -> LoopLedger.Outcome {
+        LoopLedger.Outcome(id: id, runId: "r\(id)", loop: "docs-drift", kind: kind, link: link, title: title, status: "staged",
+                           decidedBy: nil, decidedAt: nil, created: created, detail: detail)
+    }
+
+    func test_LAB2341_proposalFileParsed() {
+        let text = """
+        # Proposal: Cut the installed skill list in ~/.claude/skills to ≤ 28 (Lessons behind /learn)
+
+        **Loop:** docs-drift · **Run:** r-1 · **Status:** open · **Change:** rule · **Target:** ~/.claude/skills
+
+        > every listed skill costs context each turn; the kit installs Commands only
+
+        ## Evidence
+
+        - 49 entries
+
+        ## Decide
+
+        - not evidence
+        """
+        let d = LoopDocs.proposal(text, path: "/j/proposals/2026-11-20_p-6421_cut-the-installed-skill-list-in-claude-skills-to.md")
+        XCTAssertEqual(d.title, "Cut the installed skill list in ~/.claude/skills to ≤ 28 (Lessons behind /learn)")
+        XCTAssertEqual(d.evidence, ["49 entries"])
+        XCTAssertEqual(d.change, "rule"); XCTAssertEqual(d.target, "~/.claude/skills")
+        XCTAssertEqual(d.why, "every listed skill costs context each turn; the kit installs Commands only")
+        XCTAssertEqual(d.slug, "cut-the-installed-skill-list-in-claude-skills-to"); XCTAssertEqual(d.id, "p-6421")
+        XCTAssertEqual(LoopDocs.index(["2026-11-20_p-6421_cut.md", "index.jsonl"], folder: "/j")["p-6421"], "/j/2026-11-20_p-6421_cut.md")
+    }
+
+    func test_LAB2341_refiledProposalsFoldAndDecideTogether() {
+        let staged = (1...17).map { outcome($0, "proposal", title: String(format: "p-%04x", 0xa000 + $0), link: String(format: "journal:p-%04x", 0xa000 + $0),
+                                            created: String(format: "2026-11-%02dT06:00:00-08:00", min(21, 4 + $0))) }
+        var docs: [String: LoopDoc] = [:]
+        for o in staged { docs[o.title] = LoopDoc(title: "Cut the installed skill list", evidence: ["49 entries"], target: "~/.claude/skills", slug: "cut-the-skill-list", id: o.title) }
+        let reports = (18...20).map { outcome($0, "report", title: "[docs-drift] 1 finding(s): ~/.claude/skills lists 49 skills (budget 28)",
+                                              created: "2026-11-20T19:30:00+05:30", detail: #"{"body": "~/.claude/skills  49 skills"}"#) }
+        let items = LoopInbox.fold(LoopInbox.attach(LoopInbox.today(staged + reports), proposals: docs))
+        XCTAssertEqual(items.count, 2, "17 proposals → 1, 3 identical reports → 1")
+        let p = items.first { $0.outcomeKind == "proposal" }!
+        XCTAssertEqual(p.copies, 17); XCTAssertEqual(p.outcomeIds.count, 17, "a decision writes every copy")
+        XCTAssertLessThan(p.when, p.lastWhen!)
+        XCTAssertEqual(InboxRowText.loopTitle(p), "Cut the installed skill list")
+        let r = items.first { $0.outcomeKind == "report" }!
+        XCTAssertEqual(r.copies, 3); XCTAssertEqual(r.doc?.title, "1 finding(s): ~/.claude/skills lists 49 skills (budget 28)")
+        XCTAssertEqual(LoopInbox.relatedProposal(r, in: items)?.id, p.id, "the report names the proposal's target")
+        XCTAssertEqual(LoopInbox.relatedReports(p, in: items).map(\.id), [r.id])
+        XCTAssertEqual(InboxTier.of(r), .p2); XCTAssertEqual(InboxTier.of(p), .p1)
+        XCTAssertEqual(LoopInbox.muteKey(p), "docs-drift|cut-the-skill-list")
+        XCTAssertEqual(InboxRowText.kindTag(p), "Proposal")
+    }
+
+    func test_LAB2341_reportsExpireAfterSevenDays() {
+        let f = ISO8601DateFormatter()
+        let now = f.date(from: "2026-11-21T12:00:00Z")!
+        let old = outcome(1, "report", title: "r", created: "2026-11-13T12:00:00Z")
+        let fresh = outcome(2, "report", title: "r", created: "2026-11-15T12:00:00Z")
+        let oldProposal = outcome(3, "proposal", title: "p-1234", created: "2026-11-01T12:00:00Z")
+        XCTAssertEqual(LoopInbox.expired([old, fresh, oldProposal], now: now).map(\.id), [1], "only reports and notes expire")
+    }
 }
