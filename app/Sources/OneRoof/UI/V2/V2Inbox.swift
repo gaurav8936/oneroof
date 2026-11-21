@@ -80,6 +80,8 @@ struct V2InboxPage: View {
     @State private var ghosts: [String: Ghost] = [:]
     @State private var lastBlocks: [InboxBlock] = []
     @State private var newAbove = 0
+    /// LAB-2342 (4j): loop items selected for one decision (space, ⇧↑ ⇧↓, Select all).
+    @State private var batch: Set<String> = []
     @FocusState private var keys: Bool
 
     private static let blockWidth: CGFloat = 1180
@@ -108,6 +110,25 @@ struct V2InboxPage: View {
     // row), the selected item in full on the right, in a dark console. The keyboard walks the list as shown.
     private func loopItem(_ b: InboxBlock) -> LoopInbox.Item? { b.loopItemId.flatMap { id in loopInbox.items.first { $0.id == id } } }
     private func tier(_ b: InboxBlock) -> InboxTier { InboxTier.of(b, loopItem: loopItem(b)) }
+    /// 4j: staged outcomes you can decide together (commits are not: each PR runs its own gate).
+    private func batchable(_ b: InboxBlock) -> Bool {
+        guard let i = loopItem(b), i.kind == .staged else { return false }
+        return !["commit", "pr"].contains(i.outcomeKind)
+    }
+    private func toggle(_ b: InboxBlock) { if batch.contains(b.id) { batch.remove(b.id) } else if batchable(b) { batch.insert(b.id) } }
+    private func batchItems(_ layout: InboxLayout) -> [LoopInbox.Item] { layout.all.filter { batch.contains($0.id) }.compactMap(loopItem) }
+    private func decideBatch(_ items: [LoopInbox.Item], approve: Bool) {
+        for i in items {
+            if approve {
+                switch i.outcomeKind {
+                case "file": LoopInboxState.shared.decide(i, "applied") { model.refreshLoopInbox() }
+                case "report", "slack": LoopInboxState.shared.decide(i, "approved", reason: "seen") { model.refreshLoopInbox() }
+                default: LoopInboxState.shared.decide(i, "approved") { model.refreshLoopInbox() }
+                }
+            } else { LoopInboxState.shared.decide(i, "rejected") { model.refreshLoopInbox() } }
+        }
+        batch = []
+    }
     private func loopOf(_ b: InboxBlock) -> (id: String, title: String) {
         let i = loopItem(b)
         return (i?.loopId ?? "loop", i?.loopTitle ?? "Loop")
@@ -154,6 +175,9 @@ struct V2InboxPage: View {
             if let raw = o?["filter"] as? String, let nf = InboxFilter(rawValue: raw) { setFilter(nf) }
             if let p = o?["attach"] as? String, let id = focused ?? layout.all.first?.id { drafts.attach(id, [p]) }
             if o?["decided"] as? Bool == true { win.inboxTab = .decided }
+            if let loop = o?["batch"] as? String {   // LAB-2342: select a loop's items (self-test INBOXBATCH)
+                batch = Set(layout.all.filter { batchable($0) && loopItem($0)?.loopId == loop }.map(\.id))
+            }
             if let b = current(layout) {
                 if let text = o?["reply"] as? String { drafts.text[b.id] = text; sendBox(b) }
                 if let k = o?["press"] as? Int, let d = b.decision,
@@ -168,6 +192,7 @@ struct V2InboxPage: View {
 
     private func setFilter(_ f: InboxFilter) {
         win.inboxFilter = f
+        batch = []
         let all = model.inboxLayout.all
         let first = InboxFeed.sections(all, filter: f, tier: tier, loopOf: loopOf).first?.blocks.first
         if let fid = focused, !all.contains(where: { $0.id == fid && f.admits($0) }) { focused = first?.id }
@@ -186,6 +211,7 @@ struct V2InboxPage: View {
                     Color.clear.frame(height: 0).id("inbox-top")
                     sourceFilter(f, counts: c)
                     Text("⌘1 All · ⌘2 Sessions · ⌘3 Loops · ↑↓ move").ui(11).foregroundStyle(t.text3.color).padding(.bottom, 4)
+                    if !batch.isEmpty { batchBar(batchItems(layout)) }
                     if layout.all.isEmpty && ghosts.isEmpty {
                         listEmpty(f, counts: c)
                     }
@@ -258,6 +284,14 @@ struct V2InboxPage: View {
                 Text(title).ui(12.5, .semibold).foregroundStyle(t.text.color).lineLimit(1)
                 Text(loopSummary(s.blocks)).ui(12).foregroundStyle(t.text2.color).lineLimit(1)
                 Spacer(minLength: 0)
+                let pickable = s.blocks.filter(batchable)
+                let hasReports = s.blocks.contains { ["report", "slack"].contains(loopItem($0)?.outcomeKind ?? "") }
+                if pickable.count > 1, !hasReports {
+                    let all = pickable.allSatisfy { batch.contains($0.id) }
+                    RoofButton(all ? "Select none" : "Select all") {
+                        if all { for b in pickable { batch.remove(b.id) } } else { for b in pickable { batch.insert(b.id) } }
+                    }
+                }
                 let reports = s.blocks.compactMap(loopItem).filter { ["report", "slack"].contains($0.outcomeKind) }
                 if !reports.isEmpty {
                     RoofButton("Mark reports seen") {
@@ -312,7 +346,14 @@ struct V2InboxPage: View {
     private func listRow(_ b: InboxBlock, ghost: Ghost?) -> some View {
         let k = t.console, sel = focused == b.id && ghost == nil
         let tr = tier(b)
+        let picked = batch.contains(b.id)
         return HStack(spacing: 10) {
+            if !batch.isEmpty, batchable(b) {   // 4j
+                Image(systemName: picked ? "checkmark.square.fill" : "square").font(.system(size: 14))
+                    .foregroundStyle((picked ? t.accent : k.dim).color)
+                    .onTapGesture { toggle(b) }
+                    .accessibilityLabel(picked ? "Selected" : "Not selected")
+            }
             InboxTierMark(tier: tr)
             VStack(alignment: .leading, spacing: 4) {
                 InboxPostmarkView(text: postmarkLine(b), ink: postmarkInk(b))
@@ -328,6 +369,7 @@ struct V2InboxPage: View {
         .id(b.id)
         .contentShape(Rectangle())
         .onTapGesture { guard ghost == nil else { return }; focused = b.id; if drafts.editing == nil { keys = true } }
+        .simultaneousGesture(TapGesture().modifiers(.command).onEnded { toggle(b) })   // ⌘-click selects (4j)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(tr.label + ", " + label(b))
         .accessibilityAddTraits(sel ? [.isSelected, .isButton] : .isButton)
@@ -384,7 +426,8 @@ struct V2InboxPage: View {
 
     @ViewBuilder private func panelColumn(_ layout: InboxLayout, filter f: InboxFilter, counts c: InboxCounts) -> some View {
         Group {
-            if let b = current(layout) {
+            if !batch.isEmpty { batchPanel(batchItems(layout)) }
+            else if let b = current(layout) {
                 let critical = tier(b) == .p0
                 InboxBlockFrame(focused: false, edge: critical ? t.console.needs : t.console.edge, ring: t.accent, scale: scale,
                                 lineWidth: critical ? 3 : 1.5) {
@@ -409,6 +452,59 @@ struct V2InboxPage: View {
         }
         .padding(.horizontal, 24).padding(.vertical, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: Batch (4j)
+
+    private func batchBar(_ items: [LoopInbox.Item]) -> some View {
+        let k = t.console
+        return HStack(spacing: 8) {
+            Text("\(items.count) selected").ui(13, .semibold).foregroundStyle(k.text.color)
+            Spacer(minLength: 8)
+            RoofButton("Approve \(items.count)", .primary) { decideBatch(items, approve: true) }
+            RoofButton("Dismiss \(items.count)") { decideBatch(items, approve: false) }
+            RoofButton("Clear") { batch = [] }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(k.ground.color))
+        .themed(.midnight, scale: scale)
+    }
+
+    private func batchPanel(_ items: [LoopInbox.Item]) -> some View {
+        let k = t.console
+        let loops = Set(items.map(\.loopId))
+        let kinds = Set(items.map { InboxRowText.kindTag($0).lowercased() })
+        let what = kinds.count == 1 ? kinds.first! + (items.count == 1 ? "" : "s") : "items"
+        return InboxBlockFrame(focused: false, edge: k.edge, ring: t.accent, scale: scale, lineWidth: 1.5) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Text("\(items.count) selected").ui(13, .semibold).foregroundStyle(k.text.color)
+                    if loops.count == 1 { Text("· " + loops.first!).ui(12).foregroundStyle(k.dim.color) }
+                    Spacer()
+                    Text("space toggles · ⇧↑↓ extends").ui(11.5).foregroundStyle(k.dim.color)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 7).background(k.strip.color)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("\(items.count) \(what)" + (loops.count == 1 ? " from \(loops.first!)" : " from \(loops.count) loops"))
+                        .ui(15, .semibold).foregroundStyle(k.text.color)
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { n, i in
+                            Text("\(n + 1). " + InboxRowText.loopTitle(i) + (i.copies > 1 ? "  ×\(i.copies)" : "")).ui(12, mono: true).foregroundStyle(k.text.color).lineLimit(1)
+                        }
+                    }
+                    FlowLayout(spacing: 8) {
+                        RoofButton("Approve \(items.count) ↩", .primary) { decideBatch(items, approve: true) }
+                        RoofButton("Dismiss \(items.count) esc") { decideBatch(items, approve: false) }
+                        RoofButton("Clear selection") { batch = [] }
+                    }
+                    Spacer(minLength: 0)
+                    Text("Batch actions write one decision per item (every folded copy). Each shows in Decided. Reports are marked seen, file updates applied.")
+                        .ui(11.5).foregroundStyle(k.dim.color).fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 14)
+                .frame(maxHeight: .infinity, alignment: .top)
+            }
+        }
     }
 
     private func filterEmpty(_ f: InboxFilter) -> some View {
@@ -871,8 +967,21 @@ struct V2InboxPage: View {
         guard drafts.editing == nil, k.modifiers.intersection([.command, .control, .option]).isEmpty else { return .ignored }
         let b = current(layout)
         switch k.key {
-        case .downArrow: move(1, layout); return .handled
-        case .upArrow: move(-1, layout); return .handled
+        case .downArrow, .upArrow:
+            let d = k.key == .downArrow ? 1 : -1
+            if k.modifiers.contains(.shift) {   // 4j: ⇧↑ ⇧↓ extend the selection
+                if let b { if batchable(b) { batch.insert(b.id) } }
+                move(d, layout)
+                if let n = current(layout), batchable(n) { batch.insert(n.id) }
+            } else { move(d, layout) }
+            return .handled
+        case .space:
+            if let b, batchable(b) { toggle(b); return .handled }
+            return .ignored
+        case .return where !batch.isEmpty:
+            decideBatch(batchItems(layout), approve: true); return .handled
+        case .escape where !batch.isEmpty:
+            batch = []; return .handled
         case .tab:
             if let b, let d = b.decision, Inbox.placeholder(d, agentName: who(d)) != nil { drafts.focusRequest = b.id; return .handled }
             return .ignored
