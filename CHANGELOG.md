@@ -1,6 +1,14 @@
 # Changelog
 
-## 2.0.9 — The Inbox, redone: one list for sessions and loops, red only when something waits on you (21 Nov 2026)
+## 2.0.9.1 — The Inbox, redone: one list for sessions and loops, red only when something waits on you (21 Nov 2026)
+
+The first published build of 2.0.9 (2.0.9 itself stopped at the release gate), with two fixes on top:
+
+- **The rail's edge runs top to bottom.** The line on the right of the rail now continues up through the bar behind
+  the window buttons, across the window's colour stripe, instead of stopping at it. (LAB-2347)
+- **Opening a page no longer pays for the Inbox badge.** The badge counts what is blocked on you without rebuilding the
+  Inbox on every redraw; in 2.0.9 that made opening Learn about 50 % slower than 2.0.8. (LAB-2343)
+
 
 The Inbox used to show every loop result as a red block of its own; on a real Mac that was 78 identical alarms for
 about 15 decisions. It is now a list with the selected item in full beside it, and only what is blocked on you is red.

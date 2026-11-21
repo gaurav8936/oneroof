@@ -51,3 +51,19 @@ public enum InboxTier: Int, Comparable, Sendable, CaseIterable {
         }
     }
 }
+
+extension InboxTier {
+    /// LAB-2343 (2.0.9 perf, open-learn +50 % in the A/B vs 2.0.8): the badge count without building the Inbox. One
+    /// block per session shows its oldest open ask, so a session counts when that ask is P0; plans waiting are P0; loop
+    /// items count when blocked (a round asks, a loop stopped). Waiting sessions are P2 and never count. Same number as
+    /// counting P0 blocks of `Inbox.layout`, at a fraction of the work (it runs on every rail and status-bar redraw).
+    public static func p0Count(open: [Decision], plansWaiting: Int, loops: [LoopInbox.Item]) -> Int {
+        var oldest: [String: Decision] = [:]
+        for d in open {
+            if let o = oldest[d.sessionId], (o.askedAt, o.id.uuidString) <= (d.askedAt, d.id.uuidString) { continue }
+            oldest[d.sessionId] = d
+        }
+        return oldest.values.reduce(0) { $0 + (of($1) == .p0 ? 1 : 0) } + plansWaiting
+            + loops.reduce(0) { $0 + (of($1) == .p0 ? 1 : 0) }
+    }
+}
