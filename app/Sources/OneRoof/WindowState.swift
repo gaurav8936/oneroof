@@ -74,6 +74,9 @@ final class WindowState: ObservableObject, Identifiable {
     /// LAB-2110: the Inbox's tab (Inbox · Decided). The Action log is gone: Decisions became Decided, Rules moved to
     /// Settings › Permissions.
     @Published var inboxTab: InboxTab = .inbox
+    /// LAB-2339 (IB-10): the Inbox's source filter in this window; nil = the default rule (Active sessions when a
+    /// session is blocked on you, else All). Remembered while the window is open.
+    @Published var inboxFilter: InboxFilter?
     /// The tab the Action log opens on (the last one used in this window).
     var actionLogTab: ActionLogTab = .decisions
     /// LAB-2048: the Decisions tab's filters, remembered per window (the search text is not).

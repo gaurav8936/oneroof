@@ -60,6 +60,8 @@ public struct InboxLayout: Equatable, Sendable {
     public var loops: [InboxBlock]
     /// Every block in page order (keyboard order: ↑ ↓ ⌘] ⌘[).
     public var all: [InboxBlock] { asks + loops }
+
+    public init(asks: [InboxBlock], loops: [InboxBlock]) { self.asks = asks; self.loops = loops }
 }
 
 /// A button in a block's options row.
