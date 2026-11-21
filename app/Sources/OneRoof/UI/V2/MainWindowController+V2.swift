@@ -318,6 +318,17 @@ extension MainWindowController {
     func v2PaintBand(fit: Bool = true) {
         let segs = v2BandSegments()
         backdropRef.setSegments(segs.map { (CGFloat($0.0), $0.1) })
+        // 2.0.9.1: the rail's edge runs through the band, top to bottom, in the divider's own colour.
+        // Below the band the edge is every divider between the rail and the first column that shows (folded columns
+        // leave theirs on the same spot: 3 pt with Sessions and Files folded), so the band draws that whole span.
+        let rail = v2RailItem.flatMap { $0.isCollapsed ? nil : $0.viewController.view }
+        let railMaxX = rail.flatMap { $0.isHidden || $0.frame.width < 1 ? nil : Double($0.frame.maxX) }
+        // The columns only: the split view also holds 5 pt helper views on its dividers.
+        let next = splitView.arrangedSubviews.filter { $0 !== rail && !$0.isHidden && $0.frame.width >= 1 && Double($0.frame.minX) >= (railMaxX ?? .infinity) }
+            .map { Double($0.frame.minX) }.min()
+        backdropRef.edges = V2Layout.bandEdges(railMaxX: railMaxX, nextColumnX: next, divider: Double(splitView.dividerThickness))
+        // The split view draws the band's edge itself (Daylight paints #dddddd while dividerColor says #e6e6e6).
+        if backdropRef.dividerSource !== splitView { backdropRef.dividerSource = splitView }
         if fit { v2FitToolbar() } else { v2PlaceTitle() }
         v2NudgeTrafficLights()
     }
