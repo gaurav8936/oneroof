@@ -218,3 +218,47 @@ extension LoopLedger {
         try setStatus(id, "staged")
     }
 }
+
+/// LAB-2341 · Inbox v4.0 (IB-7): what "Approve → open PR" runs and the change it carries, read from the loop branch
+/// before you decide (the same base, commits and diff the harvest uses; nothing is run or pushed here).
+public struct InboxEffect: Equatable, Sendable {
+    public var commands: [String] = []
+    public var commits: [String] = []
+    public var diffstat: String = ""
+    public var diff: [String] = []
+    /// Why there is no preview ("The loop branch … does not exist").
+    public var missing: String? = nil
+    public init(commands: [String] = [], commits: [String] = [], diffstat: String = "", diff: [String] = [], missing: String? = nil) {
+        self.commands = commands; self.commits = commits; self.diffstat = diffstat; self.diff = diff; self.missing = missing
+    }
+}
+
+extension LoopHarvest {
+    /// Diff lines shown in the panel at most (the rest is behind Open the change).
+    public static let previewLines = 80
+
+    public static func preview(loop: Loop, title: String, tools: Tools) -> InboxEffect {
+        let repo = loop.repoPath, branch = loop.branch
+        guard FileManager.default.fileExists(atPath: repo + "/.git") else { return InboxEffect(missing: "The loop's repo \(repo) is not a git repo.") }
+        guard git(tools, repo, ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch]).0 == 0 else {
+            return InboxEffect(missing: "The loop branch \(branch) does not exist.")
+        }
+        let base = baseBranch(loop, tools: tools)
+        let baseRef = git(tools, repo, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/" + base]).0 == 0 ? "origin/" + base : base
+        let (lrc, log) = git(tools, repo, ["log", "--format=%h %s", baseRef + ".." + branch])
+        let commits = lrc == 0 ? log.split(separator: "\n").map(String.init) : []
+        let (_, stat) = git(tools, repo, ["diff", "--shortstat", baseRef + "..." + branch])
+        let (_, patch) = git(tools, repo, ["diff", "-U2", baseRef + "..." + branch], timeout: 60)
+        let lines = patch.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            .filter { !$0.hasPrefix("diff --git") && !$0.hasPrefix("index ") }
+        let check = LoopSpecLint.clean(loop.check)
+        let cmds = (check.isEmpty ? [] : ["# gate: the loop's check, then a judge reads the diff", check])
+            + ["git push origin \(branch)", "gh pr create --base \(base) --head \(branch) --title \"\(title)\""]
+        return InboxEffect(commands: cmds, commits: commits, diffstat: stat.trimmingCharacters(in: .whitespacesAndNewlines),
+                           diff: Array(lines.prefix(previewLines)),
+                           missing: commits.isEmpty ? "No commits on \(branch) that are not on \(base) already." : nil)
+    }
+
+    /// The PR title Approve uses (public for the preview).
+    public static func title(_ loop: Loop, _ outcomes: [LoopLedger.Outcome]) -> String { prTitle(loop, outcomes) }
+}

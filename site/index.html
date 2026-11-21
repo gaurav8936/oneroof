@@ -125,7 +125,7 @@
           <span class="num">01</span>
           <h3>Questions get lost</h3>
           <p>An agent stops to ask something, in a tab you are not watching, and waits for an hour.</p>
-          <span class="answer">→ The Inbox: every ask from every session in one place, the urgent ones first, answered in place.</span>
+          <span class="answer">→ The Inbox: every ask from every session and every loop in one list, red only when something waits on you, answered in place.</span>
         </a>
         <a class="card" href="#home">
           <span class="num">02</span>
@@ -174,10 +174,10 @@
 
     <section id="inbox" class="feature">
       <div class="feature-head">
-        <div class="stack-sm"><span class="tag"><i style="background:var(--c4)"></i>Inbox · ⌘I</span><h3>Everything the agents ask you, in one column.</h3></div>
-        <p>One block per session that needs you, with the prompt's own options as buttons (or press 1–9). When an agent is blocked until you act, its block gets a red border and goes to the top. A finished turn waits here too, with a reply box; paste a screenshot and the agent reads it. Nothing is approved for you, and you can always answer in the terminal instead. Decided keeps what you answered, newest first.</p>
+        <div class="stack-sm"><span class="tag"><i style="background:var(--c4)"></i>Inbox · ⌘I</span><h3>Everything the agents and loops need from you, in one list.</h3></div>
+        <p>One row per thing that needs you, from your sessions and your loops, each marked by how soon (P0 blocked, P1 decide, P2 read) and who sent it; filter to Active sessions or Loops with ⌘2 and ⌘3. The selected row opens beside the list with the prompt's own options as buttons (or press 1–9), a reply box that takes screenshots, and for loop results what approving would run. Only what is blocked on you is red, and a loop that files the same thing every night is one row. Nothing is approved for you, and you can always answer in the terminal instead. Decided keeps every answer, from sessions and loops.</p>
       </div>
-      <div class="shot"><img src="shots/inbox.png" width="1600" height="1000" loading="lazy" alt="The Inbox: Claude asks to run a test command, with its four options as buttons, and Codex asks a question, both marked Needs your decision"></div>
+      <div class="shot"><img src="shots/inbox.png" width="1700" height="1000" loading="lazy" alt="The Inbox: a list of what waits on you, filtered to Active sessions, each row marked P0 or P1 with who sent it; Claude1's request to run a test command is open beside it with its four options as buttons"></div>
     </section>
 
     <section id="sessions" class="feature">

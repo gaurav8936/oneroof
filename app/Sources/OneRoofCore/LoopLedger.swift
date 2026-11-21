@@ -253,6 +253,27 @@ public final class LoopLedger {
                 decidedAt: r["decided_at"], created: r["created"] ?? "", detail: r["detail"] ?? "{}")
     }
 
+    /// LAB-2342 (IB-11): outcomes someone decided (a person, or One Roof's expiry), newest decision first: the loop
+    /// half of Decided. Rows the kit settled by itself (no decider) are not decisions and stay out.
+    public func decidedByPeople(since: Date? = nil, search: String = "", limit: Int = 50, offset: Int = 0) -> [Outcome] {
+        let (w, a) = Self.decidedWhere(since: since, search: search)
+        return rows("SELECT * FROM outcomes WHERE \(w) ORDER BY decided_at DESC, id DESC LIMIT \(max(1, limit)) OFFSET \(max(0, offset))", a)
+            .map(Self.outcome)
+    }
+
+    public func decidedByPeopleCount(since: Date? = nil, search: String = "") -> Int {
+        let (w, a) = Self.decidedWhere(since: since, search: search)
+        return Int(rows("SELECT COUNT(*) AS n FROM outcomes WHERE \(w)", a).first?["n"] ?? "0") ?? 0
+    }
+
+    static func decidedWhere(since: Date?, search: String) -> (String, [String]) {
+        var w = ["status != 'staged'", "decided_by IS NOT NULL", "decided_by != ''"], a: [String] = []
+        if let since { w.append("decided_at >= ?"); a.append(iso(since)) }
+        let q = search.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty { w.append("(title LIKE ? OR loop LIKE ? OR detail LIKE ?)"); a += Array(repeating: "%\(q)%", count: 3) }
+        return (w.joined(separator: " AND "), a)
+    }
+
     /// Outcomes, newest first, optionally of one loop and/or one status (the kit's `Ledger.outcomes`).
     public func outcomes(loop: String? = nil, status: String? = nil, limit: Int = 200) -> [Outcome] {
         var w: [String] = [], a: [String] = []

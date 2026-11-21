@@ -148,6 +148,9 @@ public struct ThemeTokens: Sendable {
     /// than Midnight's, so its red is raised to its terminal's bright red (#FF8A82, 4.98:1 there; #FF6961 was 4.02:1).
     public var needsText: RGB { name == .graphite ? RGB(0xFF8A82) : isDark ? RGB(0xFF6961) : RGB(0xC4261D) }
 
+    /// LAB-2339 · Inbox v4.0: the console (list rows and the panel), dark in every look, so fixed values.
+    public var console: ConsoleTokens { .fixed }
+
     // MARK: Syntax (S07 §1.5)
 
     /// Editor token colours: Daylight is Xcode's light palette; Graphite and Midnight use the Xcode Dark equivalents.
@@ -190,7 +193,7 @@ public struct ThemeTokens: Sendable {
     }
 
     /// Blend a colour towards white until it reaches `ratio` against `bg`.
-    static func lighten(_ c: RGB, until ratio: Double, on bg: RGB) -> RGB {
+    public static func lighten(_ c: RGB, until ratio: Double, on bg: RGB) -> RGB {
         var t = 0.0
         var out = c
         while RGB.contrast(out, bg) < ratio && t < 1 {
@@ -491,4 +494,27 @@ public struct PanelThemes: Codable, Equatable, Sendable {
         if let d = defaults.data(forKey: legacyKey), let t = try? JSONDecoder().decode(PanelThemes.self, from: d) { return t }
         return PanelThemes()
     }
+}
+
+/// LAB-2339 · Inbox v4.0 console tokens (handover theme/tokens.md): the dark list rows and panel, the tier marks and
+/// the postmark inks. The same in every look (the console is code and data, not mail).
+public struct ConsoleTokens: Sendable {
+    public var ground: RGB, strip: RGB, edge: RGB, rowEdge: RGB, text: RGB, dim: RGB, link: RGB, needs: RGB
+    public var selected: RGB, selectedEdge: RGB, add: RGB, del: RGB, hunk: RGB
+    /// Tier marks: (fill, text) for P0 · P1 · P2.
+    public var p0: (fill: RGB, text: RGB), p1: (fill: RGB, text: RGB), p2: (fill: RGB, text: RGB)
+    /// Postmark inks on the console.
+    public var plan: RGB, loop: RGB, stopped: RGB, system: RGB, filedFill: RGB
+
+    public static let fixed = ConsoleTokens(
+        ground: RGB(0x0D0D0F), strip: RGB(0x1A1A1E), edge: RGB(0x3A3A40), rowEdge: RGB(0x2C2C31),
+        text: RGB(0xE8E8EA), dim: RGB(0x9A9AA2), link: RGB(0x4C9AFF), needs: RGB(0xFF6B5E),
+        selected: RGB(0x16233A), selectedEdge: RGB(0x2C3D5C), add: RGB(0x7EE2A0), del: RGB(0xFF9A92), hunk: RGB(0x7FB2FF),
+        p0: (RGB(0xFF6B5E), RGB(0x1A0B0A)), p1: (RGB(0xE3B341), RGB(0x1D1608)), p2: (RGB(0x3A3A40), RGB(0xC8C8CE)),
+        plan: RGB(0x7FB2FF), loop: RGB(0xC3A6FF), stopped: RGB(0xFF6B5E), system: RGB(0xA8A8B0), filedFill: RGB(0x2A2140))
+
+    public func tier(_ t: InboxTier) -> (fill: RGB, text: RGB) { t == .p0 ? p0 : t == .p1 ? p1 : p2 }
+
+    /// An agent's postmark ink: its badge colour, raised to 4.5:1 on the console.
+    public func agentInk(_ mark: SeatMark) -> RGB { ThemeTokens.lighten(mark.fill(dark: true), until: 4.5, on: ground) }
 }

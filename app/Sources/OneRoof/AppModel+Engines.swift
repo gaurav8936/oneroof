@@ -84,9 +84,11 @@ extension AppModel {
     /// Open prompts plus plans waiting for approval (S03 list, toolbar count, Dock badge).
     var openDecisionCount: Int { openDecisions.count + objectives.filter { $0.status == .review && $0.plan != nil }.count }
     /// LAB-1933 · the Inbox badge everywhere (rail, icon row, menu bar, Dock): manual sessions only.
+    /// LAB-2343 (IB-9): the one count — items blocked on you (P0), from sessions and loops. Proposals, reports and
+    /// finished turns wait in the Inbox but don't badge.
     var needsYouBadge: Int {
-        SessionScope.needsYouCount(openAsks: openDecisions.count, plansWaiting: objectives.filter { $0.status == .review && $0.plan != nil }.count, items: items,
-                                   loopItems: loopInbox.count)   // LAB-1866 · LAB-1919: loop items, never sessions
+        let loops = loopInbox
+        return inboxLayout.all.filter { b in InboxTier.of(b, loopItem: b.loopItemId.flatMap { id in loops.first { $0.id == id } }) == .p0 }.count
     }
 
     func answer(_ d: Decision, _ a: Answer, reply: String? = nil, choice: DecisionChoice? = nil) {
