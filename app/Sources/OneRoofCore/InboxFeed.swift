@@ -227,6 +227,7 @@ public enum InboxRowText {
     /// A loop item's title: the outcome's own title when it has one (not a bare id like "p-d0ae"), else the item's
     /// headline without the "Loop <name>: " prefix.
     public static func loopTitle(_ i: LoopInbox.Item) -> String {
+        if let t = i.doc?.title, !t.isEmpty { return short(t, 90) }   // LAB-2341 (IB-1): the outcome's own title
         if i.kind == .staged, let t = i.outcomes.first?.title, !t.isEmpty, !isBareId(t) {
             return short(t.replacingOccurrences(of: "[\(i.loopId)] ", with: ""), 90)
         }
@@ -234,6 +235,25 @@ public enum InboxRowText {
         if h.hasPrefix("Loop \(i.loopTitle): ") { h.removeFirst("Loop \(i.loopTitle): ".count) }
         if h.hasPrefix("Loop \(i.loopTitle) ") { h.removeFirst("Loop \(i.loopTitle) ".count) }
         return short(h.prefix(1).uppercased() + h.dropFirst(), 90)
+    }
+
+    /// The kind tag in the panel strip for a loop item: "Proposal", "Report", "Commits → PR", "Stopped" …
+    public static func kindTag(_ i: LoopInbox.Item) -> String {
+        switch i.kind {
+        case .failed: return "Stopped"
+        case .asks: return "Permission"
+        case .missed: return "Missed runs"
+        case .staged:
+            switch i.outcomeKind {
+            case "commit", "pr": return "Commits → PR"
+            case "report": return "Report"
+            case "slack": return "Note"
+            case "file": return "File update"
+            case "issue": return "Issue"
+            case "promotion": return "Goes live"
+            default: return "Proposal"
+            }
+        }
     }
 
     /// "p-d0ae": a proposal id, not a title.

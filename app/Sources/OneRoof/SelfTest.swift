@@ -245,6 +245,14 @@ enum SelfTest {
                 if env["ONEROOF_SELFTEST_INBOXDECIDED"] == "1" { NotificationCenter.default.post(name: .inboxSelfTest, object: ["decided": true]) }
                 if env["ONEROOF_SELFTEST_INBOXPICK"] == "decided", let d = app.model.inboxDecided.first {   // the newest decided ask
                     app.model.needsPick = d.id.uuidString
+                } else if let k = env["ONEROOF_SELFTEST_INBOXPICK"], k.hasPrefix("loop:") {   // LAB-2341: loop:<outcome kind | failed | missed | asks>
+                    let want = String(k.dropFirst(5))
+                    for delay in [0.0, 1.5, 3.0, 4.5] {   // loop items arrive with the first ledger read
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            if let i = LoopInboxState.shared.items.first(where: { $0.outcomeKind == want || $0.kind.rawValue == want }),
+                               app.model.needsPick != "loop-" + i.id { app.model.needsPick = "loop-" + i.id }
+                        }
+                    }
                 } else if let i = Int(env["ONEROOF_SELFTEST_INBOXPICK"] ?? ""), i < app.model.inboxLayout.all.count {
                     app.model.needsPick = app.model.inboxLayout.all[i].id
                 }
