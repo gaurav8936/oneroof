@@ -160,4 +160,23 @@ final class InboxV4Tests: XCTestCase {
         let oldProposal = outcome(3, "proposal", title: "p-1234", created: "2026-11-01T12:00:00Z")
         XCTAssertEqual(LoopInbox.expired([old, fresh, oldProposal], now: now).map(\.id), [1], "only reports and notes expire")
     }
+
+    // LAB-2343 · the badge count without building the Inbox matches counting P0 blocks of the layout
+    func test_LAB2343_p0CountMatchesTheLayout() {
+        func dec(_ sid: String, _ pattern: String, why: String = "w", ago: Double) -> Decision {
+            Decision(sessionId: sid, agent: .claude, kind: .runCommand, command: "c", why: why, touches: "t", risk: .low, ifNo: "n",
+                     pattern: pattern, repo: "r", askedAt: now.addingTimeInterval(-ago))
+        }
+        let open = [dec("a", "swift test", ago: 60),                                   // P0
+                    dec("b", Decision.questionPrefix + "q", ago: 120),                  // P1 (oldest of b) …
+                    dec("b", "git push", ago: 30),                                      // … so b does not count
+                    dec("c", Decision.finishedPrefix + "x", why: "error: failed", ago: 10), // P0 (halt words)
+                    dec("d", Decision.finishedPrefix + "x", why: "Done.", ago: 5)]      // P2
+        let loops = [LoopInbox.Item(id: "failed-mh", kind: .failed, loopId: "mh", loopTitle: "M", headline: "h", detail: "", when: now),
+                     LoopInbox.Item(id: "staged-o-1", kind: .staged, loopId: "dd", loopTitle: "D", headline: "h", detail: "", when: now)]
+        let layout = Inbox.layout(open: open, plans: [("p1", now)], loops: loops.map { ($0.id, $0.when) })
+        let viaLayout = layout.all.filter { b in InboxTier.of(b, loopItem: loops.first { $0.id == b.loopItemId }) == .p0 }.count
+        XCTAssertEqual(InboxTier.p0Count(open: open, plansWaiting: 1, loops: loops), viaLayout)
+        XCTAssertEqual(viaLayout, 4, "a, c, the plan, the stopped loop")
+    }
 }
