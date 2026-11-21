@@ -18,7 +18,9 @@ app/roofd/RoofVT/ghostty
 app/roofd/RoofVT/.zig-cache/
 app/roofd/RoofVT/zig-out/
 
-# Local UI mockups and markups (any depth; never publish)
+# Design: UI mockups and markups live in the top-level design/ folder (local + backup only, never pushed: too large)
+/design/
+# Old names, any depth (kept so a stray folder is never published)
 ui_mockups/
 ui-mockups/
 ui_markups/
