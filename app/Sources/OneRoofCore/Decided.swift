@@ -84,7 +84,10 @@ public enum InboxUrgency: String, Sendable {
 
     public static func of(_ b: InboxBlock) -> InboxUrgency {
         switch b.kind {
-        case .plan, .loop: return .critical   // a plan waits for approval; a loop item is a stop that needs a call
+        case .plan: return .critical   // a plan waits for approval
+        // LAB-2338 (IB-3): a loop item is critical only when the loop is blocked on you (a round asks, it stopped at a
+        // limit); staged outcomes (proposals, reports, commits, file updates) and missed runs never are.
+        case .loop: return InboxTier.of(b) == .p0 ? .critical : .informational
         case .waiting: return .informational
         default: return b.decision.map(of) ?? .informational
         }
