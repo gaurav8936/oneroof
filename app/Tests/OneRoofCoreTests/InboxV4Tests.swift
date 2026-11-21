@@ -63,7 +63,7 @@ final class InboxV4Tests: XCTestCase {
                       InboxBlock(id: "loop-staged-o-2", kind: .loop, at: now.addingTimeInterval(-60), loopItemId: "staged-o-2")]
         let c = InboxFeed.counts(blocks, tier: tierById)
         XCTAssertEqual([c.all, c.sessions, c.loops, c.p0, c.p0Sessions, c.p0Loops], [5, 2, 3, 2, 1, 1])
-        XCTAssertEqual(InboxFilter.defaultFilter(blocks, tier: tierById), .sessions, "a session blocked on you opens Active sessions")
+        XCTAssertEqual(InboxFilter.defaultFilter(blocks, tier: tierById), .sessions, "a session blocked on you opens Sessions")
         XCTAssertEqual(InboxFilter.defaultFilter(Array(blocks.dropFirst()), tier: tierById), .all)
         let s = InboxFeed.sections(blocks, filter: .sessions, tier: tierById, loopOf: { _ in ("x", "X") })
         XCTAssertEqual(s.map(\.id), ["waiting", "not-waiting"])
