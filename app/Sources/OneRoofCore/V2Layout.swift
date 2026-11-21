@@ -337,6 +337,23 @@ public enum V2Layout {
         return out
     }
 
+    /// 2.0.9.1 · a column edge drawn through the toolbar band (window points).
+    public struct Edge: Equatable, Sendable {
+        public var x: Double, width: Double
+        public init(x: Double, width: Double) { self.x = x; self.width = width }
+    }
+
+    /// 2.0.9.1 (owner 2026-11-21): the rail's border runs from the top of the window to the bottom, through the band and
+    /// across the window's stripe: the divider right of the rail, at its own place and thickness. None when the rail is
+    /// hidden (nil) or the divider has no width.
+    /// `nextColumnX`: where the first column that shows starts; the edge spans every divider up to it (folded columns
+    /// leave their dividers on the same spot), at least one divider wide.
+    public static func bandEdges(railMaxX: Double?, nextColumnX: Double? = nil, divider: Double) -> [Edge] {
+        guard let x = railMaxX, x > 0, divider > 0 else { return [] }
+        let span = nextColumnX.map { max(divider, $0 - x) } ?? divider
+        return [Edge(x: x, width: min(span, divider * 6))]
+    }
+
     /// LAB-1938 · the guard: the colours the band shows under the group (one = pass). `segments` as `bandSegments`.
     public static func bandColours<C: Equatable>(under group: BarSpan, segments: [(Double, C)]) -> [C] {
         var start = 0.0, out: [C] = []

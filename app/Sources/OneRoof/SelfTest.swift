@@ -183,6 +183,8 @@ enum SelfTest {
         // P6 (v2): ONEROOF_SELFTEST_PLACE=<home|needsYou|sessions|work|machine|loops|learn>, ONEROOF_SELFTEST_FOCUS=<0-3>,
         // ONEROOF_SELFTEST_LAYOUT=<single|grid|wall>. Place first (it sets its default step), then the step.
         if app.model.settings.ui2, let p = env["ONEROOF_SELFTEST_PLACE"], let place = Place(rawValue: p) { app.model.active.open(place) }
+        // 2.0.9.1: WINCOLOUR=<pastel name> gives the window a colour (its band tint and stripe), for the top-left check.
+        if let c = env["ONEROOF_SELFTEST_WINCOLOUR"] { app.model.active.setColour(c) }
         // LAB-2339: INBOXFILTER=<all|sessions|loops> sets the Inbox's source filter.
         if let f = env["ONEROOF_SELFTEST_INBOXFILTER"], let x = InboxFilter(rawValue: f) { app.model.active.inboxFilter = x }
         if let l = env["ONEROOF_SELFTEST_LAYOUT"], let layout = SessionLayout(rawValue: l) {
