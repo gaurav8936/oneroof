@@ -257,6 +257,9 @@ enum SelfTest {
                     app.model.needsPick = app.model.inboxLayout.all[i].id
                 }
             }
+            if let loop = env["ONEROOF_SELFTEST_INBOXBATCH"] {   // LAB-2342: select every decidable item of that loop
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["batch": loop]) }
+            }
             if let text = env["ONEROOF_SELFTEST_INBOXREPLY"] {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { NotificationCenter.default.post(name: .inboxSelfTest, object: ["reply": text]) }
             }
