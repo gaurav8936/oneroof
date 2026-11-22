@@ -23,6 +23,12 @@ final class LoopInboxState: ObservableObject {
     @Published private(set) var decidedToday = 0
     /// LAB-2286 · false when the kit could not be read (`ae loops list --json`): kit loops are "kit state unknown".
     @Published private(set) var kitKnown = true
+    /// LAB-2352: what you did to an item here (by item id, or "loop:<id>" for a loop-wide action), so the Inbox row
+    /// that leaves can say it ("✓ Approved", "✓ Run started") instead of vanishing.
+    private(set) var intent: [String: (status: String, reason: String?)] = [:]
+    func intent(for item: String, loop: String?) -> (status: String, reason: String?)? {
+        intent[item] ?? loop.flatMap { intent["loop:" + $0] }
+    }
 
     /// LAB-2286 · one Needs you count everywhere (the Loops rail badge, the landing's chip, the Inbox's loop items):
     /// one per decision, the items themselves (LoopsV7.needsCount).
@@ -110,12 +116,14 @@ final class LoopInboxState: ObservableObject {
     // MARK: Actions (each writes through LoopStore / the ledger, then re-reads)
 
     func runAgain(_ loopId: String, then: @escaping () -> Void = {}) {
+        intent["loop:" + loopId] = ("run", nil)
         perform(loopId, "Run again", then) { try Self.store().update(loopId) { $0 = LoopController.runNow($0) }; return "Running again: roofd starts it within 30 s." }
     }
 
     /// LAB-2286 · Run now: a kit loop through the kit (`ae loops run <name> --scheduled`, in the background; a loop in
     /// trial only says what it would do), a One Roof loop through roofd (it starts within 30 s).
     func runNow(_ loopId: String, then: @escaping () -> Void = {}) {
+        intent["loop:" + loopId] = ("run", nil)
         perform(loopId, "Run now", then) {
             if let k = KitLoopsCache.shared.get(maxAge: 60)?.first(where: { $0.name == loopId }), k.scheduler != "roofd" {
                 try KitLoops.runNow(loopId)
@@ -134,15 +142,18 @@ final class LoopInboxState: ObservableObject {
 
     /// LAB-2341 (4h): Pause loop from the Inbox (nothing starts until Resume in Loops).
     func pause(_ loopId: String, then: @escaping () -> Void = {}) {
+        intent["loop:" + loopId] = ("paused", nil)
         perform(loopId, "Pause", then) { try Self.store().update(loopId) { $0 = LoopController.pause($0) }; return "Paused: nothing starts until you resume it in Loops." }
     }
 
     func markSeen(_ loopId: String, then: @escaping () -> Void = {}) {
+        intent["loop:" + loopId] = ("seen", nil)
         perform(loopId, "Mark seen", then) { try Self.store().update(loopId) { $0.failureSeenAt = Date() }; return "Marked seen." }
     }
 
     /// Approve / apply / dismiss staged outcomes (the same rows `ae loops ledger --decide` writes).
     func decide(_ item: LoopInbox.Item, _ status: String, reason: String? = nil, then: @escaping () -> Void = {}) {
+        intent[item.id] = (status, reason)
         perform(item.id, status, then) {
             guard let led = Self.ledger() else { throw LoopStoreError("no outcome ledger yet") }
             for id in item.outcomeIds { try led.decide(id, status: status, by: NSUserName(), reason: reason) }
@@ -152,6 +163,7 @@ final class LoopInboxState: ObservableObject {
 
     /// LAB-1867: approve the loop branch's work, gate it (tests + judge) and open the PR.
     func approveAndOpenPR(_ item: LoopInbox.Item, then: @escaping () -> Void = {}) {
+        intent[item.id] = ("pr", nil)
         perform(item.id, "Approve", then) {
             let s = Self.store()
             guard let loop = LoopStore().load(item.loopId) ?? s.load(item.loopId) else { throw LoopStoreError("no loop \(item.loopId)") }

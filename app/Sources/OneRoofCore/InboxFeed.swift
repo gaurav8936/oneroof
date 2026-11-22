@@ -11,7 +11,7 @@ public enum InboxFilter: String, CaseIterable, Sendable {
     public var title: String {
         switch self {
         case .all: return "All"
-        case .sessions: return "Active sessions"
+        case .sessions: return "Sessions"   // LAB-2351: "Active" means alive, on the Sessions page only
         case .loops: return "Loops"
         }
     }
